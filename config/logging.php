@@ -58,6 +58,15 @@ return [
             'ignore_exceptions' => false,
         ],
 
+        // Supuesto S-04: duración de escaneo y búsqueda (objetivos 300 ms p95 y 500 ms).
+        'rendimiento' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/rendimiento.log'),
+            'level' => 'info',
+            'days' => 30,
+            'replace_placeholders' => true,
+        ],
+
         'single' => [
             'driver' => 'single',
             'path' => storage_path('logs/laravel.log'),
