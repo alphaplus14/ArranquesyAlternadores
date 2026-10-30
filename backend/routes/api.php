@@ -72,7 +72,8 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::delete('/ingresos/{ingreso}/items/{item}', [IngresoController::class, 'quitarItem']);
         });
 
-        Route::post('/etiquetas', EtiquetaController::class);
+        Route::get('/etiquetas/tamanos', [EtiquetaController::class, 'tamanos']);
+        Route::post('/etiquetas', [EtiquetaController::class, 'generar']);
     });
 
     // Módulo de mostrador: venta = descargue (RF-06, RF-12) y reversos (RF-07).

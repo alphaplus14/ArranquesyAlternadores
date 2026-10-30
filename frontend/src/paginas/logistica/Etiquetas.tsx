@@ -4,12 +4,8 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { api, mensajeError } from '../../api/cliente'
 import type { Unidad } from '../../api/tipos'
 
-// Debe coincidir con config/etiquetas.php (supuesto S-05).
-const TAMANOS = [
-  { clave: 'grande', nombre: 'Grande (100×50 mm) · arranques' },
-  { clave: 'pequeno', nombre: 'Pequeño (50×25 mm) · sensores' },
-  { clave: 'mas_pequeno', nombre: 'Más pequeño (38×19 mm) · sensor de temperatura' },
-]
+// Tamaños definidos en el backend (config/etiquetas.php, supuesto S-05).
+interface Tamano { clave: string; nombre: string; ancho: number; alto: number }
 
 /** RF-03: una etiqueta por unidad, en el tamaño que elige quien imprime y pega. */
 export default function Etiquetas() {
@@ -17,6 +13,12 @@ export default function Etiquetas() {
   const ingresoId = params.get('ingreso') ?? ''
   const [seleccion, setSeleccion] = useState<Set<number>>(new Set())
   const [tamano, setTamano] = useState('pequeno')
+
+  const tamanos = useQuery({
+    queryKey: ['etiquetas', 'tamanos'],
+    queryFn: async () => (await api.get<Tamano[]>('/etiquetas/tamanos')).data,
+    staleTime: Infinity,
+  })
 
   const unidades = useQuery({
     queryKey: ['ingreso', ingresoId, 'unidades'],
@@ -60,9 +62,9 @@ export default function Etiquetas() {
         <>
           <fieldset className="tamanos">
             <legend>Tamaño de etiqueta</legend>
-            {TAMANOS.map((t) => (
+            {tamanos.data?.map((t) => (
               <label key={t.clave}>
-                <input type="radio" name="tamano" checked={tamano === t.clave} onChange={() => setTamano(t.clave)} /> {t.nombre}
+                <input type="radio" name="tamano" checked={tamano === t.clave} onChange={() => setTamano(t.clave)} /> {t.nombre} ({t.ancho}×{t.alto} mm)
               </label>
             ))}
           </fieldset>

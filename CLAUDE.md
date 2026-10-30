@@ -9,14 +9,25 @@ Cita los RF por número (RF-01, RF-02…) en commits (`feat(RF-06): ...`), en co
 - Fuera de alcance: órdenes de trabajo, mano de obra de taller, garantías, varias bodegas, reportes distintos a agotados por proveedor.
 - Si algo cae fuera de alcance, o una decisión técnica contradice una regla de negocio: **detenerse y preguntar**.
 
-## Stack
+## Estructura (monorepo)
 
-- Backend: Laravel 12 (PHP 8.3), API REST bajo `/api`, Sanctum en modo SPA (cookies).
-- Frontend: React + Vite + TypeScript en `/frontend`, React Router, TanStack Query.
-- BD: MySQL 8, InnoDB, utf8mb4. (Ojo: en esta máquina corre MariaDB 10.4 de XAMPP; ver `docs/supuestos.md`.)
+- `backend/`: Laravel 12 (PHP 8.3), API REST bajo `/api`, Sanctum en modo SPA (cookies). Los comandos `composer`, `php artisan` y `pest` se corren dentro de `backend/`.
+- `frontend/`: React + Vite + TypeScript, React Router y TanStack Query. Los comandos `npm` se corren dentro de `frontend/`.
+- `docs/`: requerimientos y supuestos, compartidos.
+- BD: MySQL 8.4 en `D:\mysql8`, puerto 3307 (arranque: `D:\mysql8\iniciar-mysql.cmd`). En el 3306 corre MariaDB de XAMPP, que **no** se usa.
 - Tests: Pest. Cada criterio de aceptación de un RF implementado tiene al menos un test.
 - Código, tablas y columnas en español, snake_case.
 - Commits pequeños.
+
+## Arquitectura (respetarla en todo cambio)
+
+- Las dos apps son independientes y solo se hablan por HTTP. No se comparte código entre ellas ni se sirven pantallas desde Laravel (salvo el PDF de etiquetas).
+- Backend, en un solo sentido: **Controller → Service → Model**. Detalle en `backend/README.md`.
+  - Controllers: validan (FormRequest), delegan y responden (API Resources). Sin transacciones ni reglas de negocio.
+  - Services: casos de uso y transacciones. Toda escritura de inventario pasa por `InventarioService`.
+  - Models: relaciones, casts e integridad del propio registro (`Auditable`, `Inmutable`).
+  - Reglas de negocio violadas → `ReglaInventarioException`. Configuración del dominio en `config/`.
+- Frontend: `api/` (cliente y tipos), `auth/`, `hooks/`, `componentes/` y `paginas/<módulo>/`, con un módulo por rol. El estado del servidor vive solo en TanStack Query. El frontend muestra reglas, no las decide. Detalle en `frontend/README.md`.
 
 ## Reglas de negocio
 
@@ -50,6 +61,6 @@ Cita los RF por número (RF-01, RF-02…) en commits (`feat(RF-06): ...`), en co
 - **Poleas y automáticos en el universal:** la categoría tiene el flag; el admin decide referencia por referencia.
 - **Tercera marca "Jota":** marcas = catálogo editable; el seeder usa una marca de ejemplo.
 - **Tiempo de respuesta:** escaneo → descuento confirmado < 300 ms p95 en red local; búsquedas < 500 ms. Log de duración en endpoints de escaneo y búsqueda.
-- **Tamaños de etiqueta:** `config/etiquetas.php`: grande 100×50 mm, pequeño 50×25 mm, más pequeño 38×19 mm.
+- **Tamaños de etiqueta:** `backend/config/etiquetas.php`: grande 100×50 mm, pequeño 50×25 mm, más pequeño 38×19 mm.
 - **QR/XML (RF-04):** NO se implementa. Solo `ingresos.tipo` (`remision` | `factura_xml`) y `ingresos.cufe` nullable único.
 - **Cartera:** fuera de alcance (pendiente confirmar con Frank, no afecta la Fase 1).

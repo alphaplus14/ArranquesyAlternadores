@@ -1,54 +1,38 @@
-# React + TypeScript + Vite
+# Frontend — SPA de inventario (React + Vite + TypeScript)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Consume la API del [backend](../backend/README.md). Ver el [README raíz](../README.md) para el panorama general.
 
-Currently, two official plugins are available:
+## Puesta en marcha
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default tseslint.config({
-  extends: [
-    // Remove ...tseslint.configs.recommended and replace with this
-    ...tseslint.configs.recommendedTypeChecked,
-    // Alternatively, use this for stricter rules
-    ...tseslint.configs.strictTypeChecked,
-    // Optionally, add this for stylistic rules
-    ...tseslint.configs.stylisticTypeChecked,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
+```bash
+npm install
+cp .env.example .env     # opcional: BACKEND_URL si el backend no está en http://localhost:8000
+npm run dev              # http://localhost:5173
+npm run build            # tsc + build de producción en dist/
+npm run lint
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+En desarrollo, Vite hace proxy de `/api` y `/sanctum` hacia el backend. Así, frontend y API comparten origen y las cookies de sesión de Sanctum funcionan sin CORS.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Arquitectura
 
-export default tseslint.config({
-  plugins: {
-    // Add the react-x and react-dom plugins
-    'react-x': reactX,
-    'react-dom': reactDom,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended typescript rules
-    ...reactX.configs['recommended-typescript'].rules,
-    ...reactDom.configs.recommended.rules,
-  },
-})
 ```
+src/
+  api/          cliente.ts (axios + CSRF de Sanctum, mensajeError) y tipos.ts (contratos de la API)
+  auth/         AuthProvider: sesión actual y tieneRol()
+  hooks/        useScanner (RF-12: ráfaga < 30 ms + Enter = escaneado), catálogos en caché, debounce
+  componentes/  piezas compartidas: Layout (menú por rol) y Paginacion
+  paginas/      una carpeta por módulo, igual que los roles del backend
+    mostrador/  Venta (RF-06, RF-07, RF-12)
+    logistica/  Ingresos, IngresoDetalle (RF-05, RF-09, RF-10), Etiquetas (RF-03)
+    admin/      Referencias (RF-01), Universales y su desglose (RF-02), Catálogos, Usuarios, Auditoría (RF-11)
+    Agotados    común a todos los roles (RF-08)
+  App.tsx       rutas protegidas por rol (el backend vuelve a validar cada endpoint)
+```
+
+Reglas:
+
+- **Estado del servidor solo con TanStack Query**: nada de copiar respuestas de la API a estados globales.
+- **Toda llamada HTTP pasa por `api/cliente.ts`**, y los tipos de respuesta viven en `api/tipos.ts`.
+- **El frontend no decide reglas de negocio** (existencias, permisos, reversos): las muestra. Quien manda es el backend.
+- **La configuración del dominio no se duplica**: se pide a la API (por ejemplo, `GET /api/etiquetas/tamanos`).

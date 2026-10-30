@@ -62,3 +62,13 @@ it('RF-03: rechaza un tamaño de etiqueta que no existe', function () {
     $this->postJson('/api/etiquetas', ['unidad_ids' => [Unidad::first()->id], 'tamano' => 'gigante'])
         ->assertUnprocessable();
 });
+
+it('RF-03: expone los tres tamaños de etiqueta desde la configuración', function () {
+    actuarComo(Rol::Logistica);
+
+    $this->getJson('/api/etiquetas/tamanos')->assertOk()
+        ->assertJsonCount(3)
+        ->assertJsonPath('0.clave', 'grande')
+        ->assertJsonPath('0.ancho', 100)
+        ->assertJsonPath('2.clave', 'mas_pequeno');
+});
