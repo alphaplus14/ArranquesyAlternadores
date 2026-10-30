@@ -74,8 +74,8 @@ it('RF-09: el ingreso registra y muestra el descuento de la factura', function (
 
     // subtotal 100000 - 5000 = 95000; IVA 19 % = 18050; total = 95000 - 15000 + 18050
     $respuesta->assertJsonPath('totales.descuento_total', '15000.00')
-        ->assertJsonPath('totales.descuento_lineas', 5000.0)
-        ->assertJsonPath('totales.total', 98050.0);
+        ->assertJsonPath('totales.descuento_lineas', 5000)
+        ->assertJsonPath('totales.total', 98050);
 });
 
 it('RF-10: una línea sin IVA no suma impuesto y queda registrada como sin IVA', function () {
@@ -86,7 +86,7 @@ it('RF-10: una línea sin IVA no suma impuesto y queda registrada como sin IVA',
     $respuesta = $this->postJson("/api/ingresos/{$id}/items", ['referencia_id' => referencia('ARR-12V-9D')->id, 'cantidad' => 1, 'costo_unitario' => 10000]);
 
     $respuesta->assertJsonPath('items.0.sin_iva', true)
-        ->assertJsonPath('items.0.iva', 0.0)
-        ->assertJsonPath('totales.iva', 1900.0)
+        ->assertJsonPath('items.0.iva', 0)
+        ->assertJsonPath('totales.iva', 1900)
         ->assertJsonPath('totales.lineas_sin_iva', 1);
 });

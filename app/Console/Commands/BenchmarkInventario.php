@@ -37,7 +37,7 @@ class BenchmarkInventario extends Command
         DB::beginTransaction();
 
         try {
-            $usuario = User::create(['name' => 'bench', 'email' => 'bench-'.uniqid().'@local', 'password' => 'x', 'rol' => Rol::Admin]);
+            $usuario = User::create(['name' => 'bench', 'email' => 'bench-'.uniqid().'@local', 'password' => 'x', 'rol' => Rol::Admin, 'activo' => true]);
             Auth::login($usuario);
             $proveedor = Proveedor::create(['nombre' => 'Proveedor benchmark']);
             $marca = Marca::firstOrCreate(['nombre' => 'Marca benchmark']);
