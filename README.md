@@ -1,59 +1,59 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Inventario — Arranques y Alternadores la 8va
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Sistema **solo de inventario**: la facturación, la contabilidad y la cartera se quedan en Contapyme.
+Requerimientos: [`docs/requerimientos-v1.1.md`](docs/requerimientos-v1.1.md) · Supuestos abiertos: [`docs/supuestos.md`](docs/supuestos.md) · Reglas para el desarrollo: [`CLAUDE.md`](CLAUDE.md).
 
-## About Laravel
+## Requisitos
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+- PHP 8.3 con pdo_mysql, gd, mbstring, intl y zip
+- Composer 2
+- Node 20 o superior
+- **MySQL 8** (InnoDB, utf8mb4). Los tests y la búsqueda de respaldo usan funciones de MySQL 8 (ventanas, FULLTEXT, `lockForUpdate`).
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Puesta en marcha
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+```bash
+composer install
+cp .env.example .env          # ajuste DB_PORT/DB_USERNAME/DB_PASSWORD (por defecto, MySQL 8 en el puerto 3307)
+php artisan key:generate
 
-## Learning Laravel
+# crear las bases (una vez)
+mysql -h127.0.0.1 -P3307 -uroot -e "CREATE DATABASE inventario CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+                                     CREATE DATABASE inventario_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+php artisan migrate --seed    # crea usuarios, categorías, marcas y los ejemplos IM204 / IM210
+php artisan serve             # API en http://localhost:8000
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+cd frontend
+npm install
+npm run dev                   # http://localhost:5173 (con proxy de /api y /sanctum a :8000)
+```
 
-## Laravel Sponsors
+Usuarios de desarrollo (contraseña `cambiar123`, cámbiela antes de usar el sistema en el local):
+`admin@la8va.local`, `logistica@la8va.local`, `mostrador@la8va.local`.
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+## Tests
 
-### Premium Partners
+```bash
+php artisan test                                   # todo (Feature + Concurrencia) contra inventario_test
+./vendor/bin/pest --testsuite=Feature              # un test por criterio de aceptación de cada RF
+./vendor/bin/pest --testsuite=Concurrencia         # dos procesos PHP venden la misma unidad: solo uno gana
+```
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+## Mantenimiento y rendimiento
 
-## Contributing
+```bash
+php artisan inventario:recalcular             # compara referencias.existencia con COUNT(unidades disponibles)
+php artisan inventario:recalcular --corregir  # además ajusta el contador y lo deja en la auditoría
+php artisan inventario:benchmark --n=300      # p50/p95 de escaneo y búsqueda (no deja datos: todo se revierte)
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+La duración de cada escaneo y búsqueda queda en `storage/logs/rendimiento-AAAA-MM-DD.log`. Si una respuesta supera el objetivo, se registra como `warning`. La cabecera `Server-Timing` también trae la duración.
 
-## Code of Conduct
+## Módulos y roles
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
-
-## Security Vulnerabilities
-
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
-
-## License
-
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+| Rol | Pantallas |
+|---|---|
+| mostrador | Venta (escáner siempre enfocado, búsqueda de respaldo, reversos), agotados |
+| logistica | Ingreso por remisión, etiquetas (grande, pequeño, más pequeño), agotados |
+| admin | Todo lo anterior + referencias, códigos universales, catálogos, usuarios y auditoría |
