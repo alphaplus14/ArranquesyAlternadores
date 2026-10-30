@@ -17,6 +17,9 @@ return new class extends Migration
             $table->string('email')->unique();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
+            // Roles (sección 4): admin, logistica, mostrador. Los usuarios no se borran, se desactivan.
+            $table->enum('rol', ['admin', 'logistica', 'mostrador'])->default('mostrador')->index();
+            $table->boolean('activo')->default(true);
             $table->rememberToken();
             $table->timestamps();
         });
