@@ -1,50 +1,65 @@
 <?php
 
+use App\Enums\Rol;
+use App\Models\Ingreso;
+use App\Models\Referencia;
+use App\Models\Unidad;
+use App\Models\User;
+use App\Services\IngresoService;
+use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /*
-|--------------------------------------------------------------------------
-| Test Case
-|--------------------------------------------------------------------------
-|
-| The closure you provide to your test functions is always bound to a specific PHPUnit test
-| case class. By default, that class is "PHPUnit\Framework\TestCase". Of course, you may
-| need to change it using the "pest()" function to bind different classes or traits.
-|
-*/
-
+ * Los tests corren contra MySQL 8 (base inventario_test, ver phpunit.xml): lockForUpdate,
+ * FULLTEXT y los límites por relación necesitan el motor real.
+ */
 pest()->extend(TestCase::class)
- // ->use(RefreshDatabase::class)
+    ->use(RefreshDatabase::class)
     ->in('Feature');
 
-/*
-|--------------------------------------------------------------------------
-| Expectations
-|--------------------------------------------------------------------------
-|
-| When you're writing tests, you often need to check that values meet certain conditions. The
-| "expect()" function gives you access to a set of "expectations" methods that you can use
-| to assert different things. Of course, you may extend the Expectation API at any time.
-|
-*/
+// Concurrencia real entre procesos: los datos deben estar confirmados, no dentro de una transacción.
+pest()->extend(TestCase::class)
+    ->use(DatabaseTruncation::class)
+    ->in('Concurrencia');
 
-expect()->extend('toBeOne', function () {
-    return $this->toBe(1);
-});
-
-/*
-|--------------------------------------------------------------------------
-| Functions
-|--------------------------------------------------------------------------
-|
-| While Pest is very powerful out-of-the-box, you may have some testing code specific to your
-| project that you don't want to repeat in every file. Here you can also expose helpers as
-| global functions to help you to reduce the number of lines of code in your test files.
-|
-*/
-
-function something()
+/** Crea un usuario del rol indicado y deja la sesión iniciada con él. */
+function actuarComo(Rol $rol): User
 {
-    // ..
+    $usuario = User::factory()->rol($rol)->create();
+    test()->actingAs($usuario);
+
+    return $usuario;
+}
+
+/** Siembra los ejemplos del documento (IM204 = 2+2+2, regulador IM210 en tres marcas). */
+function sembrarDemo(): void
+{
+    test()->seed();
+}
+
+function referencia(string $codigo): Referencia
+{
+    return Referencia::where('codigo_referencia', $codigo)->firstOrFail();
+}
+
+function unidadDe(string $codigoReferencia): Unidad
+{
+    return Unidad::whereBelongsTo(referencia($codigoReferencia))->where('estado', 'disponible')->orderBy('id')->firstOrFail();
+}
+
+/** RF-05: ingreso por remisión confirmado de una sola línea. */
+function ingresar(Referencia $referencia, int $cantidad, ?User $usuario = null): Ingreso
+{
+    $usuario ??= User::factory()->rol(Rol::Logistica)->create();
+    $servicio = app(IngresoService::class);
+
+    $ingreso = $servicio->crearBorrador([
+        'proveedor_id' => $referencia->proveedor_id,
+        'numero_documento' => 'REM-T'.random_int(1000, 9999),
+        'fecha' => now()->toDateString(),
+    ], $usuario);
+    $servicio->agregarItem($ingreso, ['referencia_id' => $referencia->id, 'cantidad' => $cantidad, 'costo_unitario' => 1000]);
+
+    return $servicio->confirmar($ingreso, $usuario);
 }
