@@ -20,17 +20,18 @@ trait Auditable
             $filas = [];
             $ahora = now();
 
-            foreach ($modelo->getChanges() as $campo => $nuevo) {
+            foreach (array_keys($modelo->getChanges()) as $campo) {
                 if (in_array($campo, static::$auditoriaExcluidos, true)) {
                     continue;
                 }
 
+                // Ambos lados con el cast del modelo: decimal "85000.00", enum por su valor, bool 1/0.
                 $filas[] = [
                     'tabla' => $modelo->getTable(),
                     'registro_id' => $modelo->getKey(),
                     'campo' => $campo,
-                    'valor_anterior' => static::valorAuditable($modelo->getRawOriginal($campo)),
-                    'valor_nuevo' => static::valorAuditable($modelo->getAttributes()[$campo] ?? $nuevo),
+                    'valor_anterior' => static::valorAuditable($modelo->getOriginal($campo)),
+                    'valor_nuevo' => static::valorAuditable($modelo->getAttribute($campo)),
                     'usuario_id' => Auth::id(),
                     'created_at' => $ahora,
                 ];
@@ -61,6 +62,8 @@ trait Auditable
     {
         return match (true) {
             $valor === null => null,
+            $valor instanceof \BackedEnum => (string) $valor->value,
+            $valor instanceof \DateTimeInterface => $valor->format('Y-m-d H:i:s'),
             is_bool($valor) => $valor ? '1' : '0',
             is_scalar($valor) => (string) $valor,
             default => json_encode($valor, JSON_UNESCAPED_UNICODE),
