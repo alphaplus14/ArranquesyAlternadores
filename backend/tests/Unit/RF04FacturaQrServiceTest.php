@@ -38,6 +38,21 @@ it('RF04: lee el QR aunque el lector lo entregue en una sola línea', function (
         ->and($datos->total)->toBe(59500.0);
 });
 
+it('RF04: lee el QR pegado sin saltos de línea, con las claves unidas al valor anterior', function () {
+    $qr = 'NumFac: FE-1234FecFac: 2026-11-10NitFac: 900123456ValFac: 60000.00ValIva: 11400.00ValTolFac: 71400.00CUFE: '.CUFE_QR
+        .'QRCode: https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey='.CUFE_QR;
+
+    $datos = (new FacturaQrService)->interpretar($qr);
+
+    expect($datos->cufe)->toBe(CUFE_QR)
+        ->and($datos->numero)->toBe('FE-1234')
+        ->and($datos->fecha)->toBe('2026-11-10')
+        ->and($datos->nitEmisor)->toBe('900123456')
+        ->and($datos->subtotal)->toBe(60000.0)
+        ->and($datos->iva)->toBe(11400.0)
+        ->and($datos->total)->toBe(71400.0);
+});
+
 it('RF04: con solo la URL de la DIAN toma el CUFE y deja el resto vacío', function () {
     $datos = (new FacturaQrService)->interpretar('https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey='.CUFE_QR);
 

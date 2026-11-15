@@ -60,7 +60,9 @@ class FacturaQrService
     {
         $claves = implode('|', self::CLAVES);
         // El valor va hasta la próxima clave conocida, con o sin salto de línea en medio.
-        $patron = '/\b('.$claves.')\s*[:=]\s*(.*?)(?=\s*\b(?:'.$claves.')\s*[:=]|\z)/is';
+        // Sin \b antes de la clave: al pegar en un input, el navegador quita los saltos de línea
+        // y las claves quedan pegadas al valor anterior ("FE-1234FecFac: …").
+        $patron = '/('.$claves.')\s*[:=]\s*(.*?)(?=\s*(?:'.$claves.')\s*[:=]|\z)/is';
         preg_match_all($patron, $contenido, $m, PREG_SET_ORDER);
 
         $campos = [];
