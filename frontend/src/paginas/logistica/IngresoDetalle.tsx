@@ -44,7 +44,7 @@ export default function IngresoDetalle() {
     onSuccess: actualizar,
   })
   const confirmar = useMutation({
-    mutationFn: async () => (await api.post<Ingreso>(`/ingresos/${id}/confirmar`)).data,
+    mutationFn: async (aceptar_diferencia: boolean) => (await api.post<Ingreso>(`/ingresos/${id}/confirmar`, { aceptar_diferencia })).data,
     onSuccess: (i) => { actualizar(i); qc.invalidateQueries({ queryKey: ['ingresos'] }) },
   })
 
@@ -52,13 +52,16 @@ export default function IngresoDetalle() {
   if (!i) return <div className="panel">Cargando…</div>
   const borrador = i.estado === 'borrador'
   const error = agregar.error ?? quitar.error ?? confirmar.error
+  // RF-04: el backend decide; aquí solo se muestra la diferencia contra el QR.
+  const descuadre = i.qr?.diferencia != null && Math.abs(i.qr.diferencia) > i.qr.tolerancia
 
   return (
     <div className="panel">
       <div className="fila-titulo">
-        <h1>Remisión {i.numero_documento} <span className={`chip ${i.estado}`}>{i.estado}</span></h1>
+        <h1>{i.tipo === 'factura_qr' ? 'Factura' : 'Remisión'} {i.numero_documento} <span className={`chip ${i.estado}`}>{i.estado}</span></h1>
         <span>{i.proveedor?.nombre} · {i.fecha}</span>
       </div>
+      {i.cufe && <p><small>CUFE {i.cufe}</small></p>}
 
       {borrador && (
         <form className="formulario en-linea" onSubmit={(e) => { e.preventDefault(); agregar.mutate() }}>
@@ -117,14 +120,31 @@ export default function IngresoDetalle() {
           <dt>IVA</dt><dd>{pesos(i.totales.iva)}</dd>
           <dt>Líneas sin IVA</dt><dd>{i.totales.lineas_sin_iva}</dd>
           <dt>Total</dt><dd><strong>{pesos(i.totales.total)}</strong></dd>
+          {i.qr?.total != null && (
+            <>
+              <dt>Total según el QR</dt><dd>{pesos(i.qr.total)}</dd>
+              <dt>Diferencia</dt><dd className={descuadre ? 'agotado' : ''}>{pesos(i.qr.diferencia ?? 0)}</dd>
+            </>
+          )}
         </dl>
+      )}
+      {borrador && descuadre && (
+        <div className="aviso error" role="alert">
+          El total digitado no cuadra con el total de la factura según el QR. Revise los ítems antes de confirmar.
+        </div>
       )}
 
       <div className="acciones">
         {borrador ? (
-          <button className="primario" disabled={i.items.length === 0 || confirmar.isPending} onClick={() => confirmar.mutate()}>
-            Confirmar ingreso y crear unidades
-          </button>
+          descuadre ? (
+            <button className="peligro" disabled={i.items.length === 0 || confirmar.isPending} onClick={() => confirmar.mutate(true)}>
+              Aceptar la diferencia y confirmar
+            </button>
+          ) : (
+            <button className="primario" disabled={i.items.length === 0 || confirmar.isPending} onClick={() => confirmar.mutate(false)}>
+              Confirmar ingreso y crear unidades
+            </button>
+          )
         ) : (
           <Link className="boton primario" to={`/logistica/etiquetas?ingreso=${i.id}`}>Imprimir etiquetas</Link>
         )}
