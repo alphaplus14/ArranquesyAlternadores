@@ -72,7 +72,7 @@ it('RF04: un CUFE ya confirmado no se ingresa dos veces', function () {
 
     $this->postJson('/api/ingresos/qr', ['contenido' => qrFactura(cufe())])
         ->assertStatus(409)
-        ->assertJsonFragment(['message' => "Esta factura (FE-1234) ya se ingresó el ".Ingreso::find($id)->confirmado_at->format('Y-m-d H:i')." (ingreso #{$id}). Un CUFE no se ingresa dos veces."]);
+        ->assertJsonFragment(['message' => 'Esta factura (FE-1234) ya se ingresó el '.Ingreso::find($id)->confirmado_at->format('Y-m-d H:i')." (ingreso #{$id}). Un CUFE no se ingresa dos veces."]);
 
     expect(Ingreso::where('cufe', cufe())->count())->toBe(1)
         ->and(Unidad::count())->toBe($unidades);
