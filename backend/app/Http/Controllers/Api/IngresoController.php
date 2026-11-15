@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\ConfirmarIngresoRequest;
 use App\Http\Requests\IngresoItemRequest;
+use App\Http\Requests\IngresoQrRequest;
 use App\Http\Resources\IngresoResource;
 use App\Http\Resources\UnidadResource;
 use App\Models\Ingreso;
@@ -17,6 +19,7 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 /**
  * RF-05: ingreso por remisión: crear borrador, agregar ítems y confirmar.
  * RF-09 / RF-10: descuento y líneas sin IVA. RF-03: al confirmar se crean las unidades.
+ * RF-04: factura de compra ubicada por el CUFE del QR; los ítems se digitan igual.
  */
 class IngresoController extends Controller
 {
@@ -75,9 +78,23 @@ class IngresoController extends Controller
         return new IngresoResource($this->cargar($ingreso));
     }
 
-    public function confirmar(Request $request, Ingreso $ingreso): IngresoResource
+    /** RF-04: escanear el QR ubica la factura por CUFE (201 si la crea, 200 si reabre el borrador). */
+    public function desdeQr(IngresoQrRequest $request): JsonResponse
     {
-        $ingreso = $this->servicio->confirmar($ingreso, $request->user());
+        $ingreso = $this->servicio->crearDesdeQr(
+            $request->validated('contenido'),
+            $request->safe()->only(['proveedor_id', 'numero_documento', 'fecha']),
+            $request->user(),
+        );
+
+        return (new IngresoResource($this->cargar($ingreso)))
+            ->response()
+            ->setStatusCode($ingreso->wasRecentlyCreated ? 201 : 200);
+    }
+
+    public function confirmar(ConfirmarIngresoRequest $request, Ingreso $ingreso): IngresoResource
+    {
+        $ingreso = $this->servicio->confirmar($ingreso, $request->user(), $request->boolean('aceptar_diferencia'));
 
         return new IngresoResource($this->cargar($ingreso));
     }

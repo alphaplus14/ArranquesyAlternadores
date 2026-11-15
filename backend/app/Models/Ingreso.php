@@ -47,6 +47,24 @@ class Ingreso extends Model
         return $this->hasMany(IngresoItem::class);
     }
 
+    /**
+     * RF-09 / RF-10: total del documento con lo digitado = subtotal de líneas − descuento del
+     * documento + IVA. Usa la relación items (cargarla antes para no repetir consultas).
+     */
+    public function totalCalculado(): float
+    {
+        $subtotal = $this->items->sum(fn (IngresoItem $i) => $i->subtotal());
+        $iva = $this->items->sum(fn (IngresoItem $i) => $i->iva());
+
+        return round($subtotal - (float) $this->descuento_total + $iva, 2);
+    }
+
+    /** RF-04: total digitado menos total del QR; null si el QR no trajo total. */
+    public function diferenciaQr(): ?float
+    {
+        return $this->total_qr === null ? null : round($this->totalCalculado() - (float) $this->total_qr, 2);
+    }
+
     public function esFacturaQr(): bool
     {
         return $this->tipo === TipoIngreso::FacturaQr;

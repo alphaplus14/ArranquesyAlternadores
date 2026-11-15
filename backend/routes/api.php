@@ -56,10 +56,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/auditoria', [AuditoriaController::class, 'index']);
     });
 
-    // Módulo de logística: ingreso por remisión (RF-05, RF-09, RF-10) y etiquetas (RF-03).
+    // Módulo de logística: ingreso por remisión (RF-05, RF-09, RF-10), por QR de factura (RF-04) y etiquetas (RF-03).
     Route::middleware('rol:logistica')->group(function () {
         Route::get('/ingresos', [IngresoController::class, 'index']);
         Route::post('/ingresos', [IngresoController::class, 'store']);
+        Route::post('/ingresos/qr', [IngresoController::class, 'desdeQr'])->middleware('medir:500')->name('ingresos.qr'); // RF-04
         Route::get('/ingresos/{ingreso}', [IngresoController::class, 'show']);
         Route::match(['put', 'patch'], '/ingresos/{ingreso}', [IngresoController::class, 'update']);
         Route::get('/ingresos/{ingreso}/unidades', [IngresoController::class, 'unidades']);
