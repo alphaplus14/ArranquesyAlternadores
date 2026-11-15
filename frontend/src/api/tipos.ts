@@ -76,7 +76,7 @@ export interface IngresoItem {
 
 export interface Ingreso {
   id: number
-  tipo: 'remision' | 'factura_xml'
+  tipo: 'remision' | 'factura_qr'
   estado: 'borrador' | 'confirmado'
   proveedor_id: number
   proveedor?: Opcion
