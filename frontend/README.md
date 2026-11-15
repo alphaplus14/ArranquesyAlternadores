@@ -20,11 +20,11 @@ En desarrollo, Vite hace proxy de `/api` y `/sanctum` hacia el backend. Así, fr
 src/
   api/          cliente.ts (axios + CSRF de Sanctum, mensajeError) y tipos.ts (contratos de la API)
   auth/         AuthProvider: sesión actual y tieneRol()
-  hooks/        useScanner (RF-12: ráfaga < 30 ms + Enter = escaneado), catálogos en caché, debounce
+  hooks/        useScanner (RF-12: ráfaga < 30 ms + Enter = escaneado; modo multilínea para el QR, RF-04), catálogos en caché, debounce
   componentes/  piezas compartidas: Layout (menú por rol) y Paginacion
   paginas/      una carpeta por módulo, igual que los roles del backend
     mostrador/  Venta (RF-06, RF-07, RF-12)
-    logistica/  Ingresos, IngresoDetalle (RF-05, RF-09, RF-10), Etiquetas (RF-03)
+    logistica/  Ingresos, IngresoDetalle (RF-05, RF-09, RF-10), IngresoQr (RF-04), Etiquetas (RF-03)
     admin/      Referencias (RF-01), Universales y su desglose (RF-02), Catálogos, Usuarios, Auditoría (RF-11)
     Agotados    común a todos los roles (RF-08)
   App.tsx       rutas protegidas por rol (el backend vuelve a validar cada endpoint)
