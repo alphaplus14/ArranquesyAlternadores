@@ -5,7 +5,6 @@ export type IconoNombre =
   | 'caja'
   | 'venta'
   | 'ingreso'
-  | 'qr'
   | 'etiqueta'
   | 'universal'
   | 'catalogo'
@@ -30,7 +29,6 @@ const trazos: Record<IconoNombre, ReactNode> = {
   caja: <path d="M3 8l9-4 9 4-9 4-9-4zm0 0v8l9 4 9-4V8M12 12v8" />,
   venta: <path d="M5 6h2l1.4 8.2a1 1 0 0 0 1 .8h7.8a1 1 0 0 0 1-.8L20 8H7M9 20h.01M17 20h.01" />,
   ingreso: <path d="M8 4h8a1 1 0 0 1 1 1v15l-5-2.5L7 20V5a1 1 0 0 1 1-1z" />,
-  qr: <path d="M5 5h5v5H5zM14 5h5v5h-5zM5 14h5v5H5zM14 14h2v2h-2zM18 14h1v3h-3v-1M14 19h2" />,
   etiqueta: <path d="M4 12V5h7l9 9-7 7-9-9zM8.5 8.5h.01" />,
   universal: <path d="M9 8H6a3 3 0 0 0 0 6h3M15 8h3a3 3 0 0 1 0 6h-3M8 12h8" />,
   catalogo: <path d="M5 5.5A2.5 2.5 0 0 1 7.5 3H20v16H7.5A2.5 2.5 0 0 0 5 21.5zM5 5.5V21" />,

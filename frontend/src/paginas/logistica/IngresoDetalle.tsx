@@ -1,167 +1,413 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { AxiosError } from 'axios'
 import { api, mensajeError } from '../../api/cliente'
-import type { Ingreso, Pagina, Referencia } from '../../api/tipos'
+import type { Ingreso, IngresoItem, Opcion, Pagina } from '../../api/tipos'
 import Medida from '../../componentes/Medida'
-import { useDebounce } from '../../hooks/useDebounce'
+import { formatoNumero, leerNumero, pesos } from '../../componentes/numeros'
+import { useCategorias, useMarcas } from '../../hooks/useCatalogos'
+import { useScanner } from '../../hooks/useScanner'
 
-const pesos = (n: number | string) => Number(n).toLocaleString('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 })
+interface Aviso { tipo: 'ok' | 'error' | 'atencion'; texto: string }
+type Campo = 'cantidad' | 'costo_unitario' | 'descuento' | 'iva_porcentaje'
+interface Edicion { itemId: number; campo: Campo }
 
-const lineaVacia = { referencia_id: 0, cantidad: '1', costo_unitario: '', descuento: '0', iva_porcentaje: '19', sin_iva: false }
+/** Validación en vivo de cada celda. El backend vuelve a validar al guardar y al confirmar. */
+const REGLAS: Record<Campo, { etiqueta: string; validar: (n: number | null) => string | null }> = {
+  cantidad: {
+    etiqueta: 'Cantidad',
+    validar: (n) => (n === null ? 'Escriba la cantidad.' : !Number.isInteger(n) || n < 1 ? 'Debe ser un número entero, 1 o más.' : n > 10000 ? 'Máximo 10.000.' : null),
+  },
+  costo_unitario: {
+    etiqueta: 'Costo',
+    validar: (n) => (n === null ? 'Escriba el costo.' : Number.isNaN(n) ? 'Costo no válido.' : n <= 0 ? 'El costo debe ser mayor que 0.' : null),
+  },
+  descuento: {
+    etiqueta: 'Descuento',
+    validar: (n) => (n === null ? 'Escriba el descuento (0 si no hay).' : Number.isNaN(n) ? 'Descuento no válido.' : null),
+  },
+  iva_porcentaje: {
+    etiqueta: 'IVA %',
+    validar: (n) => (n === null ? 'Escriba el IVA.' : Number.isNaN(n) || n > 100 ? 'Entre 0 y 100.' : null),
+  },
+}
+
+/** Cuerpo del 404 del escaneo cuando el código no es una referencia del proveedor (RF-20). */
+function codigoInexistente(error: unknown): string | null {
+  if (!(error instanceof AxiosError) || error.response?.status !== 404) return null
+  const datos = error.response.data as { motivo?: string; codigo?: string } | undefined
+  return datos?.motivo === 'referencia_inexistente' ? datos.codigo ?? null : null
+}
 
 /**
- * RF-05: ítem por ítem. RF-09: descuento de línea y del documento. RF-10: líneas sin IVA.
+ * RF-04 / RF-05: remisión o factura digitada a mano. RF-20: los ítems se agregan escaneando el
+ * código de referencia del proveedor; si no existe, se ofrece crearla y se vuelve a escanear.
+ * RF-09 / RF-10: descuentos y líneas sin IVA, corregibles en la tabla mientras es borrador.
  * RF-03: al confirmar se crean las unidades y se pasa a imprimir etiquetas.
  */
 export default function IngresoDetalle() {
   const { id } = useParams()
   const qc = useQueryClient()
-  const [linea, setLinea] = useState(lineaVacia)
-  const [refTexto, setRefTexto] = useState('')
-  const termino = useDebounce(refTexto.trim())
+  const [aviso, setAviso] = useState<Aviso | null>(null)
+  const [creando, setCreando] = useState<string | null>(null)
+  const [editando, setEditando] = useState<Edicion | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   const ingreso = useQuery({
     queryKey: ['ingreso', id],
     queryFn: async () => (await api.get<Ingreso>(`/ingresos/${id}`)).data,
   })
+  const i = ingreso.data
+  const borrador = i?.estado === 'borrador'
 
-  const sugerencias = useQuery({
-    queryKey: ['referencias', 'sugerir', termino, ingreso.data?.proveedor_id],
-    queryFn: async () => (await api.get<Pagina<Referencia>>('/referencias', {
-      params: { q: termino, proveedor_id: ingreso.data?.proveedor_id, por_pagina: 10 },
-    })).data.data,
-    enabled: termino.length >= 2 && linea.referencia_id === 0,
+  const actualizar = (nuevo: Ingreso) => qc.setQueryData(['ingreso', id], nuevo)
+
+  const escanear = useMutation({
+    mutationFn: async (codigo: string) => (await api.post<IngresoItem>(`/ingresos/${id}/escanear`, { codigo })).data,
+    onSuccess: (linea) => {
+      const sinCosto = Number(linea.costo_unitario) <= 0
+      setAviso({
+        tipo: sinCosto ? 'atencion' : 'ok',
+        texto: `✓ ${linea.referencia?.codigo_referencia} · ${linea.referencia?.descripcion} — cantidad ${linea.cantidad}${sinCosto ? ' · escriba el costo en la tabla' : ''}`,
+      })
+      qc.invalidateQueries({ queryKey: ['ingreso', id] })
+    },
+    onError: (e, codigo) => {
+      const inexistente = codigoInexistente(e)
+      if (inexistente !== null) {
+        setAviso({ tipo: 'atencion', texto: `El código ${inexistente} no es una referencia de este proveedor. Créela para agregarla.` })
+        setCreando(inexistente || codigo)
+        return
+      }
+      setAviso({ tipo: 'error', texto: mensajeError(e) })
+    },
   })
 
-  const actualizar = (i: Ingreso) => qc.setQueryData(['ingreso', id], i)
-
-  const agregar = useMutation({
-    mutationFn: async () => (await api.post<Ingreso>(`/ingresos/${id}/items`, linea)).data,
-    onSuccess: (i) => { actualizar(i); setLinea(lineaVacia); setRefTexto('') },
-  })
   const quitar = useMutation({
     mutationFn: async (itemId: number) => (await api.delete<Ingreso>(`/ingresos/${id}/items/${itemId}`)).data,
     onSuccess: actualizar,
+    onError: (e) => setAviso({ tipo: 'error', texto: mensajeError(e) }),
+  })
+  const sinIva = useMutation({
+    mutationFn: async ({ itemId, valor }: { itemId: number; valor: boolean }) =>
+      (await api.patch<Ingreso>(`/ingresos/${id}/items/${itemId}`, { sin_iva: valor })).data,
+    onSuccess: actualizar,
+    onError: (e) => setAviso({ tipo: 'error', texto: mensajeError(e) }),
   })
   const confirmar = useMutation({
-    mutationFn: async (aceptar_diferencia: boolean) => (await api.post<Ingreso>(`/ingresos/${id}/confirmar`, { aceptar_diferencia })).data,
-    onSuccess: (i) => { actualizar(i); qc.invalidateQueries({ queryKey: ['ingresos'] }) },
+    mutationFn: async () => (await api.post<Ingreso>(`/ingresos/${id}/confirmar`)).data,
+    onSuccess: (nuevo) => { actualizar(nuevo); qc.invalidateQueries({ queryKey: ['ingresos'] }); setAviso(null) },
+    onError: (e) => setAviso({ tipo: 'error', texto: mensajeError(e) }),
   })
 
-  const i = ingreso.data
+  const onCodigo = useCallback((codigo: string) => {
+    if (inputRef.current) inputRef.current.value = ''
+    escanear.mutate(codigo)
+  }, [escanear])
+  const scanner = useScanner(onCodigo)
+
+  // El lector recupera el foco salvo que haya un diálogo abierto o se esté editando una celda.
+  const hayDialogo = creando !== null || editando !== null
+  useEffect(() => {
+    if (!hayDialogo && borrador) inputRef.current?.focus()
+  }, [hayDialogo, borrador, escanear.isPending])
+  // El blur llega antes que el clic que abre el diálogo: el timeout lee el valor vigente.
+  const hayDialogoRef = useRef(hayDialogo)
+  hayDialogoRef.current = hayDialogo
+  const reenfocar = () => setTimeout(() => { if (!hayDialogoRef.current) inputRef.current?.focus() }, 0)
+
+  const dejarDeEditar = (e: Edicion) =>
+    setEditando((actual) => (actual?.itemId === e.itemId && actual.campo === e.campo ? null : actual))
+
   if (!i) return <div className="panel">Cargando…</div>
-  const borrador = i.estado === 'borrador'
-  const error = agregar.error ?? quitar.error ?? confirmar.error
-  // RF-04: el backend decide; aquí solo se muestra la diferencia contra el QR.
-  const descuadre = i.qr?.diferencia != null && Math.abs(i.qr.diferencia) > i.qr.tolerancia
+
+  const unidades = i.items.reduce((suma, it) => suma + it.cantidad, 0)
+  const lineasSinCosto = i.items.filter((it) => Number(it.costo_unitario) <= 0).length
+
+  const celda = (it: IngresoItem, campo: Campo, texto: string) => {
+    const edicion = { itemId: it.id, campo }
+    if (!borrador) return texto
+    if (editando?.itemId === it.id && editando.campo === campo) {
+      return (
+        <CeldaEditable
+          etiqueta={`${REGLAS[campo].etiqueta} de ${it.referencia?.codigo_referencia ?? ''}`}
+          inicial={formatoNumero(it[campo])}
+          validar={(t) => REGLAS[campo].validar(leerNumero(t))}
+          guardar={async (t) => (await api.patch<Ingreso>(`/ingresos/${id}/items/${it.id}`, { [campo]: leerNumero(t) })).data}
+          onGuardado={(nuevo) => {
+            actualizar(nuevo)
+            dejarDeEditar(edicion)
+            // Un error anterior (por ejemplo, "falta el costo") ya no aplica tras corregir.
+            setAviso((a) => (a?.tipo === 'error' ? null : a))
+          }}
+          onTerminar={() => dejarDeEditar(edicion)}
+        />
+      )
+    }
+    return (
+      <button type="button" className="enlace" title={`Corregir ${REGLAS[campo].etiqueta.toLowerCase()}`} onClick={() => setEditando(edicion)}>
+        {texto}
+      </button>
+    )
+  }
 
   return (
     <div className="pila">
       <div className="pagina-encabezado">
-        <h1>{i.tipo === 'factura_qr' ? 'Factura' : 'Remisión'} {i.numero_documento}</h1>
+        <h1>{i.tipo === 'factura' ? 'Factura' : 'Remisión'} {i.numero_documento}</h1>
         <p>{i.proveedor?.nombre} · {i.fecha.slice(0, 10)}</p>
       </div>
       <section className="medidas">
         <Medida etiqueta="Estado" valor={i.estado} tono={borrador ? 'amarillo' : 'verde'} icono="ingreso" />
-        <Medida etiqueta="Ítems" valor={i.items.length} tono="azul" icono="caja" />
+        <Medida etiqueta="Unidades" valor={unidades} pie={`${i.items.length} línea(s)`} tono="azul" icono="caja" />
         <Medida etiqueta="Total" valor={i.totales ? pesos(i.totales.total) : '—'} tono="verde" icono="etiqueta" />
-        <Medida etiqueta="Sin IVA" valor={i.totales?.lineas_sin_iva ?? 0} tono={descuadre ? 'rojo' : 'amarillo'} icono="agotados" pie={descuadre ? 'No cuadra con el QR' : undefined} />
+        <Medida etiqueta="Sin costo" valor={lineasSinCosto} pie="líneas por completar" tono={lineasSinCosto > 0 ? 'rojo' : 'amarillo'} icono="agotados" />
       </section>
-    <div className="panel">
-      <div className="fila-titulo">
-        <h2>Líneas <span className={`chip ${i.estado}`}>{i.estado}</span></h2>
-        <span>{i.proveedor?.nombre}</span>
-      </div>
-      {i.cufe && <p><small>CUFE {i.cufe}</small></p>}
-
-      {borrador && (
-        <form className="formulario en-linea" onSubmit={(e) => { e.preventDefault(); agregar.mutate() }}>
-          <label className="crece">Referencia
-            <input
-              required
-              placeholder="Código o descripción"
-              value={refTexto}
-              onChange={(e) => { setRefTexto(e.target.value); setLinea({ ...linea, referencia_id: 0 }) }}
-            />
-            {sugerencias.data && linea.referencia_id === 0 && (
-              <ul className="sugerencias">
-                {sugerencias.data.map((r) => (
-                  <li key={r.id}>
-                    <button type="button" onClick={() => { setLinea({ ...linea, referencia_id: r.id }); setRefTexto(`${r.codigo_referencia} · ${r.descripcion}`) }}>
-                      {r.codigo_referencia} · {r.marca?.nombre} · {r.descripcion}
-                    </button>
-                  </li>
-                ))}
-                {sugerencias.data.length === 0 && <li><em>Sin referencias de este proveedor. Créela en el catálogo.</em></li>}
-              </ul>
-            )}
-          </label>
-          <label>Cantidad<input type="number" min="1" required value={linea.cantidad} onChange={(e) => setLinea({ ...linea, cantidad: e.target.value })} /></label>
-          <label>Costo unitario<input type="number" min="0" step="0.01" required value={linea.costo_unitario} onChange={(e) => setLinea({ ...linea, costo_unitario: e.target.value })} /></label>
-          <label>Descuento línea<input type="number" min="0" step="0.01" value={linea.descuento} onChange={(e) => setLinea({ ...linea, descuento: e.target.value })} /></label>
-          <label>IVA %<input type="number" min="0" max="100" disabled={linea.sin_iva} value={linea.iva_porcentaje} onChange={(e) => setLinea({ ...linea, iva_porcentaje: e.target.value })} /></label>
-          <label className="check"><input type="checkbox" checked={linea.sin_iva} onChange={(e) => setLinea({ ...linea, sin_iva: e.target.checked })} /> Sin IVA</label>
-          <button className="primario" disabled={linea.referencia_id === 0 || agregar.isPending}>Agregar</button>
-        </form>
-      )}
-      {error && <div className="aviso error">{mensajeError(error)}</div>}
-
-      <table>
-        <thead><tr><th>Referencia</th><th>Cant.</th><th>Costo</th><th>Desc.</th><th>IVA</th><th>Subtotal</th><th></th></tr></thead>
-        <tbody>
-          {i.items.map((it) => (
-            <tr key={it.id}>
-              <td>{it.referencia?.codigo_referencia} <small>{it.referencia?.descripcion}</small></td>
-              <td>{it.cantidad}</td>
-              <td>{pesos(it.costo_unitario)}</td>
-              <td>{pesos(it.descuento)}</td>
-              <td>{it.sin_iva ? <span className="chip">sin IVA</span> : `${Number(it.iva_porcentaje)}% · ${pesos(it.iva)}`}</td>
-              <td>{pesos(it.subtotal)}</td>
-              <td>{borrador && <button className="enlace" onClick={() => quitar.mutate(it.id)}>Quitar</button>}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      {i.totales && (
-        <dl className="totales">
-          <dt>Subtotal</dt><dd>{pesos(i.totales.subtotal)}</dd>
-          <dt>Descuento en líneas</dt><dd>{pesos(i.totales.descuento_lineas)}</dd>
-          <dt>Descuento del documento</dt><dd>{pesos(i.totales.descuento_total)}</dd>
-          <dt>IVA</dt><dd>{pesos(i.totales.iva)}</dd>
-          <dt>Líneas sin IVA</dt><dd>{i.totales.lineas_sin_iva}</dd>
-          <dt>Total</dt><dd><strong>{pesos(i.totales.total)}</strong></dd>
-          {i.qr?.total != null && (
-            <>
-              <dt>Total según el QR</dt><dd>{pesos(i.qr.total)}</dd>
-              <dt>Diferencia</dt><dd className={descuadre ? 'agotado' : ''}>{pesos(i.qr.diferencia ?? 0)}</dd>
-            </>
-          )}
-        </dl>
-      )}
-      {borrador && descuadre && (
-        <div className="aviso error" role="alert">
-          El total digitado no cuadra con el total de la factura según el QR. Revise los ítems antes de confirmar.
+      <div className="panel">
+        <div className="fila-titulo">
+          <h2>Líneas <span className={`chip ${i.estado}`}>{i.estado}</span></h2>
+          <span>{i.proveedor?.nombre}</span>
         </div>
-      )}
 
-      <div className="acciones">
-        {borrador ? (
-          descuadre ? (
-            <button className="peligro" disabled={i.items.length === 0 || confirmar.isPending} onClick={() => confirmar.mutate(true)}>
-              Aceptar la diferencia y confirmar
-            </button>
-          ) : (
-            <button className="primario" disabled={i.items.length === 0 || confirmar.isPending} onClick={() => confirmar.mutate(false)}>
+        {borrador && (
+          <>
+            <input
+              ref={inputRef}
+              className="escaner"
+              placeholder="Escanee el código del producto (o escríbalo y pulse Enter)"
+              aria-label="Lector de código de referencia"
+              onKeyDown={scanner.onKeyDown}
+              onPaste={scanner.onPaste}
+              onBlur={reenfocar}
+              autoComplete="off"
+            />
+            <p className="ayuda">Se busca entre las referencias de {i.proveedor?.nombre}. Leer el mismo código otra vez suma 1. Haga clic en un valor de la tabla para corregirlo.</p>
+          </>
+        )}
+        {aviso && <div className={`aviso ${aviso.tipo}`} role="status">{aviso.texto}</div>}
+
+        <table>
+          <thead><tr><th>Referencia</th><th>Cant.</th><th>Costo</th><th>Desc.</th><th>IVA</th><th>Subtotal</th><th></th></tr></thead>
+          <tbody>
+            {i.items.map((it) => (
+              <tr key={it.id}>
+                <td>{it.referencia?.codigo_referencia} <small>{it.referencia?.descripcion}</small></td>
+                <td>{celda(it, 'cantidad', String(it.cantidad))}</td>
+                <td className={Number(it.costo_unitario) <= 0 ? 'agotado' : undefined}>
+                  {celda(it, 'costo_unitario', Number(it.costo_unitario) <= 0 ? 'Sin costo' : pesos(it.costo_unitario))}
+                </td>
+                <td>{celda(it, 'descuento', pesos(it.descuento))}</td>
+                <td>
+                  {it.sin_iva ? <span className="chip">sin IVA</span> : celda(it, 'iva_porcentaje', `${formatoNumero(it.iva_porcentaje)} %`)}
+                  {!it.sin_iva && <> <small>{pesos(it.iva)}</small></>}
+                  {borrador && (
+                    <label className="check">
+                      <input
+                        type="checkbox"
+                        checked={it.sin_iva}
+                        disabled={sinIva.isPending}
+                        onChange={(e) => sinIva.mutate({ itemId: it.id, valor: e.target.checked })}
+                      /> Sin IVA
+                    </label>
+                  )}
+                </td>
+                <td>{pesos(it.subtotal)}</td>
+                <td>{borrador && <button type="button" className="enlace" disabled={quitar.isPending} onClick={() => quitar.mutate(it.id)}>Quitar</button>}</td>
+              </tr>
+            ))}
+            {i.items.length === 0 && <tr><td colSpan={7} className="vacio">Escanee el primer producto.</td></tr>}
+          </tbody>
+        </table>
+
+        {i.totales && (
+          <dl className="totales">
+            <dt>Subtotal</dt><dd>{pesos(i.totales.subtotal)}</dd>
+            <dt>Descuento en líneas</dt><dd>{pesos(i.totales.descuento_lineas)}</dd>
+            <dt>Descuento del documento</dt><dd>{pesos(i.totales.descuento_total)}</dd>
+            <dt>IVA</dt><dd>{pesos(i.totales.iva)}</dd>
+            <dt>Líneas sin IVA</dt><dd>{i.totales.lineas_sin_iva}</dd>
+            <dt>Total</dt><dd><strong>{pesos(i.totales.total)}</strong></dd>
+          </dl>
+        )}
+
+        <div className="acciones">
+          {borrador ? (
+            <button type="button" className="primario" disabled={i.items.length === 0 || confirmar.isPending} onClick={() => confirmar.mutate()}>
               Confirmar ingreso y crear unidades
             </button>
-          )
-        ) : (
-          <Link className="boton primario" to={`/logistica/etiquetas?ingreso=${i.id}`}>Imprimir etiquetas</Link>
-        )}
+          ) : (
+            <Link className="boton primario" to={`/logistica/etiquetas?ingreso=${i.id}`}>Imprimir etiquetas</Link>
+          )}
+        </div>
       </div>
+
+      {creando !== null && i.proveedor && (
+        <DialogoReferencia
+          codigo={creando}
+          proveedor={i.proveedor}
+          onCreada={() => { setCreando(null); escanear.mutate(creando) }}
+          onCerrar={() => setCreando(null)}
+        />
+      )}
     </div>
+  )
+}
+
+/** Una celda numérica en edición: Enter o salir del campo guarda; Escape cancela. */
+function CeldaEditable({ etiqueta, inicial, validar, guardar, onGuardado, onTerminar }: {
+  etiqueta: string
+  inicial: string
+  validar: (texto: string) => string | null
+  guardar: (texto: string) => Promise<Ingreso>
+  onGuardado: (ingreso: Ingreso) => void
+  onTerminar: () => void
+}) {
+  const [texto, setTexto] = useState(inicial)
+  const campoRef = useRef<HTMLInputElement>(null)
+  // Evita guardar dos veces (Enter y luego el blur al desmontarse) o guardar tras cancelar.
+  const listo = useRef(false)
+  const error = validar(texto)
+
+  const mutacion = useMutation({
+    mutationFn: guardar,
+    onSuccess: onGuardado,
+    onError: () => { listo.current = false; campoRef.current?.focus() },
+  })
+
+  const cancelar = () => { listo.current = true; onTerminar() }
+
+  const confirmarCambio = (alSalir: boolean) => {
+    if (listo.current || mutacion.isPending) return
+    if (error) {
+      // Al salir con un valor inválido se descarta; con Enter se queda para corregirlo.
+      if (alSalir) cancelar()
+      return
+    }
+    if (leerNumero(texto) === leerNumero(inicial)) {
+      cancelar()
+      return
+    }
+    listo.current = true
+    mutacion.mutate(texto)
+  }
+
+  return (
+    <div className="precio-editable">
+      <input
+        ref={campoRef}
+        autoFocus
+        inputMode="decimal"
+        autoComplete="off"
+        aria-label={etiqueta}
+        aria-invalid={error !== null}
+        value={texto}
+        disabled={mutacion.isPending}
+        onFocus={(e) => e.target.select()}
+        onChange={(e) => { setTexto(e.target.value); mutacion.reset() }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') { e.preventDefault(); confirmarCambio(false) }
+          if (e.key === 'Escape') { e.preventDefault(); cancelar() }
+        }}
+        onBlur={() => confirmarCambio(true)}
+      />
+      <small className={error || mutacion.isError ? 'ayuda error' : 'ayuda'}>
+        {mutacion.isError ? mensajeError(mutacion.error) : error ?? 'Enter guarda · Esc cancela'}
+      </small>
+    </div>
+  )
+}
+
+/**
+ * RF-20: crea la referencia que no existe con el código leído y el proveedor del ingreso (ambos
+ * fijos). Precio de venta > 0 (S-20). Logística no crea marcas ni categorías: las crea el admin.
+ */
+function DialogoReferencia({ codigo, proveedor, onCreada, onCerrar }: {
+  codigo: string
+  proveedor: Opcion
+  onCreada: () => void
+  onCerrar: () => void
+}) {
+  const marcas = useMarcas()
+  const categorias = useCategorias()
+  const [f, setF] = useState({ marca_id: '', categoria_id: '', descripcion: '', precio_venta: '', iva_venta_porcentaje: '19', codigo_universal_id: '' })
+  const categoria = categorias.data?.find((c) => String(c.id) === f.categoria_id)
+  const admiteUniversal = categoria?.admite_codigo_universal ?? false
+
+  const universales = useQuery({
+    queryKey: ['universales', 'categoria', f.categoria_id],
+    queryFn: async () => (await api.get<Pagina<{ id: number; codigo: string; categoria_id: number }>>('/codigos-universales', { params: { por_pagina: 100 } })).data.data,
+    enabled: admiteUniversal,
+  })
+
+  const crear = useMutation({
+    mutationFn: async () => api.post('/referencias', {
+      codigo_referencia: codigo,
+      proveedor_id: proveedor.id,
+      marca_id: Number(f.marca_id),
+      categoria_id: Number(f.categoria_id),
+      descripcion: f.descripcion.trim(),
+      precio_venta: Number(f.precio_venta),
+      iva_venta_porcentaje: Number(f.iva_venta_porcentaje),
+      codigo_universal_id: admiteUniversal && f.codigo_universal_id ? Number(f.codigo_universal_id) : null,
+    }),
+    onSuccess: onCreada,
+  })
+
+  const errorPrecio = f.precio_venta === '' ? null : Number(f.precio_venta) > 0 ? null : 'El precio de venta debe ser mayor que 0.'
+  const sinMarcas = marcas.data?.length === 0
+  const sinCategorias = categorias.data?.length === 0
+  const completo = f.marca_id !== '' && f.categoria_id !== '' && f.descripcion.trim() !== '' && f.precio_venta !== '' && errorPrecio === null
+  const campo = (k: keyof typeof f) => ({ value: f[k], onChange: (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value }) })
+
+  return (
+    <div className="modal" onKeyDown={(e) => e.key === 'Escape' && onCerrar()}>
+      <form className="modal-caja" role="dialog" aria-modal="true" aria-labelledby="crear-referencia-titulo" onSubmit={(e) => { e.preventDefault(); crear.mutate() }}>
+        <h2 id="crear-referencia-titulo">Crear referencia</h2>
+        <p className="ayuda">El código no existe para este proveedor. Al guardarla se agrega la línea al ingreso.</p>
+        <label>Código de referencia<input value={codigo} readOnly aria-readonly="true" /></label>
+        <label>Proveedor<input value={proveedor.nombre} readOnly aria-readonly="true" /></label>
+        <label>Marca
+          <select required autoFocus {...campo('marca_id')}>
+            <option value="">—</option>
+            {marcas.data?.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+          </select>
+        </label>
+        <label>Categoría
+          <select required {...campo('categoria_id')}>
+            <option value="">—</option>
+            {categorias.data?.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+          </select>
+        </label>
+        {(sinMarcas || sinCategorias) && (
+          <div className="aviso atencion">No hay {sinMarcas ? 'marcas' : 'categorías'} en el catálogo. Pídale al administrador que las cree.</div>
+        )}
+        <p className="ayuda">Si la marca o la categoría que necesita no aparece, pídale al administrador que la cree; aquí no se crean.</p>
+        {admiteUniversal && (
+          <label>Código universal (opcional)
+            <select {...campo('codigo_universal_id')}>
+              <option value="">Sin universal: la referencia es su código único</option>
+              {universales.data?.filter((u) => String(u.categoria_id) === f.categoria_id).map((u) => <option key={u.id} value={u.id}>{u.codigo}</option>)}
+            </select>
+          </label>
+        )}
+        <label>Descripción<input required maxLength={255} {...campo('descripcion')} /></label>
+        <label>Precio de venta
+          <input type="number" min="0.01" step="0.01" required aria-invalid={errorPrecio !== null} {...campo('precio_venta')} />
+        </label>
+        <p className={errorPrecio ? 'ayuda error' : 'ayuda'}>{errorPrecio ?? 'Mayor que 0. Si no lo conoce, consúltelo con el administrador antes de crearla.'}</p>
+        <label>IVA de venta
+          <select {...campo('iva_venta_porcentaje')}>
+            <option value="19">19 %</option>
+            <option value="0">0 % · sin IVA</option>
+          </select>
+        </label>
+        {crear.isError && <div className="aviso error">{mensajeError(crear.error)}</div>}
+        <div className="acciones">
+          <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
+          <button className="primario" disabled={!completo || crear.isPending}>{crear.isPending ? 'Guardando…' : 'Crear y agregar'}</button>
+        </div>
+      </form>
     </div>
   )
 }

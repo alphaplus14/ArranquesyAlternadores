@@ -48,7 +48,6 @@ export default function Layout() {
           etiqueta: 'Logística',
           items: [
             { to: '/logistica/ingresos', texto: 'Ingresos', icono: 'ingreso', fin: true },
-            { to: '/logistica/ingresos/qr', texto: 'Factura (QR)', icono: 'qr' },
             { to: '/logistica/etiquetas', texto: 'Etiquetas', icono: 'etiqueta' },
           ],
         }

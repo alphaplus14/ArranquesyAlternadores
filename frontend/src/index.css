@@ -186,7 +186,6 @@ label { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; col
 label.check { flex-direction: row; align-items: center; }
 .formulario { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
 .formulario.en-linea { flex-direction: row; flex-wrap: wrap; align-items: flex-end; }
-.crece { flex: 1; min-width: 240px; position: relative; }
 
 .escaner {
   width: 100%; font-size: 1.25rem; padding: 12px 14px; margin-bottom: 8px;
@@ -257,9 +256,6 @@ tr.reversado td:last-child { text-decoration: none; }
 .precio-editable { display: flex; flex-direction: column; gap: 2px; min-width: 130px; }
 .precio-editable input { width: 130px; padding: 4px 6px; }
 .unidades { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-.sugerencias { position: absolute; top: 100%; left: 0; right: 0; z-index: 5; list-style: none; margin: 0; padding: 4px; background: #fff; border: 1px solid var(--borde); border-radius: 8px; max-height: 260px; overflow-y: auto; }
-.sugerencias button { width: 100%; text-align: left; border: none; background: transparent; }
-.sugerencias button:hover { background: var(--suave-fondo); }
 .totales { display: grid; grid-template-columns: auto auto; gap: 4px 16px; justify-content: end; margin-top: 12px; }
 .totales dt { color: var(--suave); }
 .totales dd { margin: 0; text-align: right; }

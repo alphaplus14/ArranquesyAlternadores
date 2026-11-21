@@ -58,7 +58,7 @@ export default function Etiquetas() {
         <Medida etiqueta="Ingreso" valor={ingresoId ? `#${ingresoId}` : '—'} tono="azul" icono="ingreso" />
         <Medida etiqueta="Unidades" valor={unidades.data?.length ?? '—'} tono="amarillo" icono="caja" />
         <Medida etiqueta="Seleccionadas" valor={seleccion.size} tono="verde" icono="etiqueta" />
-        <Medida etiqueta="Tamaño" valor={tamanoActual?.nombre ?? tamano} pie={tamanoActual ? `${tamanoActual.ancho}×${tamanoActual.alto} mm` : undefined} tono="rojo" icono="qr" />
+        <Medida etiqueta="Tamaño" valor={tamanoActual?.nombre ?? tamano} pie={tamanoActual ? `${tamanoActual.ancho}×${tamanoActual.alto} mm` : undefined} tono="rojo" icono="etiqueta" />
       </section>
     <div className="panel">
       <div className="fila-titulo"><h2>Unidades del ingreso</h2></div>

@@ -5,6 +5,7 @@ import type { Cliente, MetodoCaptura, Pagina, Referencia, Venta as TVenta, Venta
 import Medida from '../../componentes/Medida'
 import { useScanner } from '../../hooks/useScanner'
 import { useDebounce } from '../../hooks/useDebounce'
+import { formatoNumero, leerNumero } from '../../componentes/numeros'
 
 interface Aviso { tipo: 'ok' | 'error'; texto: string }
 interface ReversoPendiente { item?: VentaItem; tipo: 'devolucion' | 'anulacion' }
@@ -16,31 +17,15 @@ function fechaCorta(iso: string) {
   return new Date(a, m - 1, d).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
-/** Precio escrito en formato es-CO: punto para miles y coma para centavos ("72.500,50"). */
-function leerPrecio(texto: string): number | null {
-  let limpio = texto.trim().replace(/[\s$]/g, '')
-  // Sin coma, un punto seguido de 1 o 2 dígitos al final son centavos ("85000.5"): los miles llevan 3.
-  if (!limpio.includes(',') && /\.\d{1,2}$/.test(limpio)) limpio = limpio.replace(/\.(?=\d{1,2}$)/, ',')
-  limpio = limpio.replace(/\./g, '').replace(',', '.')
-  if (limpio === '') return null
-  return /^\d+(\.\d{1,2})?$/.test(limpio) ? Number(limpio) : Number.NaN
-}
-
 /** Validación en vivo. El backend vuelve a exigir precio > 0 (S-18). */
 function errorPrecio(texto: string): string | null {
-  const n = leerPrecio(texto)
+  const n = leerNumero(texto)
   if (n === null) return 'Escriba el precio.'
   if (Number.isNaN(n)) return 'Use solo números; los centavos van después de la coma (máximo 2).'
   if (n <= 0) return 'El precio debe ser mayor que 0.'
   return null
 }
 
-function formatoPrecio(valor: string | number) {
-  const n = Number(valor)
-  // Con centavos, siempre dos cifras ("72.500,50"); sin centavos, sin decimales ("85.000").
-  const decimales = Number.isInteger(n) ? 0 : 2
-  return n.toLocaleString('es-CO', { minimumFractionDigits: decimales, maximumFractionDigits: decimales })
-}
 
 /**
  * RF-06: venta de mostrador. Cada escaneo descuenta de inmediato (no al cerrar).
@@ -221,16 +206,16 @@ export default function Venta() {
                         onGuardado={(nueva, precio) => {
                           qc.setQueryData(['venta', nueva.id], nueva)
                           dejarDeEditar(i.id)
-                          setAviso({ tipo: 'ok', texto: `Precio de ${i.unidad.codigo_barras} cambiado a $${formatoPrecio(precio)}.` })
+                          setAviso({ tipo: 'ok', texto: `Precio de ${i.unidad.codigo_barras} cambiado a $${formatoNumero(precio)}.` })
                         }}
                         onTerminar={() => dejarDeEditar(i.id)}
                       />
                     ) : precioEditable(i) ? (
                       <button type="button" className="enlace" title="Cambiar el precio de este ítem" onClick={() => setEditandoPrecio(i.id)}>
-                        {i.precio_unitario === null ? '—' : formatoPrecio(i.precio_unitario)}
+                        {i.precio_unitario === null ? '—' : formatoNumero(i.precio_unitario)}
                       </button>
                     ) : (
-                      i.precio_unitario === null ? '—' : formatoPrecio(i.precio_unitario)
+                      i.precio_unitario === null ? '—' : formatoNumero(i.precio_unitario)
                     )}
                     {i.iva_porcentaje !== null && <> <small>{Number(i.iva_porcentaje) === 0 ? 'sin IVA' : `IVA ${Number(i.iva_porcentaje)} %`}</small></>}
                   </td>
@@ -495,7 +480,7 @@ function CeldaPrecio({ ventaId, item, onGuardado, onTerminar }: {
   onGuardado: (venta: TVenta, precio: number) => void
   onTerminar: () => void
 }) {
-  const [texto, setTexto] = useState(item.precio_unitario === null ? '' : formatoPrecio(item.precio_unitario))
+  const [texto, setTexto] = useState(item.precio_unitario === null ? '' : formatoNumero(item.precio_unitario))
   const campoRef = useRef<HTMLInputElement>(null)
   // Evita guardar dos veces (Enter y luego el blur al desmontarse) o guardar tras cancelar.
   const listo = useRef(false)
@@ -512,7 +497,7 @@ function CeldaPrecio({ ventaId, item, onGuardado, onTerminar }: {
 
   const confirmar = (alSalir: boolean) => {
     if (listo.current || guardar.isPending) return
-    const precio = leerPrecio(texto)
+    const precio = leerNumero(texto)
     if (error || precio === null) {
       // Al salir con un valor inválido se descarta; con Enter se queda para corregirlo.
       if (alSalir) cancelar()
