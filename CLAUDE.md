@@ -5,8 +5,9 @@ Cita los RF por número (RF-01, RF-02…) en commits (`feat(RF-06): ...`), en co
 
 ## Alcance (no negociable)
 
-- SOLO inventario. No factura, no lleva contabilidad ni cartera: eso es Contapyme, que no se integra ni se toca.
-- Fuera de alcance: órdenes de trabajo, mano de obra de taller, garantías, varias bodegas, reportes distintos a agotados por proveedor.
+- Alcance v1.2 (aprobado): inventario, compras, cuentas por pagar, ventas de contado y a crédito, abonos y saldos de clientes, y el vínculo remisión–factura de compra. Los informes se ven en pantalla, sin exportar.
+- No factura ni lleva la contabilidad general: Contapyme sigue con la facturación electrónica DIAN y la contabilidad, y no se integra ni se toca (como mucho se guarda el número de su factura como texto de referencia).
+- Fuera de alcance: órdenes de trabajo, mano de obra de taller, garantías, varias bodegas y contabilidad general.
 - Si algo cae fuera de alcance, o una decisión técnica contradice una regla de negocio: **detenerse y preguntar**.
 
 ## Estructura (monorepo)
@@ -63,4 +64,5 @@ Cita los RF por número (RF-01, RF-02…) en commits (`feat(RF-06): ...`), en co
 - **Tiempo de respuesta:** escaneo → descuento confirmado < 300 ms p95 en red local; búsquedas < 500 ms. Log de duración en endpoints de escaneo y búsqueda.
 - **Tamaños de etiqueta:** `backend/config/etiquetas.php`: grande 100×50 mm, pequeño 50×25 mm, más pequeño 38×19 mm.
 - **QR (RF-04):** el XML se descartó. El QR llena el encabezado de un ingreso `factura_qr` (CUFE único, proveedor por NIT, totales del QR) y los ítems se digitan como en la remisión. Claves del QR provisionales hasta probar con una factura real (S-06).
-- **Cartera:** fuera de alcance (pendiente confirmar con Frank, no afecta la Fase 1).
+- **Cartera:** ahora dentro del alcance (v1.2, S-07 superado). Solo las ventas a crédito cerradas cuentan para la cartera (S-09); plazo por defecto de clientes 30 días (S-11).
+- **Precio e IVA de venta:** precio = `referencias.precio_venta` al escanear, sin descuentos ni precio libre en mostrador (S-10, por confirmar); IVA 19 % salvo que la referencia tenga 0 (S-15).
