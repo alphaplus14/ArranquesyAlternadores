@@ -8,12 +8,12 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
-/** RF-08 (filtro de agotados) / RF-11 */
+/** RF-08 (filtro de agotados) / RF-11. RF-16: plazo_dias prellena el vencimiento de las compras. */
 class ProveedorController extends Controller
 {
     public function index(): JsonResponse
     {
-        return response()->json(Proveedor::orderBy('nombre')->get(['id', 'nombre', 'nit']));
+        return response()->json(Proveedor::orderBy('nombre')->get(['id', 'nombre', 'nit', 'plazo_dias']));
     }
 
     public function store(Request $request): JsonResponse
@@ -47,6 +47,8 @@ class ProveedorController extends Controller
         return $request->validate([
             'nombre' => [$requerido, 'string', 'max:150'],
             'nit' => ['nullable', 'string', 'max:30', Rule::unique('proveedores')->ignore($proveedor?->id)],
+            // RF-16: solo prellena el vencimiento de sus compras a crédito.
+            'plazo_dias' => ['nullable', 'integer', 'min:0', 'max:365'],
         ]);
     }
 }

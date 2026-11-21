@@ -3,8 +3,10 @@
 namespace App\Models;
 
 use App\Enums\EstadoIngreso;
+use App\Enums\FormaPago;
 use App\Enums\TipoIngreso;
 use App\Exceptions\RegistroInmutableException;
+use App\Models\Concerns\Auditable;
 use App\Support\TotalesIngreso;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -12,24 +14,32 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * RF-05 / RF-09. RF-04: remisión o factura, las dos digitadas a mano. Al confirmar queda quién
- * confirmó. diferencia_aceptada y diferencia_motivo se conservan para RF-19.
+ * confirmó y el total (RF-16). diferencia_aceptada y diferencia_motivo se conservan para RF-19.
+ * RF-16: forma de pago y vencimiento digitado. RF-11: cada edición queda en la auditoría.
  * Confirmado, el ingreso ya no se edita ni se borra (sus unidades y movimientos dependen de él).
  */
 class Ingreso extends Model
 {
+    use Auditable;
+
     protected $table = 'ingresos';
 
     protected $fillable = [
-        'tipo', 'proveedor_id', 'numero_documento', 'fecha', 'descuento_total', 'usuario_id',
+        'tipo', 'forma_pago', 'proveedor_id', 'numero_documento', 'fecha', 'vence_el', 'descuento_total', 'usuario_id',
     ];
+
+    protected $attributes = ['forma_pago' => 'contado'];
 
     protected function casts(): array
     {
         return [
             'tipo' => TipoIngreso::class,
+            'forma_pago' => FormaPago::class,
             'estado' => EstadoIngreso::class,
             'fecha' => 'date',
+            'vence_el' => 'date',
             'descuento_total' => 'decimal:2',
+            'total' => 'decimal:2',
             'diferencia_aceptada' => 'boolean',
             'confirmado_at' => 'datetime',
         ];
@@ -37,7 +47,8 @@ class Ingreso extends Model
 
     protected static function booted(): void
     {
-        // Solo se permite el paso de borrador a confirmado; después, nada.
+        // Solo se permite el paso de borrador a confirmado; después, nada (ni total, forma de pago
+        // ni vencimiento).
         static::updating(function (Ingreso $ingreso) {
             if ($ingreso->getOriginal('estado') === EstadoIngreso::Confirmado) {
                 throw RegistroInmutableException::para($ingreso, 'editar un ingreso confirmado');
@@ -86,6 +97,11 @@ class Ingreso extends Model
     public function totalCalculado(): string
     {
         return $this->totales()->total;
+    }
+
+    public function esCredito(): bool
+    {
+        return $this->forma_pago === FormaPago::Credito;
     }
 
     /** RF-04: el número del documento se guarda recortado y con un solo espacio entre partes. */

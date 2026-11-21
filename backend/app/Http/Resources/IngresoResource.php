@@ -8,7 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * @mixin Ingreso  RF-05 / RF-09 / RF-10.
+ * @mixin Ingreso  RF-05 / RF-09 / RF-10 / RF-16.
  * Todas las cifras salen de Ingreso::totales() (TotalesIngreso): el frontend no recalcula.
  */
 class IngresoResource extends JsonResource
@@ -21,11 +21,19 @@ class IngresoResource extends JsonResource
             'id' => $this->id,
             'tipo' => $this->tipo,
             'estado' => $this->estado,
+            'forma_pago' => $this->forma_pago, // RF-16
             'proveedor_id' => $this->proveedor_id,
-            'proveedor' => $this->whenLoaded('proveedor', fn () => ['id' => $this->proveedor->id, 'nombre' => $this->proveedor->nombre]),
+            'proveedor' => $this->whenLoaded('proveedor', fn () => [
+                'id' => $this->proveedor->id,
+                'nombre' => $this->proveedor->nombre,
+                'plazo_dias' => $this->proveedor->plazo_dias,
+            ]),
             'numero_documento' => $this->numero_documento,
             'fecha' => $this->fecha?->toDateString(),
+            'vence_el' => $this->vence_el?->toDateString(), // RF-16: digitado; null en contado
             'descuento_total' => $this->descuento_total,
+            // RF-16: fijado al confirmar; null en borrador (y en los confirmados antes de RF-16).
+            'total' => $this->total,
             'usuario' => $this->whenLoaded('usuario', fn () => ['id' => $this->usuario->id, 'name' => $this->usuario->name]),
             'confirmado_at' => $this->confirmado_at,
             'confirmado_por' => $this->whenLoaded('confirmadoPor', fn () => $this->confirmadoPor

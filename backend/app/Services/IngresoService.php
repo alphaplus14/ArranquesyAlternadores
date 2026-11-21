@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\EstadoIngreso;
+use App\Enums\FormaPago;
 use App\Enums\TipoIngreso;
 use App\Exceptions\ReglaInventarioException;
 use App\Models\Ingreso;
@@ -18,6 +19,7 @@ use Illuminate\Support\Facades\DB;
  * RF-04: la factura de compra se ingresa a mano, igual que la remisión (sin QR ni XML).
  * RF-09 / RF-10: descuento de la factura y líneas sin IVA.
  * RF-20: los ítems se agregan escaneando el código de referencia del proveedor del ingreso.
+ * RF-16: forma de pago y vencimiento digitado; al confirmar se guarda el total (RF-09, ajuste).
  * RF-03: al confirmar se crean las unidades con su código de barras.
  */
 class IngresoService
@@ -39,6 +41,7 @@ class IngresoService
         $tipo = $datos['tipo'] ?? TipoIngreso::Remision;
         $datos['tipo'] = $tipo instanceof TipoIngreso ? $tipo : TipoIngreso::from($tipo);
         $datos['numero_documento'] = Ingreso::normalizarNumero($datos['numero_documento']);
+        $datos = $this->condicionDePago($datos, null);
 
         if ($existente = $this->buscarDocumento($datos)) {
             return $this->reabrir($existente);
@@ -59,6 +62,7 @@ class IngresoService
         }
 
         return $this->enBorrador($ingreso, function (Ingreso $bloqueado) use ($datos) {
+            $datos = $this->condicionDePago($datos, $bloqueado);
             $bloqueado->fill($datos);
 
             // RF-09: con líneas cargadas, el descuento del documento no puede superar su subtotal.
@@ -164,8 +168,10 @@ class IngresoService
                 );
             }
 
-            // RF-09 (ajuste): el descuento del documento no puede superar el subtotal de las líneas.
-            TotalesIngreso::calcular($items, $ingreso->descuento_total)->exigirDescuentoValido();
+            // RF-09 (ajuste): el total se calcula con el descuento prorrateado y queda fijo (RF-16).
+            $totales = TotalesIngreso::calcular($items, $ingreso->descuento_total);
+            $totales->exigirDescuentoValido();
+            $this->exigirVencimiento($ingreso);
 
             $codigos = $this->codigos->reservar($items->sum('cantidad'));
             $this->inventario->darEntrada($ingreso, $items, $codigos, $usuario->id);
@@ -173,6 +179,7 @@ class IngresoService
             $ingreso->estado = EstadoIngreso::Confirmado;
             $ingreso->confirmado_at = now();
             $ingreso->confirmado_por = $usuario->id;
+            $ingreso->total = $totales->total;
             $ingreso->save();
 
             return $ingreso;
@@ -196,6 +203,42 @@ class IngresoService
 
             return $cambio($bloqueado);
         });
+    }
+
+    /**
+     * RF-16 / S-21: a contado no hay vencimiento (se guarda null aunque llegue). A crédito el
+     * vencimiento se digita; el plazo del proveedor solo lo prellena la pantalla.
+     *
+     * @param  array<string, mixed>  $datos
+     * @return array<string, mixed>
+     */
+    private function condicionDePago(array $datos, ?Ingreso $actual): array
+    {
+        $forma = isset($datos['forma_pago'])
+            ? ($datos['forma_pago'] instanceof FormaPago ? $datos['forma_pago'] : FormaPago::from($datos['forma_pago']))
+            : ($actual?->forma_pago ?? FormaPago::Contado);
+
+        if ($forma === FormaPago::Contado) {
+            $datos['vence_el'] = null;
+        }
+
+        return $datos;
+    }
+
+    /** RF-16: un ingreso a crédito no se confirma sin vencimiento o con uno anterior a la fecha. */
+    private function exigirVencimiento(Ingreso $ingreso): void
+    {
+        if (! $ingreso->esCredito()) {
+            return;
+        }
+
+        if ($ingreso->vence_el === null || $ingreso->vence_el->lt($ingreso->fecha)) {
+            throw new ReglaInventarioException(
+                'A crédito, el ingreso necesita una fecha de vencimiento igual o posterior a la del documento.',
+                422,
+                ['errors' => ['vence_el' => ['Escriba el vencimiento que trae el documento.']]],
+            );
+        }
     }
 
     /** Último costo con que entró la referencia en un ingreso confirmado (null si nunca entró). */
