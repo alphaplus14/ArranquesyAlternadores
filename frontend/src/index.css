@@ -230,6 +230,7 @@ tr.reversado td:last-child { text-decoration: none; }
 .chip.abierta, .chip.borrador { background: var(--aviso-fondo); color: var(--aviso); }
 .chip.cerrada, .chip.confirmado { background: var(--ok-fondo); color: var(--ok); }
 .chip.digitado { background: #F3E8FF; color: #5B2EA6; }
+.chip.sin-precio, .chip.credito { background: var(--aviso-fondo); color: var(--aviso); font-weight: 600; }
 
 .aviso { padding: 10px 12px; border-radius: 8px; margin: 8px 0; font-weight: 600; }
 .aviso.ok { background: var(--ok-fondo); color: var(--ok); }
@@ -252,6 +253,7 @@ tr.reversado td:last-child { text-decoration: none; }
 .lateral .lista { font-size: 0.9rem; }
 .reversos { padding-left: 18px; }
 .resultado { border-bottom: 1px solid var(--borde); padding: 8px 0; }
+.venta-credito { margin: 0 0 8px; }
 .unidades { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .sugerencias { position: absolute; top: 100%; left: 0; right: 0; z-index: 5; list-style: none; margin: 0; padding: 4px; background: #fff; border: 1px solid var(--borde); border-radius: 8px; max-height: 260px; overflow-y: auto; }
 .sugerencias button { width: 100%; text-align: left; border: none; background: transparent; }
@@ -308,6 +310,19 @@ input[aria-invalid='true'] { border-color: var(--peligro); }
 .login p { color: var(--suave); }
 .marca-login { display: flex; justify-content: center; margin-bottom: 4px; }
 .marca-login .marca-ocho { width: 3.2rem; height: 3.2rem; font-size: 1.5rem; }
+/* Login: mensajes bajo cada campo, estado válido y botón para ver la contraseña. */
+.login .ayuda { text-align: left; margin-top: -6px; }
+.ayuda.atencion { color: var(--aviso); }
+.login input[aria-invalid='false'][data-tocado='true'] { border-color: var(--ok); }
+.campo-clave { position: relative; display: flex; }
+.campo-clave input { flex: 1; padding-right: 5.5rem; }
+/* Edge dibuja su propio ojo para revelar la contraseña; ya tenemos el botón "Mostrar". */
+.campo-clave input::-ms-reveal,
+.campo-clave input::-ms-clear { display: none; }
+.campo-clave .ver-clave {
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  font-size: 0.85rem; text-decoration: none;
+}
 .cargando { padding: 40px; text-align: center; color: var(--suave); }
 .lista { list-style: none; padding: 0; margin: 0; }
 .lista li { padding: 6px 0; border-bottom: 1px solid var(--borde); }

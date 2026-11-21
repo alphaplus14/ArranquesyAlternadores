@@ -17,7 +17,7 @@ class DatabaseSeeder extends Seeder
     {
         foreach (Rol::cases() as $rol) {
             User::firstOrCreate(
-                ['email' => "{$rol->value}@la8va.local"],
+                ['usuario' => $rol->value],
                 ['name' => ucfirst($rol->value), 'password' => self::CLAVE_DESARROLLO, 'rol' => $rol, 'activo' => true],
             );
         }

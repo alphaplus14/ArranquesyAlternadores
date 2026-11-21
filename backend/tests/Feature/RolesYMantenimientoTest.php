@@ -3,6 +3,7 @@
 use App\Enums\Rol;
 use App\Models\Referencia;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 
 beforeEach(fn () => sembrarDemo());
@@ -39,9 +40,9 @@ it('roles: sin sesión responde 401 y un usuario inactivo pierde el acceso', fun
 });
 
 it('auth: login con usuario inactivo falla', function () {
-    User::factory()->rol(Rol::Mostrador)->create(['email' => 'x@la8va.local', 'activo' => false]);
+    User::factory()->rol(Rol::Mostrador)->create(['usuario' => 'inactivo', 'activo' => false]);
 
-    $this->postJson('/api/login', ['email' => 'x@la8va.local', 'password' => 'password'])->assertUnprocessable();
+    $this->postJson('/api/login', ['usuario' => 'inactivo', 'password' => 'password'])->assertUnprocessable()->assertJsonValidationErrors('usuario');
 });
 
 it('inventario:recalcular no reporta diferencias tras los ingresos y ventas normales', function () {
@@ -63,7 +64,7 @@ it('inventario:recalcular detecta un descuadre provocado a mano y lo corrige con
 it('velocidad: los listados no tienen N+1 (preventLazyLoading activo)', function () {
     actuarComo(Rol::Admin);
 
-    expect(\Illuminate\Database\Eloquent\Model::preventsLazyLoading())->toBeTrue();
+    expect(Model::preventsLazyLoading())->toBeTrue();
 
     DB::enableQueryLog();
     $this->getJson('/api/referencias')->assertOk();

@@ -5,7 +5,7 @@ import type { Rol, Usuario } from '../api/tipos'
 interface AuthContexto {
   usuario: Usuario | null
   cargando: boolean
-  entrar: (email: string, password: string) => Promise<void>
+  entrar: (usuario: string, password: string) => Promise<void>
   salir: () => Promise<void>
   /** Refleja en la sesión los datos que devolvió el backend tras editar la cuenta propia. */
   actualizarUsuario: (usuario: Usuario) => void
@@ -25,9 +25,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setCargando(false))
   }, [])
 
-  const entrar = useCallback(async (email: string, password: string) => {
+  const entrar = useCallback(async (usuario: string, password: string) => {
     await pedirCsrf()
-    const r = await api.post<Usuario>('/login', { email, password })
+    const r = await api.post<Usuario>('/login', { usuario, password })
     setUsuario(r.data)
   }, [])
 

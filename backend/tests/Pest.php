@@ -32,6 +32,12 @@ function actuarComo(Rol $rol): User
     return $usuario;
 }
 
+/** Petición desde la SPA (dominio stateful): pasa por el AuthenticateSession de Sanctum. */
+function comoSpa(): array
+{
+    return ['Referer' => 'http://'.config('sanctum.stateful')[0], 'Accept' => 'application/json'];
+}
+
 /** Siembra los ejemplos del documento (IM204 = 2+2+2, regulador IM210 en tres marcas). */
 function sembrarDemo(): void
 {

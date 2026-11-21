@@ -59,6 +59,7 @@ export default function Layout() {
           items: [
             { to: '/admin/universales', texto: 'Universales', icono: 'universal' },
             { to: '/admin/catalogos', texto: 'Catálogos', icono: 'catalogo' },
+            { to: '/admin/clientes', texto: 'Clientes', icono: 'persona' },
             { to: '/admin/usuarios', texto: 'Usuarios', icono: 'usuarios' },
             { to: '/admin/auditoria', texto: 'Auditoría', icono: 'auditoria' },
           ],
@@ -90,7 +91,7 @@ export default function Layout() {
             <div className="cuenta-panel" role="menu">
               <div className="cuenta-sesion">
                 <strong>{usuario?.name}</strong>
-                <span>{usuario?.email}</span>
+                <span>{usuario?.usuario}</span>
                 <span className="chip">{usuario ? rolLegible[usuario.rol] : ''}</span>
               </div>
               {usuario?.rol === 'admin' && (

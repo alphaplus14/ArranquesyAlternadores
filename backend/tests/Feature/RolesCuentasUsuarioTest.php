@@ -5,12 +5,6 @@ use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 
-/** Petición desde la SPA (dominio stateful): pasa por el AuthenticateSession de Sanctum. */
-function comoSpa(): array
-{
-    return ['Referer' => 'http://'.config('sanctum.stateful')[0], 'Accept' => 'application/json'];
-}
-
 /** Lo que Sanctum guarda en cada sesión para detectar un cambio de contraseña. */
 function huellaSesion(string $hash): string
 {
@@ -73,7 +67,7 @@ it('roles: un empleado no se asciende a admin, el admin nuevo se crea como cuent
     $this->patchJson("/api/usuarios/{$empleado->id}", ['rol' => 'admin'])->assertUnprocessable();
     expect($empleado->fresh()->rol)->toBe(Rol::Logistica);
 
-    $this->postJson('/api/usuarios', ['name' => 'Admin nuevo', 'email' => 'nuevo@la8va.local', 'password' => 'clave-nueva-123', 'rol' => 'admin'])
+    $this->postJson('/api/usuarios', ['name' => 'Admin nuevo', 'usuario' => 'admin.nuevo', 'password' => 'clave-nueva-123', 'rol' => 'admin'])
         ->assertCreated()->assertJsonPath('rol', 'admin');
 });
 
@@ -105,20 +99,20 @@ it('cuenta: el admin cambia su nombre sin contraseña', function () {
     expect($admin->fresh()->name)->toBe('Admin la 8va');
 });
 
-it('cuenta: cambiar el correo o la contraseña pide la contraseña actual', function () {
+it('cuenta: cambiar el usuario o la contraseña pide la contraseña actual', function () {
     $admin = actuarComo(Rol::Admin);
 
-    $this->patchJson('/api/cuenta', ['email' => 'otro@la8va.local'])
+    $this->patchJson('/api/cuenta', ['usuario' => 'otro.admin'])
         ->assertUnprocessable()->assertJsonValidationErrors('password_actual');
-    $this->patchJson('/api/cuenta', ['email' => 'otro@la8va.local', 'password_actual' => 'equivocada'])
+    $this->patchJson('/api/cuenta', ['usuario' => 'otro.admin', 'password_actual' => 'equivocada'])
         ->assertUnprocessable()->assertJsonValidationErrors('password_actual');
     $this->patchJson('/api/cuenta', ['password' => 'clave-nueva-123', 'password_confirmation' => 'clave-nueva-123'])
         ->assertUnprocessable()->assertJsonValidationErrors('password_actual');
 
-    expect($admin->fresh()->email)->not->toBe('otro@la8va.local');
+    expect($admin->fresh()->usuario)->not->toBe('otro.admin');
 
-    $this->patchJson('/api/cuenta', ['email' => 'otro@la8va.local', 'password_actual' => 'password'])->assertOk();
-    expect($admin->fresh()->email)->toBe('otro@la8va.local');
+    $this->patchJson('/api/cuenta', ['usuario' => 'otro.admin', 'password_actual' => 'password'])->assertOk();
+    expect($admin->fresh()->usuario)->toBe('otro.admin');
 });
 
 it('cuenta: la contraseña nueva se confirma y reemplaza a la anterior', function () {
@@ -181,9 +175,9 @@ it('RF-11: el cambio de contraseña queda auditado sin copiar la clave ni su has
 });
 
 it('usuarios:clave restablece la contraseña de un admin desde el servidor', function () {
-    $admin = User::factory()->rol(Rol::Admin)->create(['email' => 'jefe@la8va.local']);
+    $admin = User::factory()->rol(Rol::Admin)->create(['usuario' => 'jefe']);
 
-    $this->artisan('usuarios:clave', ['email' => 'jefe@la8va.local'])
+    $this->artisan('usuarios:clave', ['usuario' => 'jefe'])
         ->expectsQuestion('Contraseña nueva', 'clave-servidor-1')
         ->expectsQuestion('Repita la contraseña', 'clave-servidor-1')
         ->assertSuccessful();
@@ -191,12 +185,12 @@ it('usuarios:clave restablece la contraseña de un admin desde el servidor', fun
     expect(Hash::check('clave-servidor-1', $admin->fresh()->password))->toBeTrue();
 });
 
-it('usuarios:clave falla con un correo inexistente o si la confirmación no coincide', function () {
-    User::factory()->rol(Rol::Admin)->create(['email' => 'jefe@la8va.local']);
+it('usuarios:clave falla con un usuario inexistente o si la confirmación no coincide', function () {
+    User::factory()->rol(Rol::Admin)->create(['usuario' => 'jefe']);
 
-    $this->artisan('usuarios:clave', ['email' => 'nadie@la8va.local'])->assertFailed();
+    $this->artisan('usuarios:clave', ['usuario' => 'nadie'])->assertFailed();
 
-    $this->artisan('usuarios:clave', ['email' => 'jefe@la8va.local'])
+    $this->artisan('usuarios:clave', ['usuario' => 'jefe'])
         ->expectsQuestion('Contraseña nueva', 'clave-servidor-1')
         ->expectsQuestion('Repita la contraseña', 'otra-clave-22')
         ->assertFailed();

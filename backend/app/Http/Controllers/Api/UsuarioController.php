@@ -15,20 +15,20 @@ class UsuarioController extends Controller
 
     public function index(): JsonResponse
     {
-        return response()->json(User::orderBy('name')->paginate(50, ['id', 'name', 'email', 'rol', 'activo']));
+        return response()->json(User::orderBy('name')->paginate(50, ['id', 'name', 'usuario', 'rol', 'activo']));
     }
 
     public function store(UsuarioRequest $request): JsonResponse
     {
         $usuario = $this->usuarios->crear($request->validated());
 
-        return response()->json($usuario->only('id', 'name', 'email', 'rol', 'activo'), 201);
+        return response()->json($usuario->only('id', 'name', 'usuario', 'rol', 'activo'), 201);
     }
 
     public function update(UsuarioRequest $request, User $usuario): JsonResponse
     {
         $usuario = $this->usuarios->actualizar($usuario, $request->validated());
 
-        return response()->json($usuario->only('id', 'name', 'email', 'rol', 'activo'));
+        return response()->json($usuario->only('id', 'name', 'usuario', 'rol', 'activo'));
     }
 }

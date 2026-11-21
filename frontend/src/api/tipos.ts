@@ -4,10 +4,23 @@ export type MetodoCaptura = 'escaneado' | 'digitado'
 export interface Usuario {
   id: number
   name: string
-  email: string
+  /** Nombre de usuario con que se inicia sesión (no es un correo). */
+  usuario: string
   rol: Rol
   activo?: boolean
 }
+
+/** RF-13: no se borra; se desactiva. */
+export interface Cliente {
+  id: number
+  nombre: string
+  documento: string | null
+  telefono: string | null
+  plazo_dias: number
+  activo: boolean
+}
+
+export type FormaPago = 'contado' | 'credito'
 
 export interface Opcion {
   id: number
@@ -31,6 +44,8 @@ export interface Referencia {
   codigo_referencia: string
   descripcion: string
   precio_venta: string
+  /** RF-14 / S-15: IVA con que se vende (0 = sin IVA). */
+  iva_venta_porcentaje: string
   existencia: number
   marca_id: number
   proveedor_id: number
@@ -105,6 +120,9 @@ export interface Ingreso {
 
 export interface VentaItem {
   id: number
+  /** RF-14: precio e IVA copiados de la referencia al escanear; null en ventas antiguas. */
+  precio_unitario: string | null
+  iva_porcentaje: string | null
   metodo_captura: MetodoCaptura
   created_at: string
   usuario: { id: number; name: string }
@@ -124,9 +142,16 @@ export interface Reverso {
 export interface Venta {
   id: number
   estado: 'abierta' | 'cerrada'
+  /** RF-14 */
+  forma_pago: FormaPago
+  cliente: { id: number; nombre: string; documento: string | null; plazo_dias: number } | null
+  /** Número de factura de Contapyme, solo como texto de referencia. */
+  factura_contapyme: string | null
   usuario?: { id: number; name: string }
   created_at: string
   cerrada_at: string | null
+  /** Fecha (aaaa-mm-dd) que calcula el backend al cerrar una venta a crédito. */
+  vence_el: string | null
   items: VentaItem[]
   reversos: Reverso[]
 }
