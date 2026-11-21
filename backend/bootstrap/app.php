@@ -29,7 +29,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(fn (Request $request) => $request->is('api/*') || $request->expectsJson());
 
-        $exceptions->render(fn (ReglaInventarioException $e) => response()->json(['message' => $e->getMessage()], $e->status));
+        $exceptions->render(fn (ReglaInventarioException $e) => response()->json(['message' => $e->getMessage(), ...$e->datos], $e->status));
 
         $exceptions->render(fn (RegistroInmutableException $e) => response()->json(['message' => $e->getMessage()], 409));
 

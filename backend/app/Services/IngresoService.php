@@ -8,6 +8,7 @@ use App\Exceptions\ReglaInventarioException;
 use App\Models\Ingreso;
 use App\Models\IngresoItem;
 use App\Models\User;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -23,20 +24,43 @@ class IngresoService
         private readonly CodigoBarrasService $codigos,
     ) {}
 
-    /** @param array{proveedor_id:int, numero_documento:string, fecha:string, descuento_total?:float} $datos */
+    /**
+     * RF-04 / RF-05: crea el borrador de una remisión o una factura, digitado a mano (sin tipo,
+     * remisión). El mismo documento (proveedor + tipo + número) no entra dos veces: si ya hay un
+     * borrador se devuelve para reabrirlo (wasRecentlyCreated = false); si está confirmado, se rechaza.
+     *
+     * @param  array{tipo?:TipoIngreso|string, proveedor_id:int, numero_documento:string, fecha:string, descuento_total?:float}  $datos
+     */
     public function crearBorrador(array $datos, User $usuario): Ingreso
     {
-        return Ingreso::create([
-            ...$datos,
-            'tipo' => TipoIngreso::Remision,
-            'usuario_id' => $usuario->id,
-        ])->refresh();
+        $tipo = $datos['tipo'] ?? TipoIngreso::Remision;
+        $datos['tipo'] = $tipo instanceof TipoIngreso ? $tipo : TipoIngreso::from($tipo);
+        $datos['numero_documento'] = Ingreso::normalizarNumero($datos['numero_documento']);
+
+        if ($existente = $this->buscarDocumento($datos)) {
+            return $this->reabrir($existente);
+        }
+
+        try {
+            return Ingreso::create([...$datos, 'usuario_id' => $usuario->id])->refresh();
+        } catch (UniqueConstraintViolationException) {
+            // Otro usuario creó el mismo documento al mismo tiempo.
+            return $this->reabrir($this->buscarDocumento($datos));
+        }
     }
 
     public function actualizarEncabezado(Ingreso $ingreso, array $datos): Ingreso
     {
+        if (isset($datos['numero_documento'])) {
+            $datos['numero_documento'] = Ingreso::normalizarNumero($datos['numero_documento']);
+        }
+
         return $this->enBorrador($ingreso, function (Ingreso $bloqueado) use ($datos) {
-            $bloqueado->update($datos);
+            try {
+                $bloqueado->update($datos);
+            } catch (UniqueConstraintViolationException) {
+                throw new ReglaInventarioException('Ya hay otro ingreso de ese proveedor con el mismo tipo y número de documento.', 422);
+            }
 
             return $bloqueado;
         });
@@ -104,6 +128,32 @@ class IngresoService
 
             return $cambio($bloqueado);
         });
+    }
+
+    /** @param array{tipo:TipoIngreso, proveedor_id:int, numero_documento:string} $datos */
+    private function buscarDocumento(array $datos): ?Ingreso
+    {
+        return Ingreso::query()
+            ->where('proveedor_id', $datos['proveedor_id'])
+            ->where('tipo', $datos['tipo'])
+            ->where('numero_documento', $datos['numero_documento'])
+            ->first();
+    }
+
+    private function reabrir(Ingreso $ingreso): Ingreso
+    {
+        if ($ingreso->esBorrador()) {
+            return $ingreso;
+        }
+
+        $tipo = $ingreso->tipo === TipoIngreso::Factura ? 'La factura' : 'La remisión';
+        $cuando = $ingreso->confirmado_at?->format('d/m/Y');
+
+        throw new ReglaInventarioException(
+            "{$tipo} {$ingreso->numero_documento} de este proveedor ya se ingresó (ingreso #{$ingreso->id}, confirmado el {$cuando}). No se ingresa dos veces.",
+            422,
+            ['motivo' => 'documento_confirmado', 'ingreso_id' => $ingreso->id],
+        );
     }
 
     private function exigirBorrador(Ingreso $ingreso): void

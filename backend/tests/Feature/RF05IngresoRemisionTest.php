@@ -12,7 +12,7 @@ it('RF-05: un recibo por remisión se carga ítem por ítem, sin QR, y entra al 
     $sensor = referencia('SEN-TEMP-01');
     $arranque = referencia('ARR-12V-9D');
 
-    $id = $this->postJson('/api/ingresos', [
+    $id = $this->postJson('/api/ingresos', ['tipo' => 'remision',
         'proveedor_id' => $sensor->proveedor_id,
         'numero_documento' => 'REM-9001',
         'fecha' => '2026-10-29',
@@ -48,14 +48,14 @@ it('RF-05: un ingreso confirmado no se puede confirmar otra vez ni modificar', f
 it('RF-05: un ingreso sin ítems no se confirma', function () {
     actuarComo(Rol::Logistica);
 
-    $id = $this->postJson('/api/ingresos', ['proveedor_id' => Proveedor::first()->id, 'numero_documento' => 'R1', 'fecha' => '2026-10-29'])->json('id');
+    $id = $this->postJson('/api/ingresos', ['tipo' => 'remision', 'proveedor_id' => Proveedor::first()->id, 'numero_documento' => 'R1', 'fecha' => '2026-10-29'])->json('id');
 
     $this->postJson("/api/ingresos/{$id}/confirmar")->assertUnprocessable();
 });
 
 it('RF-05: en borrador se puede quitar una línea; no afecta otros ingresos', function () {
     actuarComo(Rol::Logistica);
-    $id = $this->postJson('/api/ingresos', ['proveedor_id' => Proveedor::first()->id, 'numero_documento' => 'R2', 'fecha' => '2026-10-29'])->json('id');
+    $id = $this->postJson('/api/ingresos', ['tipo' => 'remision', 'proveedor_id' => Proveedor::first()->id, 'numero_documento' => 'R2', 'fecha' => '2026-10-29'])->json('id');
     $itemId = $this->postJson("/api/ingresos/{$id}/items", ['referencia_id' => referencia('SEN-TEMP-01')->id, 'cantidad' => 1, 'costo_unitario' => 1])
         ->json('items.0.id');
 
@@ -65,7 +65,7 @@ it('RF-05: en borrador se puede quitar una línea; no afecta otros ingresos', fu
 it('RF-09: el ingreso registra y muestra el descuento de la factura', function () {
     actuarComo(Rol::Logistica);
 
-    $id = $this->postJson('/api/ingresos', [
+    $id = $this->postJson('/api/ingresos', ['tipo' => 'remision',
         'proveedor_id' => Proveedor::first()->id, 'numero_documento' => 'R3', 'fecha' => '2026-10-29', 'descuento_total' => 15000,
     ])->json('id');
     $respuesta = $this->postJson("/api/ingresos/{$id}/items", [
@@ -80,7 +80,7 @@ it('RF-09: el ingreso registra y muestra el descuento de la factura', function (
 
 it('RF-10: una línea sin IVA no suma impuesto y queda registrada como sin IVA', function () {
     actuarComo(Rol::Logistica);
-    $id = $this->postJson('/api/ingresos', ['proveedor_id' => Proveedor::first()->id, 'numero_documento' => 'R4', 'fecha' => '2026-10-29'])->json('id');
+    $id = $this->postJson('/api/ingresos', ['tipo' => 'remision', 'proveedor_id' => Proveedor::first()->id, 'numero_documento' => 'R4', 'fecha' => '2026-10-29'])->json('id');
 
     $this->postJson("/api/ingresos/{$id}/items", ['referencia_id' => referencia('SEN-TEMP-01')->id, 'cantidad' => 2, 'costo_unitario' => 10000, 'sin_iva' => true]);
     $respuesta = $this->postJson("/api/ingresos/{$id}/items", ['referencia_id' => referencia('ARR-12V-9D')->id, 'cantidad' => 1, 'costo_unitario' => 10000]);

@@ -83,6 +83,12 @@ class Ingreso extends Model
         return round($subtotal - (float) $this->descuento_total + $iva, 2);
     }
 
+    /** RF-04: el número del documento se guarda recortado y con un solo espacio entre partes. */
+    public static function normalizarNumero(string $numero): string
+    {
+        return preg_replace('/\s+/u', ' ', trim($numero));
+    }
+
     public function esBorrador(): bool
     {
         return $this->estado === EstadoIngreso::Borrador;

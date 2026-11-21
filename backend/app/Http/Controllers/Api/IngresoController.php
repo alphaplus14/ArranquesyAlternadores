@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\TipoIngreso;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\IngresoItemRequest;
 use App\Http\Resources\IngresoResource;
@@ -13,6 +14,7 @@ use App\Services\IngresoService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Validation\Rule;
 
 /**
  * RF-05: ingreso por remisión: crear borrador, agregar ítems y confirmar.
@@ -36,11 +38,14 @@ class IngresoController extends Controller
         return response()->json($pagina);
     }
 
+    /** RF-04 / RF-05: 201 si crea el borrador; 200 si el documento ya estaba en borrador y se reabre. */
     public function store(Request $request): JsonResponse
     {
         $ingreso = $this->servicio->crearBorrador($this->validarEncabezado($request), $request->user());
 
-        return (new IngresoResource($ingreso->load('proveedor:id,nombre', 'items')))->response()->setStatusCode(201);
+        return (new IngresoResource($this->cargar($ingreso)))
+            ->response()
+            ->setStatusCode($ingreso->wasRecentlyCreated ? 201 : 200);
     }
 
     public function show(Ingreso $ingreso): IngresoResource
@@ -111,6 +116,8 @@ class IngresoController extends Controller
         $requerido = $parcial ? 'sometimes' : 'required';
 
         return $request->validate([
+            // El tipo se fija al crear: cambiarlo cambiaría de qué documento se trata.
+            ...($parcial ? [] : ['tipo' => ['required', Rule::enum(TipoIngreso::class)]]),
             'proveedor_id' => [$requerido, 'integer', 'exists:proveedores,id'],
             'numero_documento' => [$requerido, 'string', 'max:60'],
             'fecha' => [$requerido, 'date'],
