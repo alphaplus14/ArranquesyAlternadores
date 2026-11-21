@@ -5,6 +5,7 @@ import type { Pagina, Rol, Usuario } from '../../api/tipos'
 import { useAuth } from '../../auth/AuthProvider'
 import { normalizarUsuario } from '../../auth/nombreUsuario'
 import { useListaPaginada } from '../../hooks/useListaPaginada'
+import Icono from '../../componentes/Icono'
 import Medida from '../../componentes/Medida'
 import Paginacion from '../../componentes/Paginacion'
 
@@ -81,11 +82,27 @@ export default function Usuarios() {
                 </select>
               </td>
               <td>
-                <button className="enlace" onClick={() => cambiar.mutate({ id: u.id, activo: !u.activo })}>
-                  {u.activo ? 'Activo · desactivar' : 'Inactivo · activar'}
+                <button
+                  type="button"
+                  className={`icono-accion ${u.activo ? 'peligro' : 'ok'}`}
+                  title={u.activo ? 'Desactivar' : 'Activar'}
+                  aria-label={u.activo ? `Desactivar a ${u.name}` : `Activar a ${u.name}`}
+                  onClick={() => cambiar.mutate({ id: u.id, activo: !u.activo })}
+                >
+                  <Icono nombre={u.activo ? 'desactivar' : 'activar'} />
                 </button>
               </td>
-              <td><button className="enlace" onClick={() => setCambiandoClave(u)}>Cambiar contraseña</button></td>
+              <td>
+                <button
+                  type="button"
+                  className="icono-accion"
+                  title="Cambiar contraseña"
+                  aria-label={`Cambiar contraseña de ${u.name}`}
+                  onClick={() => setCambiandoClave(u)}
+                >
+                  <Icono nombre="clave" />
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>

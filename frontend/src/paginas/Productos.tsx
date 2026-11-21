@@ -15,6 +15,15 @@ import { useVentana } from '../hooks/useVentana'
 /** Filas por petición. El tope del API es 100; el DOM solo pinta las visibles. */
 const POR_PAGINA = 100
 const ALTO_FILA = 56
+const RESUMEN_GUARDADO = 'productos-resumen'
+
+function resumenGuardado(): boolean {
+  try {
+    return localStorage.getItem(RESUMEN_GUARDADO) === '1'
+  } catch {
+    return false
+  }
+}
 
 type Formulario = {
   codigo_referencia: string
@@ -70,6 +79,7 @@ export default function Productos() {
   const [resaltada, setResaltada] = useState<number | null>(null)
   const [aviso, setAviso] = useState<Aviso | null>(null)
   const [lectura, setLectura] = useState<Lectura | null>(null)
+  const [resumenAbierto, setResumenAbierto] = useState(resumenGuardado)
   const [editando, setEditando] = useState<{ id: number | null; datos: Formulario } | null>(null)
   const lectorRef = useRef<HTMLInputElement>(null)
   const termino = useDebounce(q.trim())
@@ -157,7 +167,7 @@ export default function Productos() {
   })
 
   const columnas = esAdmin
-    ? '148px minmax(180px, 1.6fr) 120px 140px 130px 120px 76px 96px 148px'
+    ? '148px minmax(180px, 1.6fr) 120px 140px 130px 120px 76px 96px 92px'
     : '148px minmax(180px, 1.6fr) 120px 140px 130px 120px 76px 96px'
 
   return (
@@ -167,37 +177,65 @@ export default function Productos() {
         <p>El catálogo llega por páginas. El escáner localiza la unidad en el momento.</p>
       </div>
 
-      <section className="medidas">
-        <article className="medida">
-          <div>
-            <span className="medida-etiqueta">Resultados</span>
-            <strong className="medida-numero">{info ? info.total.toLocaleString('es-CO') : '—'}</strong>
-          </div>
-          <span className="medida-icono azul"><Icono nombre="caja" /></span>
-        </article>
-        <article className="medida">
-          <div>
-            <span className="medida-etiqueta">Página</span>
-            <strong className="medida-numero">{info ? `${info.actual} / ${info.ultima}` : '—'}</strong>
-          </div>
-          <span className="medida-icono amarillo"><Icono nombre="catalogo" /></span>
-        </article>
-        <article className="medida">
-          <div>
-            <span className="medida-etiqueta">Agotados en esta página</span>
-            <strong className="medida-numero">{resultado ? agotadosPagina : '—'}</strong>
-          </div>
-          <span className="medida-icono rojo"><Icono nombre="agotados" /></span>
-        </article>
-        <article className="medida">
-          <div>
-            <span className="medida-etiqueta">Última lectura</span>
-            <strong className="medida-numero medida-codigo">{lectura?.titulo ?? '—'}</strong>
-            <span className="medida-pie">{lectura ? `${lectura.codigo} · ${lectura.metodo}` : 'Esperando un código'}</span>
-          </div>
-          <span className="medida-icono verde"><Icono nombre="etiqueta" /></span>
-        </article>
-      </section>
+      <div className={resumenAbierto ? 'resumen abierto' : 'resumen'}>
+        <button
+          type="button"
+          className="resumen-barra"
+          aria-expanded={resumenAbierto}
+          aria-controls="resumen-productos"
+          onClick={() => setResumenAbierto((abierto) => {
+            const siguiente = !abierto
+            try { localStorage.setItem(RESUMEN_GUARDADO, siguiente ? '1' : '0') } catch { /* el navegador puede bloquear el almacenamiento */ }
+            return siguiente
+          })}
+        >
+          <span className="resumen-titulo">{resumenAbierto ? 'Ocultar resumen' : 'Resumen'}</span>
+          {!resumenAbierto && (
+            <span className="resumen-datos">
+              <span><strong>{info ? info.total.toLocaleString('es-CO') : '—'}</strong> resultados</span>
+              <span>Pág. <strong>{info ? `${info.actual}/${info.ultima}` : '—'}</strong></span>
+              <span className={resultado && agotadosPagina > 0 ? 'resumen-agotados' : ''}>
+                <strong>{resultado ? agotadosPagina : '—'}</strong> agotados
+              </span>
+              <span>Lectura <strong>{lectura?.titulo ?? '—'}</strong></span>
+            </span>
+          )}
+          <span className="resumen-chevron" aria-hidden><Icono nombre="chevron" /></span>
+        </button>
+        {resumenAbierto && (
+          <section className="medidas" id="resumen-productos">
+            <article className="medida">
+              <div>
+                <span className="medida-etiqueta">Resultados</span>
+                <strong className="medida-numero">{info ? info.total.toLocaleString('es-CO') : '—'}</strong>
+              </div>
+              <span className="medida-icono azul"><Icono nombre="caja" /></span>
+            </article>
+            <article className="medida">
+              <div>
+                <span className="medida-etiqueta">Página</span>
+                <strong className="medida-numero">{info ? `${info.actual} / ${info.ultima}` : '—'}</strong>
+              </div>
+              <span className="medida-icono amarillo"><Icono nombre="catalogo" /></span>
+            </article>
+            <article className="medida">
+              <div>
+                <span className="medida-etiqueta">Agotados en esta página</span>
+                <strong className="medida-numero">{resultado ? agotadosPagina : '—'}</strong>
+              </div>
+              <span className="medida-icono rojo"><Icono nombre="agotados" /></span>
+            </article>
+            <article className="medida">
+              <div>
+                <span className="medida-etiqueta">Última lectura</span>
+                <strong className="medida-numero medida-codigo">{lectura?.titulo ?? '—'}</strong>
+                <span className="medida-pie">{lectura ? `${lectura.codigo} · ${lectura.metodo}` : 'Esperando un código'}</span>
+              </div>
+              <span className="medida-icono verde"><Icono nombre="etiqueta" /></span>
+            </article>
+          </section>
+        )}
+      </div>
 
       <section className="tarjeta-pagina" style={{ ['--cols' as string]: columnas }}>
         <div className="fila-titulo">
@@ -232,6 +270,7 @@ export default function Productos() {
         />
         {aviso && <div className={`aviso ${aviso.tipo}`} role="status">{aviso.texto}</div>}
 
+        <div className="tabla-contenedor">
         <div className={`tabla-scroll${cargando ? ' actualizando' : ''}`} role="table" aria-label="Productos" aria-rowcount={info?.total} ref={ventana.ref} onScroll={ventana.onScroll}>
           <div role="row" className="tabla-rejilla tabla-cabeza">
             <div role="columnheader">Referencia</div>
@@ -241,8 +280,8 @@ export default function Productos() {
             <div role="columnheader">Categoría</div>
             <div role="columnheader">Precio</div>
             <div role="columnheader">IVA</div>
-            <div role="columnheader">Existencia</div>
-            {esAdmin && <div role="columnheader">Acciones</div>}
+            <div role="columnheader" className="col-numero">Existencia</div>
+            {esAdmin && <div role="columnheader" className="col-acciones">Acciones</div>}
           </div>
           <div>
             {filas.length === 0 && !cargando && <div className="vacio">Sin productos para esta búsqueda.</div>}
@@ -258,11 +297,26 @@ export default function Productos() {
                       <div role="cell" className="corta">{r.categoria?.nombre}</div>
                       <div role="cell">{sinPrecio(r) ? <span className="chip sin-precio" title="Una venta a crédito de esta referencia quedaría en $0">Sin precio</span> : Number(r.precio_venta).toLocaleString('es-CO')}</div>
                       <div role="cell">{Number(r.iva_venta_porcentaje) === 0 ? <span className="chip">Sin IVA</span> : `${Number(r.iva_venta_porcentaje)} %`}</div>
-                      <div role="cell" className={r.existencia === 0 ? 'agotado' : ''}>{r.existencia}</div>
+                      <div role="cell" className={r.existencia === 0 ? 'agotado col-numero' : 'col-numero'}>{r.existencia}</div>
                       {esAdmin && (
                         <div role="cell" className="acciones-fila">
-                          <button type="button" className="enlace" onClick={() => editar(r)}>Editar</button>
-                          <Link to={`/admin/auditoria?tabla=referencias&registro_id=${r.id}`}>Historial</Link>
+                          <button
+                            type="button"
+                            className="icono-accion"
+                            aria-label={`Editar ${r.codigo_referencia}`}
+                            title="Editar"
+                            onClick={() => editar(r)}
+                          >
+                            <Icono nombre="editar" />
+                          </button>
+                          <Link
+                            className="icono-accion"
+                            to={`/admin/auditoria?tabla=referencias&registro_id=${r.id}`}
+                            aria-label={`Historial de ${r.codigo_referencia}`}
+                            title="Historial"
+                          >
+                            <Icono nombre="auditoria" />
+                          </Link>
                         </div>
                       )}
                     </div>
@@ -271,6 +325,7 @@ export default function Productos() {
               </div>
             )}
           </div>
+        </div>
         </div>
         <Paginacion pagina={resultado} onCambiar={(n) => { irA(n); setResaltada(null) }} />
       </section>
