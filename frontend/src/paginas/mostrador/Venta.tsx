@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeError } from '../../api/cliente'
 import type { Cliente, MetodoCaptura, Pagina, Referencia, Venta as TVenta, VentaItem } from '../../api/tipos'
 import Medida from '../../componentes/Medida'
+import Resumen from '../../componentes/Resumen'
 import { useScanner } from '../../hooks/useScanner'
 import { useDebounce } from '../../hooks/useDebounce'
 import { formatoNumero, leerNumero } from '../../componentes/numeros'
@@ -142,12 +143,22 @@ export default function Venta() {
         <h1>Venta de mostrador</h1>
         <p>Cada lectura descuenta la unidad al momento. La venta no se borra: se reversa.</p>
       </div>
-      <section className="medidas">
+      <Resumen
+        clave="venta-resumen"
+        compacto={(
+          <>
+            <span>Venta <strong>{v ? `#${v.id}` : '—'}</strong>{v ? ` · ${v.estado}` : ' · sin abrir'}</span>
+            <span>Ítems <strong>{v ? vigentes.length : '—'}</strong></span>
+            <span className={v && v.reversos.length > 0 ? 'resumen-agotados' : ''}>Reversos <strong>{v ? v.reversos.length : '—'}</strong></span>
+            <span>Última <strong>{ultimo?.unidad.codigo_barras ?? '—'}</strong></span>
+          </>
+        )}
+      >
         <Medida etiqueta="Venta" valor={v ? `#${v.id}` : '—'} pie={v?.estado ?? 'Sin abrir'} tono="azul" icono="venta" />
         <Medida etiqueta="Ítems vigentes" valor={v ? vigentes.length : '—'} tono="amarillo" icono="caja" />
         <Medida etiqueta="Reversos" valor={v ? v.reversos.length : '—'} tono="rojo" icono="auditoria" />
         <Medida etiqueta="Última unidad" valor={ultimo?.unidad.codigo_barras ?? '—'} pie={ultimo?.unidad.referencia?.codigo_referencia} tono="verde" icono="etiqueta" codigo />
-      </section>
+      </Resumen>
       <div className="venta">
       <section className="panel">
         <div className="fila-titulo">

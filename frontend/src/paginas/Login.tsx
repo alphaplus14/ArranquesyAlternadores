@@ -4,6 +4,8 @@ import { AxiosError } from 'axios'
 import { mensajeError } from '../api/cliente'
 import { useAuth } from '../auth/AuthProvider'
 import { errorUsuario, normalizarUsuario } from '../auth/nombreUsuario'
+import Icono from '../componentes/Icono'
+import logo from '../assets/logo-la8va.jpg'
 import { rutaInicio } from '../rutas'
 
 type Campo = 'usuario' | 'password'
@@ -60,10 +62,12 @@ export default function Login() {
 
   return (
     <div className="login">
-      <form className="panel" noValidate onSubmit={(e) => { e.preventDefault(); void enviar() }}>
-        <div className="marca-login"><span className="marca-ocho">8</span></div>
-        <h1>Arranques y Alternadores la 8va</h1>
-        <p>Inventario</p>
+      <div className="login-marco">
+        <form className="panel" noValidate onSubmit={(e) => { e.preventDefault(); void enviar() }}>
+        <header className="login-cabeza">
+          <img className="login-logo" src={logo} alt="Arranques y Alternadores la 8va" />
+          <h1>Inventario</h1>
+        </header>
 
         <label>Usuario
           <input
@@ -73,6 +77,7 @@ export default function Login() {
             autoCapitalize="none"
             autoCorrect="off"
             spellCheck={false}
+            placeholder="Tu usuario"
             value={usuario}
             onChange={(e) => {
               setUsuario(normalizarUsuario(e.target.value))
@@ -90,6 +95,7 @@ export default function Login() {
               name="password"
               type={verClave ? 'text' : 'password'}
               autoComplete="current-password"
+              placeholder="Tu contraseña"
               value={password}
               onChange={(e) => {
                 setPassword(e.target.value)
@@ -103,12 +109,12 @@ export default function Login() {
             />
             <button
               type="button"
-              className="enlace ver-clave"
+              className="ver-clave"
               aria-pressed={verClave}
               aria-label={verClave ? 'Ocultar contraseña' : 'Mostrar contraseña'}
               onClick={() => setVerClave((v) => !v)}
             >
-              {verClave ? 'Ocultar' : 'Mostrar'}
+              <Icono nombre={verClave ? 'ojo-cerrado' : 'ojo'} />
             </button>
           </span>
         </label>
@@ -116,8 +122,9 @@ export default function Login() {
         {bloqMayus && <p className="ayuda atencion" role="status">Bloq Mayús está activado.</p>}
 
         {errorServidor && <div className="aviso error" role="alert">{errorServidor}</div>}
-        <button className="primario" disabled={invalido || enviando}>{enviando ? 'Entrando…' : 'Entrar'}</button>
-      </form>
+        <button className="primario" disabled={enviando}>{enviando ? 'Entrando…' : 'Entrar'}</button>
+        </form>
+      </div>
     </div>
   )
 }

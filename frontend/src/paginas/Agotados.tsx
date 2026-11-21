@@ -4,6 +4,7 @@ import type { Pagina, Referencia } from '../api/tipos'
 import { useProveedores } from '../hooks/useCatalogos'
 import { useListaPaginada } from '../hooks/useListaPaginada'
 import Medida from '../componentes/Medida'
+import Resumen from '../componentes/Resumen'
 import Paginacion from '../componentes/Paginacion'
 
 /** RF-08: referencias con existencia 0 de un proveedor. */
@@ -25,12 +26,22 @@ export default function Agotados() {
         <h1>Agotados por proveedor</h1>
         <p>Referencias con existencia cero. El listado llega paginado desde el servidor.</p>
       </div>
-      <section className="medidas">
+      <Resumen
+        clave="agotados-resumen"
+        compacto={(
+          <>
+            <span>Proveedor <strong>{proveedor?.nombre ?? '—'}</strong></span>
+            <span className={info && info.total > 0 ? 'resumen-agotados' : ''}><strong>{info ? info.total.toLocaleString('es-CO') : '—'}</strong> agotados</span>
+            <span>Pág. <strong>{info ? `${info.actual}/${info.ultima}` : '—'}</strong></span>
+            <span>En página <strong>{resultado ? filas.length : '—'}</strong></span>
+          </>
+        )}
+      >
         <Medida etiqueta="Proveedor" valor={proveedor?.nombre ?? '—'} tono="azul" icono="catalogo" />
         <Medida etiqueta="Agotados" valor={info ? info.total.toLocaleString('es-CO') : '—'} tono="rojo" icono="agotados" />
         <Medida etiqueta="Página" valor={info ? `${info.actual} / ${info.ultima}` : '—'} tono="amarillo" icono="auditoria" />
         <Medida etiqueta="En esta página" valor={resultado ? filas.length : '—'} tono="verde" icono="caja" />
-      </section>
+      </Resumen>
     <section className="tarjeta-pagina">
       <div className="fila-titulo">
         <h2>Referencias</h2>

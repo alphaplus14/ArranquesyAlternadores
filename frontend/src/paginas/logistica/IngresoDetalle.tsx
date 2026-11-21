@@ -10,6 +10,7 @@ import Medida from '../../componentes/Medida'
 import { formatoNumero, leerNumero, pesos } from '../../componentes/numeros'
 import { useCategorias, useMarcas } from '../../hooks/useCatalogos'
 import { useScanner } from '../../hooks/useScanner'
+import Resumen from '../../componentes/Resumen'
 
 interface Aviso { tipo: 'ok' | 'error' | 'atencion'; texto: string }
 type Campo = 'cantidad' | 'costo_unitario' | 'descuento_porcentaje' | 'iva_porcentaje'
@@ -157,12 +158,22 @@ export default function IngresoDetalle() {
         <h1>{i.tipo === 'factura' ? 'Factura' : 'Remisión'} {i.numero_documento}</h1>
         <p>{i.proveedor?.nombre} · {i.fecha.slice(0, 10)}</p>
       </div>
-      <section className="medidas">
+      <Resumen
+        clave="ingreso-detalle-resumen"
+        compacto={(
+          <>
+            <span>Estado <strong>{i.estado}</strong></span>
+            <span>Unidades <strong>{unidades}</strong></span>
+            <span>Total <strong>{i.total ? pesos(i.total) : i.totales ? pesos(i.totales.total) : '—'}</strong></span>
+            <span className={lineasSinCosto > 0 ? 'resumen-agotados' : ''}>Sin costo <strong>{lineasSinCosto}</strong></span>
+          </>
+        )}
+      >
         <Medida etiqueta="Estado" valor={i.estado} tono={borrador ? 'amarillo' : 'verde'} icono="ingreso" />
         <Medida etiqueta="Unidades" valor={unidades} pie={`${i.items.length} línea(s)`} tono="azul" icono="caja" />
         <Medida etiqueta="Total" valor={i.total ? pesos(i.total) : i.totales ? pesos(i.totales.total) : '—'} pie={i.total ? 'fijado al confirmar' : undefined} tono="verde" icono="etiqueta" />
         <Medida etiqueta="Sin costo" valor={lineasSinCosto} pie="líneas por completar" tono={lineasSinCosto > 0 ? 'rojo' : 'amarillo'} icono="agotados" />
-      </section>
+      </Resumen>
       <div className="panel">
         <div className="fila-titulo">
           <h2>Líneas <span className={`chip ${i.estado}`}>{i.estado}</span></h2>

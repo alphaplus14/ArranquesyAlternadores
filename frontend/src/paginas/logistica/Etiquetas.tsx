@@ -4,6 +4,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { api, mensajeError } from '../../api/cliente'
 import type { Unidad } from '../../api/tipos'
 import Medida from '../../componentes/Medida'
+import Resumen from '../../componentes/Resumen'
 
 // Tamaños definidos en el backend (config/etiquetas.php, supuesto S-05).
 interface Tamano { clave: string; nombre: string; ancho: number; alto: number }
@@ -54,12 +55,22 @@ export default function Etiquetas() {
         <h1>Etiquetas</h1>
         <p>Una etiqueta por unidad física. Quien imprime elige el tamaño.</p>
       </div>
-      <section className="medidas">
+      <Resumen
+        clave="etiquetas-resumen"
+        compacto={(
+          <>
+            <span>Ingreso <strong>{ingresoId ? `#${ingresoId}` : '—'}</strong></span>
+            <span>Unidades <strong>{unidades.data?.length ?? '—'}</strong></span>
+            <span>Seleccionadas <strong>{seleccion.size}</strong></span>
+            <span>Tamaño <strong>{tamanoActual ? `${tamanoActual.nombre} ${tamanoActual.ancho}×${tamanoActual.alto}` : tamano}</strong></span>
+          </>
+        )}
+      >
         <Medida etiqueta="Ingreso" valor={ingresoId ? `#${ingresoId}` : '—'} tono="azul" icono="ingreso" />
         <Medida etiqueta="Unidades" valor={unidades.data?.length ?? '—'} tono="amarillo" icono="caja" />
         <Medida etiqueta="Seleccionadas" valor={seleccion.size} tono="verde" icono="etiqueta" />
         <Medida etiqueta="Tamaño" valor={tamanoActual?.nombre ?? tamano} pie={tamanoActual ? `${tamanoActual.ancho}×${tamanoActual.alto} mm` : undefined} tono="rojo" icono="etiqueta" />
-      </section>
+      </Resumen>
     <div className="panel">
       <div className="fila-titulo"><h2>Unidades del ingreso</h2></div>
       <form className="formulario en-linea" onSubmit={(e) => {
