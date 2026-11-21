@@ -2,10 +2,11 @@
 
 namespace App\Http\Resources;
 
+use App\Models\Referencia;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/** @mixin \App\Models\Referencia */
+/** @mixin Referencia */
 class ReferenciaResource extends JsonResource
 {
     public function toArray(Request $request): array
@@ -15,6 +16,7 @@ class ReferenciaResource extends JsonResource
             'codigo_referencia' => $this->codigo_referencia,
             'descripcion' => $this->descripcion,
             'precio_venta' => $this->precio_venta,
+            'iva_venta_porcentaje' => $this->iva_venta_porcentaje,
             'existencia' => $this->existencia,
             'marca_id' => $this->marca_id,
             'proveedor_id' => $this->proveedor_id,

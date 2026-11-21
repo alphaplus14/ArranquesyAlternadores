@@ -2,10 +2,11 @@
 
 namespace App\Http\Resources;
 
+use App\Models\Venta;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/** @mixin \App\Models\Venta  RF-06 / RF-07: la venta se muestra completa, con ítems reversados incluidos. */
+/** @mixin Venta  RF-06 / RF-07: la venta se muestra completa, con ítems reversados incluidos. */
 class VentaResource extends JsonResource
 {
     public function toArray(Request $request): array
@@ -13,11 +14,22 @@ class VentaResource extends JsonResource
         return [
             'id' => $this->id,
             'estado' => $this->estado,
+            'forma_pago' => $this->forma_pago,
+            'cliente' => $this->whenLoaded('cliente', fn () => $this->cliente ? [
+                'id' => $this->cliente->id,
+                'nombre' => $this->cliente->nombre,
+                'documento' => $this->cliente->documento,
+                'plazo_dias' => $this->cliente->plazo_dias,
+            ] : null),
+            'factura_contapyme' => $this->factura_contapyme,
             'usuario' => $this->whenLoaded('usuario', fn () => ['id' => $this->usuario->id, 'name' => $this->usuario->name]),
             'created_at' => $this->created_at,
             'cerrada_at' => $this->cerrada_at,
+            'vence_el' => $this->vence_el?->toDateString(),
             'items' => $this->whenLoaded('items', fn () => $this->items->map(fn ($item) => [
                 'id' => $item->id,
+                'precio_unitario' => $item->precio_unitario,
+                'iva_porcentaje' => $item->iva_porcentaje,
                 'metodo_captura' => $item->metodo_captura,
                 'created_at' => $item->created_at,
                 'usuario' => ['id' => $item->usuario->id, 'name' => $item->usuario->name],

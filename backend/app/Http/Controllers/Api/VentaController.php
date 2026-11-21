@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Enums\MetodoCaptura;
 use App\Enums\TipoReverso;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\AbrirVentaRequest;
 use App\Http\Resources\VentaResource;
 use App\Models\Venta;
 use App\Services\ReversoService;
@@ -28,7 +29,7 @@ class VentaController extends Controller
     public function index(Request $request): JsonResponse
     {
         $pagina = Venta::query()
-            ->with('usuario:id,name')
+            ->with('usuario:id,name', 'cliente:id,nombre')
             ->withCount('items')
             ->when($request->query('estado'), fn ($q, $v) => $q->where('estado', $v))
             ->when(! $request->boolean('todas'), fn ($q) => $q->where('usuario_id', $request->user()->id))
@@ -38,9 +39,15 @@ class VentaController extends Controller
         return response()->json($pagina);
     }
 
-    public function store(Request $request): JsonResponse
+    /** RF-14: de contado o a crédito. */
+    public function store(AbrirVentaRequest $request): JsonResponse
     {
-        $venta = $this->ventas->abrir($request->user());
+        $venta = $this->ventas->abrir(
+            $request->user(),
+            $request->formaPago(),
+            $request->validated('cliente_id'),
+            $request->validated('factura_contapyme'),
+        );
 
         return (new VentaResource($this->cargar($venta)))->response()->setStatusCode(201);
     }
@@ -114,6 +121,7 @@ class VentaController extends Controller
     {
         return $venta->load([
             'usuario:id,name',
+            'cliente:id,nombre,documento,plazo_dias',
             'items' => fn ($q) => $q->orderBy('id'),
             'items.usuario:id,name',
             'items.reversoItem',

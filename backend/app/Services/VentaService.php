@@ -3,8 +3,10 @@
 namespace App\Services;
 
 use App\Enums\EstadoVenta;
+use App\Enums\FormaPago;
 use App\Enums\MetodoCaptura;
 use App\Exceptions\ReglaInventarioException;
+use App\Models\Cliente;
 use App\Models\Unidad;
 use App\Models\User;
 use App\Models\Venta;
@@ -15,14 +17,30 @@ use Illuminate\Support\Facades\DB;
  * RF-06: el descargue es la venta de mostrador. Cada escaneo descuenta la unidad de inmediato,
  * no al cerrar, y deja el usuario responsable. El sistema no factura (eso es Contapyme).
  * RF-12: cada ítem registra si el código fue escaneado o digitado.
+ * RF-14: de contado o a crédito. El crédito exige un cliente activo; cada ítem guarda el precio
+ * y el IVA con que se vendió (S-10, S-15) y, al cerrar, la venta queda con su vencimiento (S-11).
  */
 class VentaService
 {
     public function __construct(private readonly InventarioService $inventario) {}
 
-    public function abrir(User $usuario): Venta
-    {
-        return Venta::create(['usuario_id' => $usuario->id])->refresh();
+    public function abrir(
+        User $usuario,
+        FormaPago $formaPago = FormaPago::Contado,
+        ?int $clienteId = null,
+        ?string $facturaContapyme = null,
+    ): Venta {
+        if ($formaPago === FormaPago::Credito
+            && ($clienteId === null || ! Cliente::whereKey($clienteId)->where('activo', true)->exists())) {
+            throw new ReglaInventarioException('La venta a crédito exige un cliente activo.', 422);
+        }
+
+        return Venta::create([
+            'usuario_id' => $usuario->id,
+            'forma_pago' => $formaPago,
+            'cliente_id' => $clienteId,
+            'factura_contapyme' => $facturaContapyme,
+        ])->refresh();
     }
 
     public function escanear(Venta $venta, string $codigoBarras, MetodoCaptura $metodo, User $usuario): VentaItem
@@ -36,8 +54,13 @@ class VentaService
 
             // lockForUpdate: si dos mostradores escanean la misma unidad, el segundo espera
             // al primero y luego la encuentra vendida.
+            // RF-14: precio e IVA de la referencia llegan en la misma consulta (JOIN), sin un
+            // viaje más a la base. La fila de la referencia queda bloqueada desde aquí, pero el
+            // decremento de existencia de esta misma transacción la bloquearía de todos modos.
             $unidad = Unidad::query()
-                ->where('codigo_barras', trim($codigoBarras))
+                ->join('referencias', 'referencias.id', '=', 'unidades.referencia_id')
+                ->where('unidades.codigo_barras', trim($codigoBarras))
+                ->select('unidades.*', 'referencias.precio_venta as ref_precio_venta', 'referencias.iva_venta_porcentaje as ref_iva_venta')
                 ->lockForUpdate()
                 ->first();
 
@@ -45,9 +68,15 @@ class VentaService
                 throw new ReglaInventarioException("No existe una unidad con el código {$codigoBarras}.", 404);
             }
 
+            $precio = $unidad->ref_precio_venta;
+            $iva = $unidad->ref_iva_venta;
+            unset($unidad->ref_precio_venta, $unidad->ref_iva_venta);
+
             $item = VentaItem::create([
                 'venta_id' => $venta->id,
                 'unidad_id' => $unidad->id,
+                'precio_unitario' => $precio,
+                'iva_porcentaje' => $iva,
                 'metodo_captura' => $metodo,
                 'usuario_id' => $usuario->id,
             ]);
@@ -69,6 +98,13 @@ class VentaService
 
             $venta->estado = EstadoVenta::Cerrada;
             $venta->cerrada_at = now();
+
+            // RF-14 / S-11: vence = fecha de cierre + plazo del cliente.
+            if ($venta->esCredito()) {
+                $plazo = (int) Cliente::whereKey($venta->cliente_id)->value('plazo_dias');
+                $venta->vence_el = $venta->cerrada_at->copy()->startOfDay()->addDays($plazo);
+            }
+
             $venta->save();
 
             return $venta;

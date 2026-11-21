@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-/** RF-06 / RF-12 */
+/** RF-06 / RF-12. RF-14: precio e IVA copiados de la referencia al escanear (S-10, S-15). */
 class VentaItem extends Model
 {
     use Inmutable;
@@ -17,11 +17,15 @@ class VentaItem extends Model
 
     protected $table = 'venta_items';
 
-    protected $fillable = ['venta_id', 'unidad_id', 'metodo_captura', 'usuario_id'];
+    protected $fillable = ['venta_id', 'unidad_id', 'precio_unitario', 'iva_porcentaje', 'metodo_captura', 'usuario_id'];
 
     protected function casts(): array
     {
-        return ['metodo_captura' => MetodoCaptura::class];
+        return [
+            'metodo_captura' => MetodoCaptura::class,
+            'precio_unitario' => 'decimal:2',
+            'iva_porcentaje' => 'decimal:2',
+        ];
     }
 
     public function venta(): BelongsTo
