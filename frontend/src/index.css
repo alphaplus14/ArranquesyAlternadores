@@ -387,3 +387,24 @@ input[aria-invalid='true'] { border-color: var(--peligro); }
 
 /* Tablas anchas: se desplazan dentro de su caja, no la página. */
 .tabla-desplazable { overflow-x: auto; }
+
+/* Ingresos: botón "Nuevo ingreso" junto al título; debajo y a todo el ancho en pantallas angostas. */
+.encabezado-con-accion { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.encabezado-con-accion > .primario { flex: none; min-height: 44px; }
+
+/* Modal "Nuevo ingreso": cabecera y pie fijos, el contenido hace scroll interno. */
+.modal-ingreso { align-items: center; padding: 32px 16px; }
+.ingreso-modal { display: flex; flex-direction: column; max-height: calc(100dvh - 64px); }
+.ingreso-modal-cuerpo { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.ingreso-campos { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.ingreso-modal select, .ingreso-modal input, .ingreso-modal .modal-pie button, .ingreso-modal .modal-cerrar { min-height: 44px; }
+.ingreso-modal .modal-cerrar { min-width: 44px; }
+
+@media (max-width: 639px) {
+  .encabezado-con-accion { flex-direction: column; align-items: stretch; }
+  .encabezado-con-accion > .primario { width: 100%; }
+  .modal-ingreso { padding: 0; align-items: stretch; }
+  .ingreso-modal { max-width: none; height: 100dvh; max-height: 100dvh; border-radius: 0; }
+  .ingreso-campos { grid-template-columns: 1fr; }
+  .ingreso-modal .modal-pie button { flex: 1; }
+}

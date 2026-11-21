@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
@@ -40,48 +40,29 @@ function ingresoExistente(error: unknown): number | null {
  * corrige con el que trae el documento. El backend valida.
  */
 export default function Ingresos() {
-  const navegar = useNavigate()
-  const proveedores = useProveedores()
-  const [form, setForm] = useState({
-    tipo: 'factura' as TipoIngreso,
-    proveedor_id: '',
-    numero_documento: '',
-    fecha: new Date().toLocaleDateString('en-CA'),
-    forma_pago: 'contado' as FormaPago,
-  })
-  // S-22: el descuento del documento es opcional (0), en pesos o en %, en remisiones y facturas.
-  const [modoDescuento, setModoDescuento] = useState<ModoDescuento>('$')
-  const [descuento, setDescuento] = useState('0')
-  /** null = sin tocar: se sugiere fecha + plazo del proveedor. */
-  const [venceEscrito, setVenceEscrito] = useState<string | null>(null)
-  const plazo = proveedores.data?.find((p) => String(p.id) === form.proveedor_id)?.plazo_dias ?? null
-  const venceSugerido = plazo !== null && form.fecha ? sumarDias(form.fecha, plazo) : ''
-  const venceEl = venceEscrito ?? venceSugerido
+  const [creando, setCreando] = useState(false)
+  const botonNuevo = useRef<HTMLButtonElement>(null)
+  const cerrar = useCallback(() => {
+    setCreando(false)
+    // Al cerrar, el foco vuelve al botón que abrió la modal.
+    requestAnimationFrame(() => botonNuevo.current?.focus())
+  }, [])
 
   const { filas, resultado, info, irA } = useListaPaginada<FilaIngreso>({
     clave: ['ingresos'],
     traer: async (pagina) => (await api.get<Pagina<FilaIngreso>>('/ingresos', { params: { page: pagina } })).data,
   })
 
-  const crear = useMutation({
-    mutationFn: async () =>
-      (await api.post<Ingreso>('/ingresos', {
-        ...form,
-        vence_el: form.forma_pago === 'credito' ? venceEl || null : null,
-        [modoDescuento === '%' ? 'descuento_documento_porcentaje' : 'descuento_documento']: descuento === '' ? 0 : descuento,
-      })).data,
-    onSuccess: (i) => navegar(`/logistica/ingresos/${i.id}`),
-  })
-
   const borradores = filas.filter((i) => i.estado === 'borrador').length
-  const existente = crear.isError ? ingresoExistente(crear.error) : null
-  const errores = crear.isError ? erroresCampo(crear.error) : {}
 
   return (
     <div className="pila">
-      <div className="pagina-encabezado">
-        <h1>Ingresos</h1>
-        <p>Remisiones y facturas se crean a mano; los ítems se agregan escaneándolos. Un documento no entra dos veces.</p>
+      <div className="pagina-encabezado encabezado-con-accion">
+        <div>
+          <h1>Ingresos</h1>
+          <p>Remisiones y facturas se crean a mano; los ítems se agregan escaneándolos. Un documento no entra dos veces.</p>
+        </div>
+        <button ref={botonNuevo} type="button" className="primario" onClick={() => setCreando(true)}>Nuevo ingreso</button>
       </div>
       <section className="medidas">
         <Medida etiqueta="Documentos" valor={info ? info.total.toLocaleString('es-CO') : '—'} tono="azul" icono="ingreso" />
@@ -89,57 +70,6 @@ export default function Ingresos() {
         <Medida etiqueta="En esta página" valor={resultado ? filas.length : '—'} tono="verde" icono="caja" />
         <Medida etiqueta="Borradores aquí" valor={resultado ? borradores : '—'} tono="rojo" icono="auditoria" />
       </section>
-      <section className="tarjeta-pagina">
-        <h2>Nuevo ingreso</h2>
-        <form className="formulario en-linea" onSubmit={(e) => { e.preventDefault(); crear.mutate() }}>
-          <label>Tipo
-            <select value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value as TipoIngreso })}>
-              <option value="factura">Factura</option>
-              <option value="remision">Remisión</option>
-            </select>
-          </label>
-          <label>Proveedor
-            <select required value={form.proveedor_id} onChange={(e) => setForm({ ...form, proveedor_id: e.target.value })}>
-              <option value="">—</option>
-              {proveedores.data?.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-            </select>
-          </label>
-          <label>N.º del documento<input required maxLength={60} value={form.numero_documento} onChange={(e) => setForm({ ...form, numero_documento: e.target.value })} /></label>
-          <label>Fecha<input type="date" required value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} /></label>
-          <CampoDescuento
-            id="descuento-nuevo"
-            modo={modoDescuento}
-            valor={descuento}
-            error={errores.descuento_documento ?? errores.descuento_documento_porcentaje}
-            ayuda={modoDescuento === '%' ? 'Se aplica sobre las líneas que escanee.' : undefined}
-            onModo={setModoDescuento}
-            onValor={setDescuento}
-          />
-          <label>Pago
-            <select value={form.forma_pago} onChange={(e) => setForm({ ...form, forma_pago: e.target.value as FormaPago })}>
-              <option value="contado">Contado</option>
-              <option value="credito">Crédito</option>
-            </select>
-          </label>
-          {form.forma_pago === 'credito' && (
-            <label>Vence el
-              <input type="date" aria-invalid={!!errores.vence_el} value={venceEl} onChange={(e) => setVenceEscrito(e.target.value)} />
-              {errores.vence_el
-                ? <small className="ayuda error">{errores.vence_el}</small>
-                : <small className="ayuda">{venceEscrito === null && plazo !== null ? `Fecha + ${plazo} días del proveedor; corríjalo con el del documento.` : 'El que trae el documento.'}</small>}
-            </label>
-          )}
-          <button className="primario" disabled={crear.isPending}>Crear borrador</button>
-        </form>
-        <p className="ayuda">Si ese documento ya está en borrador, se abre el mismo para seguir escaneando.</p>
-        {crear.isError && (
-          <div className="aviso error">
-            {mensajeError(crear.error)}
-            {existente && <> <Link to={`/logistica/ingresos/${existente}`}>Ver el ingreso #{existente}</Link></>}
-          </div>
-        )}
-      </section>
-
       <section className="tarjeta-pagina">
         <div className="fila-titulo"><h2>Documentos</h2></div>
         <div className="tabla-desplazable">
@@ -164,6 +94,132 @@ export default function Ingresos() {
         </div>
         <Paginacion pagina={resultado} onCambiar={irA} />
       </section>
+
+      {creando && <DialogoNuevoIngreso onCerrar={cerrar} />}
+    </div>
+  )
+}
+
+/**
+ * Modal "Nuevo ingreso": el mismo formulario de antes (tipo, proveedor, número, fecha, descuento,
+ * pago y vencimiento). Se monta al abrir, así que cada apertura empieza con los valores iniciales.
+ * Solo se cierra sola cuando la creación tiene éxito (navega al detalle); con error queda abierta.
+ */
+function DialogoNuevoIngreso({ onCerrar }: { onCerrar: () => void }) {
+  const navegar = useNavigate()
+  const proveedores = useProveedores()
+  const [form, setForm] = useState({
+    tipo: 'factura' as TipoIngreso,
+    proveedor_id: '',
+    numero_documento: '',
+    fecha: new Date().toLocaleDateString('en-CA'),
+    forma_pago: 'contado' as FormaPago,
+  })
+  // S-22: el descuento del documento es opcional (0), en pesos o en %, en remisiones y facturas.
+  const [modoDescuento, setModoDescuento] = useState<ModoDescuento>('$')
+  const [descuento, setDescuento] = useState('0')
+  /** null = sin tocar: se sugiere fecha + plazo del proveedor. */
+  const [venceEscrito, setVenceEscrito] = useState<string | null>(null)
+  const plazo = proveedores.data?.find((p) => String(p.id) === form.proveedor_id)?.plazo_dias ?? null
+  const venceSugerido = plazo !== null && form.fecha ? sumarDias(form.fecha, plazo) : ''
+  const venceEl = venceEscrito ?? venceSugerido
+
+  const crear = useMutation({
+    mutationFn: async () =>
+      (await api.post<Ingreso>('/ingresos', {
+        ...form,
+        vence_el: form.forma_pago === 'credito' ? venceEl || null : null,
+        [modoDescuento === '%' ? 'descuento_documento_porcentaje' : 'descuento_documento']: descuento === '' ? 0 : descuento,
+      })).data,
+    onSuccess: (i) => navegar(`/logistica/ingresos/${i.id}`),
+  })
+  const existente = crear.isError ? ingresoExistente(crear.error) : null
+  const errores = crear.isError ? erroresCampo(crear.error) : {}
+
+  // Esc cierra; el fondo no se desplaza mientras la modal está abierta.
+  useEffect(() => {
+    const alPulsar = (e: KeyboardEvent) => { if (e.key === 'Escape') onCerrar() }
+    document.addEventListener('keydown', alPulsar)
+    const desbordeAnterior = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', alPulsar)
+      document.body.style.overflow = desbordeAnterior
+    }
+  }, [onCerrar])
+
+  return (
+    <div className="modal modal-ingreso">
+      <form
+        className="modal-caja cuenta-modal ingreso-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="nuevo-ingreso-titulo"
+        onSubmit={(e) => { e.preventDefault(); crear.mutate() }}
+      >
+        <header className="modal-cabeza">
+          <div className="modal-cabeza-texto">
+            <h2 id="nuevo-ingreso-titulo">Nuevo ingreso</h2>
+          </div>
+          <button type="button" className="icono-boton modal-cerrar" aria-label="Cerrar" onClick={onCerrar}>
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6L6 18" /></svg>
+          </button>
+        </header>
+
+        <section className="modal-seccion ingreso-modal-cuerpo">
+          <div className="ingreso-campos">
+            <label>Tipo
+              <select autoFocus value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value as TipoIngreso })}>
+                <option value="factura">Factura</option>
+                <option value="remision">Remisión</option>
+              </select>
+            </label>
+            <label>Proveedor
+              <select required value={form.proveedor_id} onChange={(e) => setForm({ ...form, proveedor_id: e.target.value })}>
+                <option value="">—</option>
+                {proveedores.data?.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+              </select>
+            </label>
+            <label>N.º del documento<input required maxLength={60} value={form.numero_documento} onChange={(e) => setForm({ ...form, numero_documento: e.target.value })} /></label>
+            <label>Fecha<input type="date" required value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} /></label>
+            <CampoDescuento
+              id="descuento-nuevo"
+              modo={modoDescuento}
+              valor={descuento}
+              error={errores.descuento_documento ?? errores.descuento_documento_porcentaje}
+              ayuda={modoDescuento === '%' ? 'Se aplica sobre las líneas que escanee.' : undefined}
+              onModo={setModoDescuento}
+              onValor={setDescuento}
+            />
+            <label>Pago
+              <select value={form.forma_pago} onChange={(e) => setForm({ ...form, forma_pago: e.target.value as FormaPago })}>
+                <option value="contado">Contado</option>
+                <option value="credito">Crédito</option>
+              </select>
+            </label>
+            {form.forma_pago === 'credito' && (
+              <label>Vence el
+                <input type="date" aria-invalid={!!errores.vence_el} value={venceEl} onChange={(e) => setVenceEscrito(e.target.value)} />
+                {errores.vence_el
+                  ? <small className="ayuda error">{errores.vence_el}</small>
+                  : <small className="ayuda">{venceEscrito === null && plazo !== null ? `Fecha + ${plazo} días del proveedor; corríjalo con el del documento.` : 'El que trae el documento.'}</small>}
+              </label>
+            )}
+          </div>
+          <p className="ayuda">Si ese documento ya está en borrador, se abre el mismo para seguir escaneando.</p>
+          {crear.isError && (
+            <div className="aviso error" role="alert">
+              {mensajeError(crear.error)}
+              {existente && <> <Link to={`/logistica/ingresos/${existente}`}>Ver el ingreso #{existente}</Link></>}
+            </div>
+          )}
+        </section>
+
+        <footer className="modal-pie">
+          <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
+          <button className="primario" disabled={crear.isPending}>{crear.isPending ? 'Creando…' : 'Crear borrador'}</button>
+        </footer>
+      </form>
     </div>
   )
 }
