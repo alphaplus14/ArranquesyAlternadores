@@ -4,11 +4,16 @@ namespace App\Models;
 
 use App\Enums\EstadoIngreso;
 use App\Enums\TipoIngreso;
+use App\Exceptions\RegistroInmutableException;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-/** RF-05 / RF-09. RF-04: tipo factura_qr con CUFE único y totales leídos del QR. */
+/**
+ * RF-05 / RF-09. RF-04: tipo factura_qr con CUFE único y totales leídos del QR; al confirmar
+ * queda registrada la diferencia contra el QR, y si se aceptó, quién y por qué.
+ * Confirmado, el ingreso ya no se edita ni se borra (sus unidades y movimientos dependen de él).
+ */
 class Ingreso extends Model
 {
     protected $table = 'ingresos';
@@ -28,8 +33,26 @@ class Ingreso extends Model
             'subtotal_qr' => 'decimal:2',
             'iva_qr' => 'decimal:2',
             'total_qr' => 'decimal:2',
+            'diferencia_qr' => 'decimal:2',
+            'diferencia_aceptada' => 'boolean',
             'confirmado_at' => 'datetime',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        // Solo se permite el paso de borrador a confirmado; después, nada.
+        static::updating(function (Ingreso $ingreso) {
+            if ($ingreso->getOriginal('estado') === EstadoIngreso::Confirmado) {
+                throw RegistroInmutableException::para($ingreso, 'editar un ingreso confirmado');
+            }
+        });
+
+        static::deleting(function (Ingreso $ingreso) {
+            if ($ingreso->getOriginal('estado') === EstadoIngreso::Confirmado) {
+                throw RegistroInmutableException::para($ingreso, 'borrar un ingreso confirmado');
+            }
+        });
     }
 
     public function proveedor(): BelongsTo
@@ -40,6 +63,12 @@ class Ingreso extends Model
     public function usuario(): BelongsTo
     {
         return $this->belongsTo(User::class, 'usuario_id');
+    }
+
+    /** Quien confirmó; si hubo diferencia aceptada, también quien la aceptó. */
+    public function confirmadoPor(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'confirmado_por');
     }
 
     public function items(): HasMany

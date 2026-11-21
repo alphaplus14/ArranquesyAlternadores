@@ -4,6 +4,7 @@ import { useMutation } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
 import { api, mensajeError } from '../../api/cliente'
 import type { Ingreso } from '../../api/tipos'
+import Medida from '../../componentes/Medida'
 import { useProveedores } from '../../hooks/useCatalogos'
 import { useScanner } from '../../hooks/useScanner'
 
@@ -50,9 +51,19 @@ export default function IngresoQr() {
   const pide = (c: Campo) => pendiente?.faltan.includes(c)
 
   return (
+    <div className="pila">
+      <div className="pagina-encabezado">
+        <h1>Factura con QR</h1>
+        <p>El QR llena el encabezado. Los ítems se digitan en el siguiente paso.</p>
+      </div>
+      <section className="medidas">
+        <Medida etiqueta="Lectura" valor={leer.isPending ? 'Buscando' : pendiente ? 'Incompleta' : 'Lista'} tono="azul" icono="qr" />
+        <Medida etiqueta="Datos que faltan" valor={pendiente?.faltan.length ?? 0} tono={pendiente ? 'rojo' : 'verde'} icono="agotados" />
+        <Medida etiqueta="Proveedores" valor={proveedores.data?.length ?? '—'} tono="amarillo" icono="catalogo" />
+        <Medida etiqueta="Siguiente paso" valor="Ítems" pie="Igual que la remisión" tono="verde" icono="ingreso" />
+      </section>
     <div className="panel">
-      <h1>Ingreso por factura (QR)</h1>
-      <p>Escanee el QR de la factura de compra. Los ítems se digitan en el siguiente paso.</p>
+      <h2>Escanear la factura</h2>
 
       <input
         ref={inputRef}
@@ -90,9 +101,10 @@ export default function IngresoQr() {
             <label>Fecha<input type="date" required value={complemento.fecha} onChange={(e) => setComplemento({ ...complemento, fecha: e.target.value })} /></label>
           )}
           <button className="primario" disabled={leer.isPending}>Continuar</button>
-          <button type="button" onClick={() => setPendiente(null)}>Escanear otra</button>
+          <button type="button" className="secundario" onClick={() => setPendiente(null)}>Escanear otra</button>
         </form>
       )}
+    </div>
     </div>
   )
 }

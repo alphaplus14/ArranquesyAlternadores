@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import { api, mensajeError } from '../../api/cliente'
 import type { Ingreso, Pagina } from '../../api/tipos'
+import { useListaPaginada } from '../../hooks/useListaPaginada'
 import { useProveedores } from '../../hooks/useCatalogos'
+import Medida from '../../componentes/Medida'
 import Paginacion from '../../componentes/Paginacion'
 
 interface FilaIngreso {
@@ -21,12 +23,11 @@ interface FilaIngreso {
 export default function Ingresos() {
   const navegar = useNavigate()
   const proveedores = useProveedores()
-  const [pagina, setPagina] = useState(1)
   const [form, setForm] = useState({ proveedor_id: '', numero_documento: '', fecha: new Date().toISOString().slice(0, 10), descuento_total: '0' })
 
-  const lista = useQuery({
-    queryKey: ['ingresos', pagina],
-    queryFn: async () => (await api.get<Pagina<FilaIngreso>>('/ingresos', { params: { page: pagina } })).data,
+  const { filas, resultado, info, irA } = useListaPaginada<FilaIngreso>({
+    clave: ['ingresos'],
+    traer: async (pagina) => (await api.get<Pagina<FilaIngreso>>('/ingresos', { params: { page: pagina } })).data,
   })
 
   const crear = useMutation({
@@ -34,10 +35,23 @@ export default function Ingresos() {
     onSuccess: (i) => navegar(`/logistica/ingresos/${i.id}`),
   })
 
+  const borradores = filas.filter((i) => i.estado === 'borrador').length
+
   return (
-    <div className="panel">
+    <div className="pila">
+      <div className="pagina-encabezado">
+        <h1>Ingresos</h1>
+        <p>La remisión se carga a mano. La factura entra por el QR y los ítems se confirman igual.</p>
+      </div>
+      <section className="medidas">
+        <Medida etiqueta="Documentos" valor={info ? info.total.toLocaleString('es-CO') : '—'} tono="azul" icono="ingreso" />
+        <Medida etiqueta="Página" valor={info ? `${info.actual} / ${info.ultima}` : '—'} tono="amarillo" icono="catalogo" />
+        <Medida etiqueta="En esta página" valor={resultado ? filas.length : '—'} tono="verde" icono="caja" />
+        <Medida etiqueta="Borradores aquí" valor={resultado ? borradores : '—'} tono="rojo" icono="qr" />
+      </section>
+      <section className="tarjeta-pagina">
       <div className="fila-titulo">
-        <h1>Ingreso por remisión</h1>
+        <h2>Nueva remisión</h2>
         <Link className="boton primario" to="/logistica/ingresos/qr">Factura con QR</Link>
       </div>
       <form className="formulario en-linea" onSubmit={(e) => { e.preventDefault(); crear.mutate() }}>
@@ -53,11 +67,14 @@ export default function Ingresos() {
         <button className="primario" disabled={crear.isPending}>Crear borrador</button>
       </form>
       {crear.isError && <div className="aviso error">{mensajeError(crear.error)}</div>}
+      </section>
 
+      <section className="tarjeta-pagina">
+      <div className="fila-titulo"><h2>Documentos</h2></div>
       <table>
         <thead><tr><th>#</th><th>Tipo</th><th>Documento</th><th>Proveedor</th><th>Fecha</th><th>Unidades</th><th>Estado</th><th>Usuario</th></tr></thead>
         <tbody>
-          {lista.data?.data.map((i) => (
+          {filas.map((i) => (
             <tr key={i.id}>
               <td><Link to={`/logistica/ingresos/${i.id}`}>{i.id}</Link></td>
               <td>{i.tipo === 'factura_qr' ? 'Factura (QR)' : 'Remisión'}</td>
@@ -71,7 +88,8 @@ export default function Ingresos() {
           ))}
         </tbody>
       </table>
-      <Paginacion pagina={lista.data} onCambiar={setPagina} />
+      <Paginacion pagina={resultado} onCambiar={irA} />
+      </section>
     </div>
   )
 }

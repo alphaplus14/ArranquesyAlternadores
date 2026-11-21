@@ -7,6 +7,8 @@ interface AuthContexto {
   cargando: boolean
   entrar: (email: string, password: string) => Promise<void>
   salir: () => Promise<void>
+  /** Refleja en la sesión los datos que devolvió el backend tras editar la cuenta propia. */
+  actualizarUsuario: (usuario: Usuario) => void
   tieneRol: (...roles: Rol[]) => boolean
 }
 
@@ -40,7 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [usuario],
   )
 
-  return <Contexto.Provider value={{ usuario, cargando, entrar, salir, tieneRol }}>{children}</Contexto.Provider>
+  return <Contexto.Provider value={{ usuario, cargando, entrar, salir, actualizarUsuario: setUsuario, tieneRol }}>{children}</Contexto.Provider>
 }
 
 export function useAuth(): AuthContexto {

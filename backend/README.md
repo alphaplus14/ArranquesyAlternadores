@@ -46,7 +46,7 @@ app/
     Concerns/Auditable  RF-11 · Concerns/Inmutable: ventas, reversos, movimientos y auditoría.
   Enums/               Estados y tipos del dominio (Rol, EstadoUnidad, MetodoCaptura…).
   Exceptions/          ReglaInventarioException (→ 4xx) y RegistroInmutableException (→ 409).
-  Console/Commands/    inventario:recalcular, inventario:benchmark
+  Console/Commands/    inventario:recalcular, inventario:benchmark, usuarios:clave
 ```
 
 Reglas:
@@ -71,6 +71,7 @@ php artisan test                              # Unit + Feature + Concurrencia, c
 php artisan inventario:recalcular             # contador vs COUNT(unidades disponibles)
 php artisan inventario:recalcular --corregir  # además ajusta el contador y lo deja en la auditoría
 php artisan inventario:benchmark --n=300      # p50/p95 de escaneo y búsqueda (todo se revierte)
+php artisan usuarios:clave admin@la8va.local  # restablece la clave de una cuenta (los admin no se editan entre sí)
 ```
 
 La duración de cada escaneo y búsqueda queda en `storage/logs/rendimiento-AAAA-MM-DD.log`. Si pasa del objetivo, se registra como `warning`. La cabecera `Server-Timing` también la trae.

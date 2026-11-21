@@ -1,7 +1,7 @@
 # Inventario — Arranques y Alternadores la 8va
 
-Sistema **solo de inventario**: la facturación, la contabilidad y la cartera se quedan en Contapyme.
-Requerimientos: [`docs/requerimientos-v1.1.md`](docs/requerimientos-v1.1.md) · Supuestos abiertos: [`docs/supuestos.md`](docs/supuestos.md) · Reglas para el desarrollo: [`CLAUDE.md`](CLAUDE.md).
+Inventario, compras, cuentas por pagar, ventas a crédito, abonos y saldos. Contapyme se queda con la factura electrónica DIAN y la contabilidad general: no se integra y este sistema no factura.
+Requerimientos: [`docs/requerimientos-v1.1.md`](docs/requerimientos-v1.1.md) · Adenda (manda si contradice al v1.1): [`docs/adenda-v1.2-cartera-y-cuentas-por-pagar.md`](docs/adenda-v1.2-cartera-y-cuentas-por-pagar.md) · Supuestos: [`docs/supuestos.md`](docs/supuestos.md) · Reglas para el desarrollo: [`CLAUDE.md`](CLAUDE.md).
 
 ## Estructura
 
@@ -20,8 +20,9 @@ Son dos aplicaciones independientes: cada una con sus dependencias, su configura
 ## Arranque rápido (desarrollo)
 
 ```bash
-# 1. Base de datos (MySQL 8 en D:\mysql8, puerto 3307)
-D:\mysql8\iniciar-mysql.cmd
+# 1. Base de datos: MySQL 8 en el puerto 3307. La carpeta depende del equipo
+#    (D:\mysql8 en el de César, C:\mysql8 en el de Franklin).
+<carpeta-mysql>\iniciar-mysql.cmd
 
 # 2. Backend
 cd backend
@@ -56,6 +57,6 @@ Se descartó leer el XML de la factura (decisión del 14-nov-2026, ver S-06 en `
    - si ya está en borrador, lo reabre;
    - si ya se confirmó, la rechaza: un CUFE no entra dos veces.
 3. Los ítems se digitan como en la remisión (RF-05, RF-09, RF-10).
-4. Al confirmar, si el total digitado no cuadra con el total del QR (tolerancia en `INGRESOS_TOLERANCIA_TOTAL`, $1 por defecto), hay que aceptar la diferencia explícitamente. Las unidades y la existencia salen por el mismo camino de la remisión.
+4. Al confirmar, si el total digitado no cuadra con el total del QR (tolerancia en `INGRESOS_TOLERANCIA_TOTAL`, $1 por defecto), hay que aceptar la diferencia explícitamente y escribir el motivo (por ejemplo, qué no llegó). La diferencia queda registrada en el ingreso con quién la aceptó; los ingresos con diferencia se listan con `GET /api/ingresos?con_diferencia=1`. Un ingreso confirmado ya no se edita. Las unidades y la existencia salen por el mismo camino de la remisión.
 
 Requisitos: el proveedor debe tener su NIT en el catálogo (el admin lo agrega). Si el QR no trae proveedor, número o fecha, la pantalla los pide. Las claves que se leen del QR son provisionales hasta probar con una factura y un lector reales.

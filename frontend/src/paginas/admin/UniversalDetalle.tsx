@@ -2,6 +2,7 @@ import { Link, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../api/cliente'
 import type { DesgloseUniversal } from '../../api/tipos'
+import Medida from '../../componentes/Medida'
 
 /** RF-02: el total del universal es la suma de sus referencias; siempre se muestra el desglose. */
 export default function UniversalDetalle() {
@@ -14,23 +15,24 @@ export default function UniversalDetalle() {
   if (!u) return <div className="panel">Cargando…</div>
 
   return (
-    <div className="panel">
-      <div className="fila-titulo">
-        <h1>{u.codigo} <small>{u.categoria.nombre}</small></h1>
-        <div className="total-grande">{u.existencia_total} <span>unidades</span></div>
+    <div className="pila">
+      <div className="pagina-encabezado">
+        <h1>{u.codigo}</h1>
+        <p>{u.categoria.nombre}{u.descripcion ? ` · ${u.descripcion}` : ''}</p>
       </div>
-      <p>{u.descripcion}</p>
-
-      <h3>Por marca</h3>
-      <div className="tarjetas">
+      <section className="medidas">
+        <Medida etiqueta="Existencia total" valor={u.existencia_total} tono="azul" icono="universal" />
+        <Medida etiqueta="Referencias" valor={u.referencias.length} tono="amarillo" icono="caja" />
+        <Medida etiqueta="Marcas" valor={u.por_marca.length} tono="verde" icono="catalogo" />
+        <Medida etiqueta="Agotadas" valor={u.por_marca.filter((m) => m.existencia === 0).length} tono="rojo" icono="agotados" />
+      </section>
+      <section className="medidas">
         {u.por_marca.map((m) => (
-          <div key={m.marca_id} className={`tarjeta ${m.existencia === 0 ? 'agotado' : ''}`}>
-            <span>{m.marca}</span><strong>{m.existencia}</strong>
-          </div>
+          <Medida key={m.marca_id} etiqueta={m.marca} valor={m.existencia} tono={m.existencia === 0 ? 'rojo' : 'verde'} icono="etiqueta" />
         ))}
-      </div>
-
-      <h3>Por referencia</h3>
+      </section>
+    <div className="panel">
+      <h2>Por referencia</h2>
       <table>
         <thead><tr><th>Referencia</th><th>Marca</th><th>Proveedor</th><th>Existencia</th><th>Actualizada</th><th></th></tr></thead>
         <tbody>
@@ -47,6 +49,7 @@ export default function UniversalDetalle() {
         </tbody>
         <tfoot><tr><td colSpan={3}>Total</td><td><strong>{u.existencia_total}</strong></td><td colSpan={2}></td></tr></tfoot>
       </table>
+    </div>
     </div>
   )
 }

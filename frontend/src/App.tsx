@@ -10,7 +10,7 @@ import Ingresos from './paginas/logistica/Ingresos'
 import IngresoDetalle from './paginas/logistica/IngresoDetalle'
 import IngresoQr from './paginas/logistica/IngresoQr'
 import Etiquetas from './paginas/logistica/Etiquetas'
-import Referencias from './paginas/admin/Referencias'
+import Productos from './paginas/Productos'
 import Universales from './paginas/admin/Universales'
 import UniversalDetalle from './paginas/admin/UniversalDetalle'
 import Catalogos from './paginas/admin/Catalogos'
@@ -32,6 +32,7 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route element={usuario ? <Layout /> : <Navigate to="/login" replace />}>
+        <Route path="/productos" element={<Productos />} />
         <Route path="/agotados" element={<Agotados />} />
         <Route element={<ConRol roles={['mostrador']} />}>
           <Route path="/mostrador/venta" element={<Venta />} />
@@ -43,7 +44,7 @@ export default function App() {
           <Route path="/logistica/etiquetas" element={<Etiquetas />} />
         </Route>
         <Route element={<ConRol roles={['admin']} />}>
-          <Route path="/admin/referencias" element={<Referencias />} />
+          <Route path="/admin/referencias" element={<Navigate to="/productos" replace />} />
           <Route path="/admin/universales" element={<Universales />} />
           <Route path="/admin/universales/:id" element={<UniversalDetalle />} />
           <Route path="/admin/catalogos" element={<Catalogos />} />

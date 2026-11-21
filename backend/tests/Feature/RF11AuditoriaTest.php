@@ -41,11 +41,11 @@ it('RF-11: se auditan marcas, usuarios y el resto del catálogo, sin copiar cont
     actuarComo(Rol::Admin);
 
     $this->putJson("/api/marcas/{$marca->id}", ['nombre' => 'Jota'])->assertOk();
-    $this->patchJson("/api/usuarios/{$usuario->id}", ['activo' => false, 'password' => 'nueva-clave-123'])->assertOk();
+    $this->patchJson("/api/usuarios/{$usuario->id}", ['activo' => false, 'password' => 'nueva-clave-123', 'password_confirmation' => 'nueva-clave-123'])->assertOk();
 
     $this->assertDatabaseHas('auditoria', ['tabla' => 'marcas', 'registro_id' => $marca->id, 'campo' => 'nombre', 'valor_anterior' => 'Marca Ejemplo', 'valor_nuevo' => 'Jota']);
     $this->assertDatabaseHas('auditoria', ['tabla' => 'users', 'registro_id' => $usuario->id, 'campo' => 'activo', 'valor_anterior' => '1', 'valor_nuevo' => '0']);
-    $this->assertDatabaseMissing('auditoria', ['tabla' => 'users', 'campo' => 'password']);
+    $this->assertDatabaseHas('auditoria', ['tabla' => 'users', 'campo' => 'password', 'valor_anterior' => '••••', 'valor_nuevo' => '••••']);
 });
 
 it('RF-11: las filas de auditoría no se pueden editar ni borrar', function () {

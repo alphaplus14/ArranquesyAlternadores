@@ -10,6 +10,11 @@ export default function Catalogos() {
   const categorias = useCategorias()
 
   return (
+    <div>
+      <div className="pagina-encabezado">
+        <h1>Catálogos</h1>
+        <p>Marcas, proveedores y categorías se editan aquí. Cada cambio queda auditado.</p>
+      </div>
     <div className="columnas">
       <Catalogo titulo="Marcas" ruta="marcas" clave="marcas" filas={marcas.data ?? []} />
       <Catalogo titulo="Proveedores" ruta="proveedores" clave="proveedores" filas={proveedores.data ?? []} />
@@ -20,6 +25,7 @@ export default function Catalogos() {
         filas={categorias.data ?? []}
         extra={(c) => (c as { admite_codigo_universal?: boolean }).admite_codigo_universal ? 'admite universal' : ''}
       />
+    </div>
     </div>
   )
 }
@@ -45,7 +51,7 @@ function Catalogo({ titulo, ruta, clave, filas, extra }: {
       <h2>{titulo}</h2>
       <form className="formulario en-linea" onSubmit={(e) => { e.preventDefault(); crear.mutate() }}>
         <input required placeholder={`Nueva ${titulo.toLowerCase().replace(/s$/, '')}`} value={nombre} onChange={(e) => setNombre(e.target.value)} />
-        <button>Agregar</button>
+        <button className="primario">Agregar</button>
       </form>
       {error && <div className="aviso error">{mensajeError(error)}</div>}
       <ul className="lista">
@@ -54,7 +60,7 @@ function Catalogo({ titulo, ruta, clave, filas, extra }: {
             {edicion?.id === f.id ? (
               <form onSubmit={(e) => { e.preventDefault(); renombrar.mutate(edicion) }}>
                 <input autoFocus value={edicion.nombre} onChange={(e) => setEdicion({ ...edicion, nombre: e.target.value })} />
-                <button>Guardar</button> <button type="button" onClick={() => setEdicion(null)}>Cancelar</button>
+                <button className="primario">Guardar</button> <button type="button" className="secundario" onClick={() => setEdicion(null)}>Cancelar</button>
               </form>
             ) : (
               <>
