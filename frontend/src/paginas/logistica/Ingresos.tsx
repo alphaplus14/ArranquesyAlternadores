@@ -5,6 +5,7 @@ import { AxiosError } from 'axios'
 import { api, erroresCampo, mensajeError } from '../../api/cliente'
 import type { FormaPago, Ingreso, Pagina, TipoIngreso } from '../../api/tipos'
 import { sumarDias } from '../../componentes/fechas'
+import CampoDescuento, { type ModoDescuento } from '../../componentes/CampoDescuento'
 import { useListaPaginada } from '../../hooks/useListaPaginada'
 import { useProveedores } from '../../hooks/useCatalogos'
 import Medida from '../../componentes/Medida'
@@ -46,9 +47,11 @@ export default function Ingresos() {
     proveedor_id: '',
     numero_documento: '',
     fecha: new Date().toLocaleDateString('en-CA'),
-    descuento_total: '0',
     forma_pago: 'contado' as FormaPago,
   })
+  // S-22: el descuento del documento es opcional (0), en pesos o en %, en remisiones y facturas.
+  const [modoDescuento, setModoDescuento] = useState<ModoDescuento>('$')
+  const [descuento, setDescuento] = useState('0')
   /** null = sin tocar: se sugiere fecha + plazo del proveedor. */
   const [venceEscrito, setVenceEscrito] = useState<string | null>(null)
   const plazo = proveedores.data?.find((p) => String(p.id) === form.proveedor_id)?.plazo_dias ?? null
@@ -62,7 +65,11 @@ export default function Ingresos() {
 
   const crear = useMutation({
     mutationFn: async () =>
-      (await api.post<Ingreso>('/ingresos', { ...form, vence_el: form.forma_pago === 'credito' ? venceEl || null : null })).data,
+      (await api.post<Ingreso>('/ingresos', {
+        ...form,
+        vence_el: form.forma_pago === 'credito' ? venceEl || null : null,
+        [modoDescuento === '%' ? 'descuento_documento_porcentaje' : 'descuento_documento']: descuento === '' ? 0 : descuento,
+      })).data,
     onSuccess: (i) => navegar(`/logistica/ingresos/${i.id}`),
   })
 
@@ -99,10 +106,15 @@ export default function Ingresos() {
           </label>
           <label>N.º del documento<input required maxLength={60} value={form.numero_documento} onChange={(e) => setForm({ ...form, numero_documento: e.target.value })} /></label>
           <label>Fecha<input type="date" required value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} /></label>
-          <label>Descuento del documento
-            <input type="number" min="0" step="0.01" aria-invalid={!!errores.descuento_total} value={form.descuento_total} onChange={(e) => setForm({ ...form, descuento_total: e.target.value })} />
-            {errores.descuento_total && <small className="ayuda error">{errores.descuento_total}</small>}
-          </label>
+          <CampoDescuento
+            id="descuento-nuevo"
+            modo={modoDescuento}
+            valor={descuento}
+            error={errores.descuento_documento ?? errores.descuento_documento_porcentaje}
+            ayuda={modoDescuento === '%' ? 'Se aplica sobre las líneas que escanee.' : undefined}
+            onModo={setModoDescuento}
+            onValor={setDescuento}
+          />
           <label>Pago
             <select value={form.forma_pago} onChange={(e) => setForm({ ...form, forma_pago: e.target.value as FormaPago })}>
               <option value="contado">Contado</option>
@@ -130,6 +142,7 @@ export default function Ingresos() {
 
       <section className="tarjeta-pagina">
         <div className="fila-titulo"><h2>Documentos</h2></div>
+        <div className="tabla-desplazable">
         <table>
           <thead><tr><th>#</th><th>Tipo</th><th>Documento</th><th>Proveedor</th><th>Fecha</th><th>Pago</th><th>Unidades</th><th>Estado</th><th>Usuario</th></tr></thead>
           <tbody>
@@ -148,6 +161,7 @@ export default function Ingresos() {
             ))}
           </tbody>
         </table>
+        </div>
         <Paginacion pagina={resultado} onCambiar={irA} />
       </section>
     </div>

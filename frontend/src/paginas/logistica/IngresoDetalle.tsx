@@ -5,13 +5,14 @@ import { AxiosError } from 'axios'
 import { api, erroresCampo, mensajeError } from '../../api/cliente'
 import type { FormaPago, Ingreso, IngresoItem, Opcion, Pagina } from '../../api/tipos'
 import { fechaCorta, sumarDias } from '../../componentes/fechas'
+import CampoDescuento, { type ModoDescuento } from '../../componentes/CampoDescuento'
 import Medida from '../../componentes/Medida'
 import { formatoNumero, leerNumero, pesos } from '../../componentes/numeros'
 import { useCategorias, useMarcas } from '../../hooks/useCatalogos'
 import { useScanner } from '../../hooks/useScanner'
 
 interface Aviso { tipo: 'ok' | 'error' | 'atencion'; texto: string }
-type Campo = 'cantidad' | 'costo_unitario' | 'descuento' | 'iva_porcentaje'
+type Campo = 'cantidad' | 'costo_unitario' | 'descuento_porcentaje' | 'iva_porcentaje'
 interface Edicion { itemId: number; campo: Campo }
 
 /** Validación en vivo de cada celda. El backend vuelve a validar al guardar y al confirmar. */
@@ -24,9 +25,9 @@ const REGLAS: Record<Campo, { etiqueta: string; validar: (n: number | null) => s
     etiqueta: 'Costo',
     validar: (n) => (n === null ? 'Escriba el costo.' : Number.isNaN(n) ? 'Costo no válido.' : n <= 0 ? 'El costo debe ser mayor que 0.' : null),
   },
-  descuento: {
-    etiqueta: 'Descuento',
-    validar: (n) => (n === null ? 'Escriba el descuento (0 si no hay).' : Number.isNaN(n) ? 'Descuento no válido.' : null),
+  descuento_porcentaje: {
+    etiqueta: 'Desc. %',
+    validar: (n) => (n === null ? 'Escriba el descuento (0 si no hay).' : Number.isNaN(n) || n > 100 ? 'Entre 0 y 100.' : null),
   },
   iva_porcentaje: {
     etiqueta: 'IVA %',
@@ -90,12 +91,6 @@ export default function IngresoDetalle() {
 
   const quitar = useMutation({
     mutationFn: async (itemId: number) => (await api.delete<Ingreso>(`/ingresos/${id}/items/${itemId}`)).data,
-    onSuccess: actualizar,
-    onError: (e) => setAviso({ tipo: 'error', texto: mensajeError(e) }),
-  })
-  const sinIva = useMutation({
-    mutationFn: async ({ itemId, valor }: { itemId: number; valor: boolean }) =>
-      (await api.patch<Ingreso>(`/ingresos/${id}/items/${itemId}`, { sin_iva: valor })).data,
     onSuccess: actualizar,
     onError: (e) => setAviso({ tipo: 'error', texto: mensajeError(e) }),
   })
@@ -178,7 +173,7 @@ export default function IngresoDetalle() {
           {i.forma_pago === 'credito'
             ? <><span className="chip credito">Crédito</span> Vence el <strong>{i.vence_el ? fechaCorta(i.vence_el) : '—'}</strong></>
             : <span className="chip">Contado</span>}
-          {' · '}Descuento del documento {pesos(i.descuento_total)}
+          {' · '}Descuento del documento {i.descuento_documento_porcentaje !== null ? `${formatoNumero(i.descuento_documento_porcentaje)} % (${pesos(i.descuento_documento)})` : pesos(i.descuento_documento)}
           {borrador && <> · <button type="button" className="enlace" onClick={() => setCondiciones(true)}>Cambiar condiciones</button></>}
         </p>
 
@@ -199,45 +194,42 @@ export default function IngresoDetalle() {
         )}
         {aviso && <div className={`aviso ${aviso.tipo}`} role="status">{aviso.texto}</div>}
 
-        <table>
-          <thead><tr><th>Referencia</th><th>Cant.</th><th>Costo</th><th>Desc.</th><th>IVA</th><th>Subtotal</th><th></th></tr></thead>
+        <table className="tabla-lineas">
+          <thead><tr><th>Referencia</th><th>Cant.</th><th>Costo</th><th>Desc. %</th><th>IVA %</th><th>Neto</th><th>IVA</th><th></th></tr></thead>
           <tbody>
-            {i.items.map((it) => (
-              <tr key={it.id}>
-                <td>{it.referencia?.codigo_referencia} <small>{it.referencia?.descripcion}</small></td>
-                <td>{celda(it, 'cantidad', String(it.cantidad))}</td>
-                <td className={Number(it.costo_unitario) <= 0 ? 'agotado' : undefined}>
-                  {celda(it, 'costo_unitario', Number(it.costo_unitario) <= 0 ? 'Sin costo' : pesos(it.costo_unitario))}
-                </td>
-                <td>{celda(it, 'descuento', pesos(it.descuento))}</td>
-                <td>
-                  {it.sin_iva ? <span className="chip">sin IVA</span> : celda(it, 'iva_porcentaje', `${formatoNumero(it.iva_porcentaje)} %`)}
-                  {!it.sin_iva && it.iva !== null && <> <small>{pesos(it.iva)}</small></>}
-                  {borrador && (
-                    <label className="check">
-                      <input
-                        type="checkbox"
-                        checked={it.sin_iva}
-                        disabled={sinIva.isPending}
-                        onChange={(e) => sinIva.mutate({ itemId: it.id, valor: e.target.checked })}
-                      /> Sin IVA
-                    </label>
-                  )}
-                </td>
-                <td>{it.subtotal === null ? '—' : pesos(it.subtotal)}</td>
-                <td>{borrador && <button type="button" className="enlace" disabled={quitar.isPending} onClick={() => quitar.mutate(it.id)}>Quitar</button>}</td>
-              </tr>
-            ))}
-            {i.items.length === 0 && <tr><td colSpan={7} className="vacio">Escanee el primer producto.</td></tr>}
+            {i.items.map((it) => {
+              const exenta = Number(it.iva_porcentaje) === 0
+              return (
+                <tr key={it.id}>
+                  <td data-label="Referencia">{it.referencia?.codigo_referencia} <small>{it.referencia?.descripcion}</small></td>
+                  <td data-label="Cant.">{celda(it, 'cantidad', String(it.cantidad))}</td>
+                  <td data-label="Costo" className={Number(it.costo_unitario) <= 0 ? 'agotado' : undefined}>
+                    {celda(it, 'costo_unitario', Number(it.costo_unitario) <= 0 ? 'Sin costo' : pesos(it.costo_unitario))}
+                  </td>
+                  <td data-label="Desc. %">{celda(it, 'descuento_porcentaje', `${formatoNumero(it.descuento_porcentaje)} %`)}</td>
+                  <td data-label="IVA %">
+                    <span>
+                      {celda(it, 'iva_porcentaje', `${formatoNumero(it.iva_porcentaje)} %`)}
+                      {exenta && <> <span className="chip">sin IVA</span></>}
+                    </span>
+                  </td>
+                  <td data-label="Neto">{it.neto === null ? '—' : pesos(it.neto)}</td>
+                  <td data-label="IVA">{it.iva === null ? '—' : pesos(it.iva)}</td>
+                  <td data-label="">{borrador && <button type="button" className="enlace" disabled={quitar.isPending} onClick={() => quitar.mutate(it.id)}>Quitar</button>}</td>
+                </tr>
+              )
+            })}
+            {i.items.length === 0 && <tr><td colSpan={8} className="vacio">Escanee el primer producto.</td></tr>}
           </tbody>
         </table>
 
         {i.totales && (
           <dl className="totales">
-            <dt>Subtotal</dt><dd>{pesos(i.totales.subtotal)}</dd>
-            <dt>Descuento en líneas</dt><dd>{pesos(i.totales.descuento_lineas)}</dd>
-            <dt>Descuento del documento</dt><dd>{pesos(i.totales.descuento_total)}</dd>
-            <dt>Base del IVA</dt><dd>{pesos(i.totales.base)}</dd>
+            <dt>Subtotal</dt><dd>{pesos(i.totales.subtotal_bruto)}</dd>
+            <dt>Descuento de líneas</dt><dd>{pesos(i.totales.descuento_lineas)}</dd>
+            <dt>Descuento del documento</dt><dd>{pesos(i.totales.descuento_documento)}</dd>
+            <dt>Base gravada</dt><dd>{pesos(i.totales.base_gravada)}</dd>
+            <dt>Base sin IVA</dt><dd>{pesos(i.totales.base_sin_iva)}</dd>
             <dt>IVA</dt><dd>{pesos(i.totales.iva)}</dd>
             <dt>Líneas sin IVA</dt><dd>{i.totales.lineas_sin_iva}</dd>
             <dt>Total</dt><dd><strong>{pesos(i.totales.total)}</strong></dd>
@@ -448,7 +440,9 @@ function DialogoCondiciones({ ingreso, onGuardado, onCerrar }: {
   const plazo = ingreso.proveedor?.plazo_dias ?? null
   const [forma, setForma] = useState<FormaPago>(ingreso.forma_pago)
   const [vence, setVence] = useState(ingreso.vence_el ?? '')
-  const [descuento, setDescuento] = useState(String(Number(ingreso.descuento_total)))
+  const porcentaje = ingreso.descuento_documento_porcentaje
+  const [modo, setModo] = useState<ModoDescuento>(porcentaje !== null ? '%' : '$')
+  const [descuento, setDescuento] = useState(String(Number(porcentaje ?? ingreso.descuento_documento)))
 
   const cambiarForma = (nueva: FormaPago) => {
     setForma(nueva)
@@ -460,7 +454,8 @@ function DialogoCondiciones({ ingreso, onGuardado, onCerrar }: {
     mutationFn: async () => (await api.patch<Ingreso>(`/ingresos/${ingreso.id}`, {
       forma_pago: forma,
       vence_el: forma === 'credito' ? vence || null : null,
-      descuento_total: descuento === '' ? 0 : descuento,
+      // S-22: uno u otro, nunca los dos.
+      [modo === '%' ? 'descuento_documento_porcentaje' : 'descuento_documento']: descuento === '' ? 0 : descuento,
     })).data,
     onSuccess: onGuardado,
   })
@@ -487,12 +482,14 @@ function DialogoCondiciones({ ingreso, onGuardado, onCerrar }: {
             </small>
           </label>
         )}
-        <label>Descuento del documento
-          <input type="number" min="0" step="0.01" aria-invalid={!!errores.descuento_total} aria-describedby="descuento-ayuda" value={descuento} onChange={(e) => setDescuento(e.target.value)} />
-          <small id="descuento-ayuda" className={errores.descuento_total ? 'ayuda error' : 'ayuda'}>
-            {errores.descuento_total ?? 'Se reparte entre las líneas antes de calcular el IVA.'}
-          </small>
-        </label>
+        <CampoDescuento
+          id="descuento-condiciones"
+          modo={modo}
+          valor={descuento}
+          error={errores.descuento_documento ?? errores.descuento_documento_porcentaje}
+          onModo={setModo}
+          onValor={setDescuento}
+        />
         {general && <div className="aviso error">{general}</div>}
         <div className="acciones">
           <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>

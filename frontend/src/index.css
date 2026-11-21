@@ -366,3 +366,24 @@ input[aria-invalid='true'] { border-color: var(--peligro); }
     transition: none;
   }
 }
+
+/* S-22: descuento del documento con selector $ / % */
+.campo-con-unidad { display: flex; gap: 6px; }
+.campo-con-unidad select { width: auto; flex: 0 0 auto; }
+.campo-con-unidad input { flex: 1; min-width: 0; }
+
+/* Líneas del ingreso: en móvil cada fila pasa a ser una tarjeta, sin desborde horizontal. */
+@media (max-width: 720px) {
+  .tabla-lineas thead { display: none; }
+  .tabla-lineas, .tabla-lineas tbody, .tabla-lineas tr, .tabla-lineas td { display: block; width: 100%; }
+  .tabla-lineas tr { border: 1px solid var(--borde); border-radius: 8px; padding: 6px 10px; margin-bottom: 10px; }
+  .tabla-lineas td { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 4px 0; border: none; text-align: right; }
+  .tabla-lineas td::before { content: attr(data-label); color: var(--suave); font-size: 0.8rem; text-align: left; }
+  .tabla-lineas td[data-label=""]::before, .tabla-lineas td.vacio::before { content: none; }
+  .tabla-lineas td:first-child { display: block; text-align: left; font-weight: 600; }
+  .tabla-lineas td:first-child::before { content: none; }
+  .tabla-lineas .precio-editable { align-items: flex-end; }
+}
+
+/* Tablas anchas: se desplazan dentro de su caja, no la página. */
+.tabla-desplazable { overflow-x: auto; }

@@ -88,11 +88,12 @@ export interface IngresoItem {
   referencia: { codigo_referencia: string; descripcion: string } | null
   cantidad: number
   costo_unitario: string
-  descuento: string
+  /** S-22: descuento de la línea en %. */
+  descuento_porcentaje: string
+  /** IVA de la línea (19, 5, 0…); 0 = sin IVA. */
   iva_porcentaje: string
-  sin_iva: boolean
-  /** RF-09: cifras del backend con el descuento del documento prorrateado; null fuera del ingreso. */
-  subtotal: string | null
+  /** RF-09 / S-22: cifras del backend con el descuento del documento prorrateado; null fuera del ingreso. */
+  neto: string | null
   base: string | null
   iva: string | null
 }
@@ -111,17 +112,21 @@ export interface Ingreso {
   numero_documento: string
   fecha: string
   vence_el: string | null
-  descuento_total: string
+  /** S-22: en pesos; si se digitó en %, descuento_documento_porcentaje lo indica (solo en borrador). */
+  descuento_documento: string
+  descuento_documento_porcentaje: string | null
   /** RF-16: total fijado al confirmar; null en borrador. */
   total: string | null
   confirmado_at: string | null
   items: IngresoItem[]
   /** RF-09 (ajuste): calculado por el backend; el frontend solo lo muestra. */
   totales: {
-    subtotal: string
+    subtotal_bruto: string
     descuento_lineas: string
-    descuento_total: string
-    base: string
+    subtotal_neto: string
+    descuento_documento: string
+    base_gravada: string
+    base_sin_iva: string
     iva: string
     lineas_sin_iva: number
     total: string
