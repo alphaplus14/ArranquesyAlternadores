@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AuditoriaController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BusquedaController;
 use App\Http\Controllers\Api\CategoriaController;
+use App\Http\Controllers\Api\ClienteController;
 use App\Http\Controllers\Api\CodigoUniversalController;
 use App\Http\Controllers\Api\EtiquetaController;
 use App\Http\Controllers\Api\IngresoController;
@@ -37,7 +38,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/codigos-universales/{codigoUniversal}', [CodigoUniversalController::class, 'show']); // RF-02
         Route::get('/buscar', BusquedaController::class)->middleware('medir:500')->name('buscar'); // RF-12
         Route::get('/reportes/agotados', [ReporteController::class, 'agotados']); // RF-08
+        Route::get('/clientes', [ClienteController::class, 'index']); // RF-13
     });
+
+    // RF-13: el mostrador crea clientes al vender a crédito; editar es solo del admin.
+    Route::post('/clientes', [ClienteController::class, 'store'])->middleware('rol:admin,mostrador');
 
     // Módulo administrador: catálogo (RF-01), usuarios y auditoría (RF-11).
     Route::middleware('rol:admin')->group(function () {
@@ -54,6 +59,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::match(['put', 'patch'], '/usuarios/{usuario}', [UsuarioController::class, 'update']);
 
         Route::get('/auditoria', [AuditoriaController::class, 'index']);
+
+        Route::match(['put', 'patch'], '/clientes/{cliente}', [ClienteController::class, 'update']); // RF-13
     });
 
     // Módulo de logística: ingreso por remisión (RF-05, RF-09, RF-10), por QR de factura (RF-04) y etiquetas (RF-03).
