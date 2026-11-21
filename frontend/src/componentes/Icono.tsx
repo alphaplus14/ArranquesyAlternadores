@@ -1,0 +1,43 @@
+import type { ReactNode } from 'react'
+
+export type IconoNombre =
+  | 'menu'
+  | 'caja'
+  | 'venta'
+  | 'ingreso'
+  | 'qr'
+  | 'etiqueta'
+  | 'universal'
+  | 'catalogo'
+  | 'usuarios'
+  | 'auditoria'
+  | 'agotados'
+  | 'buscar'
+  | 'persona'
+  | 'salir'
+
+/** Trazos propios. No hay fuente de iconos ni librería de UI. */
+export default function Icono({ nombre }: { nombre: IconoNombre }) {
+  return (
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      {trazos[nombre]}
+    </svg>
+  )
+}
+
+const trazos: Record<IconoNombre, ReactNode> = {
+  menu: <path d="M4 7h16M4 12h16M4 17h16" />,
+  caja: <path d="M3 8l9-4 9 4-9 4-9-4zm0 0v8l9 4 9-4V8M12 12v8" />,
+  venta: <path d="M5 6h2l1.4 8.2a1 1 0 0 0 1 .8h7.8a1 1 0 0 0 1-.8L20 8H7M9 20h.01M17 20h.01" />,
+  ingreso: <path d="M8 4h8a1 1 0 0 1 1 1v15l-5-2.5L7 20V5a1 1 0 0 1 1-1z" />,
+  qr: <path d="M5 5h5v5H5zM14 5h5v5h-5zM5 14h5v5H5zM14 14h2v2h-2zM18 14h1v3h-3v-1M14 19h2" />,
+  etiqueta: <path d="M4 12V5h7l9 9-7 7-9-9zM8.5 8.5h.01" />,
+  universal: <path d="M9 8H6a3 3 0 0 0 0 6h3M15 8h3a3 3 0 0 1 0 6h-3M8 12h8" />,
+  catalogo: <path d="M5 5.5A2.5 2.5 0 0 1 7.5 3H20v16H7.5A2.5 2.5 0 0 0 5 21.5zM5 5.5V21" />,
+  usuarios: <path d="M16 19v-1.2A3.8 3.8 0 0 0 12.2 14H7.8A3.8 3.8 0 0 0 4 17.8V19M10 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM20 19v-1.2A3.8 3.8 0 0 0 17 14.2M16 5.1a3 3 0 0 1 0 5.8" />,
+  auditoria: <path d="M8 6h11M8 12h11M8 18h11M4 6h.01M4 12h.01M4 18h.01" />,
+  agotados: <path d="M12 4l8 14H4L12 4zM12 10v4M12 16.5h.01" />,
+  buscar: <path d="M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-3.5-3.5" />,
+  persona: <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4.5 20a7.5 7.5 0 0 1 15 0" />,
+  salir: <path d="M15 4h3a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-3M10 16l-4-4 4-4M6 12h10" />,
+}

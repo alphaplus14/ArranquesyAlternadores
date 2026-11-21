@@ -27,6 +27,7 @@ export default function Login() {
           setEnviando(false)
         }
       }}>
+        <div className="marca-login"><span className="marca-ocho">8</span></div>
         <h1>Arranques y Alternadores la 8va</h1>
         <p>Inventario</p>
         <label>Correo<input type="email" autoFocus required value={email} onChange={(e) => setEmail(e.target.value)} /></label>

@@ -85,38 +85,42 @@ class IngresoService
 
     public function actualizarEncabezado(Ingreso $ingreso, array $datos): Ingreso
     {
-        $this->exigirBorrador($ingreso);
-        $ingreso->update($datos);
+        return $this->enBorrador($ingreso, function (Ingreso $bloqueado) use ($datos) {
+            $bloqueado->update($datos);
 
-        return $ingreso;
+            return $bloqueado;
+        });
     }
 
     public function agregarItem(Ingreso $ingreso, array $datos): IngresoItem
     {
-        $this->exigirBorrador($ingreso);
-
-        return $ingreso->items()->create($datos);
+        return $this->enBorrador($ingreso, fn (Ingreso $bloqueado) => $bloqueado->items()->create($datos));
     }
 
     public function actualizarItem(Ingreso $ingreso, IngresoItem $item, array $datos): IngresoItem
     {
-        $this->exigirBorrador($ingreso);
-        $item->update($datos);
+        return $this->enBorrador($ingreso, function () use ($item, $datos) {
+            $item->update($datos);
 
-        return $item;
+            return $item;
+        });
     }
 
     /** Solo en borrador: todavía no existen unidades ni movimientos de esta línea. */
     public function quitarItem(Ingreso $ingreso, IngresoItem $item): void
     {
-        $this->exigirBorrador($ingreso);
-        $item->delete();
+        $this->enBorrador($ingreso, fn () => $item->delete());
     }
 
-    /** RF-04: con factura_qr, una diferencia contra el total del QR exige $aceptarDiferencia. */
-    public function confirmar(Ingreso $ingreso, User $usuario, bool $aceptarDiferencia = false): Ingreso
+    /**
+     * RF-05: confirma el ingreso, crea las unidades y suma existencia.
+     * RF-04: en una factura_qr con total, la diferencia (digitado − QR) queda registrada siempre.
+     * Si supera la tolerancia, solo se confirma aceptándola con un motivo (por ejemplo, qué no
+     * llegó); quien confirma queda como quien la aceptó.
+     */
+    public function confirmar(Ingreso $ingreso, User $usuario, bool $aceptarDiferencia = false, ?string $motivo = null): Ingreso
     {
-        return DB::transaction(function () use ($ingreso, $usuario, $aceptarDiferencia) {
+        return DB::transaction(function () use ($ingreso, $usuario, $aceptarDiferencia, $motivo) {
             $ingreso = Ingreso::query()->lockForUpdate()->findOrFail($ingreso->id);
             $this->exigirBorrador($ingreso);
 
@@ -127,16 +131,40 @@ class IngresoService
             }
 
             $ingreso->setRelation('items', $items);
-            $this->exigirCuadreConQr($ingreso, $aceptarDiferencia);
+            $diferencia = $ingreso->diferenciaQr();
+            $aceptada = $this->exigirCuadreConQr($ingreso, $diferencia, $aceptarDiferencia, $motivo);
 
             $codigos = $this->codigos->reservar($items->sum('cantidad'));
             $this->inventario->darEntrada($ingreso, $items, $codigos, $usuario->id);
 
             $ingreso->estado = EstadoIngreso::Confirmado;
             $ingreso->confirmado_at = now();
+            $ingreso->confirmado_por = $usuario->id;
+            $ingreso->diferencia_qr = $diferencia;
+            $ingreso->diferencia_aceptada = $aceptada;
+            $ingreso->diferencia_motivo = $aceptada ? trim((string) $motivo) : null;
             $ingreso->save();
 
             return $ingreso;
+        });
+    }
+
+    /**
+     * Ediciones del borrador con la fila del ingreso bloqueada: así no se cuela un ítem mientras
+     * otro usuario lo confirma (quedaría un ítem sin unidades y la diferencia mal registrada).
+     *
+     * @template T
+     *
+     * @param  callable(Ingreso): T  $cambio
+     * @return T
+     */
+    private function enBorrador(Ingreso $ingreso, callable $cambio): mixed
+    {
+        return DB::transaction(function () use ($ingreso, $cambio) {
+            $bloqueado = Ingreso::query()->lockForUpdate()->findOrFail($ingreso->id);
+            $this->exigirBorrador($bloqueado);
+
+            return $cambio($bloqueado);
         });
     }
 
@@ -175,20 +203,32 @@ class IngresoService
         return $proveedor->id;
     }
 
-    private function exigirCuadreConQr(Ingreso $ingreso, bool $aceptarDiferencia): void
+    /**
+     * RF-04: true si la diferencia supera la tolerancia y se aceptó con motivo; false si cuadra
+     * (o no hay total del QR). Sin aceptación o sin motivo, no se confirma.
+     */
+    private function exigirCuadreConQr(Ingreso $ingreso, ?float $diferencia, bool $aceptarDiferencia, ?string $motivo): bool
     {
-        $diferencia = $ingreso->diferenciaQr();
-
-        if ($diferencia === null || $aceptarDiferencia || abs($diferencia) <= (float) config('ingresos.tolerancia_total')) {
-            return;
+        if ($diferencia === null || abs($diferencia) <= (float) config('ingresos.tolerancia_total')) {
+            return false;
         }
 
-        $digitado = number_format($ingreso->totalCalculado(), 0, ',', '.');
-        $qr = number_format((float) $ingreso->total_qr, 0, ',', '.');
-        throw new ReglaInventarioException(
-            "El total digitado (\${$digitado}) no cuadra con el total de la factura según el QR (\${$qr}). Revise los ítems o acepte la diferencia.",
-            422,
-        );
+        if (! $aceptarDiferencia) {
+            $digitado = number_format($ingreso->totalCalculado(), 0, ',', '.');
+            $qr = number_format((float) $ingreso->total_qr, 0, ',', '.');
+            throw new ReglaInventarioException(
+                "El total digitado (\${$digitado}) no cuadra con el total de la factura según el QR (\${$qr}). Revise los ítems o acepte la diferencia.",
+                422,
+            );
+        }
+
+        if (blank($motivo)) {
+            throw ValidationException::withMessages([
+                'diferencia_motivo' => 'Para aceptar la diferencia con el QR escriba el motivo (por ejemplo, qué no llegó).',
+            ]);
+        }
+
+        return true;
     }
 
     private function exigirBorrador(Ingreso $ingreso): void

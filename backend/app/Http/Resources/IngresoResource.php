@@ -25,17 +25,25 @@ class IngresoResource extends JsonResource
             'proveedor' => $this->whenLoaded('proveedor', fn () => ['id' => $this->proveedor->id, 'nombre' => $this->proveedor->nombre]),
             'numero_documento' => $this->numero_documento,
             'cufe' => $this->cufe,
-            // RF-04: totales leídos del QR y diferencia contra lo digitado.
+            // RF-04: totales leídos del QR y diferencia contra lo digitado. En borrador se calcula
+            // con los ítems actuales; confirmado, es la registrada al confirmar.
             'qr' => $this->esFacturaQr() ? [
                 'subtotal' => $this->subtotal_qr,
                 'iva' => $this->iva_qr,
                 'total' => $this->total_qr,
-                'diferencia' => $cargados ? $this->diferenciaQr() : null,
+                'diferencia' => $this->esBorrador()
+                    ? ($cargados ? $this->diferenciaQr() : null)
+                    : ($this->diferencia_qr === null ? null : (float) $this->diferencia_qr),
                 'tolerancia' => (float) config('ingresos.tolerancia_total'),
+                'diferencia_aceptada' => $this->diferencia_aceptada,
+                'diferencia_motivo' => $this->diferencia_motivo,
             ] : null,
             'fecha' => $this->fecha?->toDateString(),
             'usuario' => $this->whenLoaded('usuario', fn () => ['id' => $this->usuario->id, 'name' => $this->usuario->name]),
             'confirmado_at' => $this->confirmado_at,
+            'confirmado_por' => $this->whenLoaded('confirmadoPor', fn () => $this->confirmadoPor
+                ? ['id' => $this->confirmadoPor->id, 'name' => $this->confirmadoPor->name]
+                : null),
             'items' => $this->whenLoaded('items', fn () => $items->map(fn ($i) => [
                 'id' => $i->id,
                 'referencia_id' => $i->referencia_id,

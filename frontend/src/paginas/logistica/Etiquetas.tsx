@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { api, mensajeError } from '../../api/cliente'
 import type { Unidad } from '../../api/tipos'
+import Medida from '../../componentes/Medida'
 
 // Tamaños definidos en el backend (config/etiquetas.php, supuesto S-05).
 interface Tamano { clave: string; nombre: string; ancho: number; alto: number }
@@ -45,15 +46,28 @@ export default function Etiquetas() {
     setSeleccion(s)
   }
 
+  const tamanoActual = tamanos.data?.find((t) => t.clave === tamano)
+
   return (
+    <div className="pila">
+      <div className="pagina-encabezado">
+        <h1>Etiquetas</h1>
+        <p>Una etiqueta por unidad física. Quien imprime elige el tamaño.</p>
+      </div>
+      <section className="medidas">
+        <Medida etiqueta="Ingreso" valor={ingresoId ? `#${ingresoId}` : '—'} tono="azul" icono="ingreso" />
+        <Medida etiqueta="Unidades" valor={unidades.data?.length ?? '—'} tono="amarillo" icono="caja" />
+        <Medida etiqueta="Seleccionadas" valor={seleccion.size} tono="verde" icono="etiqueta" />
+        <Medida etiqueta="Tamaño" valor={tamanoActual?.nombre ?? tamano} pie={tamanoActual ? `${tamanoActual.ancho}×${tamanoActual.alto} mm` : undefined} tono="rojo" icono="qr" />
+      </section>
     <div className="panel">
-      <h1>Etiquetas</h1>
+      <div className="fila-titulo"><h2>Unidades del ingreso</h2></div>
       <form className="formulario en-linea" onSubmit={(e) => {
         e.preventDefault()
         setParams({ ingreso: String(new FormData(e.currentTarget).get('ingreso') ?? '') })
       }}>
         <label>Ingreso #<input name="ingreso" defaultValue={ingresoId} required /></label>
-        <button>Cargar unidades</button>
+        <button className="primario">Cargar unidades</button>
       </form>
 
       {unidades.isError && <div className="aviso error">{mensajeError(unidades.error)}</div>}
@@ -92,6 +106,7 @@ export default function Etiquetas() {
           {imprimir.isError && <div className="aviso error">{mensajeError(imprimir.error)}</div>}
         </>
       )}
+    </div>
     </div>
   )
 }

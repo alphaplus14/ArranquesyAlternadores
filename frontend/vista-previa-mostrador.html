@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vista previa · Venta de mostrador</title>
+  <style>
+    :root {
+      --fondo: #f4f5f7;
+      --panel: #ffffff;
+      --texto: #1d232b;
+      --suave: #5f6b7a;
+      --borde: #d9dee5;
+      --primario: #1f5fbf;
+      --peligro: #b3261e;
+      --ok: #1e7a3c;
+      --ok-fondo: #e6f4ea;
+      --error-fondo: #fce8e6;
+      --aviso-fondo: #fff4d6;
+      --aviso: #7a5600;
+      font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+      font-size: 16px;
+      color: var(--texto);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--fondo); }
+    button, input { font: inherit; }
+    button { cursor: pointer; }
+
+    .nota {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: center;
+      padding: 8px 16px;
+      background: var(--aviso-fondo);
+      color: var(--aviso);
+      font-size: 0.85rem;
+    }
+    .nota div { display: flex; gap: 6px; flex-wrap: wrap; }
+    .nota button {
+      border: 1px solid #e2d2a2;
+      background: #fff;
+      color: var(--aviso);
+      border-radius: 6px;
+      padding: 4px 10px;
+    }
+    .nota button[aria-pressed="true"] { background: var(--aviso); color: #fff; border-color: var(--aviso); }
+
+    header {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      padding: 10px 16px;
+      background: #17202b;
+      color: #fff;
+    }
+    header strong { font-size: 0.95rem; }
+    header nav { display: flex; gap: 4px; flex: 1; }
+    header a {
+      color: #fff;
+      text-decoration: none;
+      background: #2c3a4c;
+      padding: 6px 10px;
+      border-radius: 6px;
+    }
+    header .usuario { font-size: 0.9rem; color: #c9d4e2; }
+    header .salir { border: 0; background: none; color: #9cc3ff; padding: 0; }
+
+    main {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 16px;
+      display: grid;
+      grid-template-columns: 1fr 280px;
+      gap: 16px;
+      align-items: start;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--borde);
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .fila {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    h1 { font-size: 1.25rem; margin: 0; font-weight: 650; }
+    .chip {
+      display: inline-block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: var(--aviso-fondo);
+      color: var(--aviso);
+      vertical-align: 2px;
+    }
+    .acciones { display: flex; gap: 8px; }
+    .acciones button, .modal .acciones button {
+      border: 1px solid var(--borde);
+      background: #fff;
+      border-radius: 6px;
+      padding: 7px 14px;
+    }
+    .primario { background: var(--primario); border-color: var(--primario); color: #fff; }
+
+    .escaner {
+      width: 100%;
+      font-size: 1.7rem;
+      font-family: ui-monospace, Consolas, monospace;
+      padding: 14px 16px;
+      border: 2px solid var(--primario);
+      border-radius: 8px;
+      outline: 3px solid #9cc3ff;
+    }
+
+    .resultado {
+      margin-top: 14px;
+      padding: 18px 20px 16px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+    }
+    .resultado .etiqueta {
+      font-size: 0.8rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+    .resultado .quedan {
+      font-size: 4.2rem;
+      line-height: 0.95;
+      font-weight: 750;
+      margin: 4px 0 8px;
+    }
+    .resultado .pieza { font-size: 1.45rem; font-weight: 650; }
+    .resultado .detalle { margin-top: 4px; color: var(--suave); font-size: 1rem; }
+    .resultado .mono { font-family: ui-monospace, Consolas, monospace; }
+    .ok { background: var(--ok-fondo); color: var(--ok); }
+    .error { background: var(--error-fondo); color: var(--peligro); }
+    .error .quedan { font-size: 2rem; line-height: 1.15; }
+
+    table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+    th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--borde); vertical-align: top; }
+    th { font-size: 0.75rem; color: var(--suave); text-transform: uppercase; letter-spacing: 0.03em; font-weight: 650; }
+    td small { display: block; color: var(--suave); }
+    .enlace { border: 0; background: none; color: var(--primario); padding: 0; text-decoration: underline; }
+    tr.reversado td { color: var(--suave); text-decoration: line-through; }
+    tr.reversado td:last-child { text-decoration: none; }
+
+    aside h2 { font-size: 0.95rem; margin: 0 0 8px; }
+    .lista { list-style: none; margin: 0; padding: 0; }
+    .lista li { padding: 8px 0; border-bottom: 1px solid var(--borde); font-size: 0.9rem; color: var(--suave); }
+    .lista button { font-weight: 650; }
+
+    .modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(10, 15, 25, 0.45);
+      display: flex;
+      justify-content: center;
+      padding: 64px 16px;
+    }
+    .modal[hidden] { display: none; }
+    .caja {
+      background: #fff;
+      border-radius: 10px;
+      padding: 20px;
+      width: 100%;
+      max-width: 720px;
+      height: fit-content;
+    }
+    .caja h2 { margin: 0 0 12px; font-size: 1.2rem; }
+    .caja input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--borde);
+      border-radius: 6px;
+      margin-bottom: 8px;
+    }
+    .opcion { padding: 10px 0; border-bottom: 1px solid var(--borde); }
+    .opcion strong { font-size: 1rem; }
+    .codigos { display: flex; gap: 8px; margin-top: 8px; }
+    .codigos button {
+      font-family: ui-monospace, Consolas, monospace;
+      border: 1px solid var(--borde);
+      background: #fff;
+      border-radius: 6px;
+      padding: 6px 10px;
+    }
+    .modal .acciones { justify-content: flex-end; margin-top: 14px; }
+
+    @media (max-width: 800px) {
+      main { grid-template-columns: 1fr; }
+      .resultado .quedan { font-size: 3.2rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="nota">
+    <span>Vista previa. No es la aplicación: solo muestra cómo se vería la venta.</span>
+    <div>
+      <button type="button" id="btn-ok" aria-pressed="true">Escaneo bueno</button>
+      <button type="button" id="btn-error" aria-pressed="false">Código ya vendido</button>
+      <button type="button" id="btn-buscar">Buscar sin escáner</button>
+    </div>
+  </div>
+
+  <header>
+    <strong>La 8va · Inventario</strong>
+    <nav><a href="#venta">Venta</a></nav>
+    <span class="usuario">Ana Gómez (mostrador) <button class="salir" type="button">Salir</button></span>
+  </header>
+
+  <main>
+    <section class="panel">
+      <div class="fila">
+        <h1>Venta #128 <span class="chip">abierta</span></h1>
+        <div class="acciones">
+          <button type="button">Nueva venta</button>
+          <button type="button" id="abrir-buscar">Buscar sin escáner</button>
+          <button type="button" class="primario">Cerrar venta</button>
+        </div>
+      </div>
+
+      <input class="escaner" value="" placeholder="Escanee la etiqueta (o digite el código y Enter)" aria-label="Código de barras" />
+
+      <div class="resultado ok" id="aviso">
+        <div class="etiqueta">Quedan</div>
+        <div class="quedan">2</div>
+        <div class="pieza">Bosch · RN-4410</div>
+        <div class="detalle">Regulador IM204 12V · <span class="mono">A8000142</span> · escaneado</div>
+      </div>
+
+      <table>
+        <thead>
+          <tr><th>Código</th><th>Referencia</th><th>Marca</th><th>Captura</th><th></th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="mono">A8000142</td>
+            <td>RN-4410 <small>Regulador IM204 12V</small></td>
+            <td>Bosch</td>
+            <td>escaneado</td>
+            <td><button class="enlace" type="button">Quitar</button></td>
+          </tr>
+          <tr>
+            <td class="mono">A8000138</td>
+            <td>IM204 <small>Regulador Transpo</small></td>
+            <td>Transpo</td>
+            <td>digitado</td>
+            <td><button class="enlace" type="button">Quitar</button></td>
+          </tr>
+          <tr class="reversado">
+            <td class="mono">A8000090</td>
+            <td>IM204 <small>Regulador</small></td>
+            <td>Transpo</td>
+            <td>escaneado</td>
+            <td><em>reversado</em></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <aside class="panel">
+      <h2>Ventas cerradas</h2>
+      <ul class="lista">
+        <li><button class="enlace" type="button">#127</button> · 4 ítems · 17:05</li>
+        <li><button class="enlace" type="button">#126</button> · 1 ítem · 16:41</li>
+        <li><button class="enlace" type="button">#125</button> · 2 ítems · 16:12</li>
+      </ul>
+    </aside>
+  </main>
+
+  <div class="modal" id="modal" hidden>
+    <div class="caja">
+      <h2>Buscar sin escáner</h2>
+      <input value="IM204" aria-label="Buscar" />
+      <div class="opcion">
+        <strong>RN-4410</strong> IM204 · Bosch · existencia 2
+        <div class="codigos"><button type="button">A8000142</button><button type="button">A8000160</button></div>
+      </div>
+      <div class="opcion">
+        <strong>IM204</strong> · Transpo · existencia 1
+        <div class="codigos"><button type="button">A8000138</button></div>
+      </div>
+      <div class="acciones"><button type="button" id="cerrar-modal">Cerrar</button></div>
+    </div>
+  </div>
+
+  <script>
+    const aviso = document.getElementById("aviso");
+    const btnOk = document.getElementById("btn-ok");
+    const btnError = document.getElementById("btn-error");
+    const modal = document.getElementById("modal");
+
+    function estado(tipo) {
+      const ok = tipo === "ok";
+      aviso.className = "resultado " + (ok ? "ok" : "error");
+      aviso.innerHTML = ok
+        ? '<div class="etiqueta">Quedan</div><div class="quedan">2</div><div class="pieza">Bosch · RN-4410</div><div class="detalle">Regulador IM204 12V · <span class="mono">A8000142</span> · escaneado</div>'
+        : '<div class="etiqueta">No se descontó</div><div class="quedan">A8000090 ya está vendida</div><div class="detalle">La unidad no salió de inventario. Escanee otra etiqueta.</div>';
+      btnOk.setAttribute("aria-pressed", ok ? "true" : "false");
+      btnError.setAttribute("aria-pressed", ok ? "false" : "true");
+    }
+
+    btnOk.addEventListener("click", () => estado("ok"));
+    btnError.addEventListener("click", () => estado("error"));
+    document.getElementById("btn-buscar").addEventListener("click", () => { modal.hidden = false; });
+    document.getElementById("abrir-buscar").addEventListener("click", () => { modal.hidden = false; });
+    document.getElementById("cerrar-modal").addEventListener("click", () => { modal.hidden = true; });
+    modal.addEventListener("click", (e) => { if (e.target === modal) modal.hidden = true; });
+  </script>
+</body>
+</html>

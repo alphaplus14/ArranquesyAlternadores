@@ -28,10 +28,12 @@ class IngresoController extends Controller
     public function index(Request $request): JsonResponse
     {
         $pagina = Ingreso::query()
-            ->with(['proveedor:id,nombre', 'usuario:id,name'])
+            ->with(['proveedor:id,nombre', 'usuario:id,name', 'confirmadoPor:id,name'])
             ->withSum('items as unidades', 'cantidad')
             ->when($request->query('proveedor_id'), fn ($q, $v) => $q->where('proveedor_id', $v))
             ->when($request->query('estado'), fn ($q, $v) => $q->where('estado', $v))
+            // RF-04: ingresos confirmados aceptando una diferencia contra el total del QR.
+            ->when($request->boolean('con_diferencia'), fn ($q) => $q->where('diferencia_aceptada', true))
             ->orderByDesc('id')
             ->paginate(25);
 
@@ -52,7 +54,7 @@ class IngresoController extends Controller
 
     public function update(Request $request, Ingreso $ingreso): IngresoResource
     {
-        $this->servicio->actualizarEncabezado($ingreso, $this->validarEncabezado($request, parcial: true));
+        $ingreso = $this->servicio->actualizarEncabezado($ingreso, $this->validarEncabezado($request, parcial: true));
 
         return new IngresoResource($this->cargar($ingreso));
     }
@@ -94,7 +96,12 @@ class IngresoController extends Controller
 
     public function confirmar(ConfirmarIngresoRequest $request, Ingreso $ingreso): IngresoResource
     {
-        $ingreso = $this->servicio->confirmar($ingreso, $request->user(), $request->boolean('aceptar_diferencia'));
+        $ingreso = $this->servicio->confirmar(
+            $ingreso,
+            $request->user(),
+            $request->boolean('aceptar_diferencia'),
+            $request->validated('diferencia_motivo'),
+        );
 
         return new IngresoResource($this->cargar($ingreso));
     }
@@ -116,6 +123,7 @@ class IngresoController extends Controller
         return $ingreso->load([
             'proveedor:id,nombre',
             'usuario:id,name',
+            'confirmadoPor:id,name',
             'items' => fn ($q) => $q->orderBy('id'),
             'items.referencia:id,codigo_referencia,descripcion',
         ]);

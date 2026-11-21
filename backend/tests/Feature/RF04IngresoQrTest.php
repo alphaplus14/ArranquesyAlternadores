@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\Rol;
+use App\Exceptions\RegistroInmutableException;
 use App\Models\Ingreso;
 use App\Models\MovimientoInventario;
 use App\Models\Proveedor;
@@ -114,7 +115,8 @@ it('RF04: si el total digitado no cuadra con el QR, confirmar exige aceptar la d
     expect(Ingreso::find($id)->esBorrador())->toBeTrue()
         ->and(referencia('SEN-TEMP-01')->existencia)->toBe(0);
 
-    $this->postJson("/api/ingresos/{$id}/confirmar", ['aceptar_diferencia' => true])->assertOk()->assertJsonPath('estado', 'confirmado');
+    $this->postJson("/api/ingresos/{$id}/confirmar", ['aceptar_diferencia' => true, 'diferencia_motivo' => 'Faltaron 2 sensores'])
+        ->assertOk()->assertJsonPath('estado', 'confirmado');
 });
 
 it('RF04: confirmar una factura por QR que cuadra crea las unidades y suma existencia por el mismo camino de la remisión', function () {
@@ -140,4 +142,140 @@ it('RF04: el admin también ingresa por QR y mostrador no puede', function () {
 
     actuarComo(Rol::Admin);
     $this->postJson('/api/ingresos/qr', ['contenido' => qrFactura(cufe())])->assertCreated();
+});
+
+/** Borrador factura_qr (QR = 71400) con una sola unidad de 50000 digitada → 59500, diferencia −11900. */
+function ingresoQrConFaltante(): int
+{
+    $id = test()->postJson('/api/ingresos/qr', ['contenido' => qrFactura(cufe())])->json('id');
+    test()->postJson("/api/ingresos/{$id}/items", ['referencia_id' => referencia('SEN-TEMP-01')->id, 'cantidad' => 1, 'costo_unitario' => 50000])
+        ->assertJsonPath('qr.diferencia', -11900);
+
+    return $id;
+}
+
+it('RF04: aceptar la diferencia sin motivo no confirma ni suma existencia', function () {
+    actuarComo(Rol::Logistica);
+    $id = ingresoQrConFaltante();
+    $unidades = Unidad::count();
+
+    foreach ([[], ['diferencia_motivo' => null], ['diferencia_motivo' => '   ']] as $sinMotivo) {
+        $this->postJson("/api/ingresos/{$id}/confirmar", ['aceptar_diferencia' => true, ...$sinMotivo])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['diferencia_motivo']);
+    }
+
+    expect(Ingreso::find($id)->esBorrador())->toBeTrue()
+        ->and(referencia('SEN-TEMP-01')->existencia)->toBe(0)
+        ->and(Unidad::count())->toBe($unidades);
+});
+
+it('RF04: al aceptar la diferencia queda registrada con cuánto, por qué y quién la aceptó', function () {
+    $creador = actuarComo(Rol::Logistica);
+    $id = ingresoQrConFaltante();
+
+    // Confirma otra persona de logística: ella es quien acepta la diferencia.
+    $confirma = actuarComo(Rol::Logistica);
+    $this->postJson("/api/ingresos/{$id}/confirmar", ['aceptar_diferencia' => true, 'diferencia_motivo' => '  Faltaron 2 sensores  '])
+        ->assertOk()
+        ->assertJsonPath('estado', 'confirmado')
+        ->assertJsonPath('qr.diferencia', -11900)
+        ->assertJsonPath('qr.diferencia_aceptada', true)
+        ->assertJsonPath('qr.diferencia_motivo', 'Faltaron 2 sensores')
+        ->assertJsonPath('usuario.id', $creador->id)
+        ->assertJsonPath('confirmado_por.id', $confirma->id)
+        ->assertJsonPath('confirmado_por.name', $confirma->name);
+
+    $ingreso = Ingreso::find($id);
+    expect((float) $ingreso->diferencia_qr)->toBe(-11900.0)
+        ->and($ingreso->diferencia_aceptada)->toBeTrue()
+        ->and($ingreso->diferencia_motivo)->toBe('Faltaron 2 sensores')
+        ->and($ingreso->confirmado_por)->toBe($confirma->id)
+        ->and(referencia('SEN-TEMP-01')->existencia)->toBe(1);
+
+    // Lo registrado se sigue leyendo igual después.
+    $this->getJson("/api/ingresos/{$id}")->assertOk()
+        ->assertJsonPath('qr.diferencia', -11900)
+        ->assertJsonPath('qr.diferencia_motivo', 'Faltaron 2 sensores');
+});
+
+it('RF04: una diferencia dentro de la tolerancia se registra sin exigir aceptación ni guardar motivo', function () {
+    $logistica = actuarComo(Rol::Logistica);
+    // QR 71400; 3 × 19999.72 = 59999.16 + IVA 11399.84 = 71399.00 → diferencia −1 (tolerancia $1).
+    $id = $this->postJson('/api/ingresos/qr', ['contenido' => qrFactura(cufe())])->json('id');
+    $this->postJson("/api/ingresos/{$id}/items", ['referencia_id' => referencia('SEN-TEMP-01')->id, 'cantidad' => 3, 'costo_unitario' => 19999.72])
+        ->assertJsonPath('qr.diferencia', -1);
+
+    $this->postJson("/api/ingresos/{$id}/confirmar", ['aceptar_diferencia' => true, 'diferencia_motivo' => 'no aplica'])
+        ->assertOk()
+        ->assertJsonPath('qr.diferencia', -1)
+        ->assertJsonPath('qr.diferencia_aceptada', false)
+        ->assertJsonPath('qr.diferencia_motivo', null)
+        ->assertJsonPath('confirmado_por.id', $logistica->id);
+});
+
+it('RF04: si el QR no trajo total no hay diferencia que registrar', function () {
+    actuarComo(Rol::Logistica);
+    $id = $this->postJson('/api/ingresos/qr', [
+        'contenido' => 'https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey='.cufe(),
+        'proveedor_id' => $this->proveedor->id, 'numero_documento' => 'FE-9', 'fecha' => '2026-11-11',
+    ])->json('id');
+    $this->postJson("/api/ingresos/{$id}/items", ['referencia_id' => referencia('SEN-TEMP-01')->id, 'cantidad' => 1, 'costo_unitario' => 1000]);
+
+    $this->postJson("/api/ingresos/{$id}/confirmar")->assertOk()
+        ->assertJsonPath('qr.diferencia', null)
+        ->assertJsonPath('qr.diferencia_aceptada', false);
+});
+
+it('RF05: la remisión registra quién confirmó y no lleva diferencia de QR', function () {
+    $logistica = actuarComo(Rol::Logistica);
+    $id = $this->postJson('/api/ingresos', ['proveedor_id' => $this->proveedor->id, 'numero_documento' => 'REM-1', 'fecha' => '2026-11-20'])->json('id');
+    $this->postJson("/api/ingresos/{$id}/items", ['referencia_id' => referencia('SEN-TEMP-01')->id, 'cantidad' => 1, 'costo_unitario' => 1000]);
+
+    $this->postJson("/api/ingresos/{$id}/confirmar", ['aceptar_diferencia' => true, 'diferencia_motivo' => 'x'])->assertOk()
+        ->assertJsonPath('qr', null)
+        ->assertJsonPath('confirmado_por.id', $logistica->id);
+
+    $ingreso = Ingreso::find($id);
+    expect($ingreso->diferencia_qr)->toBeNull()
+        ->and($ingreso->diferencia_aceptada)->toBeFalse()
+        ->and($ingreso->diferencia_motivo)->toBeNull();
+});
+
+it('RF04: el listado de ingresos filtra los confirmados con diferencia aceptada', function () {
+    actuarComo(Rol::Logistica);
+    $conDiferencia = ingresoQrConFaltante();
+    $this->postJson("/api/ingresos/{$conDiferencia}/confirmar", ['aceptar_diferencia' => true, 'diferencia_motivo' => 'Faltó mercancía'])->assertOk();
+
+    $cuadra = $this->postJson('/api/ingresos/qr', ['contenido' => qrFactura(cufe('b'))])->json('id');
+    $this->postJson("/api/ingresos/{$cuadra}/items", ['referencia_id' => referencia('SEN-TEMP-01')->id, 'cantidad' => 3, 'costo_unitario' => 20000]);
+    $this->postJson("/api/ingresos/{$cuadra}/confirmar")->assertOk();
+
+    $ids = collect($this->getJson('/api/ingresos?con_diferencia=1')->assertOk()->json('data'))->pluck('id');
+    expect($ids->all())->toBe([$conDiferencia]);
+
+    $todos = collect($this->getJson('/api/ingresos')->assertOk()->json('data'))->pluck('id');
+    expect($todos)->toContain($conDiferencia)->toContain($cuadra);
+});
+
+it('RF04: un ingreso confirmado no se edita: ni por la API ni directo en el modelo', function () {
+    actuarComo(Rol::Logistica);
+    $id = ingresoQrConFaltante();
+    $this->postJson("/api/ingresos/{$id}/confirmar", ['aceptar_diferencia' => true, 'diferencia_motivo' => 'Faltó mercancía'])->assertOk();
+    $item = Ingreso::find($id)->items()->first();
+
+    $this->patchJson("/api/ingresos/{$id}", ['numero_documento' => 'OTRO'])->assertStatus(409);
+    $this->postJson("/api/ingresos/{$id}/items", ['referencia_id' => referencia('SEN-TEMP-01')->id, 'cantidad' => 5, 'costo_unitario' => 1])->assertStatus(409);
+    $this->patchJson("/api/ingresos/{$id}/items/{$item->id}", ['cantidad' => 9, 'referencia_id' => $item->referencia_id, 'costo_unitario' => 1])->assertStatus(409);
+    $this->deleteJson("/api/ingresos/{$id}/items/{$item->id}")->assertStatus(409);
+    $this->postJson("/api/ingresos/{$id}/confirmar", ['aceptar_diferencia' => true, 'diferencia_motivo' => 'otra vez'])->assertStatus(409);
+
+    expect(fn () => Ingreso::find($id)->update(['numero_documento' => 'cambiado']))->toThrow(RegistroInmutableException::class)
+        ->and(fn () => Ingreso::find($id)->delete())->toThrow(RegistroInmutableException::class);
+
+    $ingreso = Ingreso::find($id);
+    expect($ingreso->numero_documento)->toBe('FE-1234')
+        ->and($ingreso->diferencia_motivo)->toBe('Faltó mercancía')
+        ->and($ingreso->items()->count())->toBe(1)
+        ->and(referencia('SEN-TEMP-01')->existencia)->toBe(1);
 });

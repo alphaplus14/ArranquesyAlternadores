@@ -6,9 +6,14 @@ export default function Paginacion<T>({ pagina, onCambiar }: { pagina?: Pagina<T
 
   return (
     <div className="paginacion">
-      <button disabled={actual <= 1} onClick={() => onCambiar(actual - 1)}>‹ Anterior</button>
-      <span>Página {actual} de {ultima} · {total} registros</span>
-      <button disabled={actual >= ultima} onClick={() => onCambiar(actual + 1)}>Siguiente ›</button>
+      <span>{total.toLocaleString('es-CO')} registros</span>
+      <div className="paginacion-controles">
+        <button type="button" aria-label="Primera página" disabled={actual <= 1} onClick={() => onCambiar(1)}>«</button>
+        <button type="button" aria-label="Página anterior" disabled={actual <= 1} onClick={() => onCambiar(actual - 1)}>‹</button>
+        <span className="pagina-actual" aria-current="page">{actual}</span>
+        <button type="button" aria-label="Página siguiente" disabled={actual >= ultima} onClick={() => onCambiar(actual + 1)}>›</button>
+        <button type="button" aria-label="Última página" disabled={actual >= ultima} onClick={() => onCambiar(ultima)}>»</button>
+      </div>
     </div>
   )
 }

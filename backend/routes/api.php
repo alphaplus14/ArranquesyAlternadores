@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\BusquedaController;
 use App\Http\Controllers\Api\CategoriaController;
 use App\Http\Controllers\Api\ClienteController;
 use App\Http\Controllers\Api\CodigoUniversalController;
+use App\Http\Controllers\Api\CuentaController;
 use App\Http\Controllers\Api\EtiquetaController;
 use App\Http\Controllers\Api\IngresoController;
 use App\Http\Controllers\Api\MarcaController;
@@ -57,6 +58,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/usuarios', [UsuarioController::class, 'index']);
         Route::post('/usuarios', [UsuarioController::class, 'store']);
         Route::match(['put', 'patch'], '/usuarios/{usuario}', [UsuarioController::class, 'update']);
+        Route::patch('/cuenta', [CuentaController::class, 'update']);
 
         Route::get('/auditoria', [AuditoriaController::class, 'index']);
 

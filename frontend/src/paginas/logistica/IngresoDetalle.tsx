@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeError } from '../../api/cliente'
 import type { Ingreso, Pagina, Referencia } from '../../api/tipos'
+import Medida from '../../componentes/Medida'
 import { useDebounce } from '../../hooks/useDebounce'
 
 const pesos = (n: number | string) => Number(n).toLocaleString('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 })
@@ -56,10 +57,21 @@ export default function IngresoDetalle() {
   const descuadre = i.qr?.diferencia != null && Math.abs(i.qr.diferencia) > i.qr.tolerancia
 
   return (
+    <div className="pila">
+      <div className="pagina-encabezado">
+        <h1>{i.tipo === 'factura_qr' ? 'Factura' : 'Remisión'} {i.numero_documento}</h1>
+        <p>{i.proveedor?.nombre} · {i.fecha.slice(0, 10)}</p>
+      </div>
+      <section className="medidas">
+        <Medida etiqueta="Estado" valor={i.estado} tono={borrador ? 'amarillo' : 'verde'} icono="ingreso" />
+        <Medida etiqueta="Ítems" valor={i.items.length} tono="azul" icono="caja" />
+        <Medida etiqueta="Total" valor={i.totales ? pesos(i.totales.total) : '—'} tono="verde" icono="etiqueta" />
+        <Medida etiqueta="Sin IVA" valor={i.totales?.lineas_sin_iva ?? 0} tono={descuadre ? 'rojo' : 'amarillo'} icono="agotados" pie={descuadre ? 'No cuadra con el QR' : undefined} />
+      </section>
     <div className="panel">
       <div className="fila-titulo">
-        <h1>{i.tipo === 'factura_qr' ? 'Factura' : 'Remisión'} {i.numero_documento} <span className={`chip ${i.estado}`}>{i.estado}</span></h1>
-        <span>{i.proveedor?.nombre} · {i.fecha}</span>
+        <h2>Líneas <span className={`chip ${i.estado}`}>{i.estado}</span></h2>
+        <span>{i.proveedor?.nombre}</span>
       </div>
       {i.cufe && <p><small>CUFE {i.cufe}</small></p>}
 
@@ -149,6 +161,7 @@ export default function IngresoDetalle() {
           <Link className="boton primario" to={`/logistica/etiquetas?ingreso=${i.id}`}>Imprimir etiquetas</Link>
         )}
       </div>
+    </div>
     </div>
   )
 }

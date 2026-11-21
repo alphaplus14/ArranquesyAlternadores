@@ -2,48 +2,32 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Enums\Rol;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\UsuarioRequest;
 use App\Models\User;
+use App\Services\UsuarioService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
-use Illuminate\Validation\Rules\Password;
 
 /** Gestión de usuarios (admin). No se borran: se desactivan, para no perder responsables. RF-11. */
 class UsuarioController extends Controller
 {
+    public function __construct(private readonly UsuarioService $usuarios) {}
+
     public function index(): JsonResponse
     {
         return response()->json(User::orderBy('name')->paginate(50, ['id', 'name', 'email', 'rol', 'activo']));
     }
 
-    public function store(Request $request): JsonResponse
+    public function store(UsuarioRequest $request): JsonResponse
     {
-        $datos = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255', 'unique:users,email'],
-            'password' => ['required', Password::min(8)],
-            'rol' => ['required', Rule::enum(Rol::class)],
-            'activo' => ['sometimes', 'boolean'],
-        ]);
-
-        $usuario = User::create($datos);
+        $usuario = $this->usuarios->crear($request->validated());
 
         return response()->json($usuario->only('id', 'name', 'email', 'rol', 'activo'), 201);
     }
 
-    public function update(Request $request, User $usuario): JsonResponse
+    public function update(UsuarioRequest $request, User $usuario): JsonResponse
     {
-        $datos = $request->validate([
-            'name' => ['sometimes', 'string', 'max:255'],
-            'email' => ['sometimes', 'email', 'max:255', Rule::unique('users')->ignore($usuario->id)],
-            'password' => ['sometimes', Password::min(8)],
-            'rol' => ['sometimes', Rule::enum(Rol::class)],
-            'activo' => ['sometimes', 'boolean'],
-        ]);
-
-        $usuario->update($datos);
+        $usuario = $this->usuarios->actualizar($usuario, $request->validated());
 
         return response()->json($usuario->only('id', 'name', 'email', 'rol', 'activo'));
     }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeError } from '../../api/cliente'
 import type { MetodoCaptura, Pagina, Referencia, Venta as TVenta, VentaItem } from '../../api/tipos'
+import Medida from '../../componentes/Medida'
 import { useScanner } from '../../hooks/useScanner'
 import { useDebounce } from '../../hooks/useDebounce'
 
@@ -92,18 +93,30 @@ export default function Venta() {
   const v = venta.data
   const abierta = v?.estado === 'abierta'
   const vigentes = v?.items.filter((i) => !i.reverso_id) ?? []
+  const ultimo = [...(v?.items ?? [])].reverse().find((i) => !i.reverso_id)
 
   return (
-    <div className="venta">
+    <div>
+      <div className="pagina-encabezado">
+        <h1>Venta de mostrador</h1>
+        <p>Cada lectura descuenta la unidad al momento. La venta no se borra: se reversa.</p>
+      </div>
+      <section className="medidas">
+        <Medida etiqueta="Venta" valor={v ? `#${v.id}` : '—'} pie={v?.estado ?? 'Sin abrir'} tono="azul" icono="venta" />
+        <Medida etiqueta="Ítems vigentes" valor={v ? vigentes.length : '—'} tono="amarillo" icono="caja" />
+        <Medida etiqueta="Reversos" valor={v ? v.reversos.length : '—'} tono="rojo" icono="auditoria" />
+        <Medida etiqueta="Última unidad" valor={ultimo?.unidad.codigo_barras ?? '—'} pie={ultimo?.unidad.referencia?.codigo_referencia} tono="verde" icono="etiqueta" codigo />
+      </section>
+      <div className="venta">
       <section className="panel">
         <div className="fila-titulo">
-          <h1>Venta {v ? `#${v.id}` : ''} {v && <span className={`chip ${v.estado}`}>{v.estado}</span>}</h1>
+          <h2>Lectura {v && <span className={`chip ${v.estado}`}>{v.estado}</span>}</h2>
           <div className="acciones">
-            <button onClick={() => abrir.mutate()} disabled={abrir.isPending}>Nueva venta</button>
-            {abierta && <button onClick={() => setRespaldo(true)}>Buscar sin escáner</button>}
-            {abierta && <button className="primario" onClick={() => cerrar.mutate()} disabled={cerrar.isPending}>Cerrar venta</button>}
+            <button type="button" className="secundario" onClick={() => abrir.mutate()} disabled={abrir.isPending}>Nueva venta</button>
+            {abierta && <button type="button" className="secundario" onClick={() => setRespaldo(true)}>Buscar sin escáner</button>}
+            {abierta && <button type="button" className="primario" onClick={() => cerrar.mutate()} disabled={cerrar.isPending}>Cerrar venta</button>}
             {v && !abierta && vigentes.length > 0 && (
-              <button className="peligro" onClick={() => setReverso({ tipo: 'anulacion' })}>Anular venta completa</button>
+              <button type="button" className="peligro" onClick={() => setReverso({ tipo: 'anulacion' })}>Anular venta completa</button>
             )}
           </div>
         </div>
@@ -172,6 +185,7 @@ export default function Venta() {
           ))}
         </ul>
       </aside>
+      </div>
 
       {respaldo && (
         <BusquedaRespaldo
@@ -223,7 +237,7 @@ function BusquedaRespaldo({ onElegir, onCerrar }: { onElegir: (codigo: string) =
           </div>
         ))}
         {resultado.data && resultado.data.referencias.length === 0 && <p>Sin resultados.</p>}
-        <div className="acciones"><button onClick={onCerrar}>Cerrar</button></div>
+        <div className="acciones"><button type="button" className="secundario" onClick={onCerrar}>Cerrar</button></div>
       </div>
     </div>
   )
@@ -261,7 +275,7 @@ function DialogoReverso({ ventaId, pendiente, onListo, onCerrar }: {
         </label>
         {reversar.isError && <div className="aviso error">{mensajeError(reversar.error)}</div>}
         <div className="acciones">
-          <button type="button" onClick={onCerrar}>Cancelar</button>
+          <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
           <button className="peligro" disabled={motivo.trim().length < 3 || reversar.isPending}>Confirmar reverso</button>
         </div>
       </form>
