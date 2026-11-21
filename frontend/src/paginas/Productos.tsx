@@ -33,7 +33,7 @@ const vacio: Formulario = {
   codigo_universal_id: '', descripcion: '', precio_venta: '', iva_venta_porcentaje: '19',
 }
 
-/** Una venta a crédito guarda el precio al escanear: con precio 0 quedaría en $0 en la cartera. */
+/** S-18: ningún precio puede ser 0. Las referencias antiguas en 0 no se pueden vender hasta asignarles uno. */
 function sinPrecio(r: Referencia) {
   return Number(r.precio_venta) === 0
 }
@@ -256,7 +256,7 @@ export default function Productos() {
                       <div role="cell" className="corta">{r.marca?.nombre}</div>
                       <div role="cell" className="corta">{r.proveedor?.nombre}</div>
                       <div role="cell" className="corta">{r.categoria?.nombre}</div>
-                      <div role="cell">{sinPrecio(r) ? <span className="chip sin-precio" title="Una venta a crédito de esta referencia quedaría en $0">Sin precio</span> : Number(r.precio_venta).toLocaleString('es-CO')}</div>
+                      <div role="cell">{sinPrecio(r) ? <span className="chip sin-precio" title="No se puede vender hasta que el administrador le asigne un precio">Sin precio</span> : Number(r.precio_venta).toLocaleString('es-CO')}</div>
                       <div role="cell">{Number(r.iva_venta_porcentaje) === 0 ? <span className="chip">Sin IVA</span> : `${Number(r.iva_venta_porcentaje)} %`}</div>
                       <div role="cell" className={r.existencia === 0 ? 'agotado' : ''}>{r.existencia}</div>
                       {esAdmin && (
@@ -309,6 +309,7 @@ function FormularioReferencia({ id, inicial, onListo, onCerrar }: { id: number |
     onSuccess: onListo,
   })
 
+  const errorPrecioVenta = f.precio_venta === '' ? null : Number(f.precio_venta) > 0 ? null : 'El precio de venta debe ser mayor que 0.'
   const campo = (k: keyof Formulario) => ({ value: f[k], onChange: (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value }) })
 
   return (
@@ -334,10 +335,12 @@ function FormularioReferencia({ id, inicial, onListo, onCerrar }: { id: number |
             </select>
           </label>
         )}
-        <label>Precio de venta<input type="number" min="0" step="0.01" required {...campo('precio_venta')} /></label>
-        {f.precio_venta !== '' && Number(f.precio_venta) === 0 && (
-          <p className="ayuda atencion">Con precio 0, una venta a crédito de esta referencia quedaría en $0 en la cartera.</p>
-        )}
+        <label>Precio de venta
+          <input type="number" min="0.01" step="0.01" required aria-invalid={errorPrecioVenta !== null} aria-describedby="precio-venta-ayuda" {...campo('precio_venta')} />
+        </label>
+        <p id="precio-venta-ayuda" className={errorPrecioVenta ? 'ayuda error' : 'ayuda'}>
+          {errorPrecioVenta ?? 'Mayor que 0. Una referencia sin precio no se puede vender.'}
+        </p>
         <label>IVA de venta (%)
           <select {...campo('iva_venta_porcentaje')}>
             <option value="19">19 %</option>
@@ -348,7 +351,7 @@ function FormularioReferencia({ id, inicial, onListo, onCerrar }: { id: number |
         {guardar.isError && <div className="aviso error">{mensajeError(guardar.error)}</div>}
         <div className="acciones">
           <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
-          <button className="primario" disabled={guardar.isPending}>Guardar</button>
+          <button className="primario" disabled={guardar.isPending || errorPrecioVenta !== null}>Guardar</button>
         </div>
       </form>
     </div>

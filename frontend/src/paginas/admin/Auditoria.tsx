@@ -5,7 +5,7 @@ import { useListaPaginada } from '../../hooks/useListaPaginada'
 import Medida from '../../componentes/Medida'
 import Paginacion from '../../componentes/Paginacion'
 
-const TABLAS = ['referencias', 'codigos_universales', 'marcas', 'proveedores', 'categorias', 'users']
+const TABLAS = ['referencias', 'codigos_universales', 'marcas', 'proveedores', 'categorias', 'clientes', 'users', 'venta_items']
 
 /** RF-11: valor anterior, valor nuevo, usuario y fecha de cada edición. */
 export default function Auditoria() {
