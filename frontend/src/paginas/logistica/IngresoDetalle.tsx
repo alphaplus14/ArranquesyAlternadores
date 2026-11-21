@@ -2,8 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
-import { api, mensajeError } from '../../api/cliente'
-import type { Ingreso, IngresoItem, Opcion, Pagina } from '../../api/tipos'
+import { api, erroresCampo, mensajeError } from '../../api/cliente'
+import type { FormaPago, Ingreso, IngresoItem, Opcion, Pagina } from '../../api/tipos'
+import { fechaCorta, sumarDias } from '../../componentes/fechas'
 import Medida from '../../componentes/Medida'
 import { formatoNumero, leerNumero, pesos } from '../../componentes/numeros'
 import { useCategorias, useMarcas } from '../../hooks/useCatalogos'
@@ -44,7 +45,9 @@ function codigoInexistente(error: unknown): string | null {
  * RF-04 / RF-05: remisión o factura digitada a mano. RF-20: los ítems se agregan escaneando el
  * código de referencia del proveedor; si no existe, se ofrece crearla y se vuelve a escanear.
  * RF-09 / RF-10: descuentos y líneas sin IVA, corregibles en la tabla mientras es borrador.
+ * RF-16: forma de pago y vencimiento (diálogo "Cambiar condiciones"); el total se fija al confirmar.
  * RF-03: al confirmar se crean las unidades y se pasa a imprimir etiquetas.
+ * Todas las cifras (subtotal, base, IVA, total) vienen del backend: aquí no se recalculan.
  */
 export default function IngresoDetalle() {
   const { id } = useParams()
@@ -52,6 +55,7 @@ export default function IngresoDetalle() {
   const [aviso, setAviso] = useState<Aviso | null>(null)
   const [creando, setCreando] = useState<string | null>(null)
   const [editando, setEditando] = useState<Edicion | null>(null)
+  const [condiciones, setCondiciones] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const ingreso = useQuery({
@@ -108,7 +112,7 @@ export default function IngresoDetalle() {
   const scanner = useScanner(onCodigo)
 
   // El lector recupera el foco salvo que haya un diálogo abierto o se esté editando una celda.
-  const hayDialogo = creando !== null || editando !== null
+  const hayDialogo = creando !== null || editando !== null || condiciones
   useEffect(() => {
     if (!hayDialogo && borrador) inputRef.current?.focus()
   }, [hayDialogo, borrador, escanear.isPending])
@@ -161,7 +165,7 @@ export default function IngresoDetalle() {
       <section className="medidas">
         <Medida etiqueta="Estado" valor={i.estado} tono={borrador ? 'amarillo' : 'verde'} icono="ingreso" />
         <Medida etiqueta="Unidades" valor={unidades} pie={`${i.items.length} línea(s)`} tono="azul" icono="caja" />
-        <Medida etiqueta="Total" valor={i.totales ? pesos(i.totales.total) : '—'} tono="verde" icono="etiqueta" />
+        <Medida etiqueta="Total" valor={i.total ? pesos(i.total) : i.totales ? pesos(i.totales.total) : '—'} pie={i.total ? 'fijado al confirmar' : undefined} tono="verde" icono="etiqueta" />
         <Medida etiqueta="Sin costo" valor={lineasSinCosto} pie="líneas por completar" tono={lineasSinCosto > 0 ? 'rojo' : 'amarillo'} icono="agotados" />
       </section>
       <div className="panel">
@@ -169,6 +173,14 @@ export default function IngresoDetalle() {
           <h2>Líneas <span className={`chip ${i.estado}`}>{i.estado}</span></h2>
           <span>{i.proveedor?.nombre}</span>
         </div>
+
+        <p className="venta-credito">
+          {i.forma_pago === 'credito'
+            ? <><span className="chip credito">Crédito</span> Vence el <strong>{i.vence_el ? fechaCorta(i.vence_el) : '—'}</strong></>
+            : <span className="chip">Contado</span>}
+          {' · '}Descuento del documento {pesos(i.descuento_total)}
+          {borrador && <> · <button type="button" className="enlace" onClick={() => setCondiciones(true)}>Cambiar condiciones</button></>}
+        </p>
 
         {borrador && (
           <>
@@ -200,7 +212,7 @@ export default function IngresoDetalle() {
                 <td>{celda(it, 'descuento', pesos(it.descuento))}</td>
                 <td>
                   {it.sin_iva ? <span className="chip">sin IVA</span> : celda(it, 'iva_porcentaje', `${formatoNumero(it.iva_porcentaje)} %`)}
-                  {!it.sin_iva && <> <small>{pesos(it.iva)}</small></>}
+                  {!it.sin_iva && it.iva !== null && <> <small>{pesos(it.iva)}</small></>}
                   {borrador && (
                     <label className="check">
                       <input
@@ -212,7 +224,7 @@ export default function IngresoDetalle() {
                     </label>
                   )}
                 </td>
-                <td>{pesos(it.subtotal)}</td>
+                <td>{it.subtotal === null ? '—' : pesos(it.subtotal)}</td>
                 <td>{borrador && <button type="button" className="enlace" disabled={quitar.isPending} onClick={() => quitar.mutate(it.id)}>Quitar</button>}</td>
               </tr>
             ))}
@@ -225,9 +237,11 @@ export default function IngresoDetalle() {
             <dt>Subtotal</dt><dd>{pesos(i.totales.subtotal)}</dd>
             <dt>Descuento en líneas</dt><dd>{pesos(i.totales.descuento_lineas)}</dd>
             <dt>Descuento del documento</dt><dd>{pesos(i.totales.descuento_total)}</dd>
+            <dt>Base del IVA</dt><dd>{pesos(i.totales.base)}</dd>
             <dt>IVA</dt><dd>{pesos(i.totales.iva)}</dd>
             <dt>Líneas sin IVA</dt><dd>{i.totales.lineas_sin_iva}</dd>
             <dt>Total</dt><dd><strong>{pesos(i.totales.total)}</strong></dd>
+            {i.total && <><dt>Total guardado al confirmar</dt><dd><strong>{pesos(i.total)}</strong></dd></>}
           </dl>
         )}
 
@@ -241,6 +255,14 @@ export default function IngresoDetalle() {
           )}
         </div>
       </div>
+
+      {condiciones && (
+        <DialogoCondiciones
+          ingreso={i}
+          onGuardado={(nuevo) => { actualizar(nuevo); setCondiciones(false); setAviso(null) }}
+          onCerrar={() => setCondiciones(false)}
+        />
+      )}
 
       {creando !== null && i.proveedor && (
         <DialogoReferencia
@@ -406,6 +428,75 @@ function DialogoReferencia({ codigo, proveedor, onCreada, onCerrar }: {
         <div className="acciones">
           <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
           <button className="primario" disabled={!completo || crear.isPending}>{crear.isPending ? 'Guardando…' : 'Crear y agregar'}</button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
+/**
+ * RF-16 / RF-09: forma de pago, vencimiento y descuento del documento de un borrador.
+ * A crédito, el vencimiento se prellena con fecha + plazo del proveedor y se corrige con el que
+ * trae el documento. Las reglas (obligatorio, no antes de la fecha, descuento ≤ subtotal) las
+ * valida el backend; sus mensajes salen junto a cada campo.
+ */
+function DialogoCondiciones({ ingreso, onGuardado, onCerrar }: {
+  ingreso: Ingreso
+  onGuardado: (ingreso: Ingreso) => void
+  onCerrar: () => void
+}) {
+  const plazo = ingreso.proveedor?.plazo_dias ?? null
+  const [forma, setForma] = useState<FormaPago>(ingreso.forma_pago)
+  const [vence, setVence] = useState(ingreso.vence_el ?? '')
+  const [descuento, setDescuento] = useState(String(Number(ingreso.descuento_total)))
+
+  const cambiarForma = (nueva: FormaPago) => {
+    setForma(nueva)
+    // Prellenado: solo sugiere; el usuario lo corrige con la fecha del documento.
+    if (nueva === 'credito' && vence === '' && plazo !== null) setVence(sumarDias(ingreso.fecha, plazo))
+  }
+
+  const guardar = useMutation({
+    mutationFn: async () => (await api.patch<Ingreso>(`/ingresos/${ingreso.id}`, {
+      forma_pago: forma,
+      vence_el: forma === 'credito' ? vence || null : null,
+      descuento_total: descuento === '' ? 0 : descuento,
+    })).data,
+    onSuccess: onGuardado,
+  })
+  const errores = guardar.isError ? erroresCampo(guardar.error) : {}
+  const general = guardar.isError && Object.keys(errores).length === 0 ? mensajeError(guardar.error) : null
+
+  return (
+    <div className="modal" onKeyDown={(e) => e.key === 'Escape' && onCerrar()}>
+      <form className="modal-caja" role="dialog" aria-modal="true" aria-labelledby="condiciones-titulo" onSubmit={(e) => { e.preventDefault(); guardar.mutate() }}>
+        <h2 id="condiciones-titulo">Condiciones del documento</h2>
+        <label>Pago
+          <select autoFocus value={forma} onChange={(e) => cambiarForma(e.target.value as FormaPago)}>
+            <option value="contado">Contado</option>
+            <option value="credito">Crédito</option>
+          </select>
+        </label>
+        {forma === 'credito' && (
+          <label>Vence el
+            <input type="date" aria-invalid={!!errores.vence_el} aria-describedby="vence-ayuda" value={vence} onChange={(e) => setVence(e.target.value)} />
+            <small id="vence-ayuda" className={errores.vence_el ? 'ayuda error' : 'ayuda'}>
+              {errores.vence_el ?? (plazo !== null
+                ? `Sugerido: fecha del documento + ${plazo} días del proveedor. Corríjalo con el que trae el documento.`
+                : 'Escriba el vencimiento que trae el documento.')}
+            </small>
+          </label>
+        )}
+        <label>Descuento del documento
+          <input type="number" min="0" step="0.01" aria-invalid={!!errores.descuento_total} aria-describedby="descuento-ayuda" value={descuento} onChange={(e) => setDescuento(e.target.value)} />
+          <small id="descuento-ayuda" className={errores.descuento_total ? 'ayuda error' : 'ayuda'}>
+            {errores.descuento_total ?? 'Se reparte entre las líneas antes de calcular el IVA.'}
+          </small>
+        </label>
+        {general && <div className="aviso error">{general}</div>}
+        <div className="acciones">
+          <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
+          <button className="primario" disabled={guardar.isPending}>{guardar.isPending ? 'Guardando…' : 'Guardar'}</button>
         </div>
       </form>
     </div>

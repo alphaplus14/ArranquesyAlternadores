@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
-import { api, mensajeError } from '../../api/cliente'
-import type { Ingreso, Pagina, TipoIngreso } from '../../api/tipos'
+import { api, erroresCampo, mensajeError } from '../../api/cliente'
+import type { FormaPago, Ingreso, Pagina, TipoIngreso } from '../../api/tipos'
+import { sumarDias } from '../../componentes/fechas'
 import { useListaPaginada } from '../../hooks/useListaPaginada'
 import { useProveedores } from '../../hooks/useCatalogos'
 import Medida from '../../componentes/Medida'
@@ -12,6 +13,8 @@ import Paginacion from '../../componentes/Paginacion'
 interface FilaIngreso {
   id: number
   tipo: TipoIngreso
+  forma_pago: FormaPago
+  vence_el: string | null
   numero_documento: string
   fecha: string
   estado: string
@@ -32,6 +35,8 @@ function ingresoExistente(error: unknown): number | null {
 /**
  * RF-04 / RF-05: remisiones y facturas se crean a mano (tipo, proveedor, número y fecha) y los
  * ítems se escanean en el detalle (RF-20). Un documento repetido en borrador se reabre.
+ * RF-16: contado o crédito; a crédito el vencimiento se prellena con el plazo del proveedor y se
+ * corrige con el que trae el documento. El backend valida.
  */
 export default function Ingresos() {
   const navegar = useNavigate()
@@ -42,7 +47,13 @@ export default function Ingresos() {
     numero_documento: '',
     fecha: new Date().toLocaleDateString('en-CA'),
     descuento_total: '0',
+    forma_pago: 'contado' as FormaPago,
   })
+  /** null = sin tocar: se sugiere fecha + plazo del proveedor. */
+  const [venceEscrito, setVenceEscrito] = useState<string | null>(null)
+  const plazo = proveedores.data?.find((p) => String(p.id) === form.proveedor_id)?.plazo_dias ?? null
+  const venceSugerido = plazo !== null && form.fecha ? sumarDias(form.fecha, plazo) : ''
+  const venceEl = venceEscrito ?? venceSugerido
 
   const { filas, resultado, info, irA } = useListaPaginada<FilaIngreso>({
     clave: ['ingresos'],
@@ -50,12 +61,14 @@ export default function Ingresos() {
   })
 
   const crear = useMutation({
-    mutationFn: async () => (await api.post<Ingreso>('/ingresos', form)).data,
+    mutationFn: async () =>
+      (await api.post<Ingreso>('/ingresos', { ...form, vence_el: form.forma_pago === 'credito' ? venceEl || null : null })).data,
     onSuccess: (i) => navegar(`/logistica/ingresos/${i.id}`),
   })
 
   const borradores = filas.filter((i) => i.estado === 'borrador').length
   const existente = crear.isError ? ingresoExistente(crear.error) : null
+  const errores = crear.isError ? erroresCampo(crear.error) : {}
 
   return (
     <div className="pila">
@@ -86,7 +99,24 @@ export default function Ingresos() {
           </label>
           <label>N.º del documento<input required maxLength={60} value={form.numero_documento} onChange={(e) => setForm({ ...form, numero_documento: e.target.value })} /></label>
           <label>Fecha<input type="date" required value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} /></label>
-          <label>Descuento del documento<input type="number" min="0" step="0.01" value={form.descuento_total} onChange={(e) => setForm({ ...form, descuento_total: e.target.value })} /></label>
+          <label>Descuento del documento
+            <input type="number" min="0" step="0.01" aria-invalid={!!errores.descuento_total} value={form.descuento_total} onChange={(e) => setForm({ ...form, descuento_total: e.target.value })} />
+            {errores.descuento_total && <small className="ayuda error">{errores.descuento_total}</small>}
+          </label>
+          <label>Pago
+            <select value={form.forma_pago} onChange={(e) => setForm({ ...form, forma_pago: e.target.value as FormaPago })}>
+              <option value="contado">Contado</option>
+              <option value="credito">Crédito</option>
+            </select>
+          </label>
+          {form.forma_pago === 'credito' && (
+            <label>Vence el
+              <input type="date" aria-invalid={!!errores.vence_el} value={venceEl} onChange={(e) => setVenceEscrito(e.target.value)} />
+              {errores.vence_el
+                ? <small className="ayuda error">{errores.vence_el}</small>
+                : <small className="ayuda">{venceEscrito === null && plazo !== null ? `Fecha + ${plazo} días del proveedor; corríjalo con el del documento.` : 'El que trae el documento.'}</small>}
+            </label>
+          )}
           <button className="primario" disabled={crear.isPending}>Crear borrador</button>
         </form>
         <p className="ayuda">Si ese documento ya está en borrador, se abre el mismo para seguir escaneando.</p>
@@ -101,7 +131,7 @@ export default function Ingresos() {
       <section className="tarjeta-pagina">
         <div className="fila-titulo"><h2>Documentos</h2></div>
         <table>
-          <thead><tr><th>#</th><th>Tipo</th><th>Documento</th><th>Proveedor</th><th>Fecha</th><th>Unidades</th><th>Estado</th><th>Usuario</th></tr></thead>
+          <thead><tr><th>#</th><th>Tipo</th><th>Documento</th><th>Proveedor</th><th>Fecha</th><th>Pago</th><th>Unidades</th><th>Estado</th><th>Usuario</th></tr></thead>
           <tbody>
             {filas.map((i) => (
               <tr key={i.id}>
@@ -110,6 +140,7 @@ export default function Ingresos() {
                 <td>{i.numero_documento}</td>
                 <td>{i.proveedor.nombre}</td>
                 <td>{i.fecha.slice(0, 10)}</td>
+                <td>{i.forma_pago === 'credito' ? <span className="chip credito">Crédito{i.vence_el ? ` · vence ${i.vence_el.slice(0, 10)}` : ''}</span> : 'Contado'}</td>
                 <td>{i.unidades ?? 0}</td>
                 <td><span className={`chip ${i.estado}`}>{i.estado}</span></td>
                 <td>{i.usuario.name}</td>

@@ -27,6 +27,12 @@ export interface Opcion {
   nombre: string
 }
 
+/** RF-16: plazo_dias solo prellena el vencimiento de las compras a crédito. */
+export interface Proveedor extends Opcion {
+  nit?: string | null
+  plazo_dias?: number | null
+}
+
 export interface Categoria extends Opcion {
   admite_codigo_universal: boolean
 }
@@ -85,8 +91,10 @@ export interface IngresoItem {
   descuento: string
   iva_porcentaje: string
   sin_iva: boolean
-  subtotal: number
-  iva: number
+  /** RF-09: cifras del backend con el descuento del documento prorrateado; null fuera del ingreso. */
+  subtotal: string | null
+  base: string | null
+  iva: string | null
 }
 
 export type TipoIngreso = 'remision' | 'factura'
@@ -96,19 +104,27 @@ export interface Ingreso {
   /** RF-04: las dos se ingresan a mano y los ítems se escanean (RF-20). */
   tipo: TipoIngreso
   estado: 'borrador' | 'confirmado'
+  /** RF-16: contado o crédito; a crédito, vence_el es el vencimiento que trae el documento. */
+  forma_pago: FormaPago
   proveedor_id: number
-  proveedor?: Opcion
+  proveedor?: Proveedor
   numero_documento: string
   fecha: string
+  vence_el: string | null
+  descuento_total: string
+  /** RF-16: total fijado al confirmar; null en borrador. */
+  total: string | null
   confirmado_at: string | null
   items: IngresoItem[]
+  /** RF-09 (ajuste): calculado por el backend; el frontend solo lo muestra. */
   totales: {
-    subtotal: number
-    descuento_lineas: number
+    subtotal: string
+    descuento_lineas: string
     descuento_total: string
-    iva: number
+    base: string
+    iva: string
     lineas_sin_iva: number
-    total: number
+    total: string
   } | null
 }
 
