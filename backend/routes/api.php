@@ -42,6 +42,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/clientes', [ClienteController::class, 'index']); // RF-13
     });
 
+    // RF-20: logística crea la referencia que no existe al escanear un ingreso; editar y desactivar son del admin.
+    Route::post('/referencias', [ReferenciaController::class, 'store'])->middleware('rol:admin,logistica');
+
     // RF-13: el mostrador crea clientes al vender a crédito; editar es solo del admin.
     Route::post('/clientes', [ClienteController::class, 'store'])->middleware('rol:admin,mostrador');
 
@@ -53,7 +56,7 @@ Route::middleware('auth:sanctum')->group(function () {
             ->parameters(['proveedores' => 'proveedor'])->except(['index']);
         Route::apiResource('codigos-universales', CodigoUniversalController::class)
             ->parameters(['codigos-universales' => 'codigoUniversal'])->except(['index', 'show']);
-        Route::apiResource('referencias', ReferenciaController::class)->except(['index', 'show']);
+        Route::apiResource('referencias', ReferenciaController::class)->except(['index', 'show', 'store']);
 
         Route::get('/usuarios', [UsuarioController::class, 'index']);
         Route::post('/usuarios', [UsuarioController::class, 'store']);
@@ -73,6 +76,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::match(['put', 'patch'], '/ingresos/{ingreso}', [IngresoController::class, 'update']);
         Route::get('/ingresos/{ingreso}/unidades', [IngresoController::class, 'unidades']);
         Route::post('/ingresos/{ingreso}/confirmar', [IngresoController::class, 'confirmar']);
+        Route::post('/ingresos/{ingreso}/escanear', [IngresoController::class, 'escanear'])->middleware('medir:500')->name('ingresos.escanear'); // RF-20
 
         Route::scopeBindings()->group(function () {
             Route::post('/ingresos/{ingreso}/items', [IngresoController::class, 'agregarItem']);

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Enums\TipoIngreso;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\IngresoItemRequest;
+use App\Http\Resources\IngresoItemResource;
 use App\Http\Resources\IngresoResource;
 use App\Http\Resources\UnidadResource;
 use App\Models\Ingreso;
@@ -19,7 +20,7 @@ use Illuminate\Validation\Rule;
 /**
  * RF-05: ingreso por remisión: crear borrador, agregar ítems y confirmar.
  * RF-09 / RF-10: descuento y líneas sin IVA. RF-03: al confirmar se crean las unidades.
- * RF-04: la factura de compra se ingresa a mano, igual que la remisión.
+ * RF-04: la factura de compra se ingresa a mano, igual que la remisión. RF-20: ítems por escaneo.
  */
 class IngresoController extends Controller
 {
@@ -58,6 +59,15 @@ class IngresoController extends Controller
         $ingreso = $this->servicio->actualizarEncabezado($ingreso, $this->validarEncabezado($request, parcial: true));
 
         return new IngresoResource($this->cargar($ingreso));
+    }
+
+    /** RF-20: 201 si crea la línea, 200 si sumó 1 a la existente; 404 con motivo si el código no existe. */
+    public function escanear(Request $request, Ingreso $ingreso): JsonResponse
+    {
+        $codigo = $request->validate(['codigo' => ['required', 'string', 'max:80']])['codigo'];
+        $item = $this->servicio->escanear($ingreso, $codigo);
+
+        return (new IngresoItemResource($item))->response()->setStatusCode($item->wasRecentlyCreated ? 201 : 200);
     }
 
     public function agregarItem(IngresoItemRequest $request, Ingreso $ingreso): IngresoResource

@@ -7,6 +7,7 @@ use App\Enums\TipoIngreso;
 use App\Exceptions\ReglaInventarioException;
 use App\Models\Ingreso;
 use App\Models\IngresoItem;
+use App\Models\Referencia;
 use App\Models\User;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
@@ -15,6 +16,7 @@ use Illuminate\Support\Facades\DB;
  * RF-05: ingreso por remisión, ítem por ítem, al mismo inventario.
  * RF-04: la factura de compra se ingresa a mano, igual que la remisión (sin QR ni XML).
  * RF-09 / RF-10: descuento de la factura y líneas sin IVA.
+ * RF-20: los ítems se agregan escaneando el código de referencia del proveedor del ingreso.
  * RF-03: al confirmar se crean las unidades con su código de barras.
  */
 class IngresoService
@@ -66,6 +68,50 @@ class IngresoService
         });
     }
 
+    /**
+     * RF-20 (S-19): el código leído es el codigo_referencia del proveedor del ingreso; se busca
+     * solo entre sus referencias, con igualdad exacta (sin prefijos). Si ya hay una línea de esa
+     * referencia, suma 1; si no, la crea con cantidad 1 y el último costo confirmado de la
+     * referencia (0 si no hay, y se pide antes de confirmar). wasRecentlyCreated dice cuál pasó.
+     * Si la referencia no existe responde 404 con motivo referencia_inexistente y el código leído.
+     */
+    public function escanear(Ingreso $ingreso, string $codigo): IngresoItem
+    {
+        $codigo = trim($codigo);
+
+        return $this->enBorrador($ingreso, function (Ingreso $bloqueado) use ($codigo) {
+            $referencia = Referencia::query()
+                ->where('proveedor_id', $bloqueado->proveedor_id)
+                ->where('codigo_referencia', $codigo)
+                ->first(['id', 'codigo_referencia', 'descripcion']);
+
+            if ($referencia === null) {
+                throw new ReglaInventarioException(
+                    "El código {$codigo} no es una referencia de este proveedor.",
+                    404,
+                    ['motivo' => 'referencia_inexistente', 'codigo' => $codigo],
+                );
+            }
+
+            // La fila del ingreso ya está bloqueada: dos lecturas simultáneas no duplican la línea.
+            $item = $bloqueado->items()->where('referencia_id', $referencia->id)->orderBy('id')->first();
+
+            if ($item) {
+                $item->increment('cantidad');
+            } else {
+                $item = $bloqueado->items()->create([
+                    'referencia_id' => $referencia->id,
+                    'cantidad' => 1,
+                    'costo_unitario' => $this->ultimoCosto($referencia->id) ?? 0,
+                    'iva_porcentaje' => 19,
+                    'sin_iva' => false,
+                ]);
+            }
+
+            return $item->setRelation('referencia', $referencia);
+        });
+    }
+
     public function agregarItem(Ingreso $ingreso, array $datos): IngresoItem
     {
         return $this->enBorrador($ingreso, fn (Ingreso $bloqueado) => $bloqueado->items()->create($datos));
@@ -99,6 +145,17 @@ class IngresoService
                 throw new ReglaInventarioException('El ingreso no tiene ítems.', 422);
             }
 
+            // RF-20: una línea sin costo (0, como queda al escanear algo sin historial) no se confirma.
+            $sinCosto = $items->filter(fn (IngresoItem $i) => (float) $i->costo_unitario <= 0);
+            if ($sinCosto->isNotEmpty()) {
+                $codigos = Referencia::query()->whereKey($sinCosto->pluck('referencia_id'))->orderBy('codigo_referencia')->pluck('codigo_referencia');
+
+                throw new ReglaInventarioException(
+                    'No se puede confirmar: falta el costo de '.$codigos->implode(', ').'. Escríbalo en la tabla de ítems.',
+                    422,
+                );
+            }
+
             $codigos = $this->codigos->reservar($items->sum('cantidad'));
             $this->inventario->darEntrada($ingreso, $items, $codigos, $usuario->id);
 
@@ -128,6 +185,18 @@ class IngresoService
 
             return $cambio($bloqueado);
         });
+    }
+
+    /** Último costo con que entró la referencia en un ingreso confirmado (null si nunca entró). */
+    private function ultimoCosto(int $referenciaId): ?string
+    {
+        return IngresoItem::query()
+            ->join('ingresos', 'ingresos.id', '=', 'ingreso_items.ingreso_id')
+            ->where('ingreso_items.referencia_id', $referenciaId)
+            ->where('ingresos.estado', EstadoIngreso::Confirmado)
+            ->where('ingreso_items.costo_unitario', '>', 0)
+            ->orderByDesc('ingreso_items.id')
+            ->value('ingreso_items.costo_unitario');
     }
 
     /** @param array{tipo:TipoIngreso, proveedor_id:int, numero_documento:string} $datos */

@@ -31,21 +31,7 @@ class IngresoResource extends JsonResource
             'confirmado_por' => $this->whenLoaded('confirmadoPor', fn () => $this->confirmadoPor
                 ? ['id' => $this->confirmadoPor->id, 'name' => $this->confirmadoPor->name]
                 : null),
-            'items' => $this->whenLoaded('items', fn () => $items->map(fn ($i) => [
-                'id' => $i->id,
-                'referencia_id' => $i->referencia_id,
-                'referencia' => $i->relationLoaded('referencia') ? [
-                    'codigo_referencia' => $i->referencia->codigo_referencia,
-                    'descripcion' => $i->referencia->descripcion,
-                ] : null,
-                'cantidad' => $i->cantidad,
-                'costo_unitario' => $i->costo_unitario,
-                'descuento' => $i->descuento,
-                'iva_porcentaje' => $i->iva_porcentaje,
-                'sin_iva' => $i->sin_iva,
-                'subtotal' => $i->subtotal(),
-                'iva' => $i->iva(),
-            ])),
+            'items' => IngresoItemResource::collection($items),
             // RF-09: el descuento de la factura se muestra explícito.
             'totales' => $cargados ? [
                 'subtotal' => $subtotal,
