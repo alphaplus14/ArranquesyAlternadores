@@ -24,11 +24,18 @@ type Formulario = {
   codigo_universal_id: string
   descripcion: string
   precio_venta: string
+  /** RF-14 / S-15: el backend acepta 19 o 0 (sin IVA). */
+  iva_venta_porcentaje: '19' | '0'
 }
 
 const vacio: Formulario = {
   codigo_referencia: '', marca_id: '', proveedor_id: '', categoria_id: '',
-  codigo_universal_id: '', descripcion: '', precio_venta: '',
+  codigo_universal_id: '', descripcion: '', precio_venta: '', iva_venta_porcentaje: '19',
+}
+
+/** Una venta a crédito guarda el precio al escanear: con precio 0 quedaría en $0 en la cartera. */
+function sinPrecio(r: Referencia) {
+  return Number(r.precio_venta) === 0
 }
 
 interface Aviso { tipo: 'ok' | 'error' | 'atencion'; texto: string }
@@ -145,12 +152,13 @@ export default function Productos() {
       codigo_universal_id: r.codigo_universal_id ? String(r.codigo_universal_id) : '',
       descripcion: r.descripcion,
       precio_venta: r.precio_venta,
+      iva_venta_porcentaje: Number(r.iva_venta_porcentaje) === 0 ? '0' : '19',
     },
   })
 
   const columnas = esAdmin
-    ? '148px minmax(180px, 1.6fr) 120px 140px 130px 110px 96px 148px'
-    : '148px minmax(180px, 1.6fr) 120px 140px 130px 110px 96px'
+    ? '148px minmax(180px, 1.6fr) 120px 140px 130px 120px 76px 96px 148px'
+    : '148px minmax(180px, 1.6fr) 120px 140px 130px 120px 76px 96px'
 
   return (
     <div>
@@ -232,6 +240,7 @@ export default function Productos() {
             <div role="columnheader">Proveedor</div>
             <div role="columnheader">Categoría</div>
             <div role="columnheader">Precio</div>
+            <div role="columnheader">IVA</div>
             <div role="columnheader">Existencia</div>
             {esAdmin && <div role="columnheader">Acciones</div>}
           </div>
@@ -247,7 +256,8 @@ export default function Productos() {
                       <div role="cell" className="corta">{r.marca?.nombre}</div>
                       <div role="cell" className="corta">{r.proveedor?.nombre}</div>
                       <div role="cell" className="corta">{r.categoria?.nombre}</div>
-                      <div role="cell">{Number(r.precio_venta).toLocaleString('es-CO')}</div>
+                      <div role="cell">{sinPrecio(r) ? <span className="chip sin-precio" title="Una venta a crédito de esta referencia quedaría en $0">Sin precio</span> : Number(r.precio_venta).toLocaleString('es-CO')}</div>
+                      <div role="cell">{Number(r.iva_venta_porcentaje) === 0 ? <span className="chip">Sin IVA</span> : `${Number(r.iva_venta_porcentaje)} %`}</div>
                       <div role="cell" className={r.existencia === 0 ? 'agotado' : ''}>{r.existencia}</div>
                       {esAdmin && (
                         <div role="cell" className="acciones-fila">
@@ -293,7 +303,7 @@ function FormularioReferencia({ id, inicial, onListo, onCerrar }: { id: number |
 
   const guardar = useMutation({
     mutationFn: async () => {
-      const datos = { ...f, codigo_universal_id: admiteUniversal && f.codigo_universal_id ? Number(f.codigo_universal_id) : null }
+      const datos = { ...f, iva_venta_porcentaje: Number(f.iva_venta_porcentaje), codigo_universal_id: admiteUniversal && f.codigo_universal_id ? Number(f.codigo_universal_id) : null }
       return id ? api.put(`/referencias/${id}`, datos) : api.post('/referencias', datos)
     },
     onSuccess: onListo,
@@ -325,6 +335,16 @@ function FormularioReferencia({ id, inicial, onListo, onCerrar }: { id: number |
           </label>
         )}
         <label>Precio de venta<input type="number" min="0" step="0.01" required {...campo('precio_venta')} /></label>
+        {f.precio_venta !== '' && Number(f.precio_venta) === 0 && (
+          <p className="ayuda atencion">Con precio 0, una venta a crédito de esta referencia quedaría en $0 en la cartera.</p>
+        )}
+        <label>IVA de venta (%)
+          <select {...campo('iva_venta_porcentaje')}>
+            <option value="19">19 %</option>
+            <option value="0">0 % · sin IVA</option>
+          </select>
+        </label>
+        <p className="ayuda">0 % significa que la referencia se vende sin IVA. Es el IVA que queda guardado en cada venta.</p>
         {guardar.isError && <div className="aviso error">{mensajeError(guardar.error)}</div>}
         <div className="acciones">
           <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
