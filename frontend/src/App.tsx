@@ -15,6 +15,7 @@ import Universales from './paginas/admin/Universales'
 import UniversalDetalle from './paginas/admin/UniversalDetalle'
 import Catalogos from './paginas/admin/Catalogos'
 import Usuarios from './paginas/admin/Usuarios'
+import Clientes from './paginas/admin/Clientes'
 import Auditoria from './paginas/admin/Auditoria'
 
 /** Protege un grupo de rutas por rol (el backend vuelve a validar cada endpoint). */
@@ -49,6 +50,7 @@ export default function App() {
           <Route path="/admin/universales/:id" element={<UniversalDetalle />} />
           <Route path="/admin/catalogos" element={<Catalogos />} />
           <Route path="/admin/usuarios" element={<Usuarios />} />
+          <Route path="/admin/clientes" element={<Clientes />} />
           <Route path="/admin/auditoria" element={<Auditoria />} />
         </Route>
         <Route path="*" element={<Navigate to={usuario ? rutaInicio(usuario.rol) : '/login'} replace />} />

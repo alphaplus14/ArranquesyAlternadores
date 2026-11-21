@@ -59,6 +59,7 @@ export default function Layout() {
           items: [
             { to: '/admin/universales', texto: 'Universales', icono: 'universal' },
             { to: '/admin/catalogos', texto: 'Catálogos', icono: 'catalogo' },
+            { to: '/admin/clientes', texto: 'Clientes', icono: 'persona' },
             { to: '/admin/usuarios', texto: 'Usuarios', icono: 'usuarios' },
             { to: '/admin/auditoria', texto: 'Auditoría', icono: 'auditoria' },
           ],
