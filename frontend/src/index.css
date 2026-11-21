@@ -314,6 +314,9 @@ input[aria-invalid='true'] { border-color: var(--peligro); }
 .login input[aria-invalid='false'][data-tocado='true'] { border-color: var(--ok); }
 .campo-clave { position: relative; display: flex; }
 .campo-clave input { flex: 1; padding-right: 5.5rem; }
+/* Edge dibuja su propio ojo para revelar la contraseña; ya tenemos el botón "Mostrar". */
+.campo-clave input::-ms-reveal,
+.campo-clave input::-ms-clear { display: none; }
 .campo-clave .ver-clave {
   position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
   font-size: 0.85rem; text-decoration: none;
