@@ -55,6 +55,15 @@ Reglas:
 - Las violaciones de reglas de negocio se lanzan como `ReglaInventarioException` y `bootstrap/app.php` las convierte en JSON.
 - La configuración del dominio vive en `config/etiquetas.php` (prefijo del código de barras y tamaños de etiqueta).
 
+## Ingreso de remisiones y facturas (RF-04, RF-05, RF-20)
+
+No se lee el QR ni el XML de la factura.
+
+1. `POST /ingresos` con `tipo` (`factura` | `remision`), `proveedor_id`, `numero_documento` (se recorta y compacta) y `fecha`. El mismo proveedor + tipo + número no entra dos veces: un borrador se devuelve (200) y uno confirmado responde 422 con `motivo: documento_confirmado` e `ingreso_id`.
+2. `POST /ingresos/{ingreso}/escanear` con `codigo`: busca el `codigo_referencia` entre las referencias del proveedor del ingreso. Si existe, crea la línea con cantidad 1 y el último costo confirmado (201) o suma 1 a la que ya hay (200). Si no existe, 404 con `motivo: referencia_inexistente` y el `codigo` leído; logística puede crearla con `POST /referencias` y volver a escanear.
+3. Las líneas se corrigen con `PATCH /ingresos/{ingreso}/items/{item}` y se quitan con `DELETE` mientras es borrador.
+4. `POST /ingresos/{ingreso}/confirmar` rechaza líneas sin costo (422), crea las unidades con su código de barras y suma existencia.
+
 ## Tests
 
 ```bash

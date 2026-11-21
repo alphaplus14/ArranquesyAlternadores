@@ -46,3 +46,7 @@ Usuarios de desarrollo (contraseña `cambiar123`): `admin`, `logistica`, `mostra
 | mostrador | Venta (escáner siempre enfocado, búsqueda de respaldo, reversos), agotados |
 | logistica | Ingreso de remisiones y facturas (RF-05, RF-04), etiquetas (grande, pequeño, más pequeño), agotados |
 | admin | Todo lo anterior + referencias, códigos universales, catálogos, usuarios y auditoría |
+
+## Ingreso de remisiones y facturas
+
+Logística crea el ingreso a mano: tipo (factura o remisión), proveedor, número y fecha. Luego escanea los productos: cada lectura busca el código entre las referencias de ese proveedor y suma 1 a su línea. Si el código no existe, la pantalla ofrece crear la referencia y la agrega sola. Cantidad, costo, descuento e IVA se corrigen en la tabla. Al confirmar se crean las unidades y se imprimen las etiquetas. Un mismo documento no entra dos veces. El QR y el XML de la factura ya no se leen (ver S-06, S-19 y S-20 en `docs/supuestos.md`).
