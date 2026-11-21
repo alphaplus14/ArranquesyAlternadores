@@ -38,7 +38,7 @@ No darlos por resueltos. Si una respuesta depende de uno, decirlo y proponer un 
 1. Confirmar con Frank y el contador que Contapyme no llevará también la cartera de lo que factura.
 2. Probar con una factura real qué trae el QR. Hay una foto en el Project.
 3. Confirmar si una remisión puede facturarse parcialmente y cómo se corrige un vínculo equivocado ya confirmado.
-4. Confirmar si en mostrador se necesitan descuentos o precios libres.
+4. ~~Confirmar si en mostrador se necesitan descuentos o precios libres.~~ Resuelto el 21-nov-2026: precio estándar en contado, precio libre > 0 en crédito abierto, ningún precio en 0 (`docs/supuestos.md`, S-10 y S-18).
 5. Etiqueta por unidad, o por referencia más cantidad, en piezas baratas de alto volumen.
 6. Cuáles poleas y cuáles automáticos entran al código universal.
 7. Nombre de la tercera marca. En el audio se oye «Jota».
