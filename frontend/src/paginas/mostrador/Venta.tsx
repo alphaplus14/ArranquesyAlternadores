@@ -110,7 +110,11 @@ export default function Venta() {
   useEffect(() => {
     if (!hayDialogo) inputRef.current?.focus()
   }, [hayDialogo, ventaId, escanear.isPending])
-  const reenfocar = () => setTimeout(() => { if (!hayDialogo) inputRef.current?.focus() }, 0)
+  // Al pulsar un botón que abre un diálogo, el blur llega antes que el clic: el timeout debe leer
+  // si hay diálogo cuando corre, no cuando se pintó el input, o le roba el foco al diálogo.
+  const hayDialogoRef = useRef(hayDialogo)
+  hayDialogoRef.current = hayDialogo
+  const reenfocar = () => setTimeout(() => { if (!hayDialogoRef.current) inputRef.current?.focus() }, 0)
 
   const v = venta.data
   const abierta = v?.estado === 'abierta'
