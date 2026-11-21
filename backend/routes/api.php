@@ -94,5 +94,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/ventas/{venta}/escanear', [VentaController::class, 'escanear'])->middleware('medir:300')->name('ventas.escanear');
         Route::post('/ventas/{venta}/cerrar', [VentaController::class, 'cerrar']);
         Route::post('/ventas/{venta}/reversos', [VentaController::class, 'reversar']);
+        // RF-14 / S-18: solo el precio de un ítem de una venta a crédito abierta.
+        Route::patch('/ventas/{venta}/items/{item}', [VentaController::class, 'cambiarPrecio'])->scopeBindings();
     });
 });

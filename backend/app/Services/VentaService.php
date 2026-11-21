@@ -6,6 +6,7 @@ use App\Enums\EstadoVenta;
 use App\Enums\FormaPago;
 use App\Enums\MetodoCaptura;
 use App\Exceptions\ReglaInventarioException;
+use App\Models\Auditoria;
 use App\Models\Cliente;
 use App\Models\Unidad;
 use App\Models\User;
@@ -99,6 +100,58 @@ class VentaService
             $this->inventario->darSalida($unidad, $venta, $usuario->id, $metodo);
 
             return $item->setRelation('unidad', $unidad);
+        });
+    }
+
+    /**
+     * RF-14 / S-18: en una venta a crédito abierta el precio de un ítem vigente puede cambiar a
+     * cualquier valor mayor que 0, sin piso. Cada cambio queda en la auditoría (RF-11) en la misma
+     * transacción. No toca el inventario. Al cerrar la venta los precios quedan fijos.
+     */
+    public function cambiarPrecio(Venta $venta, VentaItem $item, string|int|float $precio, User $usuario): Venta
+    {
+        return DB::transaction(function () use ($venta, $item, $precio, $usuario) {
+            // El lock de la venta serializa este cambio con el cierre y con los reversos.
+            $venta = Venta::query()->lockForUpdate()->findOrFail($venta->id);
+
+            if (! $venta->esCredito()) {
+                throw new ReglaInventarioException('Solo en una venta a crédito se puede cambiar el precio.', 422);
+            }
+
+            if (! $venta->estaAbierta()) {
+                throw new ReglaInventarioException('La venta está cerrada: sus precios quedaron fijos.', 422);
+            }
+
+            $item = VentaItem::query()->where('venta_id', $venta->id)->with('reversoItem')->findOrFail($item->id);
+
+            if ($item->reversoItem) {
+                throw new ReglaInventarioException('El ítem fue reversado: ya no tiene precio que cambiar.', 422);
+            }
+
+            if (! is_numeric($precio) || (float) $precio <= 0) {
+                throw new ReglaInventarioException('El precio debe ser mayor que 0.', 422);
+            }
+
+            $anterior = $item->precio_unitario;
+            $item->precio_unitario = $precio;
+
+            if (! $item->isDirty('precio_unitario')) {
+                return $venta;
+            }
+
+            $item->save();
+
+            Auditoria::create([
+                'tabla' => $item->getTable(),
+                'registro_id' => $item->id,
+                'campo' => 'precio_unitario',
+                'valor_anterior' => $anterior,
+                'valor_nuevo' => $item->precio_unitario,
+                'usuario_id' => $usuario->id,
+                'created_at' => now(),
+            ]);
+
+            return $venta;
         });
     }
 

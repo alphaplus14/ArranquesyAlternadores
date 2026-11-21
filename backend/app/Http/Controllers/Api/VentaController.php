@@ -6,8 +6,10 @@ use App\Enums\MetodoCaptura;
 use App\Enums\TipoReverso;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\AbrirVentaRequest;
+use App\Http\Requests\CambiarPrecioItemRequest;
 use App\Http\Resources\VentaResource;
 use App\Models\Venta;
+use App\Models\VentaItem;
 use App\Services\ReversoService;
 use App\Services\VentaService;
 use Illuminate\Http\JsonResponse;
@@ -95,6 +97,14 @@ class VentaController extends Controller
     public function cerrar(Venta $venta): VentaResource
     {
         return new VentaResource($this->cargar($this->ventas->cerrar($venta)));
+    }
+
+    /** RF-14 / S-18: precio libre en una venta a crédito abierta; el servicio lo audita. */
+    public function cambiarPrecio(CambiarPrecioItemRequest $request, Venta $venta, VentaItem $item): VentaResource
+    {
+        $venta = $this->ventas->cambiarPrecio($venta, $item, $request->validated('precio_unitario'), $request->user());
+
+        return new VentaResource($this->cargar($venta));
     }
 
     /** RF-07 */
