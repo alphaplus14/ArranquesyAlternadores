@@ -80,7 +80,7 @@ export default function Clientes() {
           <input required maxLength={150} placeholder="Nombre" aria-label="Nombre" {...campoNuevo('nombre')} />
           <input maxLength={30} placeholder="Documento (opcional)" aria-label="Documento" {...campoNuevo('documento')} />
           <input maxLength={30} placeholder="Teléfono (opcional)" aria-label="Teléfono" inputMode="tel" {...campoNuevo('telefono')} />
-          <input type="number" min={0} max={365} placeholder="Plazo en días (30 por defecto)" aria-label="Plazo en días" {...campoNuevo('plazo_dias')} />
+          <input type="number" min={0} max={365} placeholder="Plazo (días)" title="Si lo deja vacío, el sistema pone el plazo por defecto" aria-label="Plazo en días" {...campoNuevo('plazo_dias')} />
           <button className="primario" disabled={crear.isPending || nuevo.nombre.trim() === ''}>Crear cliente</button>
         </form>
         {crear.isError && <div className="aviso error">{mensajeError(crear.error)}</div>}
