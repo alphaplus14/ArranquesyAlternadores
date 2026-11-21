@@ -31,7 +31,9 @@ class IngresoResource extends JsonResource
             'numero_documento' => $this->numero_documento,
             'fecha' => $this->fecha?->toDateString(),
             'vence_el' => $this->vence_el?->toDateString(), // RF-16: digitado; null en contado
-            'descuento_total' => $this->descuento_total,
+            // S-22: en pesos; si se digitó en %, los pesos vigentes salen de las líneas (totales).
+            'descuento_documento' => $totales?->descuentoDocumento ?? $this->descuento_documento,
+            'descuento_documento_porcentaje' => $this->descuento_documento_porcentaje,
             // RF-16: fijado al confirmar; null en borrador (y en los confirmados antes de RF-16).
             'total' => $this->total,
             'usuario' => $this->whenLoaded('usuario', fn () => ['id' => $this->usuario->id, 'name' => $this->usuario->name]),
@@ -42,12 +44,14 @@ class IngresoResource extends JsonResource
             'items' => $this->whenLoaded('items', fn () => $this->items
                 ->map(fn (IngresoItem $i) => (new IngresoItemResource($i))->conTotales($totales?->lineas[$i->id] ?? null))
                 ->all()),
-            // RF-09 (ajuste): el descuento del documento se prorratea antes del IVA (S-21).
+            // RF-09 (ajuste) / S-21 / S-22: el descuento del documento se prorratea antes del IVA.
             'totales' => $totales ? [
-                'subtotal' => $totales->subtotal,
+                'subtotal_bruto' => $totales->subtotalBruto,
                 'descuento_lineas' => $totales->descuentoLineas,
-                'descuento_total' => $totales->descuentoDocumento,
-                'base' => $totales->base,
+                'subtotal_neto' => $totales->subtotalNeto,
+                'descuento_documento' => $totales->descuentoDocumento,
+                'base_gravada' => $totales->baseGravada,
+                'base_sin_iva' => $totales->baseSinIva,
                 'iva' => $totales->iva,
                 'lineas_sin_iva' => $totales->lineasSinIva, // RF-10
                 'total' => $totales->total,

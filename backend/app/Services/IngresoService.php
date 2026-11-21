@@ -34,7 +34,7 @@ class IngresoService
      * remisión). El mismo documento (proveedor + tipo + número) no entra dos veces: si ya hay un
      * borrador se devuelve para reabrirlo (wasRecentlyCreated = false); si está confirmado, se rechaza.
      *
-     * @param  array{tipo?:TipoIngreso|string, proveedor_id:int, numero_documento:string, fecha:string, descuento_total?:float}  $datos
+     * @param  array{tipo?:TipoIngreso|string, proveedor_id:int, numero_documento:string, fecha:string, descuento_documento?:float, descuento_documento_porcentaje?:float}  $datos
      */
     public function crearBorrador(array $datos, User $usuario): Ingreso
     {
@@ -42,6 +42,7 @@ class IngresoService
         $datos['tipo'] = $tipo instanceof TipoIngreso ? $tipo : TipoIngreso::from($tipo);
         $datos['numero_documento'] = Ingreso::normalizarNumero($datos['numero_documento']);
         $datos = $this->condicionDePago($datos, null);
+        $datos = $this->descuentoDocumento($datos);
 
         if ($existente = $this->buscarDocumento($datos)) {
             return $this->reabrir($existente);
@@ -62,12 +63,16 @@ class IngresoService
         }
 
         return $this->enBorrador($ingreso, function (Ingreso $bloqueado) use ($datos) {
-            $datos = $this->condicionDePago($datos, $bloqueado);
+            $datos = $this->descuentoDocumento($this->condicionDePago($datos, $bloqueado));
             $bloqueado->fill($datos);
 
-            // RF-09: con líneas cargadas, el descuento del documento no puede superar su subtotal.
-            if ($bloqueado->isDirty('descuento_total')) {
-                TotalesIngreso::calcular($bloqueado->items()->get(), $bloqueado->descuento_total)->exigirDescuentoValido();
+            // RF-09: el descuento del documento no puede superar el subtotal neto de las líneas.
+            if ($bloqueado->isDirty(['descuento_documento', 'descuento_documento_porcentaje'])) {
+                TotalesIngreso::calcular(
+                    $bloqueado->items()->get(),
+                    $bloqueado->descuento_documento,
+                    $bloqueado->descuento_documento_porcentaje,
+                )->exigirDescuentoValido();
             }
 
             try {
@@ -95,7 +100,7 @@ class IngresoService
             $referencia = Referencia::query()
                 ->where('proveedor_id', $bloqueado->proveedor_id)
                 ->where('codigo_referencia', $codigo)
-                ->first(['id', 'codigo_referencia', 'descripcion']);
+                ->first(['id', 'codigo_referencia', 'descripcion', 'iva_venta_porcentaje']);
 
             if ($referencia === null) {
                 throw new ReglaInventarioException(
@@ -115,8 +120,9 @@ class IngresoService
                     'referencia_id' => $referencia->id,
                     'cantidad' => 1,
                     'costo_unitario' => $this->ultimoCosto($referencia->id) ?? 0,
-                    'iva_porcentaje' => 19,
-                    'sin_iva' => false,
+                    'descuento_porcentaje' => 0,
+                    // S-22: el IVA de la línea se copia de la referencia y se corrige en la tabla.
+                    'iva_porcentaje' => $referencia->iva_venta_porcentaje ?? 0,
                 ]);
             }
 
@@ -126,6 +132,9 @@ class IngresoService
 
     public function agregarItem(Ingreso $ingreso, array $datos): IngresoItem
     {
+        // S-22: sin IVA explícito, la línea toma el de la referencia (como en ventas).
+        $datos['iva_porcentaje'] ??= Referencia::whereKey($datos['referencia_id'])->value('iva_venta_porcentaje') ?? 0;
+
         return $this->enBorrador($ingreso, fn (Ingreso $bloqueado) => $bloqueado->items()->create($datos));
     }
 
@@ -169,9 +178,14 @@ class IngresoService
             }
 
             // RF-09 (ajuste): el total se calcula con el descuento prorrateado y queda fijo (RF-16).
-            $totales = TotalesIngreso::calcular($items, $ingreso->descuento_total);
+            $totales = TotalesIngreso::calcular($items, $ingreso->descuento_documento, $ingreso->descuento_documento_porcentaje);
             $totales->exigirDescuentoValido();
             $this->exigirVencimiento($ingreso);
+
+            // S-22: un documento en $0 (mercancía obsequiada) se acepta de contado, no a crédito.
+            if ($ingreso->esCredito() && bccomp($totales->total, '0', 2) === 0) {
+                throw new ReglaInventarioException('Un ingreso a crédito no puede confirmarse con total $0.', 422);
+            }
 
             $codigos = $this->codigos->reservar($items->sum('cantidad'));
             $this->inventario->darEntrada($ingreso, $items, $codigos, $usuario->id);
@@ -180,6 +194,9 @@ class IngresoService
             $ingreso->confirmado_at = now();
             $ingreso->confirmado_por = $usuario->id;
             $ingreso->total = $totales->total;
+            // Confirmado, el descuento queda fijo y solo en pesos (S-22).
+            $ingreso->descuento_documento = $totales->descuentoDocumento;
+            $ingreso->descuento_documento_porcentaje = null;
             $ingreso->save();
 
             return $ingreso;
@@ -220,6 +237,26 @@ class IngresoService
 
         if ($forma === FormaPago::Contado) {
             $datos['vence_el'] = null;
+        }
+
+        return $datos;
+    }
+
+    /**
+     * S-22: el descuento del documento llega en pesos o en %. En pesos, borra el %; en %, se
+     * guarda el % (los pesos los recalcula TotalesIngreso con las líneas) y los pesos quedan en 0
+     * hasta confirmar.
+     *
+     * @param  array<string, mixed>  $datos
+     * @return array<string, mixed>
+     */
+    private function descuentoDocumento(array $datos): array
+    {
+        if (array_key_exists('descuento_documento_porcentaje', $datos) && $datos['descuento_documento_porcentaje'] !== null) {
+            $datos['descuento_documento'] = 0;
+        } elseif (array_key_exists('descuento_documento', $datos) || array_key_exists('descuento_documento_porcentaje', $datos)) {
+            $datos['descuento_documento'] ??= 0;
+            $datos['descuento_documento_porcentaje'] = null;
         }
 
         return $datos;

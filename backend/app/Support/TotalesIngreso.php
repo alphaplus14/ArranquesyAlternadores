@@ -6,14 +6,16 @@ use App\Exceptions\ReglaInventarioException;
 use App\Models\IngresoItem;
 
 /**
- * RF-09 (ajuste) / RF-10 / S-21: único lugar donde se calcula el total de un ingreso.
+ * RF-09 (ajuste) / RF-10 / S-21 / S-22: único lugar donde se calcula el total de un ingreso
+ * (remisión o factura, igual).
  *
- *   subtotal_i = cantidad_i × costo_unitario_i − descuento de la línea
- *   subtotal   = Σ subtotal_i
- *   factor     = 1 − descuento_documento / subtotal      (1 si subtotal = 0)
- *   base_i     = subtotal_i × factor
- *   iva        = Σ base_i × iva_porcentaje_i / 100      (sin redondear por línea; sin IVA aporta 0)
- *   total      = (subtotal − descuento_documento) + iva, redondeado al peso al final
+ *   bruto_i        = cantidad_i × costo_unitario_i
+ *   neto_i         = bruto_i × (1 − descuento_porcentaje_i / 100)
+ *   subtotal_neto  = Σ neto_i
+ *   D              = descuento del documento en pesos (si se digitó en %, D = subtotal_neto × % / 100, al centavo)
+ *   base_i         = neto_i × (1 − D / subtotal_neto)          (0 si subtotal_neto = 0)
+ *   iva_i          = base_i × iva_porcentaje_i / 100            (sin redondear por línea; 0 % = sin IVA)
+ *   total          = (subtotal_neto − D) + Σ iva_i, redondeado al peso al final
  *
  * Todo con bcmath sobre cadenas decimales: nada de float. La regla de redondeo vive solo en
  * redondearAlPeso(), porque falta confirmarla con el contador.
@@ -24,94 +26,110 @@ final class TotalesIngreso
     private const ESCALA = 10;
 
     /**
-     * @param  array<int, array{subtotal:string, base:string, iva:string}>  $lineas  por id de línea
+     * @param  array<int, array{neto:string, base:string, iva:string}>  $lineas  por id de línea
      */
     private function __construct(
-        public readonly string $subtotal,
+        public readonly string $subtotalBruto,
         public readonly string $descuentoLineas,
+        public readonly string $subtotalNeto,
         public readonly string $descuentoDocumento,
-        public readonly string $base,
+        public readonly string $baseGravada,
+        public readonly string $baseSinIva,
         public readonly string $iva,
         public readonly string $total,
         public readonly int $lineasSinIva,
         public readonly array $lineas,
     ) {}
 
-    /** @param iterable<IngresoItem> $items */
-    public static function calcular(iterable $items, string|int|float|null $descuentoDocumento): self
-    {
-        $descuentoDocumento = self::decimal($descuentoDocumento);
-        $subtotal = '0';
-        $descuentoLineas = '0';
+    /**
+     * @param  iterable<IngresoItem>  $items
+     * @param  string|int|float|null  $descuentoPorcentaje  si no es null, manda sobre los pesos
+     */
+    public static function calcular(
+        iterable $items,
+        string|int|float|null $descuentoPesos,
+        string|int|float|null $descuentoPorcentaje = null,
+    ): self {
+        $bruto = '0';
+        $neto = '0';
         $sinIva = 0;
         $parciales = [];
 
         foreach ($items as $item) {
-            $bruto = bcmul((string) $item->cantidad, self::decimal($item->costo_unitario), self::ESCALA);
-            $descuento = self::decimal($item->descuento);
-            $parcial = bcsub($bruto, $descuento, self::ESCALA);
+            $brutoLinea = bcmul((string) $item->cantidad, self::decimal($item->costo_unitario), self::ESCALA);
+            $netoLinea = bcmul(
+                $brutoLinea,
+                bcsub('1', bcdiv(self::decimal($item->descuento_porcentaje), '100', self::ESCALA), self::ESCALA),
+                self::ESCALA,
+            );
+            $ivaPorcentaje = self::decimal($item->iva_porcentaje);
 
-            $parciales[] = [$item, $parcial];
-            $subtotal = bcadd($subtotal, $parcial, self::ESCALA);
-            $descuentoLineas = bcadd($descuentoLineas, $descuento, self::ESCALA);
-            $sinIva += $item->sin_iva ? 1 : 0;
+            $parciales[] = [$item->id, $netoLinea, $ivaPorcentaje];
+            $bruto = bcadd($bruto, $brutoLinea, self::ESCALA);
+            $neto = bcadd($neto, $netoLinea, self::ESCALA);
+            $sinIva += bccomp($ivaPorcentaje, '0', 2) === 0 ? 1 : 0;
         }
 
-        $factor = bccomp($subtotal, '0', self::ESCALA) === 0
-            ? '1'
-            : bcsub('1', bcdiv($descuentoDocumento, $subtotal, self::ESCALA), self::ESCALA);
+        $descuento = $descuentoPorcentaje === null
+            ? self::decimal($descuentoPesos)
+            : self::centavos(bcdiv(bcmul($neto, self::decimal($descuentoPorcentaje), self::ESCALA), '100', self::ESCALA));
+
+        $hayNeto = bccomp($neto, '0', self::ESCALA) !== 0;
+        $factor = $hayNeto ? bcsub('1', bcdiv($descuento, $neto, self::ESCALA), self::ESCALA) : '0';
 
         $iva = '0';
+        $gravada = '0';
+        $exenta = '0';
         $lineas = [];
-        foreach ($parciales as [$item, $parcial]) {
-            $base = bcmul($parcial, $factor, self::ESCALA);
-            $ivaLinea = $item->sin_iva
-                ? '0'
-                : bcdiv(bcmul($base, self::decimal($item->iva_porcentaje), self::ESCALA), '100', self::ESCALA);
+        foreach ($parciales as [$id, $netoLinea, $ivaPorcentaje]) {
+            $base = bcmul($netoLinea, $factor, self::ESCALA);
+            $ivaLinea = bcdiv(bcmul($base, $ivaPorcentaje, self::ESCALA), '100', self::ESCALA);
             $iva = bcadd($iva, $ivaLinea, self::ESCALA);
 
-            $lineas[$item->id] = [
-                'subtotal' => self::dosDecimales($parcial),
-                'base' => self::dosDecimales($base),
-                'iva' => self::dosDecimales($ivaLinea),
-            ];
+            if (bccomp($ivaPorcentaje, '0', 2) === 0) {
+                $exenta = bcadd($exenta, $base, self::ESCALA);
+            } else {
+                $gravada = bcadd($gravada, $base, self::ESCALA);
+            }
+
+            $lineas[$id] = ['neto' => self::centavos($netoLinea), 'base' => self::centavos($base), 'iva' => self::centavos($ivaLinea)];
         }
 
-        $base = bcsub($subtotal, $descuentoDocumento, self::ESCALA);
-
         return new self(
-            subtotal: self::dosDecimales($subtotal),
-            descuentoLineas: self::dosDecimales($descuentoLineas),
-            descuentoDocumento: self::dosDecimales($descuentoDocumento),
-            base: self::dosDecimales($base),
+            subtotalBruto: self::centavos($bruto),
+            descuentoLineas: self::centavos(bcsub($bruto, $neto, self::ESCALA)),
+            subtotalNeto: self::centavos($neto),
+            descuentoDocumento: self::centavos($descuento),
+            baseGravada: self::centavos($gravada),
+            baseSinIva: self::centavos($exenta),
             iva: self::redondearAlPeso($iva),
-            total: self::redondearAlPeso(bcadd($base, $iva, self::ESCALA)),
+            total: self::redondearAlPeso(bcadd(bcsub($neto, $descuento, self::ESCALA), $iva, self::ESCALA)),
             lineasSinIva: $sinIva,
             lineas: $lineas,
         );
     }
 
-    /** RF-09: el descuento del documento no puede superar el subtotal de las líneas. */
+    /** RF-09: el descuento del documento no puede superar el subtotal neto de las líneas. */
     public function descuentoExcedeSubtotal(): bool
     {
-        return bccomp($this->descuentoDocumento, $this->subtotal, 2) === 1;
+        return bccomp($this->descuentoDocumento, $this->subtotalNeto, 2) === 1;
     }
 
-    /** @throws ReglaInventarioException 422 si el descuento del documento supera el subtotal */
+    /** @throws ReglaInventarioException 422 si el descuento del documento supera el subtotal neto */
     public function exigirDescuentoValido(): void
     {
         if ($this->descuentoExcedeSubtotal()) {
             throw new ReglaInventarioException(
-                "El descuento del documento ({$this->descuentoDocumento}) supera el subtotal de las líneas ({$this->subtotal}).",
+                "El descuento del documento ({$this->descuentoDocumento}) supera el subtotal neto de las líneas ({$this->subtotalNeto}).",
                 422,
-                ['errors' => ['descuento_total' => ['El descuento del documento no puede superar el subtotal de las líneas.']]],
+                ['errors' => ['descuento_documento' => ['El descuento del documento no puede superar el subtotal neto de las líneas.']]],
             );
         }
     }
 
     /**
      * Regla de redondeo del IVA y del total: al peso, mitad hacia arriba (lejos de cero).
-     * Pendiente con el contador (S-21): si cambia, se cambia solo aquí.
+     * Pendiente con el contador (S-21, S-22): si cambia, se cambia solo aquí.
      */
     public static function redondearAlPeso(string $valor): string
     {
@@ -120,9 +138,9 @@ final class TotalesIngreso
         return bcadd(bcadd($valor, $mitad, 0), '0', 2);
     }
 
-    private static function dosDecimales(string $valor): string
+    /** Al centavo, mitad hacia arriba: cifras intermedias que se muestran y el descuento en % convertido a pesos. */
+    private static function centavos(string $valor): string
     {
-        // Redondeo a centavos solo para mostrar cifras intermedias; no entra en el total.
         $mitad = str_starts_with($valor, '-') ? '-0.005' : '0.005';
 
         return bcadd($valor, $mitad, 2);

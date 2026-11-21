@@ -25,7 +25,8 @@ class Ingreso extends Model
     protected $table = 'ingresos';
 
     protected $fillable = [
-        'tipo', 'forma_pago', 'proveedor_id', 'numero_documento', 'fecha', 'vence_el', 'descuento_total', 'usuario_id',
+        'tipo', 'forma_pago', 'proveedor_id', 'numero_documento', 'fecha', 'vence_el',
+        'descuento_documento', 'descuento_documento_porcentaje', 'usuario_id',
     ];
 
     protected $attributes = ['forma_pago' => 'contado'];
@@ -38,7 +39,8 @@ class Ingreso extends Model
             'estado' => EstadoIngreso::class,
             'fecha' => 'date',
             'vence_el' => 'date',
-            'descuento_total' => 'decimal:2',
+            'descuento_documento' => 'decimal:2',
+            'descuento_documento_porcentaje' => 'decimal:2',
             'total' => 'decimal:2',
             'diferencia_aceptada' => 'boolean',
             'confirmado_at' => 'datetime',
@@ -84,13 +86,14 @@ class Ingreso extends Model
     }
 
     /**
-     * RF-09 (ajuste): totales con el descuento del documento prorrateado antes del IVA.
+     * RF-09 (ajuste) / S-22: totales con el descuento del documento prorrateado antes del IVA.
+     * Si el descuento se digitó en %, manda el % (los pesos se recalculan con las líneas).
      * Usa la relación items (cargarla antes para no repetir consultas). El cálculo vive solo en
      * TotalesIngreso.
      */
     public function totales(): TotalesIngreso
     {
-        return TotalesIngreso::calcular($this->items, $this->descuento_total);
+        return TotalesIngreso::calcular($this->items, $this->descuento_documento, $this->descuento_documento_porcentaje);
     }
 
     /** Total del documento con lo digitado, redondeado al peso (ver TotalesIngreso). */

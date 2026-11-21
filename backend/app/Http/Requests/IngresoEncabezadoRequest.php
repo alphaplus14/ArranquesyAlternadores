@@ -28,7 +28,9 @@ class IngresoEncabezadoRequest extends FormRequest
             'proveedor_id' => [$requerido, 'integer', 'exists:proveedores,id'],
             'numero_documento' => [$requerido, 'string', 'max:60'],
             'fecha' => [$requerido, 'date'],
-            'descuento_total' => ['sometimes', 'numeric', 'min:0', 'max:999999999999'], // RF-09
+            // RF-09 / S-22: el descuento del documento llega en pesos o en %, no ambos.
+            'descuento_documento' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:999999999999', 'prohibits:descuento_documento_porcentaje'],
+            'descuento_documento_porcentaje' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100', 'prohibits:descuento_documento'],
             'forma_pago' => ['sometimes', Rule::enum(FormaPago::class)], // RF-16
             'vence_el' => ['nullable', 'date'],
         ];

@@ -8,15 +8,15 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
  * @mixin IngresoItem  RF-05 / RF-09 / RF-10 / RF-20: una línea del ingreso.
- * subtotal, base e IVA dependen del descuento del documento (prorrateo de RF-09): solo vienen
+ * neto, base e IVA dependen del descuento del documento (prorrateo de RF-09): solo vienen
  * cuando la línea se muestra dentro de su ingreso (IngresoResource los pasa con conTotales()).
  */
 class IngresoItemResource extends JsonResource
 {
-    /** @var array{subtotal:string, base:string, iva:string}|null */
+    /** @var array{neto:string, base:string, iva:string}|null */
     private ?array $totales = null;
 
-    /** @param array{subtotal:string, base:string, iva:string}|null $totales */
+    /** @param array{neto:string, base:string, iva:string}|null $totales */
     public function conTotales(?array $totales): self
     {
         $this->totales = $totales;
@@ -35,10 +35,9 @@ class IngresoItemResource extends JsonResource
             ] : null,
             'cantidad' => $this->cantidad,
             'costo_unitario' => $this->costo_unitario,
-            'descuento' => $this->descuento,
-            'iva_porcentaje' => $this->iva_porcentaje,
-            'sin_iva' => $this->sin_iva,
-            'subtotal' => $this->totales['subtotal'] ?? null,
+            'descuento_porcentaje' => $this->descuento_porcentaje, // S-22
+            'iva_porcentaje' => $this->iva_porcentaje, // 0 = sin IVA
+            'neto' => $this->totales['neto'] ?? null,
             'base' => $this->totales['base'] ?? null,
             'iva' => $this->totales['iva'] ?? null,
         ];

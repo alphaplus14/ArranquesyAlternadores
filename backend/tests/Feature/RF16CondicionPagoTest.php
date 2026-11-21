@@ -98,7 +98,7 @@ it('RF-16: de contado el vencimiento se guarda en null aunque se envíe', functi
 it('RF-16: confirmar fija el total con el cálculo de RF-09', function () {
     actuarComo(Rol::Logistica);
     // 2 × 50.000 = 100.000; descuento 10.000 prorrateado: base 90.000, IVA 17.100, total 107.100.
-    $id = borradorConLinea(['forma_pago' => 'credito', 'vence_el' => '2026-12-21', 'descuento_total' => 10000]);
+    $id = borradorConLinea(['forma_pago' => 'credito', 'vence_el' => '2026-12-21', 'descuento_documento' => 10000]);
 
     $this->getJson("/api/ingresos/{$id}")->assertJsonPath('total', null)->assertJsonPath('totales.total', '107100.00');
 
@@ -118,12 +118,12 @@ it('RF-16: después de confirmar no cambian forma de pago, vencimiento, descuent
 
     $this->patchJson("/api/ingresos/{$id}", ['forma_pago' => 'contado'])->assertStatus(409);
     $this->patchJson("/api/ingresos/{$id}", ['vence_el' => '2027-01-31'])->assertStatus(409);
-    $this->patchJson("/api/ingresos/{$id}", ['descuento_total' => 1000])->assertStatus(409);
+    $this->patchJson("/api/ingresos/{$id}", ['descuento_documento' => 1000])->assertStatus(409);
 
     $ingreso = Ingreso::find($id);
     expect($ingreso->forma_pago->value)->toBe('credito')
         ->and($ingreso->vence_el->toDateString())->toBe('2026-12-21')
-        ->and($ingreso->descuento_total)->toBe('0.00')
+        ->and($ingreso->descuento_documento)->toBe('0.00')
         ->and($ingreso->total)->toBe('119000.00');
 
     // El modelo tampoco deja cambiar el total por fuera de la API.
@@ -145,7 +145,7 @@ it('RF-11 / RF-16: cambiar forma de pago, vencimiento o descuento de un borrador
     $id = $this->postJson('/api/ingresos', ingresoNuevo())->json('id');
 
     $this->patchJson("/api/ingresos/{$id}", ['forma_pago' => 'credito', 'vence_el' => '2026-12-21'])->assertOk();
-    $this->patchJson("/api/ingresos/{$id}", ['vence_el' => '2026-12-31', 'descuento_total' => 0])->assertOk();
+    $this->patchJson("/api/ingresos/{$id}", ['vence_el' => '2026-12-31', 'descuento_documento' => 0])->assertOk();
 
     $filas = Auditoria::where('tabla', 'ingresos')->where('registro_id', $id)->orderBy('id')->get()->keyBy('campo');
     expect($filas['forma_pago']->valor_anterior)->toBe('contado')

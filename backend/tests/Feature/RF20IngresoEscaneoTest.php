@@ -53,8 +53,8 @@ it('RF-20: escanear un código existente agrega la línea con cantidad 1 y el ú
         ->assertJsonPath('referencia.codigo_referencia', 'RN-4410')
         ->assertJsonPath('cantidad', 1)
         ->assertJsonPath('costo_unitario', $ultimoCosto)
-        ->assertJsonPath('iva_porcentaje', '19.00')
-        ->assertJsonPath('sin_iva', false);
+        ->assertJsonPath('iva_porcentaje', '19.00') // S-22: el de la referencia
+        ->assertJsonPath('descuento_porcentaje', '0.00');
 
     expect($ultimoCosto)->not->toBeNull();
 });

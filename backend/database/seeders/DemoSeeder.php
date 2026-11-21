@@ -104,13 +104,13 @@ class DemoSeeder extends Seeder
             'proveedor_id' => $proveedores[0]->id,
             'numero_documento' => 'REM-2001',
             'fecha' => now()->toDateString(),
-            'descuento_total' => 5000, // RF-09
+            'descuento_documento' => 5000, // RF-09
         ], $logistica);
         foreach ($porMarca as $referencia) {
             $ingresos->agregarItem($ingreso, ['referencia_id' => $referencia->id, 'cantidad' => 1, 'costo_unitario' => 60000]);
         }
         $ingresos->agregarItem($ingreso, [
-            'referencia_id' => $arranque->id, 'cantidad' => 1, 'costo_unitario' => 250000, 'sin_iva' => true, // RF-10
+            'referencia_id' => $arranque->id, 'cantidad' => 1, 'costo_unitario' => 250000, 'iva_porcentaje' => 0, // RF-10: sin IVA
         ]);
         $ingresos->confirmar($ingreso, $logistica);
     }

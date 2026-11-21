@@ -66,18 +66,19 @@ it('RF-09: el ingreso registra y muestra el descuento de la factura', function (
     actuarComo(Rol::Logistica);
 
     $id = $this->postJson('/api/ingresos', ['tipo' => 'remision',
-        'proveedor_id' => Proveedor::first()->id, 'numero_documento' => 'R3', 'fecha' => '2026-10-29', 'descuento_total' => 15000,
+        'proveedor_id' => Proveedor::first()->id, 'numero_documento' => 'R3', 'fecha' => '2026-10-29', 'descuento_documento' => 15000,
     ])->json('id');
     $respuesta = $this->postJson("/api/ingresos/{$id}/items", [
-        'referencia_id' => referencia('SEN-TEMP-01')->id, 'cantidad' => 10, 'costo_unitario' => 10000, 'descuento' => 5000, 'iva_porcentaje' => 19,
+        'referencia_id' => referencia('SEN-TEMP-01')->id, 'cantidad' => 10, 'costo_unitario' => 10000, 'descuento_porcentaje' => 5, 'iva_porcentaje' => 19,
     ]);
 
     // RF-09 (ajuste): subtotal 100000 - 5000 = 95000; el descuento del documento (15000) se
     // prorratea antes del IVA: base 80000, IVA 19 % = 15200, total 95200.
-    $respuesta->assertJsonPath('totales.subtotal', '95000.00')
-        ->assertJsonPath('totales.descuento_total', '15000.00')
+    $respuesta->assertJsonPath('totales.subtotal_bruto', '100000.00')
         ->assertJsonPath('totales.descuento_lineas', '5000.00')
-        ->assertJsonPath('totales.base', '80000.00')
+        ->assertJsonPath('totales.subtotal_neto', '95000.00')
+        ->assertJsonPath('totales.descuento_documento', '15000.00')
+        ->assertJsonPath('totales.base_gravada', '80000.00')
         ->assertJsonPath('totales.iva', '15200.00')
         ->assertJsonPath('totales.total', '95200.00');
 });
@@ -86,11 +87,12 @@ it('RF-10: una línea sin IVA no suma impuesto y queda registrada como sin IVA',
     actuarComo(Rol::Logistica);
     $id = $this->postJson('/api/ingresos', ['tipo' => 'remision', 'proveedor_id' => Proveedor::first()->id, 'numero_documento' => 'R4', 'fecha' => '2026-10-29'])->json('id');
 
-    $this->postJson("/api/ingresos/{$id}/items", ['referencia_id' => referencia('SEN-TEMP-01')->id, 'cantidad' => 2, 'costo_unitario' => 10000, 'sin_iva' => true]);
+    $this->postJson("/api/ingresos/{$id}/items", ['referencia_id' => referencia('SEN-TEMP-01')->id, 'cantidad' => 2, 'costo_unitario' => 10000, 'iva_porcentaje' => 0]);
     $respuesta = $this->postJson("/api/ingresos/{$id}/items", ['referencia_id' => referencia('ARR-12V-9D')->id, 'cantidad' => 1, 'costo_unitario' => 10000]);
 
-    $respuesta->assertJsonPath('items.0.sin_iva', true)
+    $respuesta->assertJsonPath('items.0.iva_porcentaje', '0.00')
         ->assertJsonPath('items.0.iva', '0.00')
+        ->assertJsonPath('totales.base_sin_iva', '20000.00')
         ->assertJsonPath('totales.iva', '1900.00')
         ->assertJsonPath('totales.lineas_sin_iva', 1);
 });
