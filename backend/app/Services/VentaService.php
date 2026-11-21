@@ -60,7 +60,12 @@ class VentaService
             $unidad = Unidad::query()
                 ->join('referencias', 'referencias.id', '=', 'unidades.referencia_id')
                 ->where('unidades.codigo_barras', trim($codigoBarras))
-                ->select('unidades.*', 'referencias.precio_venta as ref_precio_venta', 'referencias.iva_venta_porcentaje as ref_iva_venta')
+                ->select(
+                    'unidades.*',
+                    'referencias.codigo_referencia as ref_codigo',
+                    'referencias.precio_venta as ref_precio_venta',
+                    'referencias.iva_venta_porcentaje as ref_iva_venta',
+                )
                 ->lockForUpdate()
                 ->first();
 
@@ -68,9 +73,19 @@ class VentaService
                 throw new ReglaInventarioException("No existe una unidad con el código {$codigoBarras}.", 404);
             }
 
+            $codigoReferencia = $unidad->ref_codigo;
             $precio = $unidad->ref_precio_venta;
             $iva = $unidad->ref_iva_venta;
-            unset($unidad->ref_precio_venta, $unidad->ref_iva_venta);
+            unset($unidad->ref_codigo, $unidad->ref_precio_venta, $unidad->ref_iva_venta);
+
+            // RF-14 / S-18: ningún precio puede ser 0. Se rechaza antes de crear el ítem y de
+            // descontar la unidad, con el precio que ya trajo el JOIN (sin otra consulta).
+            if ((float) $precio <= 0) {
+                throw new ReglaInventarioException(
+                    "La referencia {$codigoReferencia} no tiene precio de venta; pídale al administrador que se lo asigne.",
+                    422,
+                );
+            }
 
             $item = VentaItem::create([
                 'venta_id' => $venta->id,

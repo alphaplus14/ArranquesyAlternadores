@@ -31,7 +31,7 @@ class ReferenciaRequest extends FormRequest
             'categoria_id' => [$requerido, 'integer', 'exists:categorias,id'],
             'codigo_universal_id' => ['nullable', 'integer', 'exists:codigos_universales,id'],
             'descripcion' => [$requerido, 'string', 'max:255'],
-            'precio_venta' => [$requerido, 'numeric', 'min:0', 'max:9999999999'],
+            'precio_venta' => [$requerido, 'numeric', 'gt:0', 'max:9999999999'], // RF-14: ningún precio puede ser 0
             'iva_venta_porcentaje' => ['sometimes', 'numeric', Rule::in([0, 19])], // RF-14 / S-15
         ];
     }
