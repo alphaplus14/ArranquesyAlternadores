@@ -8,6 +8,7 @@ import Paginacion from '../../componentes/Paginacion'
 
 interface FilaIngreso {
   id: number
+  tipo: 'remision' | 'factura_qr'
   numero_documento: string
   fecha: string
   estado: string
@@ -16,7 +17,7 @@ interface FilaIngreso {
   usuario: { name: string }
 }
 
-/** RF-05: lista de ingresos y creación de un borrador por remisión. */
+/** RF-05: lista de ingresos y creación de un borrador por remisión. RF-04: la factura entra por QR. */
 export default function Ingresos() {
   const navegar = useNavigate()
   const proveedores = useProveedores()
@@ -35,7 +36,10 @@ export default function Ingresos() {
 
   return (
     <div className="panel">
-      <h1>Ingreso por remisión</h1>
+      <div className="fila-titulo">
+        <h1>Ingreso por remisión</h1>
+        <Link className="boton primario" to="/logistica/ingresos/qr">Factura con QR</Link>
+      </div>
       <form className="formulario en-linea" onSubmit={(e) => { e.preventDefault(); crear.mutate() }}>
         <label>Proveedor
           <select required value={form.proveedor_id} onChange={(e) => setForm({ ...form, proveedor_id: e.target.value })}>
@@ -51,11 +55,12 @@ export default function Ingresos() {
       {crear.isError && <div className="aviso error">{mensajeError(crear.error)}</div>}
 
       <table>
-        <thead><tr><th>#</th><th>Documento</th><th>Proveedor</th><th>Fecha</th><th>Unidades</th><th>Estado</th><th>Usuario</th></tr></thead>
+        <thead><tr><th>#</th><th>Tipo</th><th>Documento</th><th>Proveedor</th><th>Fecha</th><th>Unidades</th><th>Estado</th><th>Usuario</th></tr></thead>
         <tbody>
           {lista.data?.data.map((i) => (
             <tr key={i.id}>
               <td><Link to={`/logistica/ingresos/${i.id}`}>{i.id}</Link></td>
+              <td>{i.tipo === 'factura_qr' ? 'Factura (QR)' : 'Remisión'}</td>
               <td>{i.numero_documento}</td>
               <td>{i.proveedor.nombre}</td>
               <td>{i.fecha.slice(0, 10)}</td>

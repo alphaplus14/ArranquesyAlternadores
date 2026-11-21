@@ -25,6 +25,14 @@ class IngresoResource extends JsonResource
             'proveedor' => $this->whenLoaded('proveedor', fn () => ['id' => $this->proveedor->id, 'nombre' => $this->proveedor->nombre]),
             'numero_documento' => $this->numero_documento,
             'cufe' => $this->cufe,
+            // RF-04: totales leídos del QR y diferencia contra lo digitado.
+            'qr' => $this->esFacturaQr() ? [
+                'subtotal' => $this->subtotal_qr,
+                'iva' => $this->iva_qr,
+                'total' => $this->total_qr,
+                'diferencia' => $cargados ? $this->diferenciaQr() : null,
+                'tolerancia' => (float) config('ingresos.tolerancia_total'),
+            ] : null,
             'fecha' => $this->fecha?->toDateString(),
             'usuario' => $this->whenLoaded('usuario', fn () => ['id' => $this->usuario->id, 'name' => $this->usuario->name]),
             'confirmado_at' => $this->confirmado_at,
@@ -50,7 +58,7 @@ class IngresoResource extends JsonResource
                 'descuento_total' => $this->descuento_total,
                 'iva' => $iva,
                 'lineas_sin_iva' => $this->items->where('sin_iva', true)->count(), // RF-10
-                'total' => round($subtotal - (float) $this->descuento_total + $iva, 2),
+                'total' => $this->totalCalculado(),
             ] : null,
         ];
     }

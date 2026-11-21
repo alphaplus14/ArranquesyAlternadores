@@ -76,13 +76,22 @@ export interface IngresoItem {
 
 export interface Ingreso {
   id: number
-  tipo: 'remision' | 'factura_xml'
+  tipo: 'remision' | 'factura_qr'
   estado: 'borrador' | 'confirmado'
   proveedor_id: number
   proveedor?: Opcion
   numero_documento: string
+  cufe: string | null
   fecha: string
   confirmado_at: string | null
+  /** RF-04: totales leídos del QR (solo en factura_qr) y diferencia contra lo digitado. */
+  qr: {
+    subtotal: string | null
+    iva: string | null
+    total: string | null
+    diferencia: number | null
+    tolerancia: number
+  } | null
   items: IngresoItem[]
   totales: {
     subtotal: number

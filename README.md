@@ -43,5 +43,19 @@ Usuarios de desarrollo (contraseña `cambiar123`): `admin@la8va.local`, `logisti
 | Rol | Pantallas |
 |---|---|
 | mostrador | Venta (escáner siempre enfocado, búsqueda de respaldo, reversos), agotados |
-| logistica | Ingreso por remisión, etiquetas (grande, pequeño, más pequeño), agotados |
+| logistica | Ingreso por remisión, ingreso por factura con QR (RF-04), etiquetas (grande, pequeño, más pequeño), agotados |
 | admin | Todo lo anterior + referencias, códigos universales, catálogos, usuarios y auditoría |
+
+## Ingreso por factura con QR (RF-04)
+
+Se descartó leer el XML de la factura (decisión del 14-nov-2026, ver S-06 en `docs/supuestos.md`). El flujo es:
+
+1. Logística abre **Factura (QR)** y escanea el QR de la factura de compra.
+2. El sistema ubica la factura por su CUFE:
+   - si es nueva, crea un borrador `factura_qr` con proveedor (por NIT del emisor), número, fecha y totales del QR;
+   - si ya está en borrador, lo reabre;
+   - si ya se confirmó, la rechaza: un CUFE no entra dos veces.
+3. Los ítems se digitan como en la remisión (RF-05, RF-09, RF-10).
+4. Al confirmar, si el total digitado no cuadra con el total del QR (tolerancia en `INGRESOS_TOLERANCIA_TOTAL`, $1 por defecto), hay que aceptar la diferencia explícitamente. Las unidades y la existencia salen por el mismo camino de la remisión.
+
+Requisitos: el proveedor debe tener su NIT en el catálogo (el admin lo agrega). Si el QR no trae proveedor, número o fecha, la pantalla los pide. Las claves que se leen del QR son provisionales hasta probar con una factura y un lector reales.

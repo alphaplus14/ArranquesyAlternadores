@@ -39,7 +39,8 @@ app/
     Middleware/        EnsureRol (rol por endpoint) y MedirDuracion (S-04).
   Services/            Casos de uso y transacciones. Toda escritura de inventario pasa por aquí.
     InventarioService   ÚNICO punto que cambia referencias.existencia y el estado de las unidades.
-    IngresoService      RF-05/09/10/03 · VentaService RF-06/12 · ReversoService RF-07
+    IngresoService      RF-05/09/10/03 y RF-04 (crearDesdeQr) · VentaService RF-06/12 · ReversoService RF-07
+    FacturaQr/          RF-04: FacturaQrService lee el QR de la factura (sin tocar la base)
     CodigoBarrasService RF-03 · EtiquetaService RF-03 (PDF)
   Models/              Eloquent: relaciones, casts y reglas de integridad del propio registro.
     Concerns/Auditable  RF-11 · Concerns/Inmutable: ventas, reversos, movimientos y auditoría.
@@ -53,12 +54,13 @@ Reglas:
 - Un controlador **no** abre transacciones ni toca `existencia`: delega en un servicio.
 - Las lecturas sencillas (listados, reportes) pueden consultar modelos desde el controlador, siempre con `with()` y paginación en el servidor. `preventLazyLoading` está activo fuera de producción.
 - Las violaciones de reglas de negocio se lanzan como `ReglaInventarioException` y `bootstrap/app.php` las convierte en JSON.
-- La configuración del dominio vive en `config/etiquetas.php` (prefijo del código de barras y tamaños de etiqueta).
+- La configuración del dominio vive en `config/etiquetas.php` (prefijo del código de barras y tamaños de etiqueta) y `config/ingresos.php` (tolerancia del total contra el QR, RF-04).
 
 ## Tests
 
 ```bash
-php artisan test                              # Feature + Concurrencia, contra inventario_test
+php artisan test                              # Unit + Feature + Concurrencia, contra inventario_test
+./vendor/bin/pest --testsuite=Unit            # lectura del QR de la factura (RF-04), sin base de datos
 ./vendor/bin/pest --testsuite=Feature         # un test por criterio de aceptación de cada RF
 ./vendor/bin/pest --testsuite=Concurrencia    # dos procesos PHP venden la misma unidad: solo uno gana
 ```

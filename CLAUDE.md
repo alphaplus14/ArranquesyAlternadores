@@ -62,5 +62,5 @@ Cita los RF por número (RF-01, RF-02…) en commits (`feat(RF-06): ...`), en co
 - **Tercera marca "Jota":** marcas = catálogo editable; el seeder usa una marca de ejemplo.
 - **Tiempo de respuesta:** escaneo → descuento confirmado < 300 ms p95 en red local; búsquedas < 500 ms. Log de duración en endpoints de escaneo y búsqueda.
 - **Tamaños de etiqueta:** `backend/config/etiquetas.php`: grande 100×50 mm, pequeño 50×25 mm, más pequeño 38×19 mm.
-- **QR/XML (RF-04):** NO se implementa. Solo `ingresos.tipo` (`remision` | `factura_xml`) y `ingresos.cufe` nullable único.
+- **QR (RF-04):** el XML se descartó. El QR llena el encabezado de un ingreso `factura_qr` (CUFE único, proveedor por NIT, totales del QR) y los ítems se digitan como en la remisión. Claves del QR provisionales hasta probar con una factura real (S-06).
 - **Cartera:** fuera de alcance (pendiente confirmar con Frank, no afecta la Fase 1).

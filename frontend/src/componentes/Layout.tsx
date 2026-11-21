@@ -10,7 +10,8 @@ export default function Layout() {
         <strong className="marca">La 8va · Inventario</strong>
         <nav>
           {tieneRol('mostrador') && <NavLink to="/mostrador/venta">Venta</NavLink>}
-          {tieneRol('logistica') && <NavLink to="/logistica/ingresos">Ingresos</NavLink>}
+          {tieneRol('logistica') && <NavLink to="/logistica/ingresos" end>Ingresos</NavLink>}
+          {tieneRol('logistica') && <NavLink to="/logistica/ingresos/qr">Factura (QR)</NavLink>}
           {tieneRol('logistica') && <NavLink to="/logistica/etiquetas">Etiquetas</NavLink>}
           {tieneRol('admin') && <NavLink to="/admin/referencias">Referencias</NavLink>}
           {tieneRol('admin') && <NavLink to="/admin/universales">Universales</NavLink>}

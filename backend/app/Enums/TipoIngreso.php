@@ -2,11 +2,11 @@
 
 namespace App\Enums;
 
-/** RF-05 remisión; RF-04 factura_xml queda preparado, sin implementar (S-06). */
+/** RF-05 remisión digitada; RF-04 factura cuyo encabezado sale del QR (S-06). */
 enum TipoIngreso: string
 {
     case Remision = 'remision';
-    case FacturaXml = 'factura_xml';
+    case FacturaQr = 'factura_qr';
 
     /** @return list<string> */
     public static function valores(): array

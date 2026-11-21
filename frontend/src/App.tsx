@@ -8,6 +8,7 @@ import Agotados from './paginas/Agotados'
 import Venta from './paginas/mostrador/Venta'
 import Ingresos from './paginas/logistica/Ingresos'
 import IngresoDetalle from './paginas/logistica/IngresoDetalle'
+import IngresoQr from './paginas/logistica/IngresoQr'
 import Etiquetas from './paginas/logistica/Etiquetas'
 import Referencias from './paginas/admin/Referencias'
 import Universales from './paginas/admin/Universales'
@@ -37,6 +38,7 @@ export default function App() {
         </Route>
         <Route element={<ConRol roles={['logistica']} />}>
           <Route path="/logistica/ingresos" element={<Ingresos />} />
+          <Route path="/logistica/ingresos/qr" element={<IngresoQr />} />
           <Route path="/logistica/ingresos/:id" element={<IngresoDetalle />} />
           <Route path="/logistica/etiquetas" element={<Etiquetas />} />
         </Route>

@@ -6,6 +6,7 @@ Sistema de inventario para un local de venta y mantenimiento de arranques y alte
 |---|---|---|
 | 1.0 | 29 de octubre de 2026 | Versión inicial a partir de las dos notas de voz. |
 | 1.1 | 29 de octubre de 2026 | Alcance limitado a inventario (la facturación sigue en Contapyme). Venta escaneada con descargue inmediato, reversos sin borrado, auditoría de ediciones, ingreso digitado cuando el escáner falla, propuesta técnica para RF-04 y nuevo pendiente de etiqueta por referencia. |
+| 1.1.1 | 14 de noviembre de 2026 | RF-04: se descarta leer el XML. El QR llena el encabezado del ingreso y los ítems se digitan. |
 
 | | |
 |---|---|
@@ -133,6 +134,8 @@ El QR de la factura electrónica colombiana normalmente trae solo el CUFE (códi
 **Propuesta.** Procesar el XML de la factura para obtener ítems, referencias, cantidades, descuentos e IVA, y usar el QR para ubicar la factura correspondiente por su CUFE. Logística escanea el QR, el sistema muestra las líneas del XML y la persona valida.
 
 **Aceptación.** Al escanear el QR de una factura cuyo XML ya está cargado, aparecen sus ítems y cantidades listos para validar, sin digitar.
+
+**Decisión (14 de noviembre de 2026).** Se descarta procesar el XML. Al escanear el QR, el sistema llena el encabezado del ingreso (proveedor por NIT, número, fecha, CUFE y totales) y los ítems se digitan como en la remisión. Una misma factura (CUFE) no se ingresa dos veces. Al confirmar, el sistema avisa si el total digitado no cuadra con el total del QR. Esta decisión reemplaza la propuesta y la aceptación anteriores.
 
 [PENDIENTE: confirmar con una factura real qué trae el QR y cómo llega el XML.]
 
