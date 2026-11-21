@@ -308,6 +308,16 @@ input[aria-invalid='true'] { border-color: var(--peligro); }
 .login p { color: var(--suave); }
 .marca-login { display: flex; justify-content: center; margin-bottom: 4px; }
 .marca-login .marca-ocho { width: 3.2rem; height: 3.2rem; font-size: 1.5rem; }
+/* Login: mensajes bajo cada campo, estado válido y botón para ver la contraseña. */
+.login .ayuda { text-align: left; margin-top: -6px; }
+.ayuda.atencion { color: var(--aviso); }
+.login input[aria-invalid='false'][data-tocado='true'] { border-color: var(--ok); }
+.campo-clave { position: relative; display: flex; }
+.campo-clave input { flex: 1; padding-right: 5.5rem; }
+.campo-clave .ver-clave {
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  font-size: 0.85rem; text-decoration: none;
+}
 .cargando { padding: 40px; text-align: center; color: var(--suave); }
 .lista { list-style: none; padding: 0; margin: 0; }
 .lista li { padding: 6px 0; border-bottom: 1px solid var(--borde); }

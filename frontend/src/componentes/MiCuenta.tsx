@@ -3,16 +3,17 @@ import { useMutation } from '@tanstack/react-query'
 import { api, mensajeError } from '../api/cliente'
 import type { Usuario } from '../api/tipos'
 import { useAuth } from '../auth/AuthProvider'
+import { errorUsuario, normalizarUsuario } from '../auth/nombreUsuario'
 
 const vacias = { password_actual: '', password: '', password_confirmation: '' }
 
 /**
  * Cuenta propia del admin. Cambiar la contraseña exige la actual, la nueva y su confirmación;
- * cambiar el correo exige la actual. El backend vuelve a validar las tres cosas.
+ * cambiar el usuario exige la actual. El backend vuelve a validar las tres cosas.
  */
 export default function MiCuenta({ onCerrar }: { onCerrar: () => void }) {
   const { usuario, actualizarUsuario } = useAuth()
-  const [f, setF] = useState({ name: usuario?.name ?? '', email: usuario?.email ?? '', ...vacias })
+  const [f, setF] = useState({ name: usuario?.name ?? '', usuario: usuario?.usuario ?? '', ...vacias })
   const [listo, setListo] = useState(false)
 
   useEffect(() => {
@@ -22,17 +23,18 @@ export default function MiCuenta({ onCerrar }: { onCerrar: () => void }) {
   }, [onCerrar])
 
   const cambiaNombre = f.name.trim() !== usuario?.name
-  const cambiaEmail = f.email.trim() !== usuario?.email
+  const cambiaUsuario = f.usuario !== usuario?.usuario
+  const errorDeUsuario = cambiaUsuario ? errorUsuario(f.usuario) : null
   const tocaClave = f.password_actual !== '' || f.password !== '' || f.password_confirmation !== ''
-  const pideActual = cambiaEmail || tocaClave
+  const pideActual = cambiaUsuario || tocaClave
   const noCoinciden = f.password_confirmation !== '' && f.password !== f.password_confirmation
-  const sinCambios = !cambiaNombre && !cambiaEmail && !tocaClave
+  const sinCambios = !cambiaNombre && !cambiaUsuario && !tocaClave
 
   const guardar = useMutation({
     mutationFn: async () => {
       const datos: Record<string, string> = {}
       if (cambiaNombre) datos.name = f.name.trim()
-      if (cambiaEmail) datos.email = f.email.trim()
+      if (cambiaUsuario) datos.usuario = f.usuario
       if (tocaClave) {
         datos.password = f.password
         datos.password_confirmation = f.password_confirmation
@@ -42,7 +44,7 @@ export default function MiCuenta({ onCerrar }: { onCerrar: () => void }) {
     },
     onSuccess: (u) => {
       actualizarUsuario(u)
-      setF({ name: u.name, email: u.email, ...vacias })
+      setF({ name: u.name, usuario: u.usuario, ...vacias })
       setListo(true)
     },
   })
@@ -67,7 +69,7 @@ export default function MiCuenta({ onCerrar }: { onCerrar: () => void }) {
           <span className="avatar" aria-hidden>{inicial}</span>
           <div className="modal-cabeza-texto">
             <h2 id="mi-cuenta-titulo">Mi cuenta</h2>
-            <p>Administrador · {usuario?.email}</p>
+            <p>Administrador · {usuario?.usuario}</p>
           </div>
           <button type="button" className="icono-boton modal-cerrar" aria-label="Cerrar" onClick={onCerrar}>
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6L6 18" /></svg>
@@ -78,9 +80,21 @@ export default function MiCuenta({ onCerrar }: { onCerrar: () => void }) {
           <h3>Datos de la cuenta</h3>
           <div className="campos-dos">
             <label>Nombre<input required autoComplete="name" {...campo('name')} /></label>
-            <label>Correo<input required type="email" autoComplete="email" {...campo('email')} /></label>
+            <label>Usuario
+              <input
+                required
+                autoComplete="username"
+                autoCapitalize="none"
+                spellCheck={false}
+                aria-invalid={errorDeUsuario !== null}
+                aria-describedby={errorDeUsuario ? 'mi-usuario-error' : undefined}
+                value={f.usuario}
+                onChange={(e) => { setListo(false); setF({ ...f, usuario: normalizarUsuario(e.target.value) }) }}
+              />
+            </label>
           </div>
-          {cambiaEmail && <p className="ayuda">Para cambiar el correo, escriba abajo su contraseña actual.</p>}
+          {errorDeUsuario && <p id="mi-usuario-error" className="ayuda error">{errorDeUsuario}</p>}
+          {cambiaUsuario && !errorDeUsuario && <p className="ayuda">Para cambiar el usuario, escriba abajo su contraseña actual.</p>}
         </section>
 
         <section className="modal-seccion">
@@ -107,7 +121,7 @@ export default function MiCuenta({ onCerrar }: { onCerrar: () => void }) {
 
         <footer className="modal-pie">
           <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
-          <button className="primario" disabled={guardar.isPending || sinCambios || noCoinciden}>
+          <button className="primario" disabled={guardar.isPending || sinCambios || noCoinciden || errorDeUsuario !== null}>
             {guardar.isPending ? 'Guardando…' : 'Guardar cambios'}
           </button>
         </footer>

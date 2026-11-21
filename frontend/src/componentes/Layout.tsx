@@ -90,7 +90,7 @@ export default function Layout() {
             <div className="cuenta-panel" role="menu">
               <div className="cuenta-sesion">
                 <strong>{usuario?.name}</strong>
-                <span>{usuario?.email}</span>
+                <span>{usuario?.usuario}</span>
                 <span className="chip">{usuario ? rolLegible[usuario.rol] : ''}</span>
               </div>
               {usuario?.rol === 'admin' && (

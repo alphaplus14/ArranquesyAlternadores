@@ -4,7 +4,8 @@ export type MetodoCaptura = 'escaneado' | 'digitado'
 export interface Usuario {
   id: number
   name: string
-  email: string
+  /** Nombre de usuario con que se inicia sesión (no es un correo). */
+  usuario: string
   rol: Rol
   activo?: boolean
 }
