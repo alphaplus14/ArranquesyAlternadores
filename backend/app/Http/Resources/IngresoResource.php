@@ -2,10 +2,11 @@
 
 namespace App\Http\Resources;
 
+use App\Models\Ingreso;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/** @mixin \App\Models\Ingreso  RF-05 / RF-09 / RF-10 */
+/** @mixin Ingreso  RF-05 / RF-09 / RF-10 */
 class IngresoResource extends JsonResource
 {
     public function toArray(Request $request): array
@@ -24,20 +25,6 @@ class IngresoResource extends JsonResource
             'proveedor_id' => $this->proveedor_id,
             'proveedor' => $this->whenLoaded('proveedor', fn () => ['id' => $this->proveedor->id, 'nombre' => $this->proveedor->nombre]),
             'numero_documento' => $this->numero_documento,
-            'cufe' => $this->cufe,
-            // RF-04: totales leídos del QR y diferencia contra lo digitado. En borrador se calcula
-            // con los ítems actuales; confirmado, es la registrada al confirmar.
-            'qr' => $this->esFacturaQr() ? [
-                'subtotal' => $this->subtotal_qr,
-                'iva' => $this->iva_qr,
-                'total' => $this->total_qr,
-                'diferencia' => $this->esBorrador()
-                    ? ($cargados ? $this->diferenciaQr() : null)
-                    : ($this->diferencia_qr === null ? null : (float) $this->diferencia_qr),
-                'tolerancia' => (float) config('ingresos.tolerancia_total'),
-                'diferencia_aceptada' => $this->diferencia_aceptada,
-                'diferencia_motivo' => $this->diferencia_motivo,
-            ] : null,
             'fecha' => $this->fecha?->toDateString(),
             'usuario' => $this->whenLoaded('usuario', fn () => ['id' => $this->usuario->id, 'name' => $this->usuario->name]),
             'confirmado_at' => $this->confirmado_at,
