@@ -6,9 +6,24 @@ use App\Models\IngresoItem;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/** @mixin IngresoItem  RF-05 / RF-09 / RF-10 / RF-20: una línea del ingreso. */
+/**
+ * @mixin IngresoItem  RF-05 / RF-09 / RF-10 / RF-20: una línea del ingreso.
+ * subtotal, base e IVA dependen del descuento del documento (prorrateo de RF-09): solo vienen
+ * cuando la línea se muestra dentro de su ingreso (IngresoResource los pasa con conTotales()).
+ */
 class IngresoItemResource extends JsonResource
 {
+    /** @var array{subtotal:string, base:string, iva:string}|null */
+    private ?array $totales = null;
+
+    /** @param array{subtotal:string, base:string, iva:string}|null $totales */
+    public function conTotales(?array $totales): self
+    {
+        $this->totales = $totales;
+
+        return $this;
+    }
+
     public function toArray(Request $request): array
     {
         return [
@@ -23,8 +38,9 @@ class IngresoItemResource extends JsonResource
             'descuento' => $this->descuento,
             'iva_porcentaje' => $this->iva_porcentaje,
             'sin_iva' => $this->sin_iva,
-            'subtotal' => $this->subtotal(),
-            'iva' => $this->iva(),
+            'subtotal' => $this->totales['subtotal'] ?? null,
+            'base' => $this->totales['base'] ?? null,
+            'iva' => $this->totales['iva'] ?? null,
         ];
     }
 }

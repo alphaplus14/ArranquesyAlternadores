@@ -9,6 +9,7 @@ use App\Models\Ingreso;
 use App\Models\IngresoItem;
 use App\Models\Referencia;
 use App\Models\User;
+use App\Support\TotalesIngreso;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 
@@ -58,8 +59,15 @@ class IngresoService
         }
 
         return $this->enBorrador($ingreso, function (Ingreso $bloqueado) use ($datos) {
+            $bloqueado->fill($datos);
+
+            // RF-09: con líneas cargadas, el descuento del documento no puede superar su subtotal.
+            if ($bloqueado->isDirty('descuento_total')) {
+                TotalesIngreso::calcular($bloqueado->items()->get(), $bloqueado->descuento_total)->exigirDescuentoValido();
+            }
+
             try {
-                $bloqueado->update($datos);
+                $bloqueado->save();
             } catch (UniqueConstraintViolationException) {
                 throw new ReglaInventarioException('Ya hay otro ingreso de ese proveedor con el mismo tipo y número de documento.', 422);
             }
@@ -155,6 +163,9 @@ class IngresoService
                     422,
                 );
             }
+
+            // RF-09 (ajuste): el descuento del documento no puede superar el subtotal de las líneas.
+            TotalesIngreso::calcular($items, $ingreso->descuento_total)->exigirDescuentoValido();
 
             $codigos = $this->codigos->reservar($items->sum('cantidad'));
             $this->inventario->darEntrada($ingreso, $items, $codigos, $usuario->id);

@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\EstadoIngreso;
 use App\Enums\TipoIngreso;
 use App\Exceptions\RegistroInmutableException;
+use App\Support\TotalesIngreso;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -72,15 +73,19 @@ class Ingreso extends Model
     }
 
     /**
-     * RF-09 / RF-10: total del documento con lo digitado = subtotal de líneas − descuento del
-     * documento + IVA. Usa la relación items (cargarla antes para no repetir consultas).
+     * RF-09 (ajuste): totales con el descuento del documento prorrateado antes del IVA.
+     * Usa la relación items (cargarla antes para no repetir consultas). El cálculo vive solo en
+     * TotalesIngreso.
      */
-    public function totalCalculado(): float
+    public function totales(): TotalesIngreso
     {
-        $subtotal = $this->items->sum(fn (IngresoItem $i) => $i->subtotal());
-        $iva = $this->items->sum(fn (IngresoItem $i) => $i->iva());
+        return TotalesIngreso::calcular($this->items, $this->descuento_total);
+    }
 
-        return round($subtotal - (float) $this->descuento_total + $iva, 2);
+    /** Total del documento con lo digitado, redondeado al peso (ver TotalesIngreso). */
+    public function totalCalculado(): string
+    {
+        return $this->totales()->total;
     }
 
     /** RF-04: el número del documento se guarda recortado y con un solo espacio entre partes. */
