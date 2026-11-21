@@ -37,7 +37,7 @@ npm install
 npm run dev                       # http://localhost:5173
 ```
 
-Usuarios de desarrollo (contraseña `cambiar123`): `admin@la8va.local`, `logistica@la8va.local`, `mostrador@la8va.local`.
+Usuarios de desarrollo (contraseña `cambiar123`): `admin`, `logistica`, `mostrador`. Se inicia sesión con el nombre de usuario, no con correo (3 a 30 caracteres: minúsculas, números, punto, guion y guion bajo).
 
 ## Módulos y roles
 

@@ -4,14 +4,12 @@ namespace App\Console\Commands;
 
 use App\Enums\MetodoCaptura;
 use App\Enums\Rol;
-use App\Models\Ingreso;
+use App\Models\Categoria;
 use App\Models\Marca;
 use App\Models\Proveedor;
-use App\Models\Categoria;
 use App\Models\Referencia;
 use App\Models\Unidad;
 use App\Models\User;
-use App\Models\Venta;
 use App\Services\IngresoService;
 use App\Services\VentaService;
 use Illuminate\Console\Command;
@@ -37,7 +35,7 @@ class BenchmarkInventario extends Command
         DB::beginTransaction();
 
         try {
-            $usuario = User::create(['name' => 'bench', 'email' => 'bench-'.uniqid().'@local', 'password' => 'x', 'rol' => Rol::Admin, 'activo' => true]);
+            $usuario = User::create(['name' => 'bench', 'usuario' => 'bench-'.uniqid(), 'password' => 'x', 'rol' => Rol::Admin, 'activo' => true]);
             Auth::login($usuario);
             $proveedor = Proveedor::create(['nombre' => 'Proveedor benchmark']);
             $marca = Marca::firstOrCreate(['nombre' => 'Marca benchmark']);

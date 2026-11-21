@@ -10,7 +10,7 @@ use Illuminate\Support\Arr;
 /**
  * Cuentas de usuario. Regla 12: el admin gestiona a los empleados (logística y mostrador).
  * Las cuentas admin están protegidas: ningún admin edita a otro, y cada uno edita la suya
- * desde su cuenta (nombre, correo, contraseña), nunca su rol ni su estado.
+ * desde su cuenta (nombre, usuario, contraseña), nunca su rol ni su estado.
  * Cambiar la contraseña cierra las otras sesiones del usuario: AuthenticateSession de Sanctum
  * compara el hash guardado en cada sesión y la sesión que hizo el cambio guarda el nuevo.
  */
@@ -38,7 +38,7 @@ class UsuarioService
 
     public function actualizarCuenta(User $usuario, array $datos): User
     {
-        $usuario->update(Arr::only($datos, ['name', 'email', 'password']));
+        $usuario->update(Arr::only($datos, ['name', 'usuario', 'password']));
 
         return $usuario;
     }

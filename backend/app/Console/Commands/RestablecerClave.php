@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\User;
+use App\Rules\NombreUsuario;
 use App\Services\UsuarioService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Validator;
@@ -14,16 +15,16 @@ use Illuminate\Validation\Rules\Password;
  */
 class RestablecerClave extends Command
 {
-    protected $signature = 'usuarios:clave {email : Correo de la cuenta}';
+    protected $signature = 'usuarios:clave {usuario : Nombre de usuario de la cuenta}';
 
     protected $description = 'Restablece la contraseña de una cuenta (pensado para administradores)';
 
     public function handle(UsuarioService $usuarios): int
     {
-        $usuario = User::where('email', $this->argument('email'))->first();
+        $usuario = User::where('usuario', NombreUsuario::normalizar($this->argument('usuario')))->first();
 
         if (! $usuario) {
-            $this->error('No existe una cuenta con ese correo.');
+            $this->error('No existe una cuenta con ese usuario.');
 
             return self::FAILURE;
         }
@@ -43,7 +44,7 @@ class RestablecerClave extends Command
         }
 
         $usuarios->restablecerClave($usuario, $clave);
-        $this->info("Contraseña restablecida para {$usuario->email}. Sus sesiones abiertas se cerraron.");
+        $this->info("Contraseña restablecida para {$usuario->usuario}. Sus sesiones abiertas se cerraron.");
 
         return self::SUCCESS;
     }

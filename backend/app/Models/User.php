@@ -4,7 +4,9 @@ namespace App\Models;
 
 use App\Enums\Rol;
 use App\Models\Concerns\Auditable;
+use App\Rules\NombreUsuario;
 use Database\Factories\UserFactory;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -21,7 +23,7 @@ class User extends Authenticatable
      */
     protected $fillable = [
         'name',
-        'email',
+        'usuario',
         'password',
         'rol',
         'activo',
@@ -45,11 +47,16 @@ class User extends Authenticatable
     protected function casts(): array
     {
         return [
-            'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'rol' => Rol::class,
             'activo' => 'boolean',
         ];
+    }
+
+    /** Nombre de usuario con que se inicia sesión: siempre recortado y en minúsculas. */
+    protected function usuario(): Attribute
+    {
+        return Attribute::make(set: fn ($valor) => NombreUsuario::normalizar($valor));
     }
 
     /** El admin es superusuario: pasa en todos los módulos. */
