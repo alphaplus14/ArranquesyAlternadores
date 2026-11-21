@@ -46,7 +46,7 @@ Cita los RF por número (RF-01, RF-02…) en commits (`feat(RF-06): ...`), en co
 8. **Reverso (RF-07).** Las ventas NUNCA se borran. Devolución/anulación = movimiento nuevo ligado a la venta, con usuario, fecha y motivo obligatorio. Quitar un ítem de una venta abierta también es un reverso, no un DELETE. Abonos y pagos se anulan igual: movimiento nuevo, sin borrar el original.
 9. **Auditoría (RF-11).** Toda edición guarda tabla, registro, campo, valor anterior, valor nuevo, usuario y fecha.
 10. **Escaneado o digitado (RF-12).** Cada movimiento registra `metodo_captura` (`escaneado` | `digitado`). Si el escáner falla: digitar el código o buscar por referencia/universal y elegir la unidad.
-11. **Descuento y sin IVA (RF-09, RF-10).** El ingreso registra el descuento de la factura y las líneas sin IVA.
+11. **Descuento y sin IVA (RF-09, RF-10, RF-16).** El ingreso registra el descuento de la factura y las líneas sin IVA. El descuento del documento se prorratea entre las líneas antes del IVA (S-21); el total se calcula solo en `App\Support\TotalesIngreso` (bcmath, redondeo al peso en un único método) y se guarda al confirmar. Todo ingreso es de contado o a crédito; a crédito, el vencimiento se digita tal como lo imprime el documento (el plazo del proveedor solo lo prellena). Confirmado, no cambian total, forma de pago, vencimiento ni descuento.
 12. **Agotados por proveedor (RF-08).** Referencias con existencia 0 de un proveedor.
 13. **Saldos (adenda).** Cliente = ventas a crédito cerradas, netas de reversos, menos abonos no anulados. Proveedor = ingresos a crédito confirmados menos pagos no anulados. Una remisión cubierta por una factura confirmada no se cuenta dos veces.
 14. **Roles.** `admin`, `logistica`, `mostrador`. Todo endpoint protegido por rol con middleware.
@@ -58,7 +58,7 @@ Cita los RF por número (RF-01, RF-02…) en commits (`feat(RF-06): ...`), en co
 - `referencias.existencia` se modifica SOLO en la misma transacción que crea/cambia unidades, vía un único servicio de inventario. `lockForUpdate()` sobre la unidad para que dos mostradores no vendan la misma.
 - Comando `inventario:recalcular`: compara el contador contra `COUNT(unidades disponibles)` y reporta diferencias.
 - Ventas, venta_items, reversos, movimientos_inventario y auditoria son inmutables: el modelo lanza excepción en `updating`/`deleting` (salvo el cambio de estado permitido de la venta) y no hay rutas DELETE. Única excepción en venta_items: `precio_unitario`, y solo ese campo, mientras la venta es a crédito y está abierta, vía `VentaService::cambiarPrecio`, que bloquea la venta y deja la fila de auditoría (tabla `venta_items`) en la misma transacción; el guard de `VentaItem` rechaza cualquier otra edición. Abonos y pagos, cuando existan, siguen esa misma regla.
-- Auditoría con trait reutilizable `Auditable` en referencias, codigos_universales, marcas, proveedores, categorias, clientes y users.
+- Auditoría con trait reutilizable `Auditable` en referencias, codigos_universales, marcas, proveedores, categorias, clientes, ingresos y users.
 - Código de barras: Code128, prefijo del local + consecutivo con ceros (ej. `A8000001`), generado de forma segura ante concurrencia.
 - Frontend: ráfaga de teclas < 30 ms terminada en Enter = `escaneado`; escrito a mano o elegido en búsqueda = `digitado`.
 - Ningún nombre de marca en el código (las marcas son catálogo editable; solo aparecen en seeders).
@@ -80,8 +80,9 @@ Cita los RF por número (RF-01, RF-02…) en commits (`feat(RF-06): ...`), en co
 
 1. Confirmar con Frank y el contador que Contapyme no llevará también la cartera de lo que factura.
 2. Confirmar qué código traen los productos o sus cajas (S-19) y quién fija el precio de venta de una referencia nueva (S-20).
-3. Confirmar si una remisión puede facturarse parcialmente y cómo se corrige un vínculo equivocado ya confirmado.
-4. Etiqueta por unidad o por referencia + cantidad en piezas baratas de alto volumen.
-5. Cuáles poleas y automáticos entran al código universal.
-6. Nombre de la tercera marca (en el audio suena «Jota»).
-7. Tiempo de respuesta objetivo en segundos.
+3. Confirmar con el contador cómo se redondea el IVA de una compra: por documento (hoy) o por línea (S-21).
+4. Confirmar si una remisión puede facturarse parcialmente y cómo se corrige un vínculo equivocado ya confirmado.
+5. Etiqueta por unidad o por referencia + cantidad en piezas baratas de alto volumen.
+6. Cuáles poleas y automáticos entran al código universal.
+7. Nombre de la tercera marca (en el audio suena «Jota»).
+8. Tiempo de respuesta objetivo en segundos.
