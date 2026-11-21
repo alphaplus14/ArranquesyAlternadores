@@ -253,6 +253,7 @@ tr.reversado td:last-child { text-decoration: none; }
 .lateral .lista { font-size: 0.9rem; }
 .reversos { padding-left: 18px; }
 .resultado { border-bottom: 1px solid var(--borde); padding: 8px 0; }
+.venta-credito { margin: 0 0 8px; }
 .unidades { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .sugerencias { position: absolute; top: 100%; left: 0; right: 0; z-index: 5; list-style: none; margin: 0; padding: 4px; background: #fff; border: 1px solid var(--borde); border-radius: 8px; max-height: 260px; overflow-y: auto; }
 .sugerencias button { width: 100%; text-align: left; border: none; background: transparent; }

@@ -1,13 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeError } from '../../api/cliente'
-import type { MetodoCaptura, Pagina, Referencia, Venta as TVenta, VentaItem } from '../../api/tipos'
+import type { Cliente, MetodoCaptura, Pagina, Referencia, Venta as TVenta, VentaItem } from '../../api/tipos'
 import Medida from '../../componentes/Medida'
 import { useScanner } from '../../hooks/useScanner'
 import { useDebounce } from '../../hooks/useDebounce'
 
 interface Aviso { tipo: 'ok' | 'error'; texto: string }
 interface ReversoPendiente { item?: VentaItem; tipo: 'devolucion' | 'anulacion' }
+interface DatosCredito { cliente_id: number; factura_contapyme: string | null }
+
+/** vence_el llega como aaaa-mm-dd: se arma la fecha local para que no se corra un día por la zona horaria. */
+function fechaCorta(iso: string) {
+  const [a, m, d] = iso.split('-').map(Number)
+  return new Date(a, m - 1, d).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' })
+}
+
+function sinPrecio(item: VentaItem) {
+  return item.precio_unitario === null || Number(item.precio_unitario) === 0
+}
 
 /**
  * RF-06: venta de mostrador. Cada escaneo descuenta de inmediato (no al cerrar).
@@ -20,6 +31,9 @@ export default function Venta() {
   const [aviso, setAviso] = useState<Aviso | null>(null)
   const [respaldo, setRespaldo] = useState(false)
   const [reverso, setReverso] = useState<ReversoPendiente | null>(null)
+  const [eligiendoCliente, setEligiendoCliente] = useState(false)
+  /** Último ítem escaneado en esta pantalla; sirve para avisar si quedó sin precio en una venta a crédito. */
+  const [ultimoEscaneado, setUltimoEscaneado] = useState<number | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   // Retoma la última venta abierta del usuario.
@@ -39,12 +53,14 @@ export default function Venta() {
 
   const recientes = useQuery({
     queryKey: ['ventas', 'cerradas'],
-    queryFn: async () => (await api.get<Pagina<{ id: number; created_at: string; items_count: number }>>('/ventas', { params: { estado: 'cerrada' } })).data,
+    queryFn: async () => (await api.get<Pagina<{ id: number; created_at: string; items_count: number; forma_pago: TVenta['forma_pago']; cliente: { id: number; nombre: string } | null }>>('/ventas', { params: { estado: 'cerrada' } })).data,
   })
 
+  // Sin cuerpo = contado, igual que antes del crédito (RF-14).
   const abrir = useMutation({
-    mutationFn: async () => (await api.post<TVenta>('/ventas')).data,
-    onSuccess: (v) => { setVentaId(v.id); qc.setQueryData(['venta', v.id], v); setAviso(null) },
+    mutationFn: async (credito?: DatosCredito) =>
+      (await api.post<TVenta>('/ventas', credito ? { forma_pago: 'credito', ...credito } : undefined)).data,
+    onSuccess: (v) => { setVentaId(v.id); qc.setQueryData(['venta', v.id], v); setAviso(null); setUltimoEscaneado(null) },
   })
 
   const escanear = useMutation({
@@ -55,6 +71,7 @@ export default function Venta() {
         tipo: 'ok',
         texto: `✓ ${r.unidad.codigo_barras} · ${r.referencia.codigo_referencia} ${r.referencia.marca} — quedan ${r.referencia.existencia} (${r.metodo_captura})`,
       })
+      setUltimoEscaneado(r.venta_item_id)
       qc.invalidateQueries({ queryKey: ['venta', ventaId] })
     },
     onError: (e) => setAviso({ tipo: 'error', texto: mensajeError(e) }),
@@ -65,7 +82,12 @@ export default function Venta() {
     onSuccess: (v) => {
       qc.setQueryData(['venta', v.id], v)
       qc.invalidateQueries({ queryKey: ['ventas'] })
-      setAviso({ tipo: 'ok', texto: `Venta #${v.id} cerrada. Facture en Contapyme.` })
+      setAviso({
+        tipo: 'ok',
+        texto: v.forma_pago === 'credito'
+          ? `Venta #${v.id} a crédito cerrada.${v.vence_el ? ` Vence el ${fechaCorta(v.vence_el)}.` : ''} Facture en Contapyme.`
+          : `Venta #${v.id} cerrada. Facture en Contapyme.`,
+      })
     },
     onError: (e) => setAviso({ tipo: 'error', texto: mensajeError(e) }),
   })
@@ -84,7 +106,7 @@ export default function Venta() {
   const scanner = useScanner(onCodigo)
 
   // El input del lector recupera el foco siempre que no haya un diálogo abierto.
-  const hayDialogo = respaldo || reverso !== null
+  const hayDialogo = respaldo || reverso !== null || eligiendoCliente
   useEffect(() => {
     if (!hayDialogo) inputRef.current?.focus()
   }, [hayDialogo, ventaId, escanear.isPending])
@@ -94,6 +116,9 @@ export default function Venta() {
   const abierta = v?.estado === 'abierta'
   const vigentes = v?.items.filter((i) => !i.reverso_id) ?? []
   const ultimo = [...(v?.items ?? [])].reverse().find((i) => !i.reverso_id)
+  const credito = v?.forma_pago === 'credito'
+  // El precio lo copia el backend al escanear; aquí solo se avisa, no se bloquea.
+  const escaneadoSinPrecio = credito && abierta && v.items.some((i) => i.id === ultimoEscaneado && !i.reverso_id && sinPrecio(i))
 
   return (
     <div>
@@ -110,9 +135,13 @@ export default function Venta() {
       <div className="venta">
       <section className="panel">
         <div className="fila-titulo">
-          <h2>Lectura {v && <span className={`chip ${v.estado}`}>{v.estado}</span>}</h2>
+          <h2>
+            Lectura {v && <span className={`chip ${v.estado}`}>{v.estado}</span>}{' '}
+            {v && <span className={credito ? 'chip credito' : 'chip'}>{credito ? 'Crédito' : 'Contado'}</span>}
+          </h2>
           <div className="acciones">
-            <button type="button" className="secundario" onClick={() => abrir.mutate()} disabled={abrir.isPending}>Nueva venta</button>
+            <button type="button" className="secundario" onClick={() => abrir.mutate(undefined)} disabled={abrir.isPending}>Nueva venta</button>
+            <button type="button" className="secundario" onClick={() => setEligiendoCliente(true)} disabled={abrir.isPending}>Nueva venta a crédito</button>
             {abierta && <button type="button" className="secundario" onClick={() => setRespaldo(true)}>Buscar sin escáner</button>}
             {abierta && <button type="button" className="primario" onClick={() => cerrar.mutate()} disabled={cerrar.isPending}>Cerrar venta</button>}
             {v && !abierta && vigentes.length > 0 && (
@@ -120,6 +149,15 @@ export default function Venta() {
             )}
           </div>
         </div>
+
+        {v && credito && (
+          <p className="venta-credito">
+            Cliente: <strong>{v.cliente?.nombre ?? '—'}</strong>
+            {v.cliente?.documento && <> · {v.cliente.documento}</>}
+            {v.factura_contapyme && <> · Factura Contapyme {v.factura_contapyme}</>}
+            {v.estado === 'cerrada' && v.vence_el && <> · <strong>Vence el {fechaCorta(v.vence_el)}</strong></>}
+          </p>
+        )}
 
         <input
           ref={inputRef}
@@ -132,11 +170,12 @@ export default function Venta() {
           autoComplete="off"
         />
         {aviso && <div className={`aviso ${aviso.tipo}`} role="status">{aviso.texto}</div>}
+        {escaneadoSinPrecio && <div className="aviso atencion" role="alert">Esta referencia no tiene precio; este ítem quedará en $0 en la cartera.</div>}
 
         {v && (
           <table>
             <thead>
-              <tr><th>Código</th><th>Referencia</th><th>Marca</th><th>Captura</th><th>Usuario</th><th>Hora</th><th></th></tr>
+              <tr><th>Código</th><th>Referencia</th><th>Marca</th><th>Precio</th><th>Captura</th><th>Usuario</th><th>Hora</th><th></th></tr>
             </thead>
             <tbody>
               {v.items.map((i) => (
@@ -144,6 +183,10 @@ export default function Venta() {
                   <td className="mono">{i.unidad.codigo_barras}</td>
                   <td>{i.unidad.referencia?.codigo_referencia} <small>{i.unidad.referencia?.descripcion}</small></td>
                   <td>{i.unidad.referencia?.marca?.nombre}</td>
+                  <td>
+                    {i.precio_unitario === null ? '—' : Number(i.precio_unitario).toLocaleString('es-CO')}
+                    {i.iva_porcentaje !== null && <> <small>{Number(i.iva_porcentaje) === 0 ? 'sin IVA' : `IVA ${Number(i.iva_porcentaje)} %`}</small></>}
+                  </td>
                   <td><span className={`chip ${i.metodo_captura}`}>{i.metodo_captura}</span></td>
                   <td>{i.usuario.name}</td>
                   <td>{new Date(i.created_at).toLocaleTimeString()}</td>
@@ -156,7 +199,7 @@ export default function Venta() {
                   </td>
                 </tr>
               ))}
-              {v.items.length === 0 && <tr><td colSpan={7} className="vacio">Sin ítems todavía.</td></tr>}
+              {v.items.length === 0 && <tr><td colSpan={8} className="vacio">Sin ítems todavía.</td></tr>}
             </tbody>
           </table>
         )}
@@ -180,7 +223,8 @@ export default function Venta() {
         <ul className="lista">
           {recientes.data?.data.map((r) => (
             <li key={r.id}>
-              <button className="enlace" onClick={() => setVentaId(r.id)}>#{r.id}</button> · {r.items_count} ítems · {new Date(r.created_at).toLocaleString()}
+              <button className="enlace" onClick={() => setVentaId(r.id)}>#{r.id}</button>
+              {r.forma_pago === 'credito' && <> <span className="chip credito">Crédito</span> {r.cliente?.nombre}</>} · {r.items_count} ítems · {new Date(r.created_at).toLocaleString()}
             </li>
           ))}
         </ul>
@@ -191,6 +235,15 @@ export default function Venta() {
         <BusquedaRespaldo
           onElegir={(codigo) => { setRespaldo(false); escanear.mutate({ codigo, metodo: 'digitado' }) }}
           onCerrar={() => setRespaldo(false)}
+        />
+      )}
+
+      {eligiendoCliente && (
+        <DialogoCredito
+          abriendo={abrir.isPending}
+          error={abrir.isError ? mensajeError(abrir.error) : null}
+          onConfirmar={(datos) => abrir.mutate(datos, { onSuccess: () => setEligiendoCliente(false) })}
+          onCerrar={() => { setEligiendoCliente(false); abrir.reset() }}
         />
       )}
 
@@ -279,6 +332,107 @@ function DialogoReverso({ ventaId, pendiente, onListo, onCerrar }: {
           <button className="peligro" disabled={motivo.trim().length < 3 || reversar.isPending}>Confirmar reverso</button>
         </div>
       </form>
+    </div>
+  )
+}
+
+/**
+ * RF-14: la venta a crédito exige un cliente activo (RF-13). El mostrador puede crearlo al vuelo;
+ * editarlo es del admin. La factura de Contapyme es solo un texto de referencia.
+ */
+function DialogoCredito({ abriendo, error, onConfirmar, onCerrar }: {
+  abriendo: boolean
+  error: string | null
+  onConfirmar: (datos: DatosCredito) => void
+  onCerrar: () => void
+}) {
+  const qc = useQueryClient()
+  const [q, setQ] = useState('')
+  const [elegido, setElegido] = useState<Cliente | null>(null)
+  const [factura, setFactura] = useState('')
+  const [creando, setCreando] = useState(false)
+  const [nuevo, setNuevo] = useState({ nombre: '', documento: '', telefono: '' })
+  const termino = useDebounce(q.trim())
+
+  const clientes = useQuery({
+    queryKey: ['clientes', 'activos', termino],
+    queryFn: async () => (await api.get<Pagina<Cliente>>('/clientes', { params: { q: termino || undefined, activo: 1, por_pagina: 10 } })).data,
+  })
+
+  const crear = useMutation({
+    mutationFn: async () => (await api.post<Cliente>('/clientes', {
+      nombre: nuevo.nombre.trim(),
+      documento: nuevo.documento.trim() || null,
+      telefono: nuevo.telefono.trim() || null,
+    })).data,
+    onSuccess: (c) => {
+      setElegido(c)
+      setCreando(false)
+      setNuevo({ nombre: '', documento: '', telefono: '' })
+      qc.invalidateQueries({ queryKey: ['clientes'] })
+    },
+  })
+
+  return (
+    <div className="modal" onKeyDown={(e) => e.key === 'Escape' && onCerrar()}>
+      <div className="modal-caja ancha" role="dialog" aria-modal="true" aria-labelledby="credito-titulo">
+        <h2 id="credito-titulo">Nueva venta a crédito</h2>
+
+        {elegido ? (
+          <div className="aviso ok">
+            Cliente: {elegido.nombre}{elegido.documento && ` · ${elegido.documento}`} · plazo {elegido.plazo_dias} días{' '}
+            <button type="button" className="enlace" onClick={() => setElegido(null)}>Cambiar</button>
+          </div>
+        ) : creando ? (
+          <form className="formulario" onSubmit={(e) => { e.preventDefault(); crear.mutate() }}>
+            <h3>Crear cliente rápido</h3>
+            <label>Nombre<input autoFocus required maxLength={150} value={nuevo.nombre} onChange={(e) => setNuevo({ ...nuevo, nombre: e.target.value })} /></label>
+            <label>Documento (opcional)<input maxLength={30} value={nuevo.documento} onChange={(e) => setNuevo({ ...nuevo, documento: e.target.value })} /></label>
+            <label>Teléfono (opcional)<input maxLength={30} inputMode="tel" value={nuevo.telefono} onChange={(e) => setNuevo({ ...nuevo, telefono: e.target.value })} /></label>
+            <p className="ayuda">El sistema le pone el plazo por defecto; el administrador lo cambia en Clientes.</p>
+            {crear.isError && <div className="aviso error">{mensajeError(crear.error)}</div>}
+            <div className="acciones">
+              <button type="button" className="secundario" onClick={() => { setCreando(false); crear.reset() }}>Volver a buscar</button>
+              <button className="primario" disabled={crear.isPending || nuevo.nombre.trim() === ''}>Crear y elegir</button>
+            </div>
+          </form>
+        ) : (
+          <>
+            <input autoFocus placeholder="Buscar cliente por nombre o documento" aria-label="Buscar cliente" value={q} onChange={(e) => setQ(e.target.value)} />
+            {clientes.isFetching && <p className="ayuda">Buscando…</p>}
+            <ul className="lista">
+              {clientes.data?.data.map((c) => (
+                <li key={c.id}>
+                  <button type="button" className="enlace" onClick={() => setElegido(c)}>{c.nombre}</button>
+                  {c.documento && <> · {c.documento}</>} · plazo {c.plazo_dias} días
+                </li>
+              ))}
+            </ul>
+            {clientes.data && clientes.data.data.length === 0 && <p>Sin clientes activos para esta búsqueda.</p>}
+            <div>
+              <button type="button" className="secundario" onClick={() => { setCreando(true); setNuevo((n) => ({ ...n, nombre: q.trim() })) }}>Crear cliente rápido</button>
+            </div>
+          </>
+        )}
+
+        <label>Factura de Contapyme (opcional)
+          <input maxLength={40} value={factura} onChange={(e) => setFactura(e.target.value)} />
+        </label>
+        <p className="ayuda">Solo como referencia: este sistema no factura. La factura se hace en Contapyme.</p>
+
+        {error && <div className="aviso error">{error}</div>}
+        <div className="acciones">
+          <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
+          <button
+            type="button"
+            className="primario"
+            disabled={!elegido || abriendo}
+            onClick={() => elegido && onConfirmar({ cliente_id: elegido.id, factura_contapyme: factura.trim() || null })}
+          >
+            {abriendo ? 'Abriendo…' : 'Abrir venta a crédito'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
