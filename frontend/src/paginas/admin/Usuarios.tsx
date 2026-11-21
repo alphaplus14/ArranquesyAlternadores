@@ -7,6 +7,7 @@ import { normalizarUsuario } from '../../auth/nombreUsuario'
 import { useListaPaginada } from '../../hooks/useListaPaginada'
 import Icono from '../../componentes/Icono'
 import Medida from '../../componentes/Medida'
+import Resumen from '../../componentes/Resumen'
 import Paginacion from '../../componentes/Paginacion'
 
 const ROLES: Rol[] = ['admin', 'logistica', 'mostrador']
@@ -39,12 +40,22 @@ export default function Usuarios() {
         <h1>Usuarios</h1>
         <p>No se borran: se desactivan. Las cuentas de administrador están protegidas: cada una se edita desde «Mi cuenta».</p>
       </div>
-      <section className="medidas">
+      <Resumen
+        clave="usuarios-resumen"
+        compacto={(
+          <>
+            <span><strong>{info ? info.total.toLocaleString('es-CO') : '—'}</strong> usuarios</span>
+            <span><strong>{resultado ? activos : '—'}</strong> activos</span>
+            <span className={resultado && filas.length - activos > 0 ? 'resumen-agotados' : ''}><strong>{resultado ? filas.length - activos : '—'}</strong> inactivos</span>
+            <span>Pág. <strong>{info ? `${info.actual}/${info.ultima}` : '—'}</strong></span>
+          </>
+        )}
+      >
         <Medida etiqueta="Usuarios" valor={info ? info.total.toLocaleString('es-CO') : '—'} tono="azul" icono="usuarios" />
         <Medida etiqueta="Activos en esta página" valor={resultado ? activos : '—'} tono="verde" icono="caja" />
         <Medida etiqueta="Inactivos aquí" valor={resultado ? filas.length - activos : '—'} tono="rojo" icono="agotados" />
         <Medida etiqueta="Página" valor={info ? `${info.actual} / ${info.ultima}` : '—'} tono="amarillo" icono="auditoria" />
-      </section>
+      </Resumen>
     <section className="tarjeta-pagina">
       <h2>Nuevo usuario</h2>
       <form className="formulario en-linea" onSubmit={(e) => { e.preventDefault(); crear.mutate() }}>

@@ -5,6 +5,7 @@ import { AxiosError } from 'axios'
 import { api, mensajeError } from '../../api/cliente'
 import type { Ingreso } from '../../api/tipos'
 import Medida from '../../componentes/Medida'
+import Resumen from '../../componentes/Resumen'
 import { useProveedores } from '../../hooks/useCatalogos'
 import { useScanner } from '../../hooks/useScanner'
 
@@ -56,12 +57,22 @@ export default function IngresoQr() {
         <h1>Factura con QR</h1>
         <p>El QR llena el encabezado. Los ítems se digitan en el siguiente paso.</p>
       </div>
-      <section className="medidas">
+      <Resumen
+        clave="factura-qr-resumen"
+        compacto={(
+          <>
+            <span>Lectura <strong>{leer.isPending ? 'Buscando' : pendiente ? 'Incompleta' : 'Lista'}</strong></span>
+            <span className={pendiente ? 'resumen-agotados' : ''}>Faltan <strong>{pendiente?.faltan.length ?? 0}</strong></span>
+            <span>Proveedores <strong>{proveedores.data?.length ?? '—'}</strong></span>
+            <span>Siguiente <strong>Ítems</strong></span>
+          </>
+        )}
+      >
         <Medida etiqueta="Lectura" valor={leer.isPending ? 'Buscando' : pendiente ? 'Incompleta' : 'Lista'} tono="azul" icono="qr" />
         <Medida etiqueta="Datos que faltan" valor={pendiente?.faltan.length ?? 0} tono={pendiente ? 'rojo' : 'verde'} icono="agotados" />
         <Medida etiqueta="Proveedores" valor={proveedores.data?.length ?? '—'} tono="amarillo" icono="catalogo" />
         <Medida etiqueta="Siguiente paso" valor="Ítems" pie="Igual que la remisión" tono="verde" icono="ingreso" />
-      </section>
+      </Resumen>
     <div className="panel">
       <h2>Escanear la factura</h2>
 

@@ -6,6 +6,7 @@ import type { MetodoCaptura, Pagina, Referencia } from '../api/tipos'
 import { useAuth } from '../auth/AuthProvider'
 import Icono from '../componentes/Icono'
 import Paginacion from '../componentes/Paginacion'
+import Resumen from '../componentes/Resumen'
 import { useCategorias, useMarcas, useProveedores } from '../hooks/useCatalogos'
 import { useDebounce } from '../hooks/useDebounce'
 import { useListaPaginada } from '../hooks/useListaPaginada'
@@ -15,15 +16,6 @@ import { useVentana } from '../hooks/useVentana'
 /** Filas por petición. El tope del API es 100; el DOM solo pinta las visibles. */
 const POR_PAGINA = 100
 const ALTO_FILA = 56
-const RESUMEN_GUARDADO = 'productos-resumen'
-
-function resumenGuardado(): boolean {
-  try {
-    return localStorage.getItem(RESUMEN_GUARDADO) === '1'
-  } catch {
-    return false
-  }
-}
 
 type Formulario = {
   codigo_referencia: string
@@ -79,7 +71,6 @@ export default function Productos() {
   const [resaltada, setResaltada] = useState<number | null>(null)
   const [aviso, setAviso] = useState<Aviso | null>(null)
   const [lectura, setLectura] = useState<Lectura | null>(null)
-  const [resumenAbierto, setResumenAbierto] = useState(resumenGuardado)
   const [editando, setEditando] = useState<{ id: number | null; datos: Formulario } | null>(null)
   const lectorRef = useRef<HTMLInputElement>(null)
   const termino = useDebounce(q.trim())
@@ -177,33 +168,19 @@ export default function Productos() {
         <p>El catálogo llega por páginas. El escáner localiza la unidad en el momento.</p>
       </div>
 
-      <div className={resumenAbierto ? 'resumen abierto' : 'resumen'}>
-        <button
-          type="button"
-          className="resumen-barra"
-          aria-expanded={resumenAbierto}
-          aria-controls="resumen-productos"
-          onClick={() => setResumenAbierto((abierto) => {
-            const siguiente = !abierto
-            try { localStorage.setItem(RESUMEN_GUARDADO, siguiente ? '1' : '0') } catch { /* el navegador puede bloquear el almacenamiento */ }
-            return siguiente
-          })}
-        >
-          <span className="resumen-titulo">{resumenAbierto ? 'Ocultar resumen' : 'Resumen'}</span>
-          {!resumenAbierto && (
-            <span className="resumen-datos">
-              <span><strong>{info ? info.total.toLocaleString('es-CO') : '—'}</strong> resultados</span>
-              <span>Pág. <strong>{info ? `${info.actual}/${info.ultima}` : '—'}</strong></span>
-              <span className={resultado && agotadosPagina > 0 ? 'resumen-agotados' : ''}>
-                <strong>{resultado ? agotadosPagina : '—'}</strong> agotados
-              </span>
-              <span>Lectura <strong>{lectura?.titulo ?? '—'}</strong></span>
+      <Resumen
+        clave="productos-resumen"
+        compacto={(
+          <>
+            <span><strong>{info ? info.total.toLocaleString('es-CO') : '—'}</strong> resultados</span>
+            <span>Pág. <strong>{info ? `${info.actual}/${info.ultima}` : '—'}</strong></span>
+            <span className={resultado && agotadosPagina > 0 ? 'resumen-agotados' : ''}>
+              <strong>{resultado ? agotadosPagina : '—'}</strong> agotados
             </span>
-          )}
-          <span className="resumen-chevron" aria-hidden><Icono nombre="chevron" /></span>
-        </button>
-        {resumenAbierto && (
-          <section className="medidas" id="resumen-productos">
+            <span>Lectura <strong>{lectura?.titulo ?? '—'}</strong></span>
+          </>
+        )}
+      >
             <article className="medida">
               <div>
                 <span className="medida-etiqueta">Resultados</span>
@@ -233,9 +210,7 @@ export default function Productos() {
               </div>
               <span className="medida-icono verde"><Icono nombre="etiqueta" /></span>
             </article>
-          </section>
-        )}
-      </div>
+      </Resumen>
 
       <section className="tarjeta-pagina" style={{ ['--cols' as string]: columnas }}>
         <div className="fila-titulo">

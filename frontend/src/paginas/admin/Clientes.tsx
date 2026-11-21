@@ -4,6 +4,7 @@ import { api, mensajeError } from '../../api/cliente'
 import type { Cliente, Pagina } from '../../api/tipos'
 import Icono from '../../componentes/Icono'
 import Medida from '../../componentes/Medida'
+import Resumen from '../../componentes/Resumen'
 import Paginacion from '../../componentes/Paginacion'
 import { useDebounce } from '../../hooks/useDebounce'
 import { useListaPaginada } from '../../hooks/useListaPaginada'
@@ -67,12 +68,22 @@ export default function Clientes() {
         <h1>Clientes</h1>
         <p>Clientes para la venta a crédito. No se borran: se desactivan. El vencimiento de cada venta es su cierre más el plazo del cliente.</p>
       </div>
-      <section className="medidas">
+      <Resumen
+        clave="clientes-resumen"
+        compacto={(
+          <>
+            <span><strong>{info ? info.total.toLocaleString('es-CO') : '—'}</strong> clientes</span>
+            <span><strong>{resultado ? activos : '—'}</strong> activos</span>
+            <span className={resultado && filas.length - activos > 0 ? 'resumen-agotados' : ''}><strong>{resultado ? filas.length - activos : '—'}</strong> inactivos</span>
+            <span>Pág. <strong>{info ? `${info.actual}/${info.ultima}` : '—'}</strong></span>
+          </>
+        )}
+      >
         <Medida etiqueta="Clientes" valor={info ? info.total.toLocaleString('es-CO') : '—'} tono="azul" icono="persona" />
         <Medida etiqueta="Activos en esta página" valor={resultado ? activos : '—'} tono="verde" icono="caja" />
         <Medida etiqueta="Inactivos aquí" valor={resultado ? filas.length - activos : '—'} tono="rojo" icono="agotados" />
         <Medida etiqueta="Página" valor={info ? `${info.actual} / ${info.ultima}` : '—'} tono="amarillo" icono="auditoria" />
-      </section>
+      </Resumen>
 
       <section className="tarjeta-pagina">
         <h2>Nuevo cliente</h2>

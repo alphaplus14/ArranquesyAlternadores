@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeError } from '../../api/cliente'
 import type { Ingreso, Pagina, Referencia } from '../../api/tipos'
 import Medida from '../../componentes/Medida'
+import Resumen from '../../componentes/Resumen'
 import { useDebounce } from '../../hooks/useDebounce'
 
 const pesos = (n: number | string) => Number(n).toLocaleString('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 })
@@ -62,12 +63,22 @@ export default function IngresoDetalle() {
         <h1>{i.tipo === 'factura_qr' ? 'Factura' : 'Remisión'} {i.numero_documento}</h1>
         <p>{i.proveedor?.nombre} · {i.fecha.slice(0, 10)}</p>
       </div>
-      <section className="medidas">
+      <Resumen
+        clave="ingreso-detalle-resumen"
+        compacto={(
+          <>
+            <span>Estado <strong>{i.estado}</strong></span>
+            <span>Ítems <strong>{i.items.length}</strong></span>
+            <span>Total <strong>{i.totales ? pesos(i.totales.total) : '—'}</strong></span>
+            <span className={descuadre ? 'resumen-agotados' : ''}>Sin IVA <strong>{i.totales?.lineas_sin_iva ?? 0}</strong></span>
+          </>
+        )}
+      >
         <Medida etiqueta="Estado" valor={i.estado} tono={borrador ? 'amarillo' : 'verde'} icono="ingreso" />
         <Medida etiqueta="Ítems" valor={i.items.length} tono="azul" icono="caja" />
         <Medida etiqueta="Total" valor={i.totales ? pesos(i.totales.total) : '—'} tono="verde" icono="etiqueta" />
         <Medida etiqueta="Sin IVA" valor={i.totales?.lineas_sin_iva ?? 0} tono={descuadre ? 'rojo' : 'amarillo'} icono="agotados" pie={descuadre ? 'No cuadra con el QR' : undefined} />
-      </section>
+      </Resumen>
     <div className="panel">
       <div className="fila-titulo">
         <h2>Líneas <span className={`chip ${i.estado}`}>{i.estado}</span></h2>

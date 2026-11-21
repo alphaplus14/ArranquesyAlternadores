@@ -7,6 +7,7 @@ import { useListaPaginada } from '../../hooks/useListaPaginada'
 import { useCategorias } from '../../hooks/useCatalogos'
 import { useDebounce } from '../../hooks/useDebounce'
 import Medida from '../../componentes/Medida'
+import Resumen from '../../componentes/Resumen'
 import Paginacion from '../../componentes/Paginacion'
 
 interface FilaUniversal { id: number; codigo: string; descripcion: string | null; existencia: string | null; categoria: { nombre: string } }
@@ -36,12 +37,22 @@ export default function Universales() {
         <h1>Códigos universales</h1>
         <p>La existencia del universal es la suma de sus referencias. El detalle no se pierde.</p>
       </div>
-      <section className="medidas">
+      <Resumen
+        clave="universales-resumen"
+        compacto={(
+          <>
+            <span><strong>{info ? info.total.toLocaleString('es-CO') : '—'}</strong> universales</span>
+            <span>Pág. <strong>{info ? `${info.actual}/${info.ultima}` : '—'}</strong></span>
+            <span>En página <strong>{resultado ? filas.length : '—'}</strong></span>
+            <span>Búsqueda <strong>{termino || 'Todas'}</strong></span>
+          </>
+        )}
+      >
         <Medida etiqueta="Universales" valor={info ? info.total.toLocaleString('es-CO') : '—'} tono="azul" icono="universal" />
         <Medida etiqueta="Página" valor={info ? `${info.actual} / ${info.ultima}` : '—'} tono="amarillo" icono="catalogo" />
         <Medida etiqueta="En esta página" valor={resultado ? filas.length : '—'} tono="verde" icono="caja" />
         <Medida etiqueta="Búsqueda" valor={termino || 'Todas'} tono="rojo" icono="buscar" codigo={!!termino} />
-      </section>
+      </Resumen>
       <section className="tarjeta-pagina">
       <h2>Nuevo código</h2>
       <form className="formulario en-linea" onSubmit={(e) => { e.preventDefault(); crear.mutate() }}>

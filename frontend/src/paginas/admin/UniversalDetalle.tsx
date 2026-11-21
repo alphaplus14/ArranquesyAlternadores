@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '../../api/cliente'
 import type { DesgloseUniversal } from '../../api/tipos'
 import Medida from '../../componentes/Medida'
+import Resumen from '../../componentes/Resumen'
 
 /** RF-02: el total del universal es la suma de sus referencias; siempre se muestra el desglose. */
 export default function UniversalDetalle() {
@@ -20,12 +21,24 @@ export default function UniversalDetalle() {
         <h1>{u.codigo}</h1>
         <p>{u.categoria.nombre}{u.descripcion ? ` · ${u.descripcion}` : ''}</p>
       </div>
-      <section className="medidas">
+      <Resumen
+        clave="universal-detalle-resumen"
+        compacto={(
+          <>
+            <span>Existencia <strong>{u.existencia_total}</strong></span>
+            <span>Referencias <strong>{u.referencias.length}</strong></span>
+            <span>Marcas <strong>{u.por_marca.length}</strong></span>
+            <span className={u.por_marca.some((m) => m.existencia === 0) ? 'resumen-agotados' : ''}>
+              Agotadas <strong>{u.por_marca.filter((m) => m.existencia === 0).length}</strong>
+            </span>
+          </>
+        )}
+      >
         <Medida etiqueta="Existencia total" valor={u.existencia_total} tono="azul" icono="universal" />
         <Medida etiqueta="Referencias" valor={u.referencias.length} tono="amarillo" icono="caja" />
         <Medida etiqueta="Marcas" valor={u.por_marca.length} tono="verde" icono="catalogo" />
         <Medida etiqueta="Agotadas" valor={u.por_marca.filter((m) => m.existencia === 0).length} tono="rojo" icono="agotados" />
-      </section>
+      </Resumen>
       <section className="medidas">
         {u.por_marca.map((m) => (
           <Medida key={m.marca_id} etiqueta={m.marca} valor={m.existencia} tono={m.existencia === 0 ? 'rojo' : 'verde'} icono="etiqueta" />

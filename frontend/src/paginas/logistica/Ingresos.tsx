@@ -6,6 +6,7 @@ import type { Ingreso, Pagina } from '../../api/tipos'
 import { useListaPaginada } from '../../hooks/useListaPaginada'
 import { useProveedores } from '../../hooks/useCatalogos'
 import Medida from '../../componentes/Medida'
+import Resumen from '../../componentes/Resumen'
 import Paginacion from '../../componentes/Paginacion'
 
 interface FilaIngreso {
@@ -43,12 +44,24 @@ export default function Ingresos() {
         <h1>Ingresos</h1>
         <p>La remisión se carga a mano. La factura entra por el QR y los ítems se confirman igual.</p>
       </div>
-      <section className="medidas">
+      <Resumen
+        clave="ingresos-resumen"
+        compacto={(
+          <>
+            <span><strong>{info ? info.total.toLocaleString('es-CO') : '—'}</strong> documentos</span>
+            <span>Pág. <strong>{info ? `${info.actual}/${info.ultima}` : '—'}</strong></span>
+            <span>En página <strong>{resultado ? filas.length : '—'}</strong></span>
+            <span className={resultado && borradores > 0 ? 'resumen-agotados' : ''}>
+              <strong>{resultado ? borradores : '—'}</strong> borradores
+            </span>
+          </>
+        )}
+      >
         <Medida etiqueta="Documentos" valor={info ? info.total.toLocaleString('es-CO') : '—'} tono="azul" icono="ingreso" />
         <Medida etiqueta="Página" valor={info ? `${info.actual} / ${info.ultima}` : '—'} tono="amarillo" icono="catalogo" />
         <Medida etiqueta="En esta página" valor={resultado ? filas.length : '—'} tono="verde" icono="caja" />
         <Medida etiqueta="Borradores aquí" valor={resultado ? borradores : '—'} tono="rojo" icono="qr" />
-      </section>
+      </Resumen>
       <section className="tarjeta-pagina">
       <div className="fila-titulo">
         <h2>Nueva remisión</h2>

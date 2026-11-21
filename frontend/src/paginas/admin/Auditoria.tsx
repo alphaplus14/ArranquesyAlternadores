@@ -3,6 +3,7 @@ import { api } from '../../api/cliente'
 import type { Auditoria as TAuditoria, Pagina } from '../../api/tipos'
 import { useListaPaginada } from '../../hooks/useListaPaginada'
 import Medida from '../../componentes/Medida'
+import Resumen from '../../componentes/Resumen'
 import Paginacion from '../../componentes/Paginacion'
 
 const TABLAS = ['referencias', 'codigos_universales', 'marcas', 'proveedores', 'categorias', 'users']
@@ -32,12 +33,22 @@ export default function Auditoria() {
         <h1>Auditoría</h1>
         <p>Cada edición guarda el valor anterior, el nuevo, quién lo cambió y cuándo.</p>
       </div>
-      <section className="medidas">
+      <Resumen
+        clave="auditoria-resumen"
+        compacto={(
+          <>
+            <span><strong>{info ? info.total.toLocaleString('es-CO') : '—'}</strong> ediciones</span>
+            <span>Pág. <strong>{info ? `${info.actual}/${info.ultima}` : '—'}</strong></span>
+            <span>Tabla <strong>{tabla || 'Todas'}</strong></span>
+            <span>Registro <strong>{registroId || '—'}</strong></span>
+          </>
+        )}
+      >
         <Medida etiqueta="Ediciones" valor={info ? info.total.toLocaleString('es-CO') : '—'} tono="azul" icono="auditoria" />
         <Medida etiqueta="Página" valor={info ? `${info.actual} / ${info.ultima}` : '—'} tono="amarillo" icono="catalogo" />
         <Medida etiqueta="Tabla" valor={tabla || 'Todas'} tono="verde" icono="caja" codigo={!!tabla} />
         <Medida etiqueta="Registro" valor={registroId || '—'} tono="rojo" icono="buscar" />
-      </section>
+      </Resumen>
     <section className="tarjeta-pagina">
       <div className="fila-titulo">
         <h2>Historial</h2>
