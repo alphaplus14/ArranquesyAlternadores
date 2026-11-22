@@ -1,6 +1,6 @@
 # Adenda v1.2 — Compras, cuentas por pagar, ventas a crédito, cartera y vínculo remisión–factura
 
-Estado: **APROBADA** (20-nov-2026), con cambios el 21-nov-2026: precios (RF-14, S-10, S-18), ingreso manual de facturas con ítems por escaneo (RF-04 reemplazado, RF-20, S-19, S-20) y dos ajustes tomados de la factura real FEV 1545 del Project (RF-09, RF-16, S-21). Complementa `toma-requerimientos-arranques-alternadores-v1.1.md` y reemplaza lo que ese documento dice sobre cartera, reportes y lectura del QR. La implementación la hace Claude (Claude Code) sobre el repositorio `D:\arranquesyalternadors`. Esta versión reemplaza la captura de trabajo que había en `docs/`.
+Estado: **APROBADA** (20-nov-2026), con cambios el 21-nov-2026: precios (RF-14, S-10, S-18), ingreso manual de facturas con ítems por escaneo (RF-04 reemplazado, RF-20, S-19, S-20), dos ajustes tomados de la factura real FEV 1545 del Project (RF-09, RF-16, S-21), descuentos por línea e IVA por línea (RF-09, S-22), la modal de creación de ingresos y la eliminación de las marcas, con calidad fino o genérico (S-23). Complementa `toma-requerimientos-arranques-alternadores-v1.1.md` y reemplaza lo que ese documento dice sobre cartera, reportes y lectura del QR. La implementación la hace Claude (Claude Code) sobre el repositorio `D:\arranquesyalternadors`. Esta versión reemplaza la captura de trabajo que había en `docs/`.
 
 ## 1. Cambio de alcance
 
@@ -23,12 +23,25 @@ Se actualizan: sección 0, sección 4 (actores), reglas 5 y 10 de la sección 6,
 ## 2. Requerimientos nuevos
 
 ### RF-04 (reemplazado). Ingreso manual de facturas de compra
-Se descarta leer el QR o el XML de la factura. Logística crea el ingreso a mano: elige el tipo (`factura` o `remision`), el proveedor, digita el número del documento y la fecha, y agrega los ítems escaneándolos (RF-20). El mismo número de documento del mismo proveedor y del mismo tipo no entra dos veces: si ya hay un borrador se reabre y si ya está confirmado se rechaza con un mensaje que indica el ingreso existente.
+Se descarta leer el QR o el XML de la factura. Logística crea el ingreso a mano con el botón "Nuevo ingreso", que abre una modal: elige el tipo (`factura` o `remision`), el proveedor, digita el número del documento y la fecha, y la forma de pago (RF-16); luego agrega los ítems escaneándolos (RF-20). La modal no pide el descuento del documento (ver RF-09, ajuste). El mismo número de documento del mismo proveedor y del mismo tipo no entra dos veces: si ya hay un borrador se reabre y si ya está confirmado se rechaza con un mensaje que indica el ingreso existente.
 **Aceptación.** Se crea una factura con proveedor, número y fecha sin ningún QR. Repetir proveedor, tipo y número no crea un segundo ingreso.
 
-### RF-09 (ajuste). Descuento del documento e IVA
-Cuando una factura trae un descuento sobre el total, el IVA se calcula sobre lo que queda después del descuento. El descuento del documento se prorratea entre las líneas, en proporción al subtotal de cada una, para calcular la base del IVA de cada línea. Así el total del sistema coincide con el de la factura.
-**Aceptación.** Con la factura real FEV 1545 (5 líneas, subtotal 735.000, descuento del documento 110.250, que es el 15 %, IVA 19 %), el sistema calcula una base de 624.750, IVA 118.703 y total 743.453. Se admite una diferencia de unos pocos pesos por redondeo. Entrar el mismo 15 % como descuento en cada línea da el mismo total.
+### RF-09 (ajuste). Descuentos de línea y del documento, e IVA por línea
+Una remisión o una factura puede traer descuento solo en algunos productos, un descuento global sobre el documento, o ambos, y cada línea puede llevar un IVA distinto (19 %, 5 %, 0 % = sin IVA) en el mismo documento. El cálculo es el mismo para remisiones y facturas:
+
+1. **Línea:** neto = cantidad × costo × (1 − descuento %). El descuento de línea se digita en % (0 a 100).
+2. **Documento:** el descuento global se digita en pesos o en % (opcional, 0 por defecto, nunca los dos). Se prorratea entre todas las líneas, con y sin IVA, en proporción a su neto: base de la línea = neto × (1 − descuento / subtotal neto).
+3. **IVA por línea:** IVA = base × IVA %. La línea sin IVA recibe su parte del descuento pero no suma IVA. El IVA se suma sin redondear por línea y el total se redondea al peso al final.
+4. **Total** = (subtotal neto − descuento del documento) + IVA.
+
+El descuento del documento ya no se pide al crear el ingreso: se fija en el detalle, con "Cambiar condiciones", mientras el ingreso es borrador. Los descuentos y el IVA de cada línea también se corrigen ahí. Todo queda auditado (RF-11).
+
+**Aceptación.**
+1. Con la factura real FEV 1545 (5 líneas, subtotal 735.000, descuento del documento 110.250, que es el 15 %, IVA 19 %), el sistema calcula una base de 624.750, IVA 118.703 y total 743.453. Se admite una diferencia de unos pocos pesos por redondeo.
+2. Solo descuento por línea (una línea al 10 %, otra al 0 %): el total coincide con la suma de los netos más el IVA de cada línea.
+3. Solo descuento global con líneas de IVA 19 % y 0 %: la línea sin IVA recibe su parte del descuento y no suma IVA.
+4. Con ambos descuentos, el global se calcula sobre el neto ya descontado por línea; digitarlo en % o en pesos da el mismo total.
+5. Se rechaza el descuento del documento mayor que el subtotal neto, un porcentaje de línea mayor que 100, o enviar el descuento en % y en pesos a la vez.
 
 ### RF-13. Clientes
 Catálogo de clientes con nombre, documento (opcional, único), teléfono y plazo de crédito en días (por defecto 30). Toda edición queda auditada (RF-11).
@@ -94,7 +107,7 @@ Una factura de compra puede ligarse a una o varias remisiones confirmadas del mi
 En un ingreso en borrador (factura o remisión) los ítems se agregan escaneando el código que trae el producto. El sistema lo busca entre las referencias **del proveedor del ingreso**.
 
 - Si existe, agrega la línea con cantidad 1; escanear el mismo código otra vez suma 1 a esa línea. La cantidad, el costo, el descuento y el IVA se corrigen en la tabla. El costo se prellena con el último registrado de esa referencia, si lo hay.
-- Si no existe, el sistema ofrece **crear la referencia** con el código ya precargado: marca, categoría, descripción, precio de venta (mayor que 0), IVA de venta y, si la categoría lo admite, código universal. Al guardarla, la línea se agrega sola.
+- Si no existe, el sistema ofrece **crear la referencia** con el código ya precargado: categoría, descripción, calidad (fino o genérico, opcional), precio de venta (mayor que 0), IVA de venta y, si la categoría lo admite, código universal. El sistema no maneja marcas (S-23). Al guardarla, la línea se agrega sola.
 - Logística puede **crear** referencias; editarlas o desactivarlas sigue siendo del admin.
 - No se puede confirmar un ingreso con líneas sin costo (costo mayor que 0).
 
@@ -104,6 +117,11 @@ En un ingreso en borrador (factura o remisión) los ítems se agregan escaneando
 3. Logística crea una referencia pero no puede editarla.
 4. Crear una referencia con el mismo código para el mismo proveedor se rechaza.
 5. Confirmar con una línea sin costo se rechaza.
+
+### Criterios transversales de interfaz (21-nov-2026)
+1. **Selector de proveedor con búsqueda.** Todos los campos de proveedor (nuevo ingreso, formulario y filtro de productos, agotados) se pueden filtrar escribiendo el NIT o el nombre, sin importar mayúsculas, tildes, puntos ni guiones del NIT. Se usa la lista de proveedores que ya se carga, sin búsqueda en el servidor. *Estado: pendiente de construir.*
+2. **Inicio de sesión.** Se entra con nombre de usuario. Un fallo responde siempre el mismo mensaje, "Usuario o contraseña incorrectos.", tanto si el usuario no existe, como si la contraseña es mala o el usuario está inactivo; el bloqueo por demasiados intentos (429) muestra su propio mensaje con cuenta regresiva. Tras un fallo se vacía la contraseña y recibe el foco.
+3. **Responsive.** Las modales ocupan toda la pantalla en móvil (< 640 px) y los botones de acción quedan siempre visibles.
 
 ## 3. Modelo de datos (listo para migraciones)
 
@@ -119,6 +137,8 @@ Todas las columnas de búsqueda llevan índice (regla 13). Las tablas de movimie
 - `ingresos`: `tipo` pasa a enum(`remision`,`factura`) (antes `factura_qr`); **se eliminan** `cufe`, `subtotal_qr`, `iva_qr`, `total_qr` y `diferencia_qr`; **único** `(proveedor_id, tipo, numero_documento)`; se conservan `confirmado_por`, `diferencia_aceptada` y `diferencia_motivo` para las diferencias de RF-19. + `forma_pago` enum(`contado`,`credito`) default `contado`, `vence_el` date nullable (digitado o prellenado), `total` decimal(14,2) nullable (se fija al confirmar), `factura_id` FK nullable a `ingresos.id` (solo en remisiones, index). Índice `(forma_pago, proveedor_id, vence_el)`. `Ingreso` pasa a ser `Auditable` (cierra el hueco de RF-11 en ingresos). (RF-04, RF-16, RF-19)
 - `ingreso_items`: + `cantidad_cubierta` unsigned int default 0 (se fija al confirmar una factura ligada). El costo debe ser > 0 al confirmar. (RF-19, RF-20)
 - `pagos_proveedores` y `pago_anulaciones`: iguales a `abonos_clientes` y `abono_anulaciones`, con `proveedor_id`. (RF-17)
+- **Marcas (S-23):** se elimina `referencias.marca_id` y la tabla `marcas`. `referencias` + `calidad` enum(`fino`,`generico`) nullable. El desglose del código universal pasa de "por marca" a "por referencia" (código, proveedor, calidad, existencia).
+- **Descuentos e IVA por línea (S-22):** `ingreso_items` + `descuento_porcentaje` decimal(5,2) default 0 e `iva_porcentaje` decimal(5,2) (se copia de la referencia al agregar el ítem y se corrige mientras el ingreso es borrador). `ingresos.descuento_documento` en pesos; mientras es borrador se puede guardar también como porcentaje (`descuento_documento_porcentaje`) y al confirmar queda fijo solo en pesos.
 
 ## 4. Endpoints
 
@@ -164,10 +184,13 @@ Servicios nuevos: `CarteraService` (saldos, FIFO, estado de cuenta, clientes y p
 
 Cada paso con un test Pest por criterio de aceptación y commit `feat(RF-xx)`.
 
+**Estado al 21-nov-2026:** pasos 1, 2 y 3 construidos en la rama `cesar` (backend y pantallas), además de la modal de creación de ingresos, las marcas eliminadas (S-23) y el login con mensaje único. Siguiente: paso 4 (RF-15, abonos de clientes y saldo). Falta el selector de proveedor con búsqueda (criterios transversales).
+
 ## 6. Choques con reglas actuales
 
 - **Regla 5 de la v1.1.** Dejó de aplicar: ya no se procesa el XML ni se lee el QR. Logística sí digita el número del documento y escanea los ítems. Sin lectura del QR no hay control automático contra el total de la factura: un error de digitación no se detecta. Queda como mejora posible un campo opcional "total del documento" para cuadrar al confirmar.
-- **Descuento del documento.** Hoy `Ingreso::totalCalculado()` resta el descuento del documento pero calcula el IVA sobre las líneas sin descontarlo. Con la factura FEV 1545 daría 764.400 en lugar de 743.453, es decir, 20.947 de más, porque el IVA quedaría sobreestimado. Hay que corregirlo según RF-09 (ajuste) antes de construir cuentas por pagar e informes de compras sobre ese total.
+- **Descuento del documento (resuelto).** `Ingreso::totalCalculado()` calculaba el IVA sobre las líneas sin descontar: con la factura FEV 1545 daba 764.400 en lugar de 743.453. Se corrigió con RF-09 (ajuste) y S-22: un único cálculo (`TotalesIngreso`) con descuento por línea, descuento del documento prorrateado e IVA por línea.
+- **Regla 2 de la v1.1 (desglose por marca).** La empresa no maneja marcas (S-23): el desglose del código universal pasa a ser por referencia (código, proveedor y calidad). Cambia el texto de las reglas del Project y desaparece el pendiente de la tercera marca.
 - **Redondeo del IVA.** La factura FEV 1545 imprime un IVA de 118.703 calculado por documento, mientras que la suma de los IVA unitarios impresos da 118.709. Una diferencia de unos pesos entre el sistema y la factura es normal y no debe bloquear la confirmación.
 - **Cartera en dos sistemas.** Contapyme también puede llevar cartera de lo que factura. Sin integración, los dos libros pueden diferir. `factura_contapyme` ayuda a conciliar a mano.
 - **Reversos.** El valor a crédito de una venta es neto de reversos.
@@ -196,6 +219,8 @@ Cada paso con un test Pest por criterio de aceptación y commit `feat(RF-xx)`.
 | S-19 | El código que se escanea en un ingreso es el `codigo_referencia` del proveedor (el que trae el producto o su caja). Se busca solo entre las referencias del proveedor del ingreso. La factura real FEV 1545 trae una columna "Código" con ese tipo de código (AR-015, AP006, AP013, TP019, 9014A), lo que lo hace plausible, pero falta confirmar qué código traen las cajas. |
 | S-20 | Una referencia nueva se crea con precio de venta mayor que 0, fijado por quien la crea (logística o admin). |
 | S-21 | El descuento del documento se prorratea entre las líneas por su subtotal para calcular la base del IVA (RF-09, ajuste). El vencimiento de una compra a crédito se digita tal como lo imprime la factura. |
+| S-22 | Descuento de línea en % (0 a 100); descuento del documento en pesos o en % (nunca los dos), prorrateado entre todas las líneas, con y sin IVA, en proporción a su neto; la línea sin IVA recibe su parte pero no suma IVA. Cada línea lleva su IVA. Aplica igual a remisiones y facturas. Un documento con total 0 (obsequio) se confirma de contado, no a crédito. Pendiente con el contador: confirmar este tratamiento y el redondeo (S-21). |
+| S-23 | La empresa no maneja marcas. Las referencias de un mismo repuesto (por ejemplo ZM860 y ZZM860 del mismo proveedor, y IML860 de otro) son referencias distintas unidas por un código universal y se distinguen por código, proveedor y calidad (`fino` o `generico`, opcional). Solo hay esas dos calidades. El desglose del universal es por referencia. Reemplaza cualquier idea de "marca del proveedor". |
 
 ## 8. Pendientes
 
@@ -204,5 +229,5 @@ Cada paso con un test Pest por criterio de aceptación y commit `feat(RF-xx)`.
 3. Confirmar si el precio libre a crédito necesita un piso o un permiso especial (S-18).
 4. Confirmar qué código traen los productos o sus cajas (S-19). Si es un código de barras distinto de la referencia, hay que guardarlo en la referencia para poder escanearlo.
 5. Confirmar quién fija el precio de venta de una referencia nueva (S-20) y si se quiere el campo opcional "total del documento" para cuadrar la factura al confirmar.
-6. Confirmar con el contador cómo debe redondearse el IVA de una compra (por documento o por línea).
-7. Pendientes de v1.1 que siguen abiertos: etiqueta por unidad en piezas baratas, poleas y automáticos en el universal, tercera marca y tiempo de respuesta objetivo.
+6. Confirmar con el contador cómo debe redondearse el IVA de una compra (por documento o por línea) y si el descuento del documento se reparte entre todas las líneas o solo entre las gravadas (S-22).
+7. Pendientes de v1.1 que siguen abiertos: etiqueta por unidad en piezas baratas, poleas y automáticos en el universal y tiempo de respuesta objetivo. La tercera marca ("Jota") dejó de ser un pendiente: las marcas se eliminaron (S-23).
