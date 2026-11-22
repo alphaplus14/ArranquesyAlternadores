@@ -3,12 +3,12 @@ import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
 import { api, erroresCampo, mensajeError } from '../../api/cliente'
-import type { FormaPago, Ingreso, IngresoItem, Opcion, Pagina } from '../../api/tipos'
+import type { FormaPago, Ingreso, IngresoItem } from '../../api/tipos'
 import { fechaCorta, sumarDias } from '../../componentes/fechas'
 import CampoDescuento, { type ModoDescuento } from '../../componentes/CampoDescuento'
+import FichaReferencia from '../../componentes/FichaReferencia'
 import Medida from '../../componentes/Medida'
 import { formatoNumero, leerNumero, pesos } from '../../componentes/numeros'
-import { useCategorias } from '../../hooks/useCatalogos'
 import { useScanner } from '../../hooks/useScanner'
 import Resumen from '../../componentes/Resumen'
 
@@ -269,10 +269,11 @@ export default function IngresoDetalle() {
       )}
 
       {creando !== null && i.proveedor && (
-        <DialogoReferencia
+        <FichaReferencia
+          modo="ingreso"
           codigo={creando}
           proveedor={i.proveedor}
-          onCreada={() => { setCreando(null); escanear.mutate(creando) }}
+          onGuardada={() => { setCreando(null); escanear.mutate(creando) }}
           onCerrar={() => setCreando(null)}
         />
       )}
@@ -340,99 +341,6 @@ function CeldaEditable({ etiqueta, inicial, validar, guardar, onGuardado, onTerm
       <small className={error || mutacion.isError ? 'ayuda error' : 'ayuda'}>
         {mutacion.isError ? mensajeError(mutacion.error) : error ?? 'Enter guarda · Esc cancela'}
       </small>
-    </div>
-  )
-}
-
-/**
- * RF-20: crea la referencia que no existe con el código leído y el proveedor del ingreso (ambos
- * fijos). Precio de venta > 0 (S-20). Calidad opcional (S-23). Logística no crea categorías: las crea el admin.
- */
-function DialogoReferencia({ codigo, proveedor, onCreada, onCerrar }: {
-  codigo: string
-  proveedor: Opcion
-  onCreada: () => void
-  onCerrar: () => void
-}) {
-  const categorias = useCategorias()
-  const [f, setF] = useState({ calidad: '', categoria_id: '', descripcion: '', precio_venta: '', iva_venta_porcentaje: '19', codigo_universal_id: '' })
-  const categoria = categorias.data?.find((c) => String(c.id) === f.categoria_id)
-  const admiteUniversal = categoria?.admite_codigo_universal ?? false
-
-  const universales = useQuery({
-    queryKey: ['universales', 'categoria', f.categoria_id],
-    queryFn: async () => (await api.get<Pagina<{ id: number; codigo: string; categoria_id: number }>>('/codigos-universales', { params: { por_pagina: 100 } })).data.data,
-    enabled: admiteUniversal,
-  })
-
-  const crear = useMutation({
-    mutationFn: async () => api.post('/referencias', {
-      codigo_referencia: codigo,
-      proveedor_id: proveedor.id,
-      calidad: f.calidad || null,
-      categoria_id: Number(f.categoria_id),
-      descripcion: f.descripcion.trim(),
-      precio_venta: Number(f.precio_venta),
-      iva_venta_porcentaje: Number(f.iva_venta_porcentaje),
-      codigo_universal_id: admiteUniversal && f.codigo_universal_id ? Number(f.codigo_universal_id) : null,
-    }),
-    onSuccess: onCreada,
-  })
-
-  const errorPrecio = f.precio_venta === '' ? null : Number(f.precio_venta) > 0 ? null : 'El precio de venta debe ser mayor que 0.'
-  const sinCategorias = categorias.data?.length === 0
-  const completo = f.categoria_id !== '' && f.descripcion.trim() !== '' && f.precio_venta !== '' && errorPrecio === null
-  const campo = (k: keyof typeof f) => ({ value: f[k], onChange: (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value }) })
-
-  return (
-    <div className="modal" onKeyDown={(e) => e.key === 'Escape' && onCerrar()}>
-      <form className="modal-caja" role="dialog" aria-modal="true" aria-labelledby="crear-referencia-titulo" onSubmit={(e) => { e.preventDefault(); crear.mutate() }}>
-        <h2 id="crear-referencia-titulo">Crear referencia</h2>
-        <p className="ayuda">El código no existe para este proveedor. Al guardarla se agrega la línea al ingreso.</p>
-        <label>Código de referencia<input value={codigo} readOnly aria-readonly="true" /></label>
-        <label>Proveedor<input value={proveedor.nombre} readOnly aria-readonly="true" /></label>
-        <label>Categoría
-          <select required autoFocus {...campo('categoria_id')}>
-            <option value="">—</option>
-            {categorias.data?.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-          </select>
-        </label>
-        {sinCategorias && (
-          <div className="aviso atencion">No hay categorías en el catálogo. Pídale al administrador que las cree.</div>
-        )}
-        <p className="ayuda">Si la categoría que necesita no aparece, pídale al administrador que la cree; aquí no se crean.</p>
-        <label>Calidad (opcional)
-          <select {...campo('calidad')}>
-            <option value="">—</option>
-            <option value="fino">Fino</option>
-            <option value="generico">Genérico</option>
-          </select>
-        </label>
-        {admiteUniversal && (
-          <label>Código universal (opcional)
-            <select {...campo('codigo_universal_id')}>
-              <option value="">Sin universal: la referencia es su código único</option>
-              {universales.data?.filter((u) => String(u.categoria_id) === f.categoria_id).map((u) => <option key={u.id} value={u.id}>{u.codigo}</option>)}
-            </select>
-          </label>
-        )}
-        <label>Descripción<input required maxLength={255} {...campo('descripcion')} /></label>
-        <label>Precio de venta
-          <input type="number" min="0.01" step="0.01" required aria-invalid={errorPrecio !== null} {...campo('precio_venta')} />
-        </label>
-        <p className={errorPrecio ? 'ayuda error' : 'ayuda'}>{errorPrecio ?? 'Mayor que 0. Si no lo conoce, consúltelo con el administrador antes de crearla.'}</p>
-        <label>IVA de venta
-          <select {...campo('iva_venta_porcentaje')}>
-            <option value="19">19 %</option>
-            <option value="0">0 % · sin IVA</option>
-          </select>
-        </label>
-        {crear.isError && <div className="aviso error">{mensajeError(crear.error)}</div>}
-        <div className="acciones">
-          <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
-          <button className="primario" disabled={!completo || crear.isPending}>{crear.isPending ? 'Guardando…' : 'Crear y agregar'}</button>
-        </div>
-      </form>
     </div>
   )
 }

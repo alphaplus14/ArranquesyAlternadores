@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeError } from '../api/cliente'
-import { NOMBRE_CALIDAD, type Calidad, type MetodoCaptura, type Pagina, type Proveedor, type Referencia } from '../api/tipos'
+import { NOMBRE_CALIDAD, type MetodoCaptura, type Pagina, type Proveedor, type Referencia } from '../api/tipos'
 import ChipCalidad from '../componentes/ChipCalidad'
+import FichaReferencia from '../componentes/FichaReferencia'
 import { useAuth } from '../auth/AuthProvider'
 import Icono from '../componentes/Icono'
 import Paginacion from '../componentes/Paginacion'
 import Resumen from '../componentes/Resumen'
-import { useCategorias, useProveedores } from '../hooks/useCatalogos'
+import { useProveedores } from '../hooks/useCatalogos'
 import { useDebounce } from '../hooks/useDebounce'
 import { useListaPaginada } from '../hooks/useListaPaginada'
 import { useScanner } from '../hooks/useScanner'
@@ -29,23 +30,7 @@ function filasCompactasGuardadas(): boolean {
   }
 }
 
-type Formulario = {
-  codigo_referencia: string
-  /** S-23: '' = sin calidad. */
-  calidad: '' | Calidad
-  proveedor_id: string
-  categoria_id: string
-  codigo_universal_id: string
-  descripcion: string
-  precio_venta: string
-  /** RF-14 / S-15: el backend acepta 19 o 0 (sin IVA). */
-  iva_venta_porcentaje: '19' | '0'
-}
-
-const vacio: Formulario = {
-  codigo_referencia: '', calidad: '', proveedor_id: '', categoria_id: '',
-  codigo_universal_id: '', descripcion: '', precio_venta: '', iva_venta_porcentaje: '19',
-}
+type FichaCatalogo = { tipo: 'nueva' } | { tipo: 'editar'; referencia: Referencia }
 
 /** S-18: ningún precio puede ser 0. Las referencias antiguas en 0 no se pueden vender hasta asignarles uno. */
 function sinPrecio(r: Referencia) {
@@ -84,7 +69,7 @@ export default function Productos() {
   const [resaltada, setResaltada] = useState<number | null>(null)
   const [aviso, setAviso] = useState<Aviso | null>(null)
   const [lectura, setLectura] = useState<Lectura | null>(null)
-  const [editando, setEditando] = useState<{ id: number | null; datos: Formulario } | null>(null)
+  const [ficha, setFicha] = useState<FichaCatalogo | null>(null)
   const [compactas, setCompactas] = useState(filasCompactasGuardadas)
   const lectorRef = useRef<HTMLInputElement>(null)
   const termino = useDebounce(q.trim())
@@ -176,20 +161,6 @@ export default function Productos() {
   }, [localizar])
   const scanner = useScanner(onCodigo)
 
-  const editar = (r: Referencia) => setEditando({
-    id: r.id,
-    datos: {
-      codigo_referencia: r.codigo_referencia,
-      calidad: r.calidad ?? '',
-      proveedor_id: String(r.proveedor_id),
-      categoria_id: String(r.categoria_id),
-      codigo_universal_id: r.codigo_universal_id ? String(r.codigo_universal_id) : '',
-      descripcion: r.descripcion,
-      precio_venta: r.precio_venta,
-      iva_venta_porcentaje: Number(r.iva_venta_porcentaje) === 0 ? '0' : '19',
-    },
-  })
-
   const columnas = esAdmin
     ? '190px minmax(180px, 1.6fr) 140px 130px 120px 76px 96px 92px'
     : '190px minmax(180px, 1.6fr) 140px 130px 120px 76px 96px'
@@ -274,7 +245,7 @@ export default function Productos() {
               valor={proveedorId}
               onCambio={(id) => { setProveedorId(id); setResaltada(null) }}
             />
-            {esAdmin && <button type="button" className="primario" onClick={() => setEditando({ id: null, datos: vacio })}>Nueva referencia</button>}
+            {esAdmin && <button type="button" className="primario" onClick={() => setFicha({ tipo: 'nueva' })}>Nueva referencia</button>}
           </div>
         </div>
 
@@ -308,7 +279,18 @@ export default function Productos() {
               <div style={{ height: ventana.altoTotal }}>
                 <div style={{ transform: `translateY(${ventana.desplazamiento}px)` }}>
                   {ventana.visibles.map((r) => (
-                    <div role="row" key={r.id} className={r.id === resaltada ? 'tabla-rejilla tabla-fila resaltada' : 'tabla-rejilla tabla-fila'} style={{ height: altoFila }}>
+                    <div
+                      role="row"
+                      key={r.id}
+                      className={
+                        r.id === resaltada
+                          ? `tabla-rejilla tabla-fila resaltada${esAdmin ? ' tabla-fila-editable' : ''}`
+                          : `tabla-rejilla tabla-fila${esAdmin ? ' tabla-fila-editable' : ''}`
+                      }
+                      style={{ height: altoFila }}
+                      onDoubleClick={esAdmin ? () => setFicha({ tipo: 'editar', referencia: r }) : undefined}
+                      title={esAdmin ? 'Doble clic para editar' : undefined}
+                    >
                       <div role="cell" className="corta">
                         <strong>{r.codigo_referencia}</strong>
                         {r.calidad && <> <ChipCalidad calidad={r.calidad} /></>}
@@ -320,13 +302,13 @@ export default function Productos() {
                       <div role="cell">{Number(r.iva_venta_porcentaje) === 0 ? <span className="chip">Sin IVA</span> : `${Number(r.iva_venta_porcentaje)} %`}</div>
                       <div role="cell" className={r.existencia === 0 ? 'agotado col-numero' : 'col-numero'}>{r.existencia}</div>
                       {esAdmin && (
-                        <div role="cell" className="acciones-fila">
+                        <div role="cell" className="acciones-fila" onDoubleClick={(e) => e.stopPropagation()}>
                           <button
                             type="button"
                             className="icono-accion"
                             aria-label={`Editar ${r.codigo_referencia}`}
                             title="Editar"
-                            onClick={() => editar(r)}
+                            onClick={() => setFicha({ tipo: 'editar', referencia: r })}
                           >
                             <Icono nombre="editar" />
                           </button>
@@ -351,12 +333,12 @@ export default function Productos() {
         <Paginacion pagina={resultado} onCambiar={(n) => { irA(n); setResaltada(null) }} />
       </section>
 
-      {editando && (
-        <FormularioReferencia
-          id={editando.id}
-          inicial={editando.datos}
-          onListo={() => { setEditando(null); qc.invalidateQueries({ queryKey: ['referencias'] }) }}
-          onCerrar={() => setEditando(null)}
+      {ficha && (
+        <FichaReferencia
+          modo="catalogo"
+          referencia={ficha.tipo === 'editar' ? ficha.referencia : null}
+          onGuardada={() => { setFicha(null); qc.invalidateQueries({ queryKey: ['referencias'] }) }}
+          onCerrar={() => setFicha(null)}
         />
       )}
     </div>
@@ -565,76 +547,3 @@ function MarcaElegido() {
   )
 }
 
-function FormularioReferencia({ id, inicial, onListo, onCerrar }: { id: number | null; inicial: Formulario; onListo: () => void; onCerrar: () => void }) {
-  const [f, setF] = useState(inicial)
-  const proveedores = useProveedores()
-  const categorias = useCategorias()
-  const categoria = categorias.data?.find((c) => String(c.id) === f.categoria_id)
-  const admiteUniversal = categoria?.admite_codigo_universal ?? false
-
-  const universales = useQuery({
-    queryKey: ['universales', 'categoria', f.categoria_id],
-    queryFn: async () => (await api.get<Pagina<{ id: number; codigo: string; categoria_id: number }>>('/codigos-universales', { params: { por_pagina: 100 } })).data.data,
-    enabled: admiteUniversal,
-  })
-
-  const guardar = useMutation({
-    mutationFn: async () => {
-      const datos = { ...f, calidad: f.calidad || null, iva_venta_porcentaje: Number(f.iva_venta_porcentaje), codigo_universal_id: admiteUniversal && f.codigo_universal_id ? Number(f.codigo_universal_id) : null }
-      return id ? api.put(`/referencias/${id}`, datos) : api.post('/referencias', datos)
-    },
-    onSuccess: onListo,
-  })
-
-  const errorPrecioVenta = f.precio_venta === '' ? null : Number(f.precio_venta) > 0 ? null : 'El precio de venta debe ser mayor que 0.'
-  const campo = (k: keyof Formulario) => ({ value: f[k], onChange: (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value }) })
-
-  return (
-    <div className="modal">
-      <form className="modal-caja" onSubmit={(e) => { e.preventDefault(); guardar.mutate() }}>
-        <h2>{id ? 'Editar referencia' : 'Nueva referencia'}</h2>
-        <label>Código de referencia<input required {...campo('codigo_referencia')} /></label>
-        <label>Descripción<input required {...campo('descripcion')} /></label>
-        <label>Calidad
-          <select {...campo('calidad')}>
-            <option value="">—</option>
-            <option value="fino">Fino</option>
-            <option value="generico">Genérico</option>
-          </select>
-        </label>
-        <label>Proveedor
-          <select required {...campo('proveedor_id')}><option value="">—</option>{proveedores.data?.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}</select>
-        </label>
-        <label>Categoría
-          <select required {...campo('categoria_id')}><option value="">—</option>{categorias.data?.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select>
-        </label>
-        {admiteUniversal && (
-          <label>Código universal
-            <select {...campo('codigo_universal_id')}>
-              <option value="">Sin universal: la referencia es su código único</option>
-              {universales.data?.filter((u) => String(u.categoria_id) === f.categoria_id).map((u) => <option key={u.id} value={u.id}>{u.codigo}</option>)}
-            </select>
-          </label>
-        )}
-        <label>Precio de venta
-          <input type="number" min="0.01" step="0.01" required aria-invalid={errorPrecioVenta !== null} aria-describedby="precio-venta-ayuda" {...campo('precio_venta')} />
-        </label>
-        <p id="precio-venta-ayuda" className={errorPrecioVenta ? 'ayuda error' : 'ayuda'}>
-          {errorPrecioVenta ?? 'Mayor que 0. Una referencia sin precio no se puede vender.'}
-        </p>
-        <label>IVA de venta (%)
-          <select {...campo('iva_venta_porcentaje')}>
-            <option value="19">19 %</option>
-            <option value="0">0 % · sin IVA</option>
-          </select>
-        </label>
-        <p className="ayuda">0 % significa que la referencia se vende sin IVA. Es el IVA que queda guardado en cada venta.</p>
-        {guardar.isError && <div className="aviso error">{mensajeError(guardar.error)}</div>}
-        <div className="acciones">
-          <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
-          <button className="primario" disabled={guardar.isPending || errorPrecioVenta !== null}>Guardar</button>
-        </div>
-      </form>
-    </div>
-  )
-}

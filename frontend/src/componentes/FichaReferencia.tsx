@@ -1,0 +1,243 @@
+import { useEffect, useState } from 'react'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { api, mensajeError } from '../api/cliente'
+import type { Calidad, Opcion, Pagina, Referencia } from '../api/tipos'
+import { useCategorias, useProveedores } from '../hooks/useCatalogos'
+import Icono from './Icono'
+
+/**
+ * RF-01, RF-14, RF-20, S-15, S-18, S-20, S-23.
+ * Una sola ficha para crear o editar una referencia en el catálogo y para crearla
+ * desde un ingreso (código y proveedor fijos). El cuerpo que se guarda vive aquí.
+ */
+type Valores = {
+  codigo_referencia: string
+  /** S-23: '' = sin calidad. */
+  calidad: '' | Calidad
+  proveedor_id: string
+  categoria_id: string
+  codigo_universal_id: string
+  descripcion: string
+  precio_venta: string
+  /** RF-14 / S-15: el backend acepta 19 o 0 (sin IVA). */
+  iva_venta_porcentaje: '19' | '0'
+}
+
+const vacio: Valores = {
+  codigo_referencia: '', calidad: '', proveedor_id: '', categoria_id: '',
+  codigo_universal_id: '', descripcion: '', precio_venta: '', iva_venta_porcentaje: '19',
+}
+
+type Base = { onCerrar: () => void; onGuardada: () => void }
+
+export type FichaReferenciaProps =
+  | (Base & { modo: 'catalogo'; referencia: Referencia | null })
+  | (Base & { modo: 'ingreso'; codigo: string; proveedor: Opcion })
+
+function valoresIniciales(props: FichaReferenciaProps): Valores {
+  if (props.modo === 'ingreso') {
+    return { ...vacio, codigo_referencia: props.codigo, proveedor_id: String(props.proveedor.id) }
+  }
+  const r = props.referencia
+  if (!r) return vacio
+  return {
+    codigo_referencia: r.codigo_referencia,
+    calidad: r.calidad ?? '',
+    proveedor_id: String(r.proveedor_id),
+    categoria_id: String(r.categoria_id),
+    codigo_universal_id: r.codigo_universal_id ? String(r.codigo_universal_id) : '',
+    descripcion: r.descripcion,
+    precio_venta: r.precio_venta,
+    iva_venta_porcentaje: Number(r.iva_venta_porcentaje) === 0 ? '0' : '19',
+  }
+}
+
+export default function FichaReferencia(props: FichaReferenciaProps) {
+  const ingreso = props.modo === 'ingreso'
+  const referencia = props.modo === 'catalogo' ? props.referencia : null
+  const id = referencia?.id ?? null
+  const [f, setF] = useState(() => valoresIniciales(props))
+  const proveedores = useProveedores()
+  const categorias = useCategorias()
+  const categoria = categorias.data?.find((c) => String(c.id) === f.categoria_id)
+  const admiteUniversal = categoria?.admite_codigo_universal ?? false
+
+  const universales = useQuery({
+    queryKey: ['universales', 'categoria', f.categoria_id],
+    queryFn: async () => (await api.get<Pagina<{ id: number; codigo: string; categoria_id: number }>>('/codigos-universales', { params: { por_pagina: 100 } })).data.data,
+    enabled: admiteUniversal,
+  })
+
+  const guardar = useMutation({
+    mutationFn: async () => {
+      const cuerpo = {
+        codigo_referencia: f.codigo_referencia.trim(),
+        proveedor_id: Number(f.proveedor_id),
+        categoria_id: Number(f.categoria_id),
+        calidad: f.calidad || null,
+        descripcion: f.descripcion.trim(),
+        precio_venta: Number(f.precio_venta),
+        iva_venta_porcentaje: Number(f.iva_venta_porcentaje),
+        codigo_universal_id: admiteUniversal && f.codigo_universal_id ? Number(f.codigo_universal_id) : null,
+      }
+      return id ? api.put(`/referencias/${id}`, cuerpo) : api.post('/referencias', cuerpo)
+    },
+    onSuccess: props.onGuardada,
+  })
+
+  useEffect(() => {
+    const alPulsar = (e: KeyboardEvent) => { if (e.key === 'Escape') props.onCerrar() }
+    document.addEventListener('keydown', alPulsar)
+    const desborde = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', alPulsar)
+      document.body.style.overflow = desborde
+    }
+  }, [props.onCerrar])
+
+  const setCampo = (k: keyof Valores, valor: string) => {
+    setF((actual) => {
+      const siguiente = { ...actual, [k]: valor }
+      if (k === 'categoria_id') siguiente.codigo_universal_id = ''
+      return siguiente
+    })
+  }
+
+  const errorPrecio = f.precio_venta === '' ? null : Number(f.precio_venta) > 0 ? null : 'El precio de venta debe ser mayor que 0.'
+  const sinCategorias = categorias.data?.length === 0
+  const completo = f.codigo_referencia.trim() !== ''
+    && f.proveedor_id !== ''
+    && f.categoria_id !== ''
+    && f.descripcion.trim() !== ''
+    && f.precio_venta !== ''
+    && errorPrecio === null
+
+  const titulo = ingreso ? 'Crear referencia' : id ? 'Editar referencia' : 'Nueva referencia'
+  const subtitulo = ingreso
+    ? `${props.codigo} · ${props.proveedor.nombre}`
+    : referencia
+      ? [referencia.codigo_referencia, referencia.proveedor?.nombre].filter(Boolean).join(' · ')
+      : 'Código, origen y precio de venta'
+  const ayudaPrecio = errorPrecio ?? (ingreso
+    ? 'Mayor que 0. Si no lo conoce, consúltelo con el administrador antes de crearla.'
+    : 'Mayor que 0. Una referencia sin precio no se puede vender.')
+  const etiquetaBoton = guardar.isPending ? 'Guardando…' : ingreso ? 'Crear y agregar' : 'Guardar'
+
+  return (
+    <div className="modal modal-ficha">
+      <form
+        className="modal-caja cuenta-modal ficha-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="ficha-referencia-titulo"
+        onSubmit={(e) => { e.preventDefault(); if (completo && !guardar.isPending) guardar.mutate() }}
+      >
+        <header className="modal-cabeza">
+          <span className="avatar" aria-hidden><Icono nombre="etiqueta" /></span>
+          <div className="modal-cabeza-texto">
+            <h2 id="ficha-referencia-titulo">{titulo}</h2>
+            <p>{subtitulo}</p>
+          </div>
+          <button type="button" className="icono-boton modal-cerrar" aria-label="Cerrar" onClick={props.onCerrar}>
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6L6 18" /></svg>
+          </button>
+        </header>
+
+        <section className="modal-seccion">
+          <h3>Identidad</h3>
+          {ingreso && <p className="ayuda">Este código no existe para este proveedor. Al guardarla se agrega la línea al ingreso.</p>}
+          <div className="campos-dos">
+            <label>Código de referencia
+              <input
+                required
+                maxLength={80}
+                autoFocus={!ingreso}
+                readOnly={ingreso}
+                value={f.codigo_referencia}
+                onChange={(e) => setCampo('codigo_referencia', e.target.value)}
+              />
+            </label>
+            <label>Calidad
+              <select value={f.calidad} onChange={(e) => setCampo('calidad', e.target.value)}>
+                <option value="">—</option>
+                <option value="fino">Fino</option>
+                <option value="generico">Genérico</option>
+              </select>
+            </label>
+          </div>
+          <label>Descripción
+            <input required maxLength={255} value={f.descripcion} onChange={(e) => setCampo('descripcion', e.target.value)} />
+          </label>
+        </section>
+
+        <section className="modal-seccion">
+          <h3>Origen</h3>
+          <div className="campos-dos">
+            <label>Proveedor
+              {ingreso ? (
+                <input value={props.proveedor.nombre} readOnly aria-readonly="true" />
+              ) : (
+                <select required value={f.proveedor_id} onChange={(e) => setCampo('proveedor_id', e.target.value)}>
+                  <option value="">—</option>
+                  {proveedores.data?.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                </select>
+              )}
+            </label>
+            <label>Categoría
+              <select required autoFocus={ingreso} value={f.categoria_id} onChange={(e) => setCampo('categoria_id', e.target.value)}>
+                <option value="">—</option>
+                {categorias.data?.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+              </select>
+            </label>
+          </div>
+          {sinCategorias && (
+            <div className="aviso atencion">No hay categorías en el catálogo. Pídale al administrador que las cree.</div>
+          )}
+          {ingreso && <p className="ayuda">Si la categoría que necesita no aparece, pídale al administrador que la cree; aquí no se crean.</p>}
+          {admiteUniversal && (
+            <label>Código universal
+              <select value={f.codigo_universal_id} onChange={(e) => setCampo('codigo_universal_id', e.target.value)}>
+                <option value="">Sin universal: la referencia es su código único</option>
+                {universales.data?.filter((u) => String(u.categoria_id) === f.categoria_id).map((u) => <option key={u.id} value={u.id}>{u.codigo}</option>)}
+              </select>
+            </label>
+          )}
+        </section>
+
+        <section className="modal-seccion">
+          <h3>Venta</h3>
+          <div className="campos-dos">
+            <label>Precio de venta
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                required
+                aria-invalid={errorPrecio !== null}
+                aria-describedby="ficha-precio-ayuda"
+                value={f.precio_venta}
+                onChange={(e) => setCampo('precio_venta', e.target.value)}
+              />
+            </label>
+            <label>IVA de venta
+              <select value={f.iva_venta_porcentaje} onChange={(e) => setCampo('iva_venta_porcentaje', e.target.value)}>
+                <option value="19">19 %</option>
+                <option value="0">0 % · sin IVA</option>
+              </select>
+            </label>
+          </div>
+          <p id="ficha-precio-ayuda" className={errorPrecio ? 'ayuda error' : 'ayuda'}>{ayudaPrecio}</p>
+          <p className="ayuda">0 % significa que la referencia se vende sin IVA. Es el IVA que queda guardado en cada venta.</p>
+        </section>
+
+        {guardar.isError && <div className="aviso error" role="alert">{mensajeError(guardar.error)}</div>}
+
+        <footer className="modal-pie">
+          <button type="button" className="secundario" onClick={props.onCerrar}>Cancelar</button>
+          <button className="primario" disabled={!completo || guardar.isPending}>{etiquetaBoton}</button>
+        </footer>
+      </form>
+    </div>
+  )
+}
