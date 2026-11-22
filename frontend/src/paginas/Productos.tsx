@@ -7,8 +7,9 @@ import ChipCalidad from '../componentes/ChipCalidad'
 import { useAuth } from '../auth/AuthProvider'
 import Icono from '../componentes/Icono'
 import Paginacion from '../componentes/Paginacion'
+import SelectorProveedor from '../componentes/SelectorProveedor'
 import Resumen from '../componentes/Resumen'
-import { useCategorias, useProveedores } from '../hooks/useCatalogos'
+import { useCategorias } from '../hooks/useCatalogos'
 import { useDebounce } from '../hooks/useDebounce'
 import { useListaPaginada } from '../hooks/useListaPaginada'
 import { useScanner } from '../hooks/useScanner'
@@ -76,7 +77,6 @@ export default function Productos() {
   const [editando, setEditando] = useState<{ id: number | null; datos: Formulario } | null>(null)
   const lectorRef = useRef<HTMLInputElement>(null)
   const termino = useDebounce(q.trim())
-  const proveedores = useProveedores()
 
   const { filas, resultado, info, pagina, irA, cargando } = useListaPaginada<Referencia>({
     clave: ['referencias', termino, proveedorId, POR_PAGINA],
@@ -228,10 +228,7 @@ export default function Productos() {
                 aria-label="Buscar productos"
               />
             </label>
-            <select aria-label="Proveedor" value={proveedorId} onChange={(e) => setProveedorId(e.target.value)}>
-              <option value="">Todos los proveedores</option>
-              {proveedores.data?.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-            </select>
+            <SelectorProveedor className="filtro" aria-label="Proveedor" value={proveedorId} onChange={setProveedorId} opcionTodos="Todos los proveedores" />
             {esAdmin && <button type="button" className="primario" onClick={() => setEditando({ id: null, datos: vacio })}>Nueva referencia</button>}
           </div>
         </div>
@@ -323,7 +320,6 @@ export default function Productos() {
 
 function FormularioReferencia({ id, inicial, onListo, onCerrar }: { id: number | null; inicial: Formulario; onListo: () => void; onCerrar: () => void }) {
   const [f, setF] = useState(inicial)
-  const proveedores = useProveedores()
   const categorias = useCategorias()
   const categoria = categorias.data?.find((c) => String(c.id) === f.categoria_id)
   const admiteUniversal = categoria?.admite_codigo_universal ?? false
@@ -359,7 +355,7 @@ function FormularioReferencia({ id, inicial, onListo, onCerrar }: { id: number |
           </select>
         </label>
         <label>Proveedor
-          <select required {...campo('proveedor_id')}><option value="">—</option>{proveedores.data?.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}</select>
+          <SelectorProveedor required value={f.proveedor_id} onChange={(proveedor_id) => setF((v) => ({ ...v, proveedor_id }))} />
         </label>
         <label>Categoría
           <select required {...campo('categoria_id')}><option value="">—</option>{categorias.data?.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select>

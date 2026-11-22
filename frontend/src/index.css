@@ -710,3 +710,32 @@ button.segmento.elegido { background: #fff; border-color: var(--primario); color
 /* S-23: total del universal junto al título del desglose. */
 .total-universal { color: var(--suave); font-size: 0.95rem; }
 .total-universal strong { color: var(--texto); font-size: 1.1rem; }
+
+/* Selector de proveedor con búsqueda (combobox). La lista va en un portal con posición fija. */
+.selector { position: relative; display: flex; align-items: center; min-width: 0; }
+.selector input { width: 100%; padding-right: 34px; text-overflow: ellipsis; }
+.selector.con-limpiar input { padding-right: 62px; }
+.selector-flecha { position: absolute; right: 10px; color: var(--suave); pointer-events: none; }
+button.selector-limpiar {
+  position: absolute; right: 30px; width: 28px; height: 28px; padding: 0;
+  display: grid; place-items: center; border: none; border-radius: 6px; background: transparent; color: var(--suave);
+}
+button.selector-limpiar:hover { background: var(--suave-fondo); color: var(--texto); }
+.selector.filtro { width: 240px; }
+.selector-lista {
+  z-index: 60; overflow-y: auto; overscroll-behavior: contain; padding: 4px;
+  background: #fff; border: 1px solid var(--borde); border-radius: 10px; box-shadow: 0 10px 28px rgba(14, 26, 51, 0.18);
+}
+.selector-lista ul { list-style: none; margin: 0; padding: 0; }
+.selector-opcion {
+  display: flex; flex-direction: column; justify-content: center; gap: 1px;
+  min-height: 40px; padding: 6px 10px; border-radius: 8px; cursor: pointer; color: var(--texto);
+}
+.selector-opcion small { color: var(--suave); font-size: 0.78rem; }
+.selector-opcion.activa { background: var(--suave-fondo); box-shadow: inset 3px 0 0 var(--primario); }
+.selector-opcion.elegida > span { font-weight: 700; }
+.selector-nota { padding: 8px 10px; color: var(--suave); font-size: 0.85rem; }
+@media (max-width: 639px), (pointer: coarse) {
+  .selector-opcion { min-height: 44px; }
+  .selector.filtro { width: 100%; }
+}

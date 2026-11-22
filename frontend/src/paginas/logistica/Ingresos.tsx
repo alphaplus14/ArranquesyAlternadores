@@ -6,6 +6,7 @@ import { api, erroresCampo, mensajeError } from '../../api/cliente'
 import type { FormaPago, Ingreso, Pagina, TipoIngreso } from '../../api/tipos'
 import { sumarDias } from '../../componentes/fechas'
 import ControlSegmentado, { type OpcionSegmento } from '../../componentes/ControlSegmentado'
+import SelectorProveedor from '../../componentes/SelectorProveedor'
 import { useListaPaginada } from '../../hooks/useListaPaginada'
 import { useProveedores } from '../../hooks/useCatalogos'
 import Medida from '../../componentes/Medida'
@@ -137,6 +138,7 @@ function DialogoNuevoIngreso({ onCerrar }: { onCerrar: () => void }) {
     fecha: new Date().toLocaleDateString('en-CA'),
     forma_pago: 'contado' as FormaPago,
   })
+  const campoNumero = useRef<HTMLInputElement>(null)
   /** null = sin tocar: se sugiere fecha + plazo del proveedor. */
   const [venceEscrito, setVenceEscrito] = useState<string | null>(null)
   const plazo = proveedores.data?.find((p) => String(p.id) === form.proveedor_id)?.plazo_dias ?? null
@@ -196,15 +198,19 @@ function DialogoNuevoIngreso({ onCerrar }: { onCerrar: () => void }) {
             <ControlSegmentado id="nuevo-ingreso-pago" etiqueta="Pago" opciones={PAGOS} valor={form.forma_pago} onCambio={(forma_pago) => setForm({ ...form, forma_pago })} />
             <label className="campo-ancho">
               <span className="etiqueta-campo">Proveedor<Obligatorio /></span>
-              <select autoFocus required value={form.proveedor_id} onChange={(e) => setForm({ ...form, proveedor_id: e.target.value })}>
-                <option value="">—</option>
-                {proveedores.data?.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-              </select>
+              <SelectorProveedor
+                autoFocus
+                required
+                value={form.proveedor_id}
+                onChange={(proveedor_id) => setForm((f) => ({ ...f, proveedor_id }))}
+                alElegir={() => campoNumero.current?.focus()}
+                error={errores.proveedor_id}
+              />
             </label>
             <div className="campo-con-ayuda">
               <label>
                 <span className="etiqueta-campo">N.º del documento<Obligatorio /></span>
-                <input required maxLength={60} aria-describedby="nuevo-ingreso-numero-ayuda" value={form.numero_documento} onChange={(e) => setForm({ ...form, numero_documento: e.target.value })} />
+                <input ref={campoNumero} required maxLength={60} aria-describedby="nuevo-ingreso-numero-ayuda" value={form.numero_documento} onChange={(e) => setForm({ ...form, numero_documento: e.target.value })} />
               </label>
               <small id="nuevo-ingreso-numero-ayuda" className="ayuda">Si ese documento ya está en borrador, se abre el mismo para seguir escaneando.</small>
             </div>

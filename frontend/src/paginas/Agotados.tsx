@@ -6,6 +6,7 @@ import { useListaPaginada } from '../hooks/useListaPaginada'
 import Medida from '../componentes/Medida'
 import Resumen from '../componentes/Resumen'
 import Paginacion from '../componentes/Paginacion'
+import SelectorProveedor from '../componentes/SelectorProveedor'
 import ChipCalidad from '../componentes/ChipCalidad'
 
 /** RF-08: referencias con existencia 0 de un proveedor. */
@@ -46,10 +47,7 @@ export default function Agotados() {
     <section className="tarjeta-pagina">
       <div className="fila-titulo">
         <h2>Referencias</h2>
-        <select aria-label="Proveedor" value={proveedorId} onChange={(e) => setProveedorId(e.target.value)}>
-          <option value="">Elija un proveedor…</option>
-          {proveedores.data?.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-        </select>
+        <SelectorProveedor className="filtro" aria-label="Proveedor" value={proveedorId} onChange={setProveedorId} placeholder="Elija un proveedor…" limpiable />
       </div>
 
       {resultado && (
