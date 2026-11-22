@@ -29,6 +29,7 @@ class BusquedaController extends Controller
 
         $unidad = Unidad::query()
             ->where('codigo_barras', $q)
+            ->whereHas('referencia', fn ($r) => $r->activas()) // S-26
             ->with('referencia.proveedor:id,nombre', 'referencia.codigoUniversal:id,codigo')
             ->first();
 
@@ -36,6 +37,7 @@ class BusquedaController extends Controller
         $universales = CodigoUniversal::where('codigo', 'like', $prefijo)->limit(self::MAX_REFERENCIAS)->pluck('id');
 
         $referencias = Referencia::query()
+            ->activas() // S-26: una inactiva no se encuentra
             ->where(fn ($w) => $w
                 ->where('codigo_referencia', 'like', $prefijo)
                 ->orWhere('codigo_fabricante', $q) // S-25: código de barras exacto, en todos los proveedores

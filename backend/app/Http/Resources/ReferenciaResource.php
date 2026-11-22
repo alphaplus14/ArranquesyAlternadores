@@ -20,6 +20,7 @@ class ReferenciaResource extends JsonResource
             'precio_venta' => $this->precio_venta,
             'iva_venta_porcentaje' => $this->iva_venta_porcentaje,
             'existencia' => $this->existencia,
+            'activo' => $this->activo, // S-26
             'proveedor_id' => $this->proveedor_id,
             'categoria_id' => $this->categoria_id,
             'codigo_universal_id' => $this->codigo_universal_id,

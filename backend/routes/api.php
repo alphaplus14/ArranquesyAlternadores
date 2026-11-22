@@ -43,8 +43,14 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/clientes', [ClienteController::class, 'index']); // RF-13
     });
 
-    // RF-20: logística crea la referencia que no existe al escanear un ingreso; editar y desactivar son del admin.
+    // RF-20: logística crea la referencia que no existe al escanear un ingreso.
     Route::post('/referencias', [ReferenciaController::class, 'store'])->middleware('rol:admin,logistica');
+    // S-26: logística también edita, desactiva y reactiva referencias. No hay DELETE (tienen historial).
+    Route::middleware('rol:admin,logistica')->group(function () {
+        Route::match(['put', 'patch'], '/referencias/{referencia}', [ReferenciaController::class, 'update']);
+        Route::post('/referencias/{referencia}/desactivar', [ReferenciaController::class, 'desactivar']);
+        Route::post('/referencias/{referencia}/reactivar', [ReferenciaController::class, 'reactivar']);
+    });
     // S-24: logística también crea proveedores y categorías; editarlos y borrarlos es del admin.
     Route::post('/proveedores', [ProveedorController::class, 'store'])->middleware('rol:admin,logistica');
     Route::post('/categorias', [CategoriaController::class, 'store'])->middleware('rol:admin,logistica');
@@ -59,7 +65,6 @@ Route::middleware('auth:sanctum')->group(function () {
             ->parameters(['proveedores' => 'proveedor'])->except(['index', 'store']);
         Route::apiResource('codigos-universales', CodigoUniversalController::class)
             ->parameters(['codigos-universales' => 'codigoUniversal'])->except(['index', 'show']);
-        Route::apiResource('referencias', ReferenciaController::class)->except(['index', 'show', 'store']);
 
         Route::get('/usuarios', [UsuarioController::class, 'index']);
         Route::post('/usuarios', [UsuarioController::class, 'store']);

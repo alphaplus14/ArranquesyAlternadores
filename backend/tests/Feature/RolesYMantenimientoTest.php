@@ -17,11 +17,12 @@ it('roles: el mostrador no entra a logística ni al catálogo de admin', functio
     $this->getJson('/api/usuarios')->assertForbidden();
 });
 
-it('roles: logística no vende ni edita el catálogo', function () {
+it('roles: logística no vende ni edita proveedores ni categorías (S-24, S-26)', function () {
     actuarComo(Rol::Logistica);
 
     $this->postJson('/api/ventas')->assertForbidden();
-    $this->patchJson('/api/referencias/'.referencia('RN-4410')->id, ['precio_venta' => 1])->assertForbidden();
+    $this->patchJson('/api/proveedores/'.referencia('RN-4410')->proveedor_id, ['nombre' => 'X'])->assertForbidden();
+    $this->patchJson('/api/categorias/'.referencia('RN-4410')->categoria_id, ['nombre' => 'X'])->assertForbidden();
 });
 
 it('roles: el admin entra a todos los módulos', function () {

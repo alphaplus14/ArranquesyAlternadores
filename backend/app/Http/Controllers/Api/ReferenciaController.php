@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\Rol;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\ReferenciaRequest;
 use App\Http\Resources\ReferenciaResource;
 use App\Models\Referencia;
+use App\Services\ReferenciaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -19,8 +21,12 @@ class ReferenciaController extends Controller
     {
         $q = trim((string) $request->query('q'));
 
+        // S-26: por defecto solo activas; inactivas=1 (admin y logística) INCLUYE también las inactivas.
+        $conInactivas = $request->boolean('inactivas') && in_array($request->user()?->rol, [Rol::Admin, Rol::Logistica], true);
+
         $pagina = Referencia::query()
             ->with(self::RELACIONES)
+            ->unless($conInactivas, fn ($query) => $query->activas())
             // Prefijo sobre el código (usa el índice), código de barras exacto (S-25) o texto completo sobre la descripción.
             ->when($q !== '', fn ($query) => $query->where(fn ($w) => $w
                 ->where('codigo_referencia', 'like', addcslashes($q, '%_\\').'%')
@@ -48,6 +54,7 @@ class ReferenciaController extends Controller
         $codigo = trim($datos['codigo']);
 
         $referencias = Referencia::query()
+            ->activas()
             ->where(fn ($q) => $q->where('codigo_referencia', $codigo)->orWhere('codigo_fabricante', $codigo))
             ->when($datos['proveedor_id'] ?? null, fn ($q, $id) => $q->where('proveedor_id', '!=', $id))
             ->with('proveedor:id,nombre')
@@ -85,11 +92,14 @@ class ReferenciaController extends Controller
         return new ReferenciaResource($referencia->load(self::RELACIONES));
     }
 
-    /** Con unidades o ingresos asociados, la FK restrict lo impide (409). */
-    public function destroy(Referencia $referencia): JsonResponse
+    /** S-26: sin unidades disponibles. No hay DELETE: una referencia tiene historial. */
+    public function desactivar(Referencia $referencia, ReferenciaService $servicio): ReferenciaResource
     {
-        $referencia->delete();
+        return new ReferenciaResource($servicio->desactivar($referencia)->load(self::RELACIONES));
+    }
 
-        return response()->json(null, 204);
+    public function reactivar(Referencia $referencia, ReferenciaService $servicio): ReferenciaResource
+    {
+        return new ReferenciaResource($servicio->reactivar($referencia)->load(self::RELACIONES));
     }
 }

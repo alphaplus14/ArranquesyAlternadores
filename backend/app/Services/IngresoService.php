@@ -135,13 +135,23 @@ class IngresoService
      */
     private function referenciaPorCodigo(int $proveedorId, string $codigo, ?int $referenciaId): ?Referencia
     {
-        $coinciden = Referencia::query()
+        $todas = Referencia::query()
             ->where('proveedor_id', $proveedorId)
             ->where(fn ($q) => $q->where('codigo_fabricante', $codigo)->orWhere('codigo_referencia', $codigo))
             ->when($referenciaId, fn ($q) => $q->whereKey($referenciaId))
             ->orderBy('id')
             ->limit(5)
-            ->get(['id', 'codigo_referencia', 'codigo_fabricante', 'descripcion', 'iva_venta_porcentaje']);
+            ->get(['id', 'codigo_referencia', 'codigo_fabricante', 'descripcion', 'iva_venta_porcentaje', 'activo']);
+        $coinciden = $todas->where('activo', true)->values();
+
+        // S-26: el código es de una referencia inactiva: no se agrega ni se ofrece crear otra.
+        if ($coinciden->isEmpty() && $todas->isNotEmpty()) {
+            throw new ReglaInventarioException('La referencia está inactiva; reactívela para usarla.', 422, [
+                'motivo' => 'referencia_inactiva',
+                'codigo' => $codigo,
+                'referencia_id' => $todas->first()->id,
+            ]);
+        }
 
         if ($coinciden->count() > 1) {
             throw new ReglaInventarioException("Código ambiguo: {$codigo} coincide con varias referencias de este proveedor. Elija una.", 422, [
@@ -156,6 +166,11 @@ class IngresoService
 
     public function agregarItem(Ingreso $ingreso, array $datos): IngresoItem
     {
+        // S-26: una referencia inactiva no entra a un ingreso.
+        if (Referencia::whereKey($datos['referencia_id'])->where('activo', false)->exists()) {
+            throw new ReglaInventarioException('La referencia está inactiva; reactívela para usarla.', 422, ['motivo' => 'referencia_inactiva']);
+        }
+
         // S-22: sin IVA explícito, la línea toma el de la referencia (como en ventas).
         $datos['iva_porcentaje'] ??= Referencia::whereKey($datos['referencia_id'])->value('iva_venta_porcentaje') ?? 0;
 

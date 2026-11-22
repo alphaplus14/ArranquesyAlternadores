@@ -19,6 +19,7 @@ class ReporteController extends Controller
         $pagina = Referencia::query()
             ->where('proveedor_id', $datos['proveedor_id'])
             ->where('existencia', 0)
+            ->activas() // S-26: una desactivada no es un agotado
             ->with(['categoria:id,nombre,admite_codigo_universal', 'codigoUniversal:id,codigo'])
             ->orderBy('codigo_referencia')
             ->paginate(min((int) $request->query('por_pagina', 50), 200));
