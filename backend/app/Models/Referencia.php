@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\Auditable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -54,5 +55,24 @@ class Referencia extends Model
     public function unidades(): HasMany
     {
         return $this->hasMany(Unidad::class);
+    }
+
+    /**
+     * RF-12: búsqueda por descripción con el índice FULLTEXT, en modo booleano. Exige todas las
+     * palabras, acepta el comienzo de cada una y ordena por relevancia.
+     * Versión mínima: la definitiva llega con la búsqueda por texto de /api/referencias.
+     */
+    public function scopeBuscarTexto(Builder $query, string $q): Builder
+    {
+        $palabras = preg_split('/[^\p{L}\p{N}]+/u', $q, -1, PREG_SPLIT_NO_EMPTY);
+        if ($palabras === []) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        $expresion = implode(' ', array_map(fn (string $p) => "+{$p}*", $palabras));
+
+        return $query
+            ->whereFullText('descripcion', $expresion, ['mode' => 'boolean'])
+            ->orderByRaw('MATCH(descripcion) AGAINST(? IN BOOLEAN MODE) DESC', [$expresion]);
     }
 }
