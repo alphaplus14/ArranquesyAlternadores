@@ -844,3 +844,9 @@ button.busca-limpiar:hover { background: var(--suave-fondo); color: var(--texto)
 .eleccion-codigo p { margin: 0 0 8px; }
 .opciones-codigo { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .opciones-codigo button.secundario { min-height: 44px; text-align: left; }
+
+/* S-25: códigos de la referencia en el diálogo Crear referencia. */
+.codigos-referencia { display: flex; flex-direction: column; gap: 6px; }
+.codigo-fijo { display: flex; flex-direction: column; gap: 4px; }
+.valor-fijo { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-radius: 8px; background: var(--suave-fondo); font-weight: 600; overflow-wrap: anywhere; cursor: default; }
+.valor-fijo .candado { flex: none; color: var(--suave); }

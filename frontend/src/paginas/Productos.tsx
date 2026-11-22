@@ -9,6 +9,7 @@ import Icono from '../componentes/Icono'
 import Paginacion from '../componentes/Paginacion'
 import SelectorProveedor from '../componentes/SelectorProveedor'
 import SelectorCategoria from '../componentes/SelectorCategoria'
+import AvisoCoincidencias from '../componentes/AvisoCoincidencias'
 import Resumen from '../componentes/Resumen'
 import { useCategorias } from '../hooks/useCatalogos'
 import { useDebounce } from '../hooks/useDebounce'
@@ -390,6 +391,9 @@ export default function Productos() {
 
 function FormularioReferencia({ id, inicial, onListo, onCerrar }: { id: number | null; inicial: Formulario; onListo: () => void; onCerrar: () => void }) {
   const [f, setF] = useState(inicial)
+  /** S-25: códigos consultados al salir del campo (aviso si existen con otro proveedor). */
+  const [consultados, setConsultados] = useState<string[]>([])
+  const consultar = () => setConsultados([f.codigo_referencia, f.codigo_fabricante])
   const categorias = useCategorias()
   const categoria = categorias.data?.find((c) => String(c.id) === f.categoria_id)
   const admiteUniversal = categoria?.admite_codigo_universal ?? false
@@ -416,14 +420,15 @@ function FormularioReferencia({ id, inicial, onListo, onCerrar }: { id: number |
       <form className="modal-caja" onSubmit={(e) => { e.preventDefault(); guardar.mutate() }}>
         <h2>{id ? 'Editar referencia' : 'Nueva referencia'}</h2>
         <label>Referencia del proveedor
-          <input required={f.codigo_fabricante.trim() === ''} maxLength={80} aria-describedby={f.codigo_fabricante.trim() ? 'referencia-ayuda' : undefined} {...campo('codigo_referencia')} />
+          <input required={f.codigo_fabricante.trim() === ''} maxLength={80} aria-describedby={f.codigo_fabricante.trim() ? 'referencia-ayuda' : undefined} onBlur={consultar} {...campo('codigo_referencia')} />
         </label>
         {f.codigo_fabricante.trim() !== '' && (
           <p id="referencia-ayuda" className="ayuda">Si el producto no trae otra referencia, déjela vacía y se usará el código de barras.</p>
         )}
         <label>Código de barras o QR del producto (si lo trae)
-          <input maxLength={120} autoComplete="off" {...campo('codigo_fabricante')} />
+          <input maxLength={120} autoComplete="off" onBlur={consultar} {...campo('codigo_fabricante')} />
         </label>
+        <AvisoCoincidencias codigos={consultados} proveedorId={f.proveedor_id || null} accion={id ? 'guardarla' : 'crearla'} />
         <label>Descripción<input required {...campo('descripcion')} /></label>
         <label>Calidad
           <select {...campo('calidad')}>

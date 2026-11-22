@@ -10,6 +10,8 @@ import Medida from '../../componentes/Medida'
 import { formatoNumero, leerNumero, pesos } from '../../componentes/numeros'
 import { useCategorias } from '../../hooks/useCatalogos'
 import SelectorCategoria from '../../componentes/SelectorCategoria'
+import ControlSegmentado, { type OpcionSegmento } from '../../componentes/ControlSegmentado'
+import AvisoCoincidencias from '../../componentes/AvisoCoincidencias'
 import { useScanner } from '../../hooks/useScanner'
 import { useBloquearScroll } from '../../hooks/useBloquearScroll'
 import { atraparTab } from '../../componentes/foco'
@@ -582,6 +584,12 @@ function Candado() {
   )
 }
 
+type TipoCodigo = 'barras' | 'referencia'
+const TIPOS_CODIGO: OpcionSegmento<TipoCodigo>[] = [
+  { valor: 'barras', texto: 'Código de barras o QR' },
+  { valor: 'referencia', texto: 'Referencia del proveedor' },
+]
+
 /**
  * RF-20: crea la referencia que no existe con el código leído y el proveedor del ingreso (ambos
  * fijos). Precio de venta > 0 (S-20). Calidad opcional (S-23). El IVA de venta no se pide: el
@@ -597,6 +605,12 @@ function DialogoReferencia({ codigo, proveedor, onCreada, onCerrar }: {
   const campoCategoria = useRef<HTMLSelectElement>(null)
   const campoCalidad = useRef<HTMLSelectElement>(null)
   const [f, setF] = useState({ calidad: '', categoria_id: '', descripcion: '', precio_venta: '', codigo_universal_id: '' })
+  // S-25: el código leído puede ser el de barras del producto o la referencia del proveedor.
+  // De 8 a 14 dígitos se toma como código de barras; si no, como referencia.
+  const [tipo, setTipo] = useState<TipoCodigo>(/^\d{8,14}$/.test(codigo) ? 'barras' : 'referencia')
+  /** El otro código (el que no se leyó), opcional; y el que se consulta al salir del campo. */
+  const [otro, setOtro] = useState('')
+  const [otroConsultado, setOtroConsultado] = useState('')
   useBloquearScroll()
   // El foco empieza en Categoría también si algo lo movió durante el montaje.
   useEffect(() => {
@@ -614,7 +628,9 @@ function DialogoReferencia({ codigo, proveedor, onCreada, onCerrar }: {
 
   const crear = useMutation({
     mutationFn: async () => api.post('/referencias', {
-      codigo_referencia: codigo,
+      // Leído como código de barras: la referencia es opcional (vacía = el mismo código, S-25).
+      codigo_referencia: tipo === 'referencia' ? codigo : otro.trim(),
+      codigo_fabricante: tipo === 'barras' ? codigo : otro.trim() || null,
       proveedor_id: proveedor.id,
       calidad: f.calidad || null,
       categoria_id: Number(f.categoria_id),
@@ -636,7 +652,7 @@ function DialogoReferencia({ codigo, proveedor, onCreada, onCerrar }: {
         {/* Datos fijos: no son campos (no se enfocan ni se editan). */}
         <dl className="datos-fijos">
           <div>
-            <dt>Código de referencia</dt>
+            <dt>Código leído</dt>
             <dd><Candado />{codigo}<span className="solo-lector">, fijado por el escaneo</span></dd>
           </div>
           <div>
@@ -645,6 +661,40 @@ function DialogoReferencia({ codigo, proveedor, onCreada, onCerrar }: {
           </div>
         </dl>
         <p className="ayuda">El código no existe para este proveedor. Se crea para el proveedor de este ingreso, con el código escaneado, y al guardarla se agrega la línea.</p>
+        <ControlSegmentado
+          id="tipo-codigo-leido"
+          etiqueta="¿Qué es el código leído?"
+          opciones={TIPOS_CODIGO}
+          valor={tipo}
+          onCambio={(nuevo) => { setTipo(nuevo); setOtro(''); setOtroConsultado('') }}
+        />
+        <div className="codigos-referencia">
+          {/* El campo del código leído es un dato fijo (no se enfoca); el otro, opcional y editable. */}
+          {tipo === 'referencia' ? (
+            <div className="codigo-fijo">
+              <span className="etiqueta-campo">Referencia del proveedor</span>
+              <span className="valor-fijo"><Candado />{codigo}<span className="solo-lector">, el código leído</span></span>
+            </div>
+          ) : (
+            <>
+              <label>Referencia del proveedor (opcional)
+                <input maxLength={80} value={otro} autoComplete="off" aria-describedby="referencia-vacia-ayuda" onChange={(e) => setOtro(e.target.value)} onBlur={() => setOtroConsultado(otro)} />
+              </label>
+              <p id="referencia-vacia-ayuda" className="ayuda">Si el producto no trae otra referencia, déjela vacía y se usará el código de barras.</p>
+            </>
+          )}
+          {tipo === 'barras' ? (
+            <div className="codigo-fijo">
+              <span className="etiqueta-campo">Código de barras o QR del producto</span>
+              <span className="valor-fijo"><Candado />{codigo}<span className="solo-lector">, el código leído</span></span>
+            </div>
+          ) : (
+            <label>Código de barras o QR del producto (si lo trae)
+              <input maxLength={120} value={otro} autoComplete="off" onChange={(e) => setOtro(e.target.value)} onBlur={() => setOtroConsultado(otro)} />
+            </label>
+          )}
+        </div>
+        <AvisoCoincidencias codigos={[codigo, otroConsultado]} proveedorId={proveedor.id} />
         <SelectorCategoria
           selectRef={campoCategoria}
           autoFocus
