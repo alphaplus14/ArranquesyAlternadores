@@ -14,7 +14,7 @@ API REST bajo `/api`, con autenticación Sanctum en modo SPA (sesión por cookie
 composer install
 cp .env.example .env              # DB_PORT=3307 por defecto
 php artisan key:generate
-php artisan migrate --seed        # usuarios, categorías, marcas y los ejemplos IM204 / IM210
+php artisan migrate --seed        # usuarios, categorías y los ejemplos IM204 / IM210
 php artisan serve                 # http://localhost:8000
 ```
 

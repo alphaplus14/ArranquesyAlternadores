@@ -12,7 +12,7 @@ Sistema de inventario para un local de venta y mantenimiento de arranques y alte
 |---|---|
 | Fuente inicial | Nota de voz `Requerimientos arranques y alternadores.m4a` (29 de octubre de 2026, 2 min 36 s) |
 | Respuestas | Nota de voz `Respuestas.m4a` (29 de octubre de 2026, 5 min 58 s). Cierra las preguntas de la sección 9. |
-| Estado | Alcance de descubrimiento cerrado en lo que las dos notas y las definiciones de Frank alcanzan a decir. Siguen abiertos la prueba del QR con una factura real, la confirmación de que la cartera queda en Contapyme, el esquema de etiquetas para piezas baratas de alto volumen y el nombre de una marca usada como ejemplo. |
+| Estado | Alcance de descubrimiento cerrado en lo que las dos notas y las definiciones de Frank alcanzan a decir. Siguen abiertos la prueba del QR con una factura real, la confirmación de que la cartera queda en Contapyme, el esquema de etiquetas para piezas baratas de alto volumen. El nombre de la tercera marca del ejemplo ya no aplica: el sistema no maneja marcas (S-23). |
 
 Este documento junta las dos notas. La primera plantea el sistema. La segunda recorre, una por una, las preguntas que habían quedado abiertas.
 
@@ -40,13 +40,15 @@ El catálogo es más ancho. Los rubros que manejan son:
 
 Trabajan marcas finas y marcas económicas. La variación de referencia entre proveedores se da sobre todo en las económicas: el mismo repuesto llega con un código distinto según quién lo factura.
 
+Actualización (S-23): la empresa no maneja marcas. Lo fino o económico se registra como la calidad de la referencia (fino o genérico, opcional). Las referencias de un mismo repuesto se distinguen por su código, su proveedor y su calidad.
+
 Hoy el programa que tienen es muy lento y se demora mucho. La velocidad de respuesta es parte del pedido, no un detalle.
 
 ## 2. Problema
 
 Los programas que han mirado guardan una referencia por producto. En su operación, un solo regulador llega con varias referencias y sigue siendo la misma pieza. Sin un código que las una, el inventario no dice cuántas unidades hay de verdad.
 
-El caso que usan es el de los reguladores **Transpo**. Donde esa marca sirve como código común, quieren usarla como código universal.
+El caso que usan es el de los reguladores **Transpo**. Donde el código de Transpo sirve como código común, quieren usarlo como código universal.
 
 Ejemplo de la primera nota: el regulador **IM204**. Tres referencias de proveedor con 2, 2 y 2 unidades deben verse como **6** en el código universal, y el detalle de cada referencia se conserva.
 
@@ -96,7 +98,9 @@ Queda por precisar cuáles poleas y cuáles automáticos entran al universal.
 
 ### RF-02. Existencia agrupada, sin perder el detalle
 
-La cantidad del código universal es la suma de sus referencias. Cada referencia, y cada marca, conserva su existencia. El sistema muestra el total y el desglose.
+La cantidad del código universal es la suma de sus referencias. Cada referencia conserva su existencia. El sistema muestra el total y el desglose por referencia: código, proveedor, calidad y existencia.
+
+Actualización (S-23): la empresa no maneja marcas. Antes el desglose también se agrupaba por marca; ahora es solo por referencia. Ejemplo: ZM860 (fino) y ZZM860 (genérico), del mismo proveedor, e IML860, de otro, son tres referencias del mismo repuesto unidas por un universal.
 
 **Aceptación.** Si una referencia pasa de 2 a 3, el universal pasa de 6 a 7 y el detalle identifica cuál cambió.
 
@@ -104,16 +108,16 @@ La cantidad del código universal es la suma de sus referencias. Cada referencia
 
 El código de barras identifica cada unidad física, no solo la referencia. Es único del local.
 
-El ejemplo de la segunda nota: tres reguladores iguales, uno por marca.
+El ejemplo de la segunda nota: tres reguladores iguales. En la nota se distinguían por marca (Bosch, Transpo y una tercera que en el audio se oye como Jota); desde S-23 el sistema no maneja marcas y son tres referencias del mismo código universal.
 
-| Marca | Unidades antes de escanear |
+| Referencia del mismo regulador | Unidades antes de escanear |
 |---|---|
-| Bosch | 1 |
-| Transpo | 1 |
-| Una tercera marca, que en el audio se oye como Jota | 1 |
+| Primera referencia | 1 |
+| Segunda referencia | 1 |
+| Tercera referencia | 1 |
 | **Total del mismo regulador** | **3** |
 
-Al pasar el lector por el código de una unidad, sale del inventario esa unidad. Si se escanea la de Bosch, Bosch queda en 0 y el total pasa a 2. Las otras marcas no se tocan.
+Al pasar el lector por el código de una unidad, sale del inventario esa unidad. Si se escanea la de la primera referencia, esa referencia queda en 0 y el total pasa a 2. Las otras referencias no se tocan.
 
 Las etiquetas las imprime el sistema. La persona que imprime y pega elige el tamaño. Hay tres, porque las cajas no son iguales:
 
@@ -123,7 +127,7 @@ Las etiquetas las imprime el sistema. La persona que imprime y pega elige el tam
 | Pequeño | Sensores |
 | Más pequeño | Sensor de temperatura |
 
-**Aceptación.** Cada unidad recibe una etiqueta del tamaño elegido, con un código del local. Escanearla descarga esa unidad y deja quietas las demás marcas del mismo repuesto.
+**Aceptación.** Cada unidad recibe una etiqueta del tamaño elegido, con un código del local. Escanearla descarga esa unidad y deja quietas las demás referencias del mismo repuesto.
 
 ### RF-04. Ingreso de compra por QR, con validación humana
 
@@ -196,9 +200,9 @@ A veces la mercancía llega sin IVA. El ingreso tiene que poder registrar ese ca
 ## 6. Reglas de negocio
 
 1. El código universal agrupa referencias solo en reguladores, portadiodos, algunas poleas y algunos automáticos.
-2. La variación de referencia entre proveedores es, sobre todo, de las marcas económicas.
+2. La variación de referencia entre proveedores es, sobre todo, de las piezas económicas (calidad genérica, S-23).
 3. Fuera del código Transpo, manda la referencia original del producto.
-4. La existencia universal es la suma de sus referencias. Cada marca conserva la suya.
+4. La existencia universal es la suma de sus referencias. Cada referencia conserva la suya y el desglose es por referencia (S-23).
 5. El código de barras es del local, uno por unidad física, y al escanearlo sale esa unidad.
 6. La etiqueta la imprime el sistema y el tamaño lo elige quien la pega.
 7. El QR de la factura de compra debe terminar en una lista de ítems y cantidades para validar, no para redigitar.
@@ -230,6 +234,7 @@ La segunda nota responde en orden las nueve preguntas. Lo que no alcanzó a prec
 1. **¿El código universal aplica a todo el catálogo?**
    Aplica a reguladores, portadiodos, algunas poleas y algunos automáticos. El local maneja marcas finas y económicas, y el cambio de referencia entre proveedores está sobre todo en las económicas.
    Pendiente: cuáles poleas y cuáles automáticos entran.
+   Actualización (S-23): la empresa no maneja marcas. Lo fino y lo económico queda como calidad de la referencia (fino o genérico).
 
 2. **¿Qué código se usa cuando la pieza no es Transpo?**
    Se deja la referencia original. Si no está en el código universal Transpo, esa referencia es su código único.
@@ -246,7 +251,7 @@ La segunda nota responde en orden las nueve preguntas. Lo que no alcanzó a prec
 
 6. **¿El código de barras es de la unidad o de la referencia?**
    De cada unidad física. Tres reguladores iguales, en Bosch, Transpo y una tercera marca, tienen cada uno su código. Escanear uno saca esa unidad: esa marca queda en cero y el total baja de 3 a 2.
-   Pendiente: confirmar el nombre de la tercera marca. En el audio se oye como Jota.
+   Actualización (S-23): la empresa no maneja marcas. Los tres reguladores son tres referencias del mismo universal; escanear una unidad deja en cero esa referencia. El nombre de la tercera marca ya no hace falta.
 
 7. **¿Qué es el descargue de inventario?**
    La venta por el mostrador. Va en su propio módulo, el de la parte de adelante, distinto del de administrador y del de logística. Cada descargue tiene un responsable.
@@ -269,7 +274,7 @@ La segunda nota responde en orden las nueve preguntas. Lo que no alcanzó a prec
 2. Probar con una factura real qué trae el QR y cómo llega el XML (RF-04).
 3. Definir si en piezas baratas de alto volumen se usa etiqueta por unidad o por referencia con cantidad.
 4. Precisar cuáles poleas y cuáles automáticos entran al código universal.
-5. Confirmar el nombre de la tercera marca (en el audio se oye como Jota).
+5. ~~Confirmar el nombre de la tercera marca (en el audio se oye como Jota).~~ Ya no aplica: el sistema no maneja marcas (S-23).
 6. Definir un tiempo de respuesta objetivo en segundos.
 
 ## Anexo A. Lectura de la primera nota
@@ -278,13 +283,13 @@ La empresa vende y da mantenimiento de arranques y alternadores, y también part
 
 ## Anexo B. Lectura de las respuestas
 
-El código universal aplica a reguladores, portadiodos, algunas poleas y algunos automáticos, porque en las marcas económicas la referencia cambia según el proveedor. Lo que no es Transpo conserva la referencia original, y esa es su código único.
+El código universal aplica a reguladores, portadiodos, algunas poleas y algunos automáticos, porque en las marcas económicas la referencia cambia según el proveedor. Lo que no es Transpo conserva la referencia original, y esa es su código único. (S-23: el sistema no maneja marcas; lo económico se registra como calidad genérica.)
 
 Los rubros son arranques, alternadores, reguladores, portadiodos, poleas, automáticos o solenoides, válvulas de inyección, sensores y más.
 
 Sobre el QR, no saben qué trae por dentro. Quieren que, al pasar el lector sobre la factura que viene en las cajas, aparezcan los ítems, el detalle y las cantidades, y que logística solo valide que está completo.
 
-Las etiquetas las imprime el sistema, en tres tamaños, y los elige quien las pega. El código identifica la unidad física: Bosch, Transpo y una tercera marca del mismo regulador se descargan por separado al escanear cada etiqueta.
+Las etiquetas las imprime el sistema, en tres tamaños, y los elige quien las pega. El código identifica la unidad física: Bosch, Transpo y una tercera marca del mismo regulador se descargan por separado al escanear cada etiqueta. (S-23: en el sistema son tres referencias del mismo universal, no tres marcas.)
 
 El descargue es la venta de mostrador, con módulos de administrador, logística y mostrador, y con un responsable por operación.
 

@@ -37,7 +37,7 @@ Cita los RF por número (RF-01, RF-02…) en commits (`feat(RF-06): ...`), en co
 ## Reglas de negocio
 
 1. **Código universal (RF-01).** Solo reguladores, portadiodos, algunas poleas y algunos automáticos (flag `categorias.admite_codigo_universal`). En reguladores el código de unificación es el de Transpo (ej. IM204). Fuera de ese esquema, la referencia original del proveedor es el código único. El backend rechaza `codigo_universal_id` en referencias de categorías que no lo admiten.
-2. **Existencia agrupada (RF-02).** Universal = suma de sus referencias (`SUM(existencia)`, calculada, nunca guardada). Cada referencia y marca conserva la suya; siempre se muestra el desglose.
+2. **Existencia agrupada (RF-02).** Universal = suma de sus referencias (`SUM(existencia)`, calculada, nunca guardada). Cada referencia conserva la suya; siempre se muestra el desglose por referencia (código, proveedor, calidad y existencia).
 3. **Código de barras por UNIDAD FÍSICA (RF-03).** Del local, uno por unidad, único. Escanearlo descarga solo esa unidad.
 4. **Etiquetas (RF-03).** PDF generado en backend, tres tamaños (grande, pequeño, más pequeño) elegidos por quien imprime.
 5. **Remisión (RF-05).** Ingreso a mano, ítem por ítem, al mismo inventario.
@@ -58,16 +58,15 @@ Cita los RF por número (RF-01, RF-02…) en commits (`feat(RF-06): ...`), en co
 - `referencias.existencia` se modifica SOLO en la misma transacción que crea/cambia unidades, vía un único servicio de inventario. `lockForUpdate()` sobre la unidad para que dos mostradores no vendan la misma.
 - Comando `inventario:recalcular`: compara el contador contra `COUNT(unidades disponibles)` y reporta diferencias.
 - Ventas, venta_items, reversos, movimientos_inventario y auditoria son inmutables: el modelo lanza excepción en `updating`/`deleting` (salvo el cambio de estado permitido de la venta) y no hay rutas DELETE. Única excepción en venta_items: `precio_unitario`, y solo ese campo, mientras la venta es a crédito y está abierta, vía `VentaService::cambiarPrecio`, que bloquea la venta y deja la fila de auditoría (tabla `venta_items`) en la misma transacción; el guard de `VentaItem` rechaza cualquier otra edición. Abonos y pagos, cuando existan, siguen esa misma regla.
-- Auditoría con trait reutilizable `Auditable` en referencias, codigos_universales, marcas, proveedores, categorias, clientes, ingresos y users.
+- Auditoría con trait reutilizable `Auditable` en referencias, codigos_universales, proveedores, categorias, clientes, ingresos y users.
 - Código de barras: Code128, prefijo del local + consecutivo con ceros (ej. `A8000001`), generado de forma segura ante concurrencia.
 - Frontend: ráfaga de teclas < 30 ms terminada en Enter = `escaneado`; escrito a mano o elegido en búsqueda = `digitado`.
-- Ningún nombre de marca en el código (las marcas son catálogo editable; solo aparecen en seeders).
+- **Sin marcas (S-23).** La empresa no maneja marcas: no hay tabla, campo ni pantalla de marca. Las referencias de un mismo repuesto se distinguen por código, proveedor y `calidad` opcional (`fino` | `generico`). No reintroducir el concepto.
 
 ## Supuestos (provisionales — detalle en `docs/supuestos.md`)
 
 - **Etiqueta en piezas baratas de alto volumen:** por ahora todo lleva etiqueta por unidad. No implementar modo "referencia + cantidad", pero la existencia no debe depender de lógica que impida agregarlo.
 - **Poleas y automáticos en el universal:** la categoría tiene el flag; el admin decide referencia por referencia.
-- **Tercera marca "Jota":** marcas = catálogo editable; el seeder usa una marca de ejemplo.
 - **Tiempo de respuesta:** escaneo → descuento confirmado < 300 ms p95 en red local; búsquedas < 500 ms. Log de duración en endpoints de escaneo y búsqueda. El número en segundos que pide el local sigue sin cerrarse.
 - **Tamaños de etiqueta:** `backend/config/etiquetas.php`: grande 100×50 mm, pequeño 50×25 mm, más pequeño 38×19 mm.
 - **Ingreso por escaneo (RF-04, RF-20):** el QR y el XML se descartaron (S-06 superado). El código que se escanea en un ingreso es el `codigo_referencia` del proveedor, buscado solo entre sus referencias (S-19; falta confirmar qué código traen las cajas). La referencia nueva se crea con precio de venta > 0 fijado por quien la crea (S-20). El costo de una línea nueva se prellena con el último costo confirmado de la referencia.
@@ -84,5 +83,4 @@ Cita los RF por número (RF-01, RF-02…) en commits (`feat(RF-06): ...`), en co
 4. Confirmar si una remisión puede facturarse parcialmente y cómo se corrige un vínculo equivocado ya confirmado.
 5. Etiqueta por unidad o por referencia + cantidad en piezas baratas de alto volumen.
 6. Cuáles poleas y automáticos entran al código universal.
-7. Nombre de la tercera marca (en el audio suena «Jota»).
-8. Tiempo de respuesta objetivo en segundos.
+7. Tiempo de respuesta objetivo en segundos.
