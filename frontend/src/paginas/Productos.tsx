@@ -85,6 +85,8 @@ async function traerReferencias(termino: string, proveedorId: string, pagina: nu
 /**
  * RF-01: catálogo de referencias, paginado en el servidor.
  * RF-12: el escáner localiza la unidad al momento (escaneado o digitado).
+ * Un solo campo para escanear y buscar: escribir filtra en vivo (con retardo, así una ráfaga de
+ * escáner no dispara peticiones intermedias), Enter localiza y resalta, Esc limpia.
  */
 export default function Productos() {
   const qc = useQueryClient()
@@ -94,8 +96,6 @@ export default function Productos() {
   const [proveedorId, setProveedorId] = useState('')
   /** Referencias que encontró el último escaneo (S-25: un código de barras puede estar en varios proveedores). */
   const [resaltadas, setResaltadas] = useState<number[]>([])
-  /** Código con que el último escaneo filtró la lista (se muestra como chip para quitarlo). */
-  const [filtroEscaneo, setFiltroEscaneo] = useState<string | null>(null)
   const [aviso, setAviso] = useState<Aviso | null>(null)
   const [lectura, setLectura] = useState<Lectura | null>(null)
   const [editando, setEditando] = useState<{ id: number | null; datos: Formulario } | null>(null)
@@ -143,6 +143,7 @@ export default function Productos() {
       const referencia = data.unidad?.referencia ?? lista.find((r) => r.codigo_fabricante === codigo || r.codigo_referencia === codigo) ?? lista[0]
       if (!referencia) {
         setResaltadas([])
+        lectorRef.current?.select()
         setLectura({ codigo, metodo, titulo: 'Sin coincidencia', detalle: 'No está en el catálogo' })
         setAviso({ tipo: 'error', texto: `Sin resultados para ${codigo}.` })
         return
@@ -154,8 +155,12 @@ export default function Productos() {
       const filtro = porBarras.length > 1 || referencia.codigo_fabricante === codigo ? codigo : referencia.codigo_referencia
       setResaltadas(ids)
       setQ(filtro)
-      setFiltroEscaneo(filtro)
       irA(1)
+      // Queda en el campo el código encontrado, seleccionado: el próximo escaneo lo reemplaza.
+      if (lectorRef.current) {
+        lectorRef.current.value = filtro
+        lectorRef.current.select()
+      }
       const vendida = data.unidad?.estado === 'vendida'
       const leido = data.unidad?.codigo_barras ?? codigo
       // S-23: sin marca; el proveedor y la calidad distinguen la referencia.
@@ -181,20 +186,19 @@ export default function Productos() {
   })
 
   const onCodigo = useCallback((codigo: string, metodo: MetodoCaptura) => {
-    if (lectorRef.current) lectorRef.current.value = ''
     localizar.mutate({ codigo, metodo })
   }, [localizar])
   const scanner = useScanner(onCodigo)
 
-  /** Quita el filtro (del escaneo o escrito): listado completo y foco en el lector. */
+  /** Limpia el campo único: sin filtro ni resaltado, listado completo y foco en el campo. */
   const quitarFiltro = () => {
+    if (lectorRef.current) lectorRef.current.value = ''
+    scanner.reiniciar()
     setQ('')
     setResaltadas([])
-    setFiltroEscaneo(null)
     irA(1)
     lectorRef.current?.focus()
   }
-  const hayFiltroEscaneo = filtroEscaneo !== null && q === filtroEscaneo
 
   const editar = (r: Referencia) => setEditando({
     id: r.id,
@@ -268,50 +272,37 @@ export default function Productos() {
         <div className="fila-titulo">
           <h2>Listado</h2>
           <div className="acciones">
-            <div className="busca busca-productos">
-              <Icono nombre="buscar" />
-              <input
-                placeholder="Buscar por código o descripción"
-                value={q}
-                onChange={(e) => { setQ(e.target.value); setResaltadas([]) }}
-                aria-label="Buscar productos"
-              />
-              {q && (
-                <button type="button" className="busca-limpiar" aria-label="Limpiar la búsqueda" title="Limpiar la búsqueda" onClick={quitarFiltro}>
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6L6 18" /></svg>
-                </button>
-              )}
-            </div>
-            <SelectorProveedor className="filtro" aria-label="Proveedor" value={proveedorId} onChange={setProveedorId} opcionTodos="Todos los proveedores" />
             {esAdmin && <button type="button" className="primario" onClick={() => setEditando({ id: null, datos: vacio })}>Nueva referencia</button>}
           </div>
         </div>
 
-        <input
-          ref={lectorRef}
-          className="escaner"
-          placeholder="Escanee la etiqueta, o escriba el código y pulse Enter"
-          onKeyDown={(e) => {
-            // Esc con el lector vacío quita el filtro y vuelve al listado completo.
-            if (e.key === 'Escape' && e.currentTarget.value === '' && q !== '') { e.preventDefault(); quitarFiltro(); return }
-            scanner.onKeyDown(e)
-          }}
-          onPaste={scanner.onPaste}
-          autoFocus
-          autoComplete="off"
-          aria-label="Lector de código de barras"
-        />
-        {aviso && <div className={`aviso ${aviso.tipo}`} role="status">{aviso.texto}</div>}
-        {hayFiltroEscaneo && (
-          <div className="filtro-activo">
-            <span className="chip filtro">
-              Filtrando por <strong>{filtroEscaneo}</strong>
-              <button type="button" aria-label={`Quitar el filtro ${filtroEscaneo} y ver todo el listado`} title="Quitar el filtro (Esc en el lector)" onClick={quitarFiltro}>
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6L6 18" /></svg>
+        <div className="barra-busqueda">
+          <div className="campo-unico">
+            <Icono nombre="buscar" />
+            <input
+              ref={lectorRef}
+              className="escaner"
+              placeholder="Escanee o busque por código o descripción"
+              onInput={(e) => { setQ(e.currentTarget.value); setResaltadas([]) }}
+              onKeyDown={(e) => {
+                // Esc con texto limpia el campo, el filtro y el resaltado.
+                if (e.key === 'Escape' && e.currentTarget.value !== '') { e.preventDefault(); quitarFiltro(); return }
+                scanner.onKeyDown(e)
+              }}
+              onPaste={scanner.onPaste}
+              autoFocus
+              autoComplete="off"
+              aria-label="Escanear o buscar productos"
+            />
+            {q && (
+              <button type="button" className="busca-limpiar" aria-label="Limpiar la búsqueda" title="Limpiar (Esc)" onClick={quitarFiltro}>
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6L6 18" /></svg>
               </button>
-            </span>
+            )}
           </div>
-        )}
+          <SelectorProveedor className="filtro" aria-label="Proveedor" value={proveedorId} onChange={setProveedorId} opcionTodos="Todos los proveedores" />
+        </div>
+        {aviso && <div className={`aviso ${aviso.tipo}`} role="status">{aviso.texto}</div>}
 
         <div className="tabla-contenedor">
         <div className={`tabla-scroll${cargando ? ' actualizando' : ''}`} role="table" aria-label="Productos" aria-rowcount={info?.total} ref={ventana.ref} onScroll={ventana.onScroll}>

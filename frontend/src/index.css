@@ -801,20 +801,24 @@ button.celda-editable.pendiente:hover, button.celda-editable.pendiente:focus-vis
 .listado-tarjetas [data-etiqueta]::before { content: attr(data-etiqueta); flex: none; color: var(--suave); font-size: 0.8rem; font-weight: 400; text-align: left; }
 .listado-tarjetas .acciones-fila { margin-top: auto; display: flex; justify-content: flex-end; gap: 8px; }
 
-/* Productos: búsqueda con botón para limpiar y chip del filtro que dejó el escaneo. */
-.busca-productos input { min-width: 280px; padding-right: 34px; }
+/* Productos: un solo campo para escanear y buscar, con lupa y botón para limpiar; proveedor al lado. */
+.barra-busqueda { display: flex; gap: 10px; align-items: flex-start; }
+.barra-busqueda .selector.filtro { width: 240px; flex: none; }
+.barra-busqueda .selector.filtro input { min-height: 50px; }
+.campo-unico { position: relative; flex: 1; min-width: 0; display: flex; align-items: center; }
+.campo-unico > svg { position: absolute; left: 14px; color: var(--suave); pointer-events: none; }
+.campo-unico .escaner { margin-bottom: 8px; padding-left: 44px; padding-right: 46px; text-overflow: ellipsis; }
+.campo-unico > svg, .campo-unico .busca-limpiar { top: 50%; transform: translateY(calc(-50% - 4px)); }
 button.busca-limpiar {
-  position: absolute; right: 6px; width: 26px; height: 26px; padding: 0;
-  display: grid; place-items: center; border: none; border-radius: 6px; background: transparent; color: var(--suave);
+  position: absolute; right: 8px; width: 34px; height: 34px; padding: 0;
+  display: grid; place-items: center; border: none; border-radius: 8px; background: transparent; color: var(--suave);
 }
 button.busca-limpiar:hover { background: var(--suave-fondo); color: var(--texto); }
-.filtro-activo { margin-top: 8px; }
-.chip.filtro { display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 10px; font-size: 0.85rem; background: #E4EBFA; color: var(--primario); }
-.chip.filtro button { width: 24px; height: 24px; padding: 0; display: grid; place-items: center; border: none; border-radius: 999px; background: transparent; color: inherit; }
-.chip.filtro button:hover { background: #fff; }
 @media (max-width: 639px) {
-  .busca-productos, .busca-productos input { width: 100%; min-width: 0; }
-  .chip.filtro button { width: 32px; height: 32px; }
+  .barra-busqueda { flex-direction: column; align-items: stretch; gap: 0; }
+  .barra-busqueda .selector.filtro { width: 100%; margin-bottom: 8px; }
+  .campo-unico .escaner { font-size: 1rem; padding-left: 38px; padding-right: 40px; }
+  .campo-unico > svg { left: 11px; }
 }
 /* Referencia: el código se trunca con …; el chip de calidad pasa a una segunda línea si no cabe. */
 .tabla-rejilla .celda-referencia { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; white-space: normal; }
