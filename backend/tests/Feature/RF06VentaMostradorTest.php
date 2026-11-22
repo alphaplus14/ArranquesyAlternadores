@@ -25,6 +25,52 @@ it('RF-06: cada escaneo descuenta de inmediato, antes de cerrar la venta, y deja
         ->and(MovimientoInventario::where('tipo', 'venta')->where('unidad_id', $unidad->id)->value('usuario_id'))->toBe($mostrador->id);
 });
 
+it('RF-06: escanear devuelve el ítem con la misma forma que GET /ventas/{id}, sin perder los campos de antes', function () {
+    $mostrador = actuarComo(Rol::Mostrador);
+    $ventaId = $this->postJson('/api/ventas')->json('id');
+    $unidad = unidadDe('RN-4410');
+
+    $respuesta = $this->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => $unidad->codigo_barras, 'metodo_captura' => 'escaneado'])
+        ->assertCreated()
+        // Campos que ya existían (aviso de la pantalla): no se quitan ni se renombran.
+        ->assertJsonStructure([
+            'venta_item_id', 'metodo_captura',
+            'unidad' => ['id', 'codigo_barras', 'estado'],
+            'referencia' => ['id', 'codigo_referencia', 'descripcion', 'marca', 'existencia'],
+        ])
+        // Lo nuevo: el ítem listo para agregarlo a la venta en caché, sin otro GET.
+        ->assertJsonPath('venta_id', $ventaId)
+        ->assertJsonPath('item.usuario.id', $mostrador->id)
+        ->assertJsonPath('item.reverso_id', null)
+        ->assertJsonPath('item.metodo_captura', 'escaneado')
+        ->assertJsonPath('item.unidad.codigo_barras', $unidad->codigo_barras)
+        ->assertJsonPath('item.unidad.referencia.codigo_referencia', 'RN-4410')
+        ->json();
+
+    expect($respuesta['item']['id'])->toBe($respuesta['venta_item_id']);
+
+    // El ítem del escaneo es idéntico al que trae la venta completa.
+    $itemDeLaVenta = collect($this->getJson("/api/ventas/{$ventaId}")->json('items'))->firstWhere('id', $respuesta['item']['id']);
+    expect($respuesta['item'])->toEqual($itemDeLaVenta);
+});
+
+it('RF-06: la respuesta ampliada del escaneo no agrega consultas (sin N+1)', function () {
+    actuarComo(Rol::Mostrador);
+    $ventaId = $this->postJson('/api/ventas')->json('id');
+    $codigos = [unidadDe('RN-4410')->codigo_barras, unidadDe('AC-77812')->codigo_barras];
+
+    $consultas = [];
+    foreach ($codigos as $codigo) {
+        \Illuminate\Support\Facades\DB::enableQueryLog();
+        \Illuminate\Support\Facades\DB::flushQueryLog();
+        $this->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => $codigo, 'metodo_captura' => 'escaneado'])->assertCreated();
+        $consultas[] = count(\Illuminate\Support\Facades\DB::getQueryLog());
+    }
+
+    // El segundo escaneo cuesta lo mismo que el primero aunque la venta ya tenga ítems.
+    expect($consultas[1])->toBe($consultas[0]);
+});
+
 it('RF-06: una venta baja la unidad escaneada y baja el total del universal', function () {
     actuarComo(Rol::Mostrador);
     $ventaId = $this->postJson('/api/ventas')->json('id');
