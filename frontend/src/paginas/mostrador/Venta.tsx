@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeError } from '../../api/cliente'
-import type { Cliente, MetodoCaptura, Pagina, Referencia, Venta as TVenta, VentaItem } from '../../api/tipos'
+import type { Cliente, MetodoCaptura, Pagina, Referencia, RespuestaEscaneo, Venta as TVenta, VentaItem } from '../../api/tipos'
 import Medida from '../../componentes/Medida'
 import Resumen from '../../componentes/Resumen'
 import { useScanner } from '../../hooks/useScanner'
@@ -66,16 +66,33 @@ export default function Venta() {
 
   const escanear = useMutation({
     mutationFn: async ({ codigo, metodo }: { codigo: string; metodo: MetodoCaptura }) =>
-      (await api.post(`/ventas/${ventaId}/escanear`, { codigo_barras: codigo, metodo_captura: metodo })).data,
+      (await api.post<RespuestaEscaneo>(`/ventas/${ventaId}/escanear`, { codigo_barras: codigo, metodo_captura: metodo })).data,
     onSuccess: (r) => {
       setAviso({
         tipo: 'ok',
         texto: `✓ ${r.unidad.codigo_barras} · ${r.referencia.codigo_referencia} ${r.referencia.marca} — quedan ${r.referencia.existencia} (${r.metodo_captura})`,
       })
       setUltimoEscaneado(r.venta_item_id)
+      // RF-06: una sola petición por escaneo. El ítem llega completo y se agrega a la venta en caché.
+      // Actualización funcional: dos escaneos seguidos parten cada uno del estado más reciente.
+      const clave = ['venta', r.venta_id]
+      if (!qc.getQueryData<TVenta>(clave)) {
+        qc.invalidateQueries({ queryKey: clave })
+        return
+      }
+      // Un GET en vuelo (p. ej. al volver a enfocar la ventana) podría pisar el ítem recién agregado.
+      void qc.cancelQueries({ queryKey: clave })
+      qc.setQueryData<TVenta>(clave, (actual) =>
+        actual && !actual.items.some((i) => i.id === r.item.id)
+          ? { ...actual, items: [...actual.items, r.item] }
+          : actual,
+      )
+    },
+    onError: (e) => {
+      setAviso({ tipo: 'error', texto: mensajeError(e) })
+      // Si falló (venta cerrada en otro equipo, unidad ya vendida…), se trae la venta como estaba.
       qc.invalidateQueries({ queryKey: ['venta', ventaId] })
     },
-    onError: (e) => setAviso({ tipo: 'error', texto: mensajeError(e) }),
   })
 
   const cerrar = useMutation({

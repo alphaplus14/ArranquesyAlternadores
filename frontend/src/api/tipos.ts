@@ -156,6 +156,16 @@ export interface Venta {
   reversos: Reverso[]
 }
 
+/** RF-06: respuesta de POST /ventas/{id}/escanear. `item` tiene la misma forma que en GET /ventas/{id}. */
+export interface RespuestaEscaneo {
+  venta_id: number
+  item: VentaItem
+  venta_item_id: number
+  metodo_captura: MetodoCaptura
+  unidad: { id: number; codigo_barras: string; estado: Unidad['estado'] }
+  referencia: { id: number; codigo_referencia: string; descripcion: string; marca: string; existencia: number }
+}
+
 export interface Auditoria {
   id: number
   tabla: string
