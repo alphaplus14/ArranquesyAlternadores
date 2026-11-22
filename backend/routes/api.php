@@ -22,7 +22,7 @@ use Illuminate\Support\Facades\Route;
  * No hay rutas DELETE para ventas, venta_items, reversos, movimientos ni auditoría (RF-07, RF-11).
  */
 
-Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1')->name('login');
+Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login')->name('login');
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
