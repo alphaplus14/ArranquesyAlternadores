@@ -34,7 +34,7 @@ const ALTO_TARJETA = { admin: 236, otro: 192 }
 /** Columnas por modo. La Descripción es la única flexible; el resto, ancho fijo. */
 function columnasDe(modo: Modo, esAdmin: boolean) {
   const acciones = esAdmin ? ' 92px' : ''
-  if (modo === 'completa') return `168px minmax(0, 1fr) 150px 120px 104px 64px 88px${acciones}`
+  if (modo === 'completa') return `176px minmax(0, 1fr) 150px 120px 104px 72px 88px${acciones}`
   return `150px minmax(0, 1fr) 132px 104px 88px${acciones}`
 }
 
@@ -89,6 +89,8 @@ export default function Productos() {
   const [q, setQ] = useState('')
   const [proveedorId, setProveedorId] = useState('')
   const [resaltada, setResaltada] = useState<number | null>(null)
+  /** Código con que el último escaneo filtró la lista (se muestra como chip para quitarlo). */
+  const [filtroEscaneo, setFiltroEscaneo] = useState<string | null>(null)
   const [aviso, setAviso] = useState<Aviso | null>(null)
   const [lectura, setLectura] = useState<Lectura | null>(null)
   const [editando, setEditando] = useState<{ id: number | null; datos: Formulario } | null>(null)
@@ -140,19 +142,25 @@ export default function Productos() {
       }
       setResaltada(referencia.id)
       setQ(referencia.codigo_referencia)
+      setFiltroEscaneo(referencia.codigo_referencia)
       irA(1)
       const vendida = data.unidad?.estado === 'vendida'
+      const leido = data.unidad?.codigo_barras ?? codigo
       // S-23: sin marca; el proveedor y la calidad distinguen la referencia.
-      const origen = [referencia.proveedor?.nombre, referencia.calidad && NOMBRE_CALIDAD[referencia.calidad]].filter(Boolean).join(' · ')
+      const calidad = referencia.calidad ? NOMBRE_CALIDAD[referencia.calidad] : null
+      const origen = [referencia.proveedor?.nombre, calidad].filter(Boolean).join(' · ')
       setLectura({
-        codigo: data.unidad?.codigo_barras ?? codigo,
+        codigo: leido,
         metodo,
         titulo: referencia.codigo_referencia,
         detalle: vendida ? 'Unidad vendida' : `${origen ? `${origen} · ` : ''}existencia ${referencia.existencia}`,
       })
+      // El código leído no se repite si es el mismo de la referencia (p. ej. el de la caja).
+      const que = leido === referencia.codigo_referencia ? leido : `${leido} → ${referencia.codigo_referencia}`
+      const partes = [que, referencia.descripcion, referencia.proveedor?.nombre, calidad, `existencia ${referencia.existencia}`]
       setAviso({
         tipo: vendida ? 'atencion' : 'ok',
-        texto: `${metodo === 'escaneado' ? 'Escaneado' : 'Digitado'} · ${data.unidad?.codigo_barras ?? codigo} · ${referencia.codigo_referencia} ${origen}`.trim(),
+        texto: `${vendida ? 'Unidad vendida · ' : ''}${metodo === 'escaneado' ? 'Escaneado' : 'Digitado'} · ${partes.filter(Boolean).join(' · ')}`,
       })
     },
     onError: (e) => {
@@ -165,6 +173,16 @@ export default function Productos() {
     localizar.mutate({ codigo, metodo })
   }, [localizar])
   const scanner = useScanner(onCodigo)
+
+  /** Quita el filtro (del escaneo o escrito): listado completo y foco en el lector. */
+  const quitarFiltro = () => {
+    setQ('')
+    setResaltada(null)
+    setFiltroEscaneo(null)
+    irA(1)
+    lectorRef.current?.focus()
+  }
+  const hayFiltroEscaneo = filtroEscaneo !== null && q === filtroEscaneo
 
   const editar = (r: Referencia) => setEditando({
     id: r.id,
@@ -193,7 +211,7 @@ export default function Productos() {
         clave="productos-resumen"
         compacto={(
           <>
-            <span><strong>{info ? info.total.toLocaleString('es-CO') : '—'}</strong> resultados</span>
+            <span><strong>{info ? info.total.toLocaleString('es-CO') : '—'}</strong> {info?.total === 1 ? 'resultado' : 'resultados'}</span>
             <span>Pág. <strong>{info ? `${info.actual}/${info.ultima}` : '—'}</strong></span>
             <span className={resultado && agotadosPagina > 0 ? 'resumen-agotados' : ''}>
               <strong>{resultado ? agotadosPagina : '—'}</strong> agotados
@@ -237,15 +255,20 @@ export default function Productos() {
         <div className="fila-titulo">
           <h2>Listado</h2>
           <div className="acciones">
-            <label className="busca">
+            <div className="busca busca-productos">
               <Icono nombre="buscar" />
               <input
-                placeholder="Buscar código o descripción"
+                placeholder="Buscar por código o descripción"
                 value={q}
                 onChange={(e) => { setQ(e.target.value); setResaltada(null) }}
                 aria-label="Buscar productos"
               />
-            </label>
+              {q && (
+                <button type="button" className="busca-limpiar" aria-label="Limpiar la búsqueda" title="Limpiar la búsqueda" onClick={quitarFiltro}>
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6L6 18" /></svg>
+                </button>
+              )}
+            </div>
             <SelectorProveedor className="filtro" aria-label="Proveedor" value={proveedorId} onChange={setProveedorId} opcionTodos="Todos los proveedores" />
             {esAdmin && <button type="button" className="primario" onClick={() => setEditando({ id: null, datos: vacio })}>Nueva referencia</button>}
           </div>
@@ -255,13 +278,27 @@ export default function Productos() {
           ref={lectorRef}
           className="escaner"
           placeholder="Escanee la etiqueta, o escriba el código y pulse Enter"
-          onKeyDown={scanner.onKeyDown}
+          onKeyDown={(e) => {
+            // Esc con el lector vacío quita el filtro y vuelve al listado completo.
+            if (e.key === 'Escape' && e.currentTarget.value === '' && q !== '') { e.preventDefault(); quitarFiltro(); return }
+            scanner.onKeyDown(e)
+          }}
           onPaste={scanner.onPaste}
           autoFocus
           autoComplete="off"
           aria-label="Lector de código de barras"
         />
         {aviso && <div className={`aviso ${aviso.tipo}`} role="status">{aviso.texto}</div>}
+        {hayFiltroEscaneo && (
+          <div className="filtro-activo">
+            <span className="chip filtro">
+              Filtrando por <strong>{filtroEscaneo}</strong>
+              <button type="button" aria-label={`Quitar el filtro ${filtroEscaneo} y ver todo el listado`} title="Quitar el filtro (Esc en el lector)" onClick={quitarFiltro}>
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6L6 18" /></svg>
+              </button>
+            </span>
+          </div>
+        )}
 
         <div className="tabla-contenedor">
         <div className={`tabla-scroll${cargando ? ' actualizando' : ''}`} role="table" aria-label="Productos" aria-rowcount={info?.total} ref={ventana.ref} onScroll={ventana.onScroll}>
@@ -271,7 +308,7 @@ export default function Productos() {
             <div role="columnheader">Proveedor</div>
             {completa && <div role="columnheader">Categoría</div>}
             <div role="columnheader" className="col-numero">Precio</div>
-            {completa && <div role="columnheader">IVA</div>}
+            {completa && <div role="columnheader" className="col-numero">IVA</div>}
             <div role="columnheader" className="col-numero">Existencia</div>
             {esAdmin && <div role="columnheader" className="col-acciones">Acciones</div>}
           </div>
@@ -290,7 +327,7 @@ export default function Productos() {
                       <div role="cell" data-etiqueta="Proveedor" className="corta" title={r.proveedor?.nombre}>{r.proveedor?.nombre}</div>
                       {completa && <div role="cell" className="corta" title={r.categoria?.nombre}>{r.categoria?.nombre}</div>}
                       <div role="cell" data-etiqueta="Precio" className="col-numero">{sinPrecio(r) ? <span className="chip sin-precio" title="No se puede vender hasta que el administrador le asigne un precio">Sin precio</span> : Number(r.precio_venta).toLocaleString('es-CO')}</div>
-                      {(completa || modo === 'tarjetas') && <div role="cell" data-etiqueta="IVA">{Number(r.iva_venta_porcentaje) === 0 ? <span className="chip">Sin IVA</span> : `${Number(r.iva_venta_porcentaje)} %`}</div>}
+                      {(completa || modo === 'tarjetas') && <div role="cell" data-etiqueta="IVA" className="col-numero">{Number(r.iva_venta_porcentaje) === 0 ? <span className="chip">Sin IVA</span> : `${Number(r.iva_venta_porcentaje)} %`}</div>}
                       <div role="cell" data-etiqueta="Existencia" className={r.existencia === 0 ? 'agotado col-numero' : 'col-numero'}>{r.existencia}</div>
                       {esAdmin && (
                         <div role="cell" className="acciones-fila">

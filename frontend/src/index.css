@@ -800,3 +800,22 @@ button.celda-editable.pendiente:hover, button.celda-editable.pendiente:focus-vis
 .listado-tarjetas [data-etiqueta] { display: flex; justify-content: space-between; gap: 12px; text-align: right; }
 .listado-tarjetas [data-etiqueta]::before { content: attr(data-etiqueta); flex: none; color: var(--suave); font-size: 0.8rem; font-weight: 400; text-align: left; }
 .listado-tarjetas .acciones-fila { margin-top: auto; display: flex; justify-content: flex-end; gap: 8px; }
+
+/* Productos: búsqueda con botón para limpiar y chip del filtro que dejó el escaneo. */
+.busca-productos input { min-width: 280px; padding-right: 34px; }
+button.busca-limpiar {
+  position: absolute; right: 6px; width: 26px; height: 26px; padding: 0;
+  display: grid; place-items: center; border: none; border-radius: 6px; background: transparent; color: var(--suave);
+}
+button.busca-limpiar:hover { background: var(--suave-fondo); color: var(--texto); }
+.filtro-activo { margin-top: 8px; }
+.chip.filtro { display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 10px; font-size: 0.85rem; background: #E4EBFA; color: var(--primario); }
+.chip.filtro button { width: 24px; height: 24px; padding: 0; display: grid; place-items: center; border: none; border-radius: 999px; background: transparent; color: inherit; }
+.chip.filtro button:hover { background: #fff; }
+@media (max-width: 639px) {
+  .busca-productos, .busca-productos input { width: 100%; min-width: 0; }
+  .chip.filtro button { width: 32px; height: 32px; }
+}
+/* Referencia: el código se trunca con …; el chip de calidad pasa a una segunda línea si no cabe. */
+.tabla-rejilla .celda-referencia { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; white-space: normal; }
+.tabla-rejilla .celda-referencia strong { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
