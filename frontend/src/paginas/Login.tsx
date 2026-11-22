@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { Navigate } from 'react-router-dom'
 import { AxiosError } from 'axios'
 import { mensajeError } from '../api/cliente'
@@ -10,20 +10,38 @@ import { rutaInicio } from '../rutas'
 
 type Campo = 'usuario' | 'password'
 
+/** Aviso del servidor: el texto viene del backend; `credenciales` es el 422 de login fallido. */
+interface Aviso { mensaje: string; tipo: 'credenciales' | 'bloqueo' | 'otro' }
+
 /**
  * Inicio de sesión con nombre de usuario. Valida mientras se escribe, sin pedir nada al servidor:
  * la única petición es la del envío. El error de un campo aparece cuando ya se tocó y se va
  * apenas se corrige. La contraseña solo es obligatoria: no se revela ninguna política aquí.
+ * Login fallido (422): se vacía la contraseña y vuelve el foco a ella. Demasiados intentos (429):
+ * "Entrar" queda deshabilitado los segundos que diga el backend. El aviso se va al escribir.
  */
 export default function Login() {
   const { usuario: sesion, entrar } = useAuth()
   const [usuario, setUsuario] = useState('')
   const [password, setPassword] = useState('')
   const [tocado, setTocado] = useState<Record<Campo, boolean>>({ usuario: false, password: false })
-  const [errorServidor, setErrorServidor] = useState<string | null>(null)
+  const [aviso, setAviso] = useState<Aviso | null>(null)
   const [enviando, setEnviando] = useState(false)
   const [verClave, setVerClave] = useState(false)
   const [bloqMayus, setBloqMayus] = useState(false)
+  /** Segundos que faltan para poder reintentar tras un 429 (0 = sin bloqueo). */
+  const [espera, setEspera] = useState(0)
+  const campoClave = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (espera <= 0) return
+    const t = window.setTimeout(() => {
+      setEspera((s) => s - 1)
+      // Terminado el bloqueo, su aviso ya no aplica.
+      if (espera === 1) setAviso((a) => (a?.tipo === 'bloqueo' ? null : a))
+    }, 1000)
+    return () => window.clearTimeout(t)
+  }, [espera])
 
   if (sesion) return <Navigate to={rutaInicio(sesion.rol)} replace />
 
@@ -46,15 +64,26 @@ export default function Login() {
 
   const enviar = async () => {
     setTocado({ usuario: true, password: true })
-    if (invalido || enviando) return
+    if (invalido || enviando || espera > 0) return
     setEnviando(true)
-    setErrorServidor(null)
+    setAviso(null)
     try {
       await entrar(usuario, password)
     } catch (err) {
-      setErrorServidor(err instanceof AxiosError && err.response?.status === 429
-        ? 'Demasiados intentos. Espera un minuto y vuelve a intentarlo.'
-        : mensajeError(err))
+      const estado = err instanceof AxiosError ? err.response?.status : undefined
+      if (estado === 422) {
+        // Se conserva el usuario; la contraseña se vacía (sin marcarla como error) y recibe el foco.
+        setAviso({ mensaje: mensajeError(err), tipo: 'credenciales' })
+        setPassword('')
+        setTocado((t) => ({ ...t, password: false }))
+        requestAnimationFrame(() => campoClave.current?.focus())
+      } else if (estado === 429) {
+        const datos = (err as AxiosError<{ message?: string; retry_after?: number }>).response?.data
+        setAviso({ mensaje: datos?.message ?? mensajeError(err), tipo: 'bloqueo' })
+        if (typeof datos?.retry_after === 'number' && datos.retry_after > 0) setEspera(Math.ceil(datos.retry_after))
+      } else {
+        setAviso({ mensaje: mensajeError(err), tipo: 'otro' })
+      }
     } finally {
       setEnviando(false)
     }
@@ -82,7 +111,7 @@ export default function Login() {
             onChange={(e) => {
               setUsuario(normalizarUsuario(e.target.value))
               tocar('usuario')
-              setErrorServidor(null)
+              setAviso(null)
             }}
             {...atributos('usuario')}
           />
@@ -92,6 +121,7 @@ export default function Login() {
         <label>Contraseña
           <span className="campo-clave">
             <input
+              ref={campoClave}
               name="password"
               type={verClave ? 'text' : 'password'}
               autoComplete="current-password"
@@ -100,7 +130,7 @@ export default function Login() {
               onChange={(e) => {
                 setPassword(e.target.value)
                 tocar('password')
-                setErrorServidor(null)
+                setAviso(null)
               }}
               onKeyDown={revisarMayus}
               onKeyUp={revisarMayus}
@@ -121,8 +151,15 @@ export default function Login() {
         {mostrar('password') && <p id="password-error" className="ayuda error">{mostrar('password')}</p>}
         {bloqMayus && <p className="ayuda atencion" role="status">Bloq Mayús está activado.</p>}
 
-        {errorServidor && <div className="aviso error" role="alert">{errorServidor}</div>}
-        <button className="primario" disabled={enviando}>{enviando ? 'Entrando…' : 'Entrar'}</button>
+        {aviso && (
+          <div className="aviso error" role="alert" aria-live="assertive">
+            {aviso.mensaje}
+            {aviso.tipo === 'credenciales' && <p className="ayuda">Si no puede entrar, consulte al administrador.</p>}
+          </div>
+        )}
+        <button className="primario" disabled={enviando || espera > 0}>
+          {enviando ? 'Entrando…' : espera > 0 ? `Reintentar en ${espera} s` : 'Entrar'}
+        </button>
         </form>
       </div>
     </div>
