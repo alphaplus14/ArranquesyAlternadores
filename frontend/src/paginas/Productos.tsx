@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeError } from '../api/cliente'
-import { NOMBRE_CALIDAD, type Calidad, type MetodoCaptura, type Pagina, type Referencia } from '../api/tipos'
+import { NOMBRE_CALIDAD, type Calidad, type MetodoCaptura, type Pagina, type Proveedor, type Referencia } from '../api/tipos'
 import ChipCalidad from '../componentes/ChipCalidad'
 import { useAuth } from '../auth/AuthProvider'
 import Icono from '../componentes/Icono'
@@ -16,7 +16,18 @@ import { useVentana } from '../hooks/useVentana'
 
 /** Filas por petición. El tope del API es 100; el DOM solo pinta las visibles. */
 const POR_PAGINA = 100
-const ALTO_FILA = 56
+/** Alto de cada fila. Grandes es la lectura cómoda; pequeños cabe más en la misma pantalla. */
+const ALTO_GRANDE = 56
+const ALTO_COMPACTO = 40
+const CLAVE_FILAS = 'productos-filas'
+
+function filasCompactasGuardadas(): boolean {
+  try {
+    return localStorage.getItem(CLAVE_FILAS) === 'compactas'
+  } catch {
+    return false
+  }
+}
 
 type Formulario = {
   codigo_referencia: string
@@ -74,9 +85,12 @@ export default function Productos() {
   const [aviso, setAviso] = useState<Aviso | null>(null)
   const [lectura, setLectura] = useState<Lectura | null>(null)
   const [editando, setEditando] = useState<{ id: number | null; datos: Formulario } | null>(null)
+  const [compactas, setCompactas] = useState(filasCompactasGuardadas)
   const lectorRef = useRef<HTMLInputElement>(null)
   const termino = useDebounce(q.trim())
-  const proveedores = useProveedores()
+  const altoFila = compactas ? ALTO_COMPACTO : ALTO_GRANDE
+  const altoFilaRef = useRef(altoFila)
+  altoFilaRef.current = altoFila
 
   const { filas, resultado, info, pagina, irA, cargando } = useListaPaginada<Referencia>({
     clave: ['referencias', termino, proveedorId, POR_PAGINA],
@@ -86,24 +100,40 @@ export default function Productos() {
   })
 
   const agotadosPagina = filas.filter((r) => r.existencia === 0).length
-  const ventana = useVentana(filas, ALTO_FILA)
+  const ventana = useVentana(filas, altoFila)
 
   const scroller = ventana.ref
   const sincronizar = ventana.sincronizar
+  const altoAnterior = useRef(altoFila)
   useEffect(() => {
     const el = scroller.current
     if (!el) return
     el.scrollTop = 0
     sincronizar()
   }, [pagina, termino, scroller, sincronizar])
+  useLayoutEffect(() => {
+    const el = scroller.current
+    const anterior = altoAnterior.current
+    if (!el || anterior === altoFila) return
+    el.scrollTop = (el.scrollTop / anterior) * altoFila
+    altoAnterior.current = altoFila
+    sincronizar()
+  }, [altoFila, scroller, sincronizar])
   useEffect(() => {
     const el = scroller.current
     if (!el || resaltada == null) return
     const indice = filas.findIndex((r) => r.id === resaltada)
     if (indice < 0) return
-    el.scrollTop = indice * ALTO_FILA
+    el.scrollTop = indice * altoFilaRef.current
     sincronizar()
   }, [resaltada, filas, scroller, sincronizar])
+
+  const elegirTamano = (siguiente: boolean) => {
+    setCompactas(siguiente)
+    try {
+      localStorage.setItem(CLAVE_FILAS, siguiente ? 'compactas' : 'grandes')
+    } catch { /* el navegador puede bloquear el almacenamiento */ }
+  }
 
   const localizar = useMutation({
     mutationFn: async ({ codigo, metodo }: { codigo: string; metodo: MetodoCaptura }) => {
@@ -217,7 +247,19 @@ export default function Productos() {
 
       <section className="tarjeta-pagina" style={{ ['--cols' as string]: columnas }}>
         <div className="fila-titulo">
-          <h2>Listado</h2>
+          <div className="fila-titulo-inicio">
+            <h2>Listado</h2>
+            <button
+              type="button"
+              className="icono-boton"
+              aria-pressed={compactas}
+              aria-label={compactas ? 'Agrandar filas' : 'Achicar filas'}
+              title={compactas ? 'Agrandar filas' : 'Achicar filas'}
+              onClick={() => elegirTamano(!compactas)}
+            >
+              <Icono nombre={compactas ? 'agrandar' : 'achicar'} />
+            </button>
+          </div>
           <div className="acciones">
             <label className="busca">
               <Icono nombre="buscar" />
@@ -228,10 +270,10 @@ export default function Productos() {
                 aria-label="Buscar productos"
               />
             </label>
-            <select aria-label="Proveedor" value={proveedorId} onChange={(e) => setProveedorId(e.target.value)}>
-              <option value="">Todos los proveedores</option>
-              {proveedores.data?.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-            </select>
+            <FiltroProveedor
+              valor={proveedorId}
+              onCambio={(id) => { setProveedorId(id); setResaltada(null) }}
+            />
             {esAdmin && <button type="button" className="primario" onClick={() => setEditando({ id: null, datos: vacio })}>Nueva referencia</button>}
           </div>
         </div>
@@ -248,7 +290,7 @@ export default function Productos() {
         />
         {aviso && <div className={`aviso ${aviso.tipo}`} role="status">{aviso.texto}</div>}
 
-        <div className="tabla-contenedor">
+        <div className={compactas ? 'tabla-contenedor filas-compactas' : 'tabla-contenedor'}>
         <div className={`tabla-scroll${cargando ? ' actualizando' : ''}`} role="table" aria-label="Productos" aria-rowcount={info?.total} ref={ventana.ref} onScroll={ventana.onScroll}>
           <div role="row" className="tabla-rejilla tabla-cabeza">
             <div role="columnheader">Referencia</div>
@@ -266,7 +308,7 @@ export default function Productos() {
               <div style={{ height: ventana.altoTotal }}>
                 <div style={{ transform: `translateY(${ventana.desplazamiento}px)` }}>
                   {ventana.visibles.map((r) => (
-                    <div role="row" key={r.id} className={r.id === resaltada ? 'tabla-rejilla tabla-fila resaltada' : 'tabla-rejilla tabla-fila'} style={{ height: ALTO_FILA }}>
+                    <div role="row" key={r.id} className={r.id === resaltada ? 'tabla-rejilla tabla-fila resaltada' : 'tabla-rejilla tabla-fila'} style={{ height: altoFila }}>
                       <div role="cell" className="corta">
                         <strong>{r.codigo_referencia}</strong>
                         {r.calidad && <> <ChipCalidad calidad={r.calidad} /></>}
@@ -318,6 +360,208 @@ export default function Productos() {
         />
       )}
     </div>
+  )
+}
+
+/** Compara sin tildes ni mayúsculas, para que «electrica» encuentre «Eléctrica». */
+function normalizar(texto: string) {
+  return texto.normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase('es')
+}
+
+function inicialDe(nombre: string) {
+  const letra = nombre.trim().charAt(0)
+  return letra ? letra.toLocaleUpperCase('es') : '?'
+}
+
+/** Elige un proveedor de GET /proveedores para filtrar el listado. */
+function FiltroProveedor({ valor, onCambio }: { valor: string; onCambio: (id: string) => void }) {
+  const proveedores = useProveedores()
+  const [abierto, setAbierto] = useState(false)
+  const botonRef = useRef<HTMLButtonElement>(null)
+  const yaAbrio = useRef(false)
+  const elegido = proveedores.data?.find((p) => String(p.id) === valor)
+  const cerrar = useCallback(() => setAbierto(false), [])
+  const elegir = useCallback((id: string) => {
+    onCambio(id)
+    setAbierto(false)
+  }, [onCambio])
+
+  useEffect(() => {
+    if (abierto) yaAbrio.current = true
+    else if (yaAbrio.current) botonRef.current?.focus()
+  }, [abierto])
+
+  const etiqueta = elegido?.nombre ?? 'Todos los proveedores'
+
+  return (
+    <>
+      <button
+        ref={botonRef}
+        type="button"
+        className={valor ? 'filtro-proveedor activo' : 'filtro-proveedor'}
+        aria-haspopup="dialog"
+        aria-expanded={abierto}
+        aria-label={elegido ? `Proveedor: ${elegido.nombre}. Cambiar filtro` : 'Filtrar por proveedor'}
+        title={etiqueta}
+        onClick={() => setAbierto(true)}
+      >
+        <span className="filtro-proveedor-texto">{etiqueta}</span>
+        <span className="filtro-proveedor-chevron"><Icono nombre="chevron" /></span>
+      </button>
+      {abierto && (
+        <DialogoProveedores
+          valor={valor}
+          proveedores={proveedores.data ?? []}
+          cargando={proveedores.isLoading}
+          error={proveedores.isError && !proveedores.data ? mensajeError(proveedores.error) : null}
+          onReintentar={() => { void proveedores.refetch() }}
+          onElegir={elegir}
+          onCerrar={cerrar}
+        />
+      )}
+    </>
+  )
+}
+
+function DialogoProveedores({
+  valor,
+  proveedores,
+  cargando,
+  error,
+  onReintentar,
+  onElegir,
+  onCerrar,
+}: {
+  valor: string
+  proveedores: Proveedor[]
+  cargando: boolean
+  error: string | null
+  onReintentar: () => void
+  onElegir: (id: string) => void
+  onCerrar: () => void
+}) {
+  const [q, setQ] = useState('')
+  const partes = normalizar(q.trim()).split(/\s+/).filter(Boolean)
+  const visibles = proveedores.filter((p) => {
+    const texto = normalizar(`${p.nombre} ${p.nit ?? ''}`)
+    return partes.every((parte) => texto.includes(parte))
+  })
+  const elegidoRef = useRef<HTMLButtonElement>(null)
+  const listaRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const alPulsar = (e: KeyboardEvent) => { if (e.key === 'Escape') onCerrar() }
+    document.addEventListener('keydown', alPulsar)
+    const anterior = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const fila = elegidoRef.current
+    const lista = listaRef.current
+    if (fila && lista) {
+      const delta = fila.getBoundingClientRect().top - lista.getBoundingClientRect().top
+      lista.scrollTop += delta - 64
+    }
+    return () => {
+      document.removeEventListener('keydown', alPulsar)
+      document.body.style.overflow = anterior
+    }
+  }, [onCerrar])
+
+  const subtitulo = error
+    ? 'No se pudo cargar el catálogo'
+    : cargando
+      ? 'Consultando el catálogo…'
+      : partes.length > 0
+        ? `${visibles.length} ${visibles.length === 1 ? 'coincidencia' : 'coincidencias'}`
+        : `${proveedores.length} ${proveedores.length === 1 ? 'proveedor' : 'proveedores'}`
+
+  return (
+    <div className="modal modal-proveedor">
+      <div className="modal-caja cuenta-modal proveedor-modal" role="dialog" aria-modal="true" aria-labelledby="filtro-proveedor-titulo">
+        <header className="modal-cabeza">
+          <span className="avatar" aria-hidden><Icono nombre="catalogo" /></span>
+          <div className="modal-cabeza-texto">
+            <h2 id="filtro-proveedor-titulo">Filtrar por proveedor</h2>
+            <p>{subtitulo}</p>
+          </div>
+          <button type="button" className="icono-boton modal-cerrar" aria-label="Cerrar" onClick={onCerrar}>
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6L6 18" /></svg>
+          </button>
+        </header>
+
+        <section className="modal-seccion selector-cuerpo">
+          <label className="busca selector-busca">
+            <Icono nombre="buscar" />
+            <input
+              autoFocus
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Buscar por nombre o NIT"
+              aria-label="Buscar proveedor"
+              autoComplete="off"
+            />
+          </label>
+
+          {error && (
+            <div className="aviso error" role="alert">
+              {error}{' '}
+              <button type="button" className="enlace" onClick={onReintentar}>Reintentar</button>
+            </div>
+          )}
+
+          <div className="selector-lista" ref={listaRef}>
+            <button
+              type="button"
+              className={valor === '' ? 'selector-opcion fijo elegido' : 'selector-opcion fijo'}
+              aria-current={valor === '' ? 'true' : undefined}
+              onClick={() => onElegir('')}
+            >
+              <span className="selector-avatar" aria-hidden><Icono nombre="catalogo" /></span>
+              <span className="selector-texto">
+                <strong>Todos los proveedores</strong>
+                <small>Sin filtrar el listado</small>
+              </span>
+              {valor === '' && <MarcaElegido />}
+            </button>
+            <ul>
+            {visibles.map((p) => {
+              const activo = String(p.id) === valor
+              return (
+                <li key={p.id}>
+                  <button
+                    ref={activo ? elegidoRef : undefined}
+                    type="button"
+                    className={activo ? 'selector-opcion elegido' : 'selector-opcion'}
+                    aria-current={activo ? 'true' : undefined}
+                    onClick={() => onElegir(String(p.id))}
+                  >
+                    <span className="selector-avatar" aria-hidden>{inicialDe(p.nombre)}</span>
+                    <span className="selector-texto">
+                      <strong>{p.nombre}</strong>
+                      {p.nit ? <small>NIT {p.nit}</small> : null}
+                    </span>
+                    {activo && <MarcaElegido />}
+                  </button>
+                </li>
+              )
+            })}
+            {!cargando && !error && proveedores.length === 0 && <li className="selector-estado">No hay proveedores en el catálogo.</li>}
+            {!cargando && !error && proveedores.length > 0 && visibles.length === 0 && (
+              <li className="selector-estado">Ningún proveedor coincide con «{q.trim()}».</li>
+            )}
+            {cargando && <li className="selector-estado">Cargando proveedores…</li>}
+            </ul>
+          </div>
+        </section>
+      </div>
+    </div>
+  )
+}
+
+function MarcaElegido() {
+  return (
+    <svg className="selector-marca" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M5 12.5l4.2 4.2L19 7.5" />
+    </svg>
   )
 }
 

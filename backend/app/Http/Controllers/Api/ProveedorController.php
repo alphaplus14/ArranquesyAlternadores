@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Proveedor;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 
 /** RF-08 (filtro de agotados) / RF-11. RF-16: plazo_dias prellena el vencimiento de las compras. */
@@ -13,7 +14,13 @@ class ProveedorController extends Controller
 {
     public function index(): JsonResponse
     {
-        return response()->json(Proveedor::orderBy('nombre')->get(['id', 'nombre', 'nit', 'plazo_dias']));
+        // RF-16: plazo_dias solo prellena el vencimiento. El listado del filtro no depende de esa columna.
+        $columnas = ['id', 'nombre', 'nit'];
+        if (Schema::hasColumn('proveedores', 'plazo_dias')) {
+            $columnas[] = 'plazo_dias';
+        }
+
+        return response()->json(Proveedor::orderBy('nombre')->get($columnas));
     }
 
     public function store(Request $request): JsonResponse

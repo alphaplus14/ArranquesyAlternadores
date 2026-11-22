@@ -120,6 +120,7 @@ export default function IngresoDetalle() {
   const dejarDeEditar = (e: Edicion) =>
     setEditando((actual) => (actual?.itemId === e.itemId && actual.campo === e.campo ? null : actual))
 
+  if (ingreso.isError) return <div className="panel"><div className="aviso error">{mensajeError(ingreso.error)}</div></div>
   if (!i) return <div className="panel">Cargando…</div>
 
   const unidades = i.items.reduce((suma, it) => suma + it.cantidad, 0)

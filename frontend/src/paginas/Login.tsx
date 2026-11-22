@@ -79,7 +79,7 @@ export default function Login() {
         requestAnimationFrame(() => campoClave.current?.focus())
       } else if (estado === 429) {
         const datos = (err as AxiosError<{ message?: string; retry_after?: number }>).response?.data
-        setAviso({ mensaje: datos?.message ?? mensajeError(err), tipo: 'bloqueo' })
+        setAviso({ mensaje: mensajeError(err), tipo: 'bloqueo' })
         if (typeof datos?.retry_after === 'number' && datos.retry_after > 0) setEspera(Math.ceil(datos.retry_after))
       } else {
         setAviso({ mensaje: mensajeError(err), tipo: 'otro' })

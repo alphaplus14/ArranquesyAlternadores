@@ -1,6 +1,6 @@
 import { Link, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { api } from '../../api/cliente'
+import { api, mensajeError } from '../../api/cliente'
 import type { DesgloseUniversal } from '../../api/tipos'
 import ChipCalidad from '../../componentes/ChipCalidad'
 import Medida from '../../componentes/Medida'
@@ -12,11 +12,12 @@ import Resumen from '../../componentes/Resumen'
  */
 export default function UniversalDetalle() {
   const { id } = useParams()
-  const { data: u } = useQuery({
+  const { data: u, isError, error } = useQuery({
     queryKey: ['universal', id],
     queryFn: async () => (await api.get<DesgloseUniversal>(`/codigos-universales/${id}`)).data,
   })
 
+  if (isError) return <div className="panel"><div className="aviso error">{mensajeError(error)}</div></div>
   if (!u) return <div className="panel">Cargando…</div>
 
   const proveedores = new Set(u.referencias.map((r) => r.proveedor.id)).size
