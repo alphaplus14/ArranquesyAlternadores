@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AbonoController;
 use App\Http\Controllers\Api\AuditoriaController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BusquedaController;
@@ -18,7 +19,7 @@ use Illuminate\Support\Facades\Route;
 
 /*
  * Regla 12: todo endpoint protegido por rol (middleware "rol"; el admin pasa siempre).
- * No hay rutas DELETE para ventas, venta_items, reversos, movimientos ni auditoría (RF-07, RF-11).
+ * No hay rutas DELETE para ventas, venta_items, reversos, movimientos, abonos ni auditoría (RF-07, RF-11, RF-15).
  */
 
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login')->name('login');
@@ -46,6 +47,12 @@ Route::middleware('auth:sanctum')->group(function () {
     // RF-13: el mostrador crea clientes al vender a crédito; editar es solo del admin.
     Route::post('/clientes', [ClienteController::class, 'store'])->middleware('rol:admin,mostrador');
 
+    // RF-15 / S-14: el mostrador registra abonos y ve el saldo; anularlos es solo del admin.
+    Route::middleware('rol:admin,mostrador')->group(function () {
+        Route::get('/clientes/{cliente}/saldo', [AbonoController::class, 'saldo']);
+        Route::post('/clientes/{cliente}/abonos', [AbonoController::class, 'store']);
+    });
+
     // Módulo administrador: catálogo (RF-01), usuarios y auditoría (RF-11).
     Route::middleware('rol:admin')->group(function () {
         Route::apiResource('categorias', CategoriaController::class)->except(['index']);
@@ -63,6 +70,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/auditoria', [AuditoriaController::class, 'index']);
 
         Route::match(['put', 'patch'], '/clientes/{cliente}', [ClienteController::class, 'update']); // RF-13
+
+        Route::post('/abonos/{abono}/anulaciones', [AbonoController::class, 'anular']); // RF-15
     });
 
     // Módulo de logística: ingreso de remisiones y facturas a mano (RF-05, RF-04, RF-09, RF-10) y etiquetas (RF-03).

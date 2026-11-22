@@ -31,4 +31,10 @@ class Cliente extends Model
     {
         return $this->hasMany(Venta::class);
     }
+
+    /** RF-15 */
+    public function abonos(): HasMany
+    {
+        return $this->hasMany(AbonoCliente::class);
+    }
 }
