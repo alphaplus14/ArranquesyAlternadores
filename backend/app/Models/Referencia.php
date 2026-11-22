@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 /**
  * RF-01 / RF-02. `existencia` no es asignable en masa: solo la cambian los servicios de inventario.
  * S-23: no hay marcas; las referencias de un repuesto se distinguen por código, proveedor y calidad.
+ * S-25: codigo_fabricante = código de barras o QR del producto (opcional, único por proveedor).
  */
 class Referencia extends Model
 {
@@ -20,7 +21,7 @@ class Referencia extends Model
     protected $table = 'referencias';
 
     protected $fillable = [
-        'codigo_referencia', 'calidad', 'proveedor_id', 'categoria_id',
+        'codigo_referencia', 'codigo_fabricante', 'calidad', 'proveedor_id', 'categoria_id',
         'codigo_universal_id', 'descripcion', 'precio_venta', 'iva_venta_porcentaje',
     ];
 

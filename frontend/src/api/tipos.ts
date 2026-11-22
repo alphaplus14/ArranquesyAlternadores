@@ -53,6 +53,8 @@ export const NOMBRE_CALIDAD: Record<Calidad, string> = { fino: 'Fino', generico:
 export interface Referencia {
   id: number
   codigo_referencia: string
+  /** S-25: código de barras o QR del producto (opcional). */
+  codigo_fabricante?: string | null
   calidad: Calidad | null
   descripcion: string
   precio_venta: string

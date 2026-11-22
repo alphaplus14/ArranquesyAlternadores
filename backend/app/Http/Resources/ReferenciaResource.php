@@ -14,6 +14,7 @@ class ReferenciaResource extends JsonResource
         return [
             'id' => $this->id,
             'codigo_referencia' => $this->codigo_referencia,
+            'codigo_fabricante' => $this->codigo_fabricante, // S-25
             'calidad' => $this->calidad,
             'descripcion' => $this->descripcion,
             'precio_venta' => $this->precio_venta,

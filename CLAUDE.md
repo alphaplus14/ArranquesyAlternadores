@@ -69,7 +69,7 @@ Cita los RF por número (RF-01, RF-02…) en commits (`feat(RF-06): ...`), en co
 - **Poleas y automáticos en el universal:** la categoría tiene el flag; el admin decide referencia por referencia.
 - **Tiempo de respuesta:** escaneo → descuento confirmado < 300 ms p95 en red local; búsquedas < 500 ms. Log de duración en endpoints de escaneo y búsqueda. El número en segundos que pide el local sigue sin cerrarse.
 - **Tamaños de etiqueta:** `backend/config/etiquetas.php`: grande 100×50 mm, pequeño 50×25 mm, más pequeño 38×19 mm.
-- **Ingreso por escaneo (RF-04, RF-20):** el QR y el XML se descartaron (S-06 superado). El código que se escanea en un ingreso es el `codigo_referencia` del proveedor, buscado solo entre sus referencias (S-19; falta confirmar qué código traen las cajas). La referencia nueva se crea con precio de venta > 0 fijado por quien la crea (S-20). El costo de una línea nueva se prellena con el último costo confirmado de la referencia.
+- **Ingreso por escaneo (RF-04, RF-20):** el QR y el XML se descartaron (S-06 superado). En un ingreso se escanea el código de barras del producto (`codigo_fabricante`, opcional) o la referencia del proveedor (`codigo_referencia`), buscados solo entre sus referencias; un código que coincide con dos referencias del mismo proveedor pide elegir (S-25, resuelve S-19). Ambos son únicos por proveedor; el mismo código en otro proveedor solo se avisa. La referencia nueva se crea con precio de venta > 0 fijado por quien la crea (S-20). El costo de una línea nueva se prellena con el último costo confirmado de la referencia.
 - **Cartera (adenda):** este sistema la lleva. Falta confirmar con Frank y el contador que Contapyme no la lleve también. Mientras tanto, no diseñar una integración con Contapyme. Solo las ventas a crédito cerradas cuentan para la cartera (S-09); plazo por defecto de clientes 30 días (S-11).
 - **Precio e IVA de venta (RF-14):** precio = `referencias.precio_venta` al escanear (S-10), siempre > 0; precio libre solo en crédito abierto (S-18); IVA de venta 19 % para toda referencia nueva, sin elegirlo en los formularios; las existentes con otro valor lo conservan (S-15).
 - **Remisión parcial y vínculo equivocado:** sin decisión. No implementar facturación parcial ni un desvínculo de algo ya confirmado hasta cerrarlo.
@@ -78,7 +78,7 @@ Cita los RF por número (RF-01, RF-02…) en commits (`feat(RF-06): ...`), en co
 ## Pendientes
 
 1. Confirmar con Frank y el contador que Contapyme no llevará también la cartera de lo que factura.
-2. Confirmar qué código traen los productos o sus cajas (S-19) y quién fija el precio de venta de una referencia nueva (S-20).
+2. Confirmar quién fija el precio de venta de una referencia nueva (S-20). (Qué código traen los productos quedó resuelto en S-25.)
 3. Confirmar con el contador el tratamiento de los descuentos (S-22) y cómo se redondea el IVA de una compra: por documento (hoy) o por línea (S-21).
 4. Confirmar si una remisión puede facturarse parcialmente y cómo se corrige un vínculo equivocado ya confirmado.
 5. Etiqueta por unidad o por referencia + cantidad en piezas baratas de alto volumen.

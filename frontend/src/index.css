@@ -837,3 +837,10 @@ button.busca-limpiar:hover { background: var(--suave-fondo); color: var(--texto)
 /* Campo con una acción al lado (p. ej. «+ Crear categoría», S-24). */
 .campo-con-accion { display: flex; flex-direction: column; gap: 4px; }
 .campo-con-accion .accion-campo { align-self: flex-end; font-size: 0.85rem; min-height: 32px; }
+
+/* S-25: código de barras del producto, texto secundario bajo la referencia. */
+.tabla-rejilla .celda-referencia .codigo-barras { flex-basis: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--suave); font-size: 0.74rem; line-height: 1.1; }
+/* S-25: elegir entre referencias cuando un código escaneado es ambiguo. */
+.eleccion-codigo p { margin: 0 0 8px; }
+.opciones-codigo { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.opciones-codigo button.secundario { min-height: 44px; text-align: left; }

@@ -14,7 +14,7 @@ use Illuminate\Http\Request;
 
 /**
  * RF-12: respaldo cuando el escáner no lee. Busca por código de barras (exacto), por código de
- * referencia o por código universal (prefijo, con índice) y devuelve las unidades disponibles
+ * referencia o por código universal (prefijo, con índice), y por código del fabricante (exacto, S-25) y devuelve las unidades disponibles
  * para elegir. Sin LIKE con comodín inicial: la velocidad es requisito.
  */
 class BusquedaController extends Controller
@@ -25,7 +25,7 @@ class BusquedaController extends Controller
 
     public function __invoke(Request $request): JsonResponse
     {
-        $q = trim((string) $request->validate(['q' => ['required', 'string', 'min:2', 'max:80']])['q']);
+        $q = trim((string) $request->validate(['q' => ['required', 'string', 'min:2', 'max:120']])['q']);
 
         $unidad = Unidad::query()
             ->where('codigo_barras', $q)
@@ -38,6 +38,7 @@ class BusquedaController extends Controller
         $referencias = Referencia::query()
             ->where(fn ($w) => $w
                 ->where('codigo_referencia', 'like', $prefijo)
+                ->orWhere('codigo_fabricante', $q) // S-25: código de barras exacto, en todos los proveedores
                 ->when($universales->isNotEmpty(), fn ($w) => $w->orWhereIn('codigo_universal_id', $universales)))
             ->with([
                 'proveedor:id,nombre',

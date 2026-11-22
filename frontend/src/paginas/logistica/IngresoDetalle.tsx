@@ -81,6 +81,16 @@ const REGLAS: Record<Campo, { etiqueta: string; validar: (n: number | null) => s
   },
 }
 
+interface OpcionAmbigua { id: number; codigo_referencia: string; codigo_fabricante: string | null; descripcion: string }
+interface Ambiguo { codigo: string; opciones: OpcionAmbigua[] }
+
+/** S-25: 422 del escaneo cuando el código coincide con varias referencias del mismo proveedor. */
+function codigoAmbiguo(error: unknown): Ambiguo | null {
+  if (!(error instanceof AxiosError) || error.response?.status !== 422) return null
+  const datos = error.response.data as { motivo?: string; codigo?: string; opciones?: OpcionAmbigua[] } | undefined
+  return datos?.motivo === 'codigo_ambiguo' && datos.opciones ? { codigo: datos.codigo ?? '', opciones: datos.opciones } : null
+}
+
 /** Cuerpo del 404 del escaneo cuando el código no es una referencia del proveedor (RF-20). */
 function codigoInexistente(error: unknown): string | null {
   if (!(error instanceof AxiosError) || error.response?.status !== 404) return null
@@ -106,6 +116,8 @@ export default function IngresoDetalle() {
   const filaRef = useRef<Fila | null>(null)
   const ponerFila = (f: Fila | null) => { filaRef.current = f; setFilaEstado(f) }
   const [quitando, setQuitando] = useState<number | null>(null)
+  /** S-25: el código leído coincide con varias referencias; se elige una. */
+  const [ambiguo, setAmbiguo] = useState<Ambiguo | null>(null)
   const [condiciones, setCondiciones] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -177,7 +189,8 @@ export default function IngresoDetalle() {
   }
 
   const escanear = useMutation({
-    mutationFn: async (codigo: string) => (await api.post<IngresoItem>(`/ingresos/${id}/escanear`, { codigo })).data,
+    mutationFn: async ({ codigo, referenciaId }: { codigo: string; referenciaId?: number }) =>
+      (await api.post<IngresoItem>(`/ingresos/${id}/escanear`, { codigo, referencia_id: referenciaId })).data,
     onSuccess: (linea) => {
       const sinCosto = Number(linea.costo_unitario) <= 0
       // Captura rápida: línea nueva o sin costo → se abre su costo con el foco (Enter guarda).
@@ -189,11 +202,17 @@ export default function IngresoDetalle() {
       })
       qc.invalidateQueries({ queryKey: ['ingreso', id] })
     },
-    onError: (e, codigo) => {
+    onError: (e, { codigo }) => {
       const inexistente = codigoInexistente(e)
       if (inexistente !== null) {
         setAviso({ tipo: 'atencion', texto: `El código ${inexistente} no es una referencia de este proveedor. Créela para agregarla.` })
         setCreando(inexistente || codigo)
+        return
+      }
+      const varias = codigoAmbiguo(e)
+      if (varias) {
+        setAviso(null)
+        setAmbiguo(varias)
         return
       }
       setAviso({ tipo: 'error', texto: mensajeError(e) })
@@ -214,13 +233,13 @@ export default function IngresoDetalle() {
 
   const onCodigo = useCallback((codigo: string) => {
     if (inputRef.current) inputRef.current.value = ''
-    escanear.mutate(codigo)
+    escanear.mutate({ codigo })
   }, [escanear])
   const scanner = useScanner(onCodigo)
 
   // El lector recupera el foco salvo que haya un diálogo abierto, una fila en edición o una
   // confirmación de quitar. Así lo que se digita en ellos no lo captura el escáner.
-  const hayDialogo = creando !== null || fila !== null || quitando !== null || condiciones
+  const hayDialogo = creando !== null || fila !== null || quitando !== null || ambiguo !== null || condiciones
   useEffect(() => {
     if (!hayDialogo && borrador) inputRef.current?.focus()
   }, [hayDialogo, borrador, escanear.isPending])
@@ -317,6 +336,32 @@ export default function IngresoDetalle() {
           </>
         )}
         {aviso && <div className={`aviso ${aviso.tipo}`} role="status">{aviso.texto}</div>}
+        {ambiguo && (
+          <div
+            className="aviso atencion eleccion-codigo"
+            role="group"
+            aria-labelledby="codigo-ambiguo-titulo"
+            onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); setAmbiguo(null) } }}
+          >
+            <p id="codigo-ambiguo-titulo">Código ambiguo: <strong>{ambiguo.codigo}</strong> coincide con varias referencias de este proveedor. ¿Cuál es?</p>
+            <div className="opciones-codigo">
+              {ambiguo.opciones.map((o, n) => (
+                <button
+                  key={o.id}
+                  type="button"
+                  className="secundario"
+                  autoFocus={n === 0}
+                  onClick={() => { setAmbiguo(null); escanear.mutate({ codigo: ambiguo.codigo, referenciaId: o.id }) }}
+                >
+                  <strong>{o.codigo_referencia}</strong>
+                  {o.codigo_fabricante && <small> · código de barras {o.codigo_fabricante}</small>}
+                  <small> · {o.descripcion}</small>
+                </button>
+              ))}
+              <button type="button" className="enlace" onClick={() => setAmbiguo(null)}>Cancelar</button>
+            </div>
+          </div>
+        )}
 
         <div className="tabla-desplazable">
         <table ref={tablaRef} className="tabla-lineas">
@@ -415,7 +460,7 @@ export default function IngresoDetalle() {
         <DialogoReferencia
           codigo={creando}
           proveedor={i.proveedor}
-          onCreada={() => { setCreando(null); escanear.mutate(creando) }}
+          onCreada={() => { setCreando(null); escanear.mutate({ codigo: creando }) }}
           onCerrar={() => setCreando(null)}
         />
       )}

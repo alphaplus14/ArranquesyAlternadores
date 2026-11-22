@@ -64,8 +64,12 @@ class IngresoController extends Controller
     /** RF-20: 201 si crea la línea, 200 si sumó 1 a la existente; 404 con motivo si el código no existe. */
     public function escanear(Request $request, Ingreso $ingreso): JsonResponse
     {
-        $codigo = $request->validate(['codigo' => ['required', 'string', 'max:80']])['codigo'];
-        $item = $this->servicio->escanear($ingreso, $codigo);
+        $datos = $request->validate([
+            'codigo' => ['required', 'string', 'max:120'],
+            // S-25: para resolver un "Código ambiguo", la referencia elegida entre las opciones.
+            'referencia_id' => ['sometimes', 'nullable', 'integer'],
+        ]);
+        $item = $this->servicio->escanear($ingreso, $datos['codigo'], $datos['referencia_id'] ?? null);
 
         return (new IngresoItemResource($item))->response()->setStatusCode($item->wasRecentlyCreated ? 201 : 200);
     }

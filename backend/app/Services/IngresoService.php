@@ -86,21 +86,18 @@ class IngresoService
     }
 
     /**
-     * RF-20 (S-19): el código leído es el codigo_referencia del proveedor del ingreso; se busca
+     * RF-20 (S-19, S-25): el código leído es el código de barras o la referencia del proveedor del ingreso; se busca
      * solo entre sus referencias, con igualdad exacta (sin prefijos). Si ya hay una línea de esa
      * referencia, suma 1; si no, la crea con cantidad 1 y el último costo confirmado de la
      * referencia (0 si no hay, y se pide antes de confirmar). wasRecentlyCreated dice cuál pasó.
      * Si la referencia no existe responde 404 con motivo referencia_inexistente y el código leído.
      */
-    public function escanear(Ingreso $ingreso, string $codigo): IngresoItem
+    public function escanear(Ingreso $ingreso, string $codigo, ?int $referenciaId = null): IngresoItem
     {
         $codigo = trim($codigo);
 
-        return $this->enBorrador($ingreso, function (Ingreso $bloqueado) use ($codigo) {
-            $referencia = Referencia::query()
-                ->where('proveedor_id', $bloqueado->proveedor_id)
-                ->where('codigo_referencia', $codigo)
-                ->first(['id', 'codigo_referencia', 'descripcion', 'iva_venta_porcentaje']);
+        return $this->enBorrador($ingreso, function (Ingreso $bloqueado) use ($codigo, $referenciaId) {
+            $referencia = $this->referenciaPorCodigo($bloqueado->proveedor_id, $codigo, $referenciaId);
 
             if ($referencia === null) {
                 throw new ReglaInventarioException(
@@ -128,6 +125,33 @@ class IngresoService
 
             return $item->setRelation('referencia', $referencia);
         });
+    }
+
+    /**
+     * S-25: entre las referencias del proveedor, el código leído puede ser el código de barras
+     * (codigo_fabricante, exacto) o la referencia (codigo_referencia, exacto). Si coincide con
+     * más de una referencia, 422 "Código ambiguo" con las opciones; con referencia_id se elige
+     * una de ellas (debe ser una de las que coinciden).
+     */
+    private function referenciaPorCodigo(int $proveedorId, string $codigo, ?int $referenciaId): ?Referencia
+    {
+        $coinciden = Referencia::query()
+            ->where('proveedor_id', $proveedorId)
+            ->where(fn ($q) => $q->where('codigo_fabricante', $codigo)->orWhere('codigo_referencia', $codigo))
+            ->when($referenciaId, fn ($q) => $q->whereKey($referenciaId))
+            ->orderBy('id')
+            ->limit(5)
+            ->get(['id', 'codigo_referencia', 'codigo_fabricante', 'descripcion', 'iva_venta_porcentaje']);
+
+        if ($coinciden->count() > 1) {
+            throw new ReglaInventarioException("Código ambiguo: {$codigo} coincide con varias referencias de este proveedor. Elija una.", 422, [
+                'motivo' => 'codigo_ambiguo',
+                'codigo' => $codigo,
+                'opciones' => $coinciden->map(fn (Referencia $r) => $r->only('id', 'codigo_referencia', 'codigo_fabricante', 'descripcion'))->values(),
+            ]);
+        }
+
+        return $coinciden->first();
     }
 
     public function agregarItem(Ingreso $ingreso, array $datos): IngresoItem

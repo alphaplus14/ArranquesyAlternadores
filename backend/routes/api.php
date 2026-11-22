@@ -27,6 +27,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me'])->middleware('rol:admin,logistica,mostrador');
 
+    // S-25: aviso de que un código ya existe con otro proveedor. Antes de /referencias/{referencia}.
+    Route::get('/referencias/coincidencias', [ReferenciaController::class, 'coincidencias'])->middleware('rol:admin,logistica');
+
     // Lectura común a los tres módulos.
     Route::middleware('rol:admin,logistica,mostrador')->group(function () {
         Route::get('/categorias', [CategoriaController::class, 'index']);

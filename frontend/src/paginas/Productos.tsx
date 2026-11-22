@@ -41,6 +41,8 @@ function columnasDe(modo: Modo, esAdmin: boolean) {
 
 type Formulario = {
   codigo_referencia: string
+  /** S-25: código de barras o QR del producto; '' = no trae. */
+  codigo_fabricante: string
   /** S-23: '' = sin calidad. */
   calidad: '' | Calidad
   proveedor_id: string
@@ -51,7 +53,7 @@ type Formulario = {
 }
 
 const vacio: Formulario = {
-  codigo_referencia: '', calidad: '', proveedor_id: '', categoria_id: '',
+  codigo_referencia: '', codigo_fabricante: '', calidad: '', proveedor_id: '', categoria_id: '',
   codigo_universal_id: '', descripcion: '', precio_venta: '',
 }
 
@@ -89,7 +91,8 @@ export default function Productos() {
   const esAdmin = tieneRol('admin')
   const [q, setQ] = useState('')
   const [proveedorId, setProveedorId] = useState('')
-  const [resaltada, setResaltada] = useState<number | null>(null)
+  /** Referencias que encontró el último escaneo (S-25: un código de barras puede estar en varios proveedores). */
+  const [resaltadas, setResaltadas] = useState<number[]>([])
   /** Código con que el último escaneo filtró la lista (se muestra como chip para quitarlo). */
   const [filtroEscaneo, setFiltroEscaneo] = useState<string | null>(null)
   const [aviso, setAviso] = useState<Aviso | null>(null)
@@ -121,12 +124,12 @@ export default function Productos() {
   }, [pagina, termino, scroller, sincronizar])
   useEffect(() => {
     const el = scroller.current
-    if (!el || resaltada == null) return
-    const indice = filas.findIndex((r) => r.id === resaltada)
+    if (!el || resaltadas.length === 0) return
+    const indice = filas.findIndex((r) => resaltadas.includes(r.id))
     if (indice < 0) return
     el.scrollTop = indice * alto
     sincronizar()
-  }, [resaltada, filas, alto, scroller, sincronizar])
+  }, [resaltadas, filas, alto, scroller, sincronizar])
 
   const localizar = useMutation({
     mutationFn: async ({ codigo, metodo }: { codigo: string; metodo: MetodoCaptura }) => {
@@ -134,16 +137,23 @@ export default function Productos() {
       return { data, codigo, metodo }
     },
     onSuccess: ({ data, codigo, metodo }) => {
-      const referencia = data.unidad?.referencia ?? comoLista(data.referencias)[0]
+      const lista = comoLista(data.referencias)
+      // Primero la que coincide exacto (referencia o código de barras, S-25); si no, la primera.
+      const referencia = data.unidad?.referencia ?? lista.find((r) => r.codigo_fabricante === codigo || r.codigo_referencia === codigo) ?? lista[0]
       if (!referencia) {
-        setResaltada(null)
+        setResaltadas([])
         setLectura({ codigo, metodo, titulo: 'Sin coincidencia', detalle: 'No está en el catálogo' })
         setAviso({ tipo: 'error', texto: `Sin resultados para ${codigo}.` })
         return
       }
-      setResaltada(referencia.id)
-      setQ(referencia.codigo_referencia)
-      setFiltroEscaneo(referencia.codigo_referencia)
+      // S-25: si el código es un código de barras, puede estar en referencias de varios proveedores:
+      // se filtra por el código leído (la búsqueda lo encuentra en todos) y se resaltan todas.
+      const porBarras = data.unidad ? [] : lista.filter((r) => r.codigo_fabricante === codigo || r.codigo_referencia === codigo)
+      const ids = porBarras.length > 1 ? porBarras.map((r) => r.id) : [referencia.id]
+      const filtro = porBarras.length > 1 || referencia.codigo_fabricante === codigo ? codigo : referencia.codigo_referencia
+      setResaltadas(ids)
+      setQ(filtro)
+      setFiltroEscaneo(filtro)
       irA(1)
       const vendida = data.unidad?.estado === 'vendida'
       const leido = data.unidad?.codigo_barras ?? codigo
@@ -161,7 +171,7 @@ export default function Productos() {
       const partes = [que, referencia.descripcion, referencia.proveedor?.nombre, calidad, `existencia ${referencia.existencia}`]
       setAviso({
         tipo: vendida ? 'atencion' : 'ok',
-        texto: `${vendida ? 'Unidad vendida · ' : ''}${metodo === 'escaneado' ? 'Escaneado' : 'Digitado'} · ${partes.filter(Boolean).join(' · ')}`,
+        texto: `${vendida ? 'Unidad vendida · ' : ''}${metodo === 'escaneado' ? 'Escaneado' : 'Digitado'} · ${partes.filter(Boolean).join(' · ')}${ids.length > 1 ? ` · y ${ids.length - 1} más con otro proveedor` : ''}`,
       })
     },
     onError: (e) => {
@@ -178,7 +188,7 @@ export default function Productos() {
   /** Quita el filtro (del escaneo o escrito): listado completo y foco en el lector. */
   const quitarFiltro = () => {
     setQ('')
-    setResaltada(null)
+    setResaltadas([])
     setFiltroEscaneo(null)
     irA(1)
     lectorRef.current?.focus()
@@ -189,6 +199,7 @@ export default function Productos() {
     id: r.id,
     datos: {
       codigo_referencia: r.codigo_referencia,
+      codigo_fabricante: r.codigo_fabricante ?? '',
       calidad: r.calidad ?? '',
       proveedor_id: String(r.proveedor_id),
       categoria_id: String(r.categoria_id),
@@ -261,7 +272,7 @@ export default function Productos() {
               <input
                 placeholder="Buscar por código o descripción"
                 value={q}
-                onChange={(e) => { setQ(e.target.value); setResaltada(null) }}
+                onChange={(e) => { setQ(e.target.value); setResaltadas([]) }}
                 aria-label="Buscar productos"
               />
               {q && (
@@ -319,10 +330,13 @@ export default function Productos() {
               <div style={{ height: ventana.altoTotal }}>
                 <div style={{ transform: `translateY(${ventana.desplazamiento}px)` }}>
                   {ventana.visibles.map((r) => (
-                    <div role="row" key={r.id} className={`tabla-rejilla tabla-fila${r.id === resaltada ? ' resaltada' : ''}`} style={{ height: alto }}>
-                      <div role="cell" className="corta celda-referencia" title={r.codigo_referencia}>
+                    <div role="row" key={r.id} className={`tabla-rejilla tabla-fila${resaltadas.includes(r.id) ? ' resaltada' : ''}`} style={{ height: alto }}>
+                      <div role="cell" className="corta celda-referencia" title={r.codigo_fabricante ? `${r.codigo_referencia} · código de barras ${r.codigo_fabricante}` : r.codigo_referencia}>
                         <strong>{r.codigo_referencia}</strong>
                         {r.calidad && <> <ChipCalidad calidad={r.calidad} /></>}
+                        {r.codigo_fabricante && r.codigo_fabricante !== r.codigo_referencia && (
+                          <small className="codigo-barras" aria-label={`Código de barras ${r.codigo_fabricante}`}>▮ {r.codigo_fabricante}</small>
+                        )}
                       </div>
                       <div role="cell" data-etiqueta="Descripción" className="corta" title={r.descripcion}>{r.descripcion}</div>
                       <div role="cell" data-etiqueta="Proveedor" className="corta" title={r.proveedor?.nombre}>{r.proveedor?.nombre}</div>
@@ -359,7 +373,7 @@ export default function Productos() {
           </div>
         </div>
         </div>
-        <Paginacion pagina={resultado} onCambiar={(n) => { irA(n); setResaltada(null) }} />
+        <Paginacion pagina={resultado} onCambiar={(n) => { irA(n); setResaltadas([]) }} />
       </section>
 
       {editando && (
@@ -388,7 +402,7 @@ function FormularioReferencia({ id, inicial, onListo, onCerrar }: { id: number |
 
   const guardar = useMutation({
     mutationFn: async () => {
-      const datos = { ...f, calidad: f.calidad || null, codigo_universal_id: admiteUniversal && f.codigo_universal_id ? Number(f.codigo_universal_id) : null }
+      const datos = { ...f, codigo_fabricante: f.codigo_fabricante.trim() || null, calidad: f.calidad || null, codigo_universal_id: admiteUniversal && f.codigo_universal_id ? Number(f.codigo_universal_id) : null }
       return id ? api.put(`/referencias/${id}`, datos) : api.post('/referencias', datos)
     },
     onSuccess: onListo,
@@ -401,7 +415,15 @@ function FormularioReferencia({ id, inicial, onListo, onCerrar }: { id: number |
     <div className="modal">
       <form className="modal-caja" onSubmit={(e) => { e.preventDefault(); guardar.mutate() }}>
         <h2>{id ? 'Editar referencia' : 'Nueva referencia'}</h2>
-        <label>Código de referencia<input required {...campo('codigo_referencia')} /></label>
+        <label>Referencia del proveedor
+          <input required={f.codigo_fabricante.trim() === ''} maxLength={80} aria-describedby={f.codigo_fabricante.trim() ? 'referencia-ayuda' : undefined} {...campo('codigo_referencia')} />
+        </label>
+        {f.codigo_fabricante.trim() !== '' && (
+          <p id="referencia-ayuda" className="ayuda">Si el producto no trae otra referencia, déjela vacía y se usará el código de barras.</p>
+        )}
+        <label>Código de barras o QR del producto (si lo trae)
+          <input maxLength={120} autoComplete="off" {...campo('codigo_fabricante')} />
+        </label>
         <label>Descripción<input required {...campo('descripcion')} /></label>
         <label>Calidad
           <select {...campo('calidad')}>

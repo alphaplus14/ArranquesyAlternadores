@@ -21,9 +21,10 @@ class ReferenciaController extends Controller
 
         $pagina = Referencia::query()
             ->with(self::RELACIONES)
-            // Prefijo sobre el código (usa el índice) o texto completo sobre la descripción.
+            // Prefijo sobre el código (usa el índice), código de barras exacto (S-25) o texto completo sobre la descripción.
             ->when($q !== '', fn ($query) => $query->where(fn ($w) => $w
                 ->where('codigo_referencia', 'like', addcslashes($q, '%_\\').'%')
+                ->orWhere('codigo_fabricante', $q)
                 ->orWhereFullText('descripcion', $q)))
             ->when($request->query('categoria_id'), fn ($query, $v) => $query->where('categoria_id', $v))
             ->when($request->query('proveedor_id'), fn ($query, $v) => $query->where('proveedor_id', $v))
@@ -32,6 +33,37 @@ class ReferenciaController extends Controller
             ->paginate(min((int) $request->query('por_pagina', 25), 100));
 
         return ReferenciaResource::collection($pagina);
+    }
+
+    /**
+     * S-25: referencias de OTROS proveedores cuyo código (referencia o código de barras) es
+     * exactamente el dado. Solo informa (aviso no bloqueante al crear); máximo 10.
+     */
+    public function coincidencias(Request $request): JsonResponse
+    {
+        $datos = $request->validate([
+            'codigo' => ['required', 'string', 'max:120'],
+            'proveedor_id' => ['nullable', 'integer'],
+        ]);
+        $codigo = trim($datos['codigo']);
+
+        $referencias = Referencia::query()
+            ->where(fn ($q) => $q->where('codigo_referencia', $codigo)->orWhere('codigo_fabricante', $codigo))
+            ->when($datos['proveedor_id'] ?? null, fn ($q, $id) => $q->where('proveedor_id', '!=', $id))
+            ->with('proveedor:id,nombre')
+            ->orderBy('id')
+            ->limit(10)
+            ->get(['id', 'codigo_referencia', 'codigo_fabricante', 'descripcion', 'proveedor_id', 'calidad', 'existencia']);
+
+        return response()->json($referencias->map(fn (Referencia $r) => [
+            'id' => $r->id,
+            'codigo_referencia' => $r->codigo_referencia,
+            'codigo_fabricante' => $r->codigo_fabricante,
+            'descripcion' => $r->descripcion,
+            'proveedor' => ['id' => $r->proveedor->id, 'nombre' => $r->proveedor->nombre],
+            'calidad' => $r->calidad,
+            'existencia' => $r->existencia,
+        ]));
     }
 
     public function store(ReferenciaRequest $request): JsonResponse
