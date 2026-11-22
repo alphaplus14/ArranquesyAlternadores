@@ -14,6 +14,9 @@
         <testsuite name="Concurrencia">
             <directory>tests/Concurrencia</directory>
         </testsuite>
+        <testsuite name="Busqueda">
+            <directory>tests/Busqueda</directory>
+        </testsuite>
     </testsuites>
     <source>
         <include>
