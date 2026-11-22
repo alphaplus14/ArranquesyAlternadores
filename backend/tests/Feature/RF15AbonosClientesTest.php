@@ -7,28 +7,11 @@ use App\Enums\TipoReverso;
 use App\Exceptions\RegistroInmutableException;
 use App\Models\AbonoCliente;
 use App\Models\Cliente;
-use App\Models\User;
-use App\Models\Venta;
 use App\Services\ReversoService;
 use App\Services\VentaService;
 use Illuminate\Support\Carbon;
 
 beforeEach(fn () => sembrarDemo());
-
-/** Venta a crédito cerrada con las unidades de RN-4410 indicadas, cada una al precio dado. */
-function ventaCreditoCerrada(Cliente $cliente, int $unidades, int $precio): Venta
-{
-    referencia('RN-4410')->update(['precio_venta' => $precio]);
-    $mostrador = User::factory()->rol(Rol::Mostrador)->create();
-    $servicio = app(VentaService::class);
-
-    $venta = $servicio->abrir($mostrador, FormaPago::Credito, $cliente->id);
-    for ($i = 0; $i < $unidades; $i++) {
-        $servicio->escanear($venta, unidadDe('RN-4410')->codigo_barras, MetodoCaptura::Escaneado, $mostrador);
-    }
-
-    return $servicio->cerrar($venta);
-}
 
 function abonar(Cliente $cliente, int $valor, array $extra = []): int
 {

@@ -3,36 +3,12 @@
 use App\Enums\Rol;
 use App\Enums\TipoIngreso;
 use App\Exceptions\RegistroInmutableException;
-use App\Models\Ingreso;
 use App\Models\PagoProveedor;
-use App\Models\Referencia;
 use App\Models\User;
 use App\Services\IngresoService;
 use Illuminate\Support\Carbon;
 
 beforeEach(fn () => sembrarDemo());
-
-/** Ingreso de una línea sin IVA (total = cantidad × costo); confirmado salvo que se pida borrador. */
-function compra(Referencia $referencia, int $cantidad, int $costo, array $encabezado = [], bool $confirmar = true): Ingreso
-{
-    $usuario = User::factory()->rol(Rol::Logistica)->create();
-    $servicio = app(IngresoService::class);
-
-    $ingreso = $servicio->crearBorrador([
-        'proveedor_id' => $referencia->proveedor_id,
-        'numero_documento' => 'DOC-'.random_int(10000, 99999),
-        'fecha' => now()->toDateString(),
-        ...$encabezado,
-    ], $usuario);
-    $servicio->agregarItem($ingreso, ['referencia_id' => $referencia->id, 'cantidad' => $cantidad, 'costo_unitario' => $costo, 'iva_porcentaje' => 0]);
-
-    return $confirmar ? $servicio->confirmar($ingreso, $usuario) : $ingreso;
-}
-
-function aCredito(string $vence = '2026-12-31'): array
-{
-    return ['forma_pago' => 'credito', 'vence_el' => $vence];
-}
 
 it('RF-17: ingreso a crédito de 500 y pago de 200 dejan saldo 300; anular el pago lo devuelve a 500', function () {
     $ref = referencia('RN-4410');

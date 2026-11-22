@@ -78,6 +78,18 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/proveedores/{proveedor}/saldo', [PagoController::class, 'saldo']);
         Route::post('/proveedores/{proveedor}/pagos', [PagoController::class, 'store']);
         Route::post('/pagos/{pago}/anulaciones', [PagoController::class, 'anular']);
+
+        // RF-18 / S-14: informes en pantalla, solo admin.
+        Route::middleware('medir:500')->group(function () {
+            Route::get('/reportes/compras', [ReporteController::class, 'compras']);
+            Route::get('/reportes/ventas-credito', [ReporteController::class, 'ventasCredito']);
+            Route::get('/reportes/cartera-clientes', [ReporteController::class, 'carteraClientes']);
+            Route::get('/reportes/cuentas-por-pagar', [ReporteController::class, 'cuentasPorPagar']);
+            Route::get('/reportes/remisiones-pendientes', [ReporteController::class, 'remisionesPendientes']);
+            Route::get('/reportes/diferencias-remision', [ReporteController::class, 'diferenciasRemision']);
+            Route::get('/clientes/{cliente}/estado-cuenta', [ReporteController::class, 'estadoCuentaCliente']);
+            Route::get('/proveedores/{proveedor}/estado-cuenta', [ReporteController::class, 'estadoCuentaProveedor']);
+        });
     });
 
     // Módulo de logística: ingreso de remisiones y facturas a mano (RF-05, RF-04, RF-09, RF-10) y etiquetas (RF-03).
