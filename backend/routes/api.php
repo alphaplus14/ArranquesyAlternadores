@@ -42,15 +42,18 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // RF-20: logística crea la referencia que no existe al escanear un ingreso; editar y desactivar son del admin.
     Route::post('/referencias', [ReferenciaController::class, 'store'])->middleware('rol:admin,logistica');
+    // S-24: logística también crea proveedores y categorías; editarlos y borrarlos es del admin.
+    Route::post('/proveedores', [ProveedorController::class, 'store'])->middleware('rol:admin,logistica');
+    Route::post('/categorias', [CategoriaController::class, 'store'])->middleware('rol:admin,logistica');
 
     // RF-13: el mostrador crea clientes al vender a crédito; editar es solo del admin.
     Route::post('/clientes', [ClienteController::class, 'store'])->middleware('rol:admin,mostrador');
 
     // Módulo administrador: catálogo (RF-01), usuarios y auditoría (RF-11).
     Route::middleware('rol:admin')->group(function () {
-        Route::apiResource('categorias', CategoriaController::class)->except(['index']);
+        Route::apiResource('categorias', CategoriaController::class)->except(['index', 'store']);
         Route::apiResource('proveedores', ProveedorController::class)
-            ->parameters(['proveedores' => 'proveedor'])->except(['index']);
+            ->parameters(['proveedores' => 'proveedor'])->except(['index', 'store']);
         Route::apiResource('codigos-universales', CodigoUniversalController::class)
             ->parameters(['codigos-universales' => 'codigoUniversal'])->except(['index', 'show']);
         Route::apiResource('referencias', ReferenciaController::class)->except(['index', 'show', 'store']);

@@ -19,8 +19,36 @@ trait Auditable
 
     protected const VALOR_OCULTO = '••••';
 
+    /**
+     * Si es true, la creación también se audita (campo "*", valor nuevo = la foto del registro).
+     * Apagado por defecto: hoy solo lo piden proveedores y categorías (S-24).
+     */
+    protected function auditaCreacion(): bool
+    {
+        return false;
+    }
+
     public static function bootAuditable(): void
     {
+        static::created(function ($modelo) {
+            if (! $modelo->auditaCreacion()) {
+                return;
+            }
+
+            Auditoria::insert([
+                'tabla' => $modelo->getTable(),
+                'registro_id' => $modelo->getKey(),
+                'campo' => '*',
+                'valor_anterior' => null,
+                'valor_nuevo' => json_encode(
+                    collect($modelo->getAttributes())->except([...static::$auditoriaExcluidos, ...static::$auditoriaOcultos]),
+                    JSON_UNESCAPED_UNICODE
+                ),
+                'usuario_id' => Auth::id(),
+                'created_at' => now(),
+            ]);
+        });
+
         static::updated(function ($modelo) {
             $filas = [];
             $ahora = now();
