@@ -29,9 +29,16 @@ class InventarioService
 {
     private const LOTE = 500;
 
+    /** RF-19: unidades nuevas de una línea; lo cubierto por remisiones ligadas ya está en inventario. */
+    public static function unidadesNuevas(IngresoItem $item): int
+    {
+        return max($item->cantidad - (int) $item->cantidad_cubierta, 0);
+    }
+
     /**
-     * RF-03 / RF-05: crea una unidad por cada cantidad de cada línea, con su código de barras,
-     * sube las existencias y registra los movimientos. Todo en bloque para no hacer N consultas.
+     * RF-03 / RF-05: crea una unidad por cada cantidad nueva de cada línea (RF-19: cantidad −
+     * cantidad_cubierta), con su código de barras, sube las existencias y registra los
+     * movimientos. Todo en bloque para no hacer N consultas.
      *
      * @param  Collection<int, IngresoItem>  $items
      * @param  list<string>  $codigos  uno por unidad, en orden
@@ -45,7 +52,7 @@ class InventarioService
         $i = 0;
 
         foreach ($items as $item) {
-            for ($n = 0; $n < $item->cantidad; $n++) {
+            for ($n = 0; $n < self::unidadesNuevas($item); $n++) {
                 $filas[] = [
                     'referencia_id' => $item->referencia_id,
                     'ingreso_item_id' => $item->id,
@@ -81,7 +88,10 @@ class InventarioService
         }
 
         // Orden fijo por id para que dos ingresos simultáneos bloqueen referencias en el mismo orden.
-        $porReferencia = $items->groupBy('referencia_id')->map->sum('cantidad')->sortKeys();
+        $porReferencia = $items->groupBy('referencia_id')
+            ->map(fn (Collection $lineas) => $lineas->sum(fn (IngresoItem $i) => self::unidadesNuevas($i)))
+            ->filter()
+            ->sortKeys();
 
         foreach ($porReferencia as $referenciaId => $cantidad) {
             Referencia::whereKey($referenciaId)->increment('existencia', $cantidad);

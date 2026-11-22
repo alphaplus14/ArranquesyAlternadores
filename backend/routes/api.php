@@ -84,6 +84,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/ingresos/{ingreso}/confirmar', [IngresoController::class, 'confirmar']);
         Route::post('/ingresos/{ingreso}/escanear', [IngresoController::class, 'escanear'])->middleware('medir:500')->name('ingresos.escanear'); // RF-20
 
+        // RF-19: vínculo remisión–factura, solo con la factura en borrador.
+        Route::get('/ingresos/{ingreso}/remisiones-disponibles', [IngresoController::class, 'remisionesDisponibles']);
+        Route::post('/ingresos/{ingreso}/remisiones', [IngresoController::class, 'ligarRemisiones']);
+        Route::delete('/ingresos/{ingreso}/remisiones/{remision}', [IngresoController::class, 'desligarRemision']);
+        Route::post('/ingresos/{ingreso}/prellenar', [IngresoController::class, 'prellenar']);
+
         Route::scopeBindings()->group(function () {
             Route::post('/ingresos/{ingreso}/items', [IngresoController::class, 'agregarItem']);
             Route::match(['put', 'patch'], '/ingresos/{ingreso}/items/{item}', [IngresoController::class, 'actualizarItem']);

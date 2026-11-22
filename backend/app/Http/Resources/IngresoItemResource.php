@@ -34,6 +34,7 @@ class IngresoItemResource extends JsonResource
                 'descripcion' => $this->referencia->descripcion,
             ] : null,
             'cantidad' => $this->cantidad,
+            'cantidad_cubierta' => (int) $this->cantidad_cubierta, // RF-19
             'costo_unitario' => $this->costo_unitario,
             'descuento_porcentaje' => $this->descuento_porcentaje, // S-22
             'iva_porcentaje' => $this->iva_porcentaje, // 0 = sin IVA

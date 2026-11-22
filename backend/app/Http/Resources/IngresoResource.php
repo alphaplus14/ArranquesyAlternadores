@@ -41,6 +41,19 @@ class IngresoResource extends JsonResource
             'confirmado_por' => $this->whenLoaded('confirmadoPor', fn () => $this->confirmadoPor
                 ? ['id' => $this->confirmadoPor->id, 'name' => $this->confirmadoPor->name]
                 : null),
+            // RF-19: la factura que cubre esta remisión, o las remisiones que cubre esta factura.
+            'factura' => $this->whenLoaded('factura', fn () => $this->factura
+                ? ['id' => $this->factura->id, 'numero_documento' => $this->factura->numero_documento, 'estado' => $this->factura->estado]
+                : null),
+            'remisiones' => $this->whenLoaded('remisiones', fn () => $this->remisiones->map(fn ($r) => [
+                'id' => $r->id,
+                'numero_documento' => $r->numero_documento,
+                'fecha' => $r->fecha->toDateString(),
+                'total' => $r->total,
+                'unidades' => (int) $r->unidades,
+            ])->all()),
+            'diferencia_aceptada' => (bool) $this->diferencia_aceptada,
+            'diferencia_motivo' => $this->diferencia_motivo,
             'items' => $this->whenLoaded('items', fn () => $this->items
                 ->map(fn (IngresoItem $i) => (new IngresoItemResource($i))->conTotales($totales?->lineas[$i->id] ?? null))
                 ->all()),
