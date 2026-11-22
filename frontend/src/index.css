@@ -805,6 +805,7 @@ button.celda-editable.pendiente:hover, button.celda-editable.pendiente:focus-vis
 .barra-busqueda { display: flex; gap: 10px; align-items: flex-start; }
 .barra-busqueda .selector.filtro { width: 240px; flex: none; }
 .barra-busqueda .selector.filtro input { min-height: 50px; }
+.barra-busqueda .controles-listado { margin-bottom: 8px; }
 .campo-unico { position: relative; flex: 1; min-width: 0; display: flex; align-items: center; }
 .campo-unico > svg { position: absolute; left: 14px; color: var(--suave); pointer-events: none; }
 .campo-unico .escaner { margin-bottom: 8px; padding-left: 44px; padding-right: 46px; text-overflow: ellipsis; }
@@ -854,3 +855,29 @@ button.busca-limpiar:hover { background: var(--suave-fondo); color: var(--texto)
 .codigo-fijo { display: flex; flex-direction: column; gap: 4px; }
 .valor-fijo { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-radius: 8px; background: var(--suave-fondo); font-weight: 600; overflow-wrap: anywhere; cursor: default; }
 .valor-fijo .candado { flex: none; color: var(--suave); }
+
+/* S-26: controles del listado (proveedor, ver inactivas, nueva referencia), filas inactivas y
+   confirmación/errores flotando sobre la fila (la fila tiene alto fijo por la virtualización). */
+.controles-listado { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; flex: none; }
+.controles-listado .primario { min-height: 50px; }
+.ver-inactivas { white-space: nowrap; color: var(--texto); font-size: 0.9rem; gap: 6px; }
+.tabla-fila { position: relative; }
+.tabla-fila.inactiva > [role='cell']:not(.acciones-fila) { opacity: 0.55; }
+.chip.inactiva { background: #ECEFF4; color: #3D4A63; font-weight: 600; border: 1px dashed #8C99B3; }
+.fila-flotante {
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%); z-index: 2;
+  display: flex; align-items: center; gap: 8px; max-width: calc(100% - 20px);
+  padding: 6px 8px 6px 12px; border-radius: 8px; background: #fff; border: 1px solid var(--borde); box-shadow: 0 6px 18px rgba(14, 26, 51, 0.16);
+}
+.fila-flotante span { font-size: 0.88rem; min-width: 0; }
+.fila-flotante button { padding: 4px 12px; font-size: 0.85rem; flex: none; }
+.fila-flotante.error { border-color: var(--peligro); background: var(--error-fondo); color: var(--peligro); }
+.listado-tarjetas .fila-flotante { top: auto; bottom: 18px; transform: none; left: 10px; right: 10px; flex-wrap: wrap; }
+.listado-tarjetas .fila-flotante button { min-height: 44px; flex: 1; }
+.listado-tarjetas .acciones-fila .icono-accion { width: 44px; height: 44px; }
+@media (max-width: 639px) {
+  .controles-listado { width: 100%; }
+  .controles-listado .selector.filtro { width: 100%; }
+  .controles-listado .primario { flex: 1; min-height: 44px; }
+}
+

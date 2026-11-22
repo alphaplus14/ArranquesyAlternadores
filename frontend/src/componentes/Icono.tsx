@@ -21,6 +21,8 @@ export type IconoNombre =
   | 'desactivar'
   | 'clave'
   | 'chevron'
+  | 'prohibido'
+  | 'reactivar'
 
 /** Trazos propios. No hay fuente de iconos ni librería de UI. */
 export default function Icono({ nombre }: { nombre: IconoNombre }) {
@@ -52,4 +54,6 @@ const trazos: Record<IconoNombre, ReactNode> = {
   desactivar: <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4.5 20a7.5 7.5 0 0 1 10.2-6.9M16 16l5 5M21 16l-5 5" />,
   clave: <g><circle cx="7.5" cy="15.5" r="3.5" /><path d="M10.6 13.4L21 3M16 8l2 2M19 5l2 2" /></g>,
   chevron: <path d="M6 9l6 6 6-6" />,
+  prohibido: <g><circle cx="12" cy="12" r="9" /><path d="M5.6 5.6l12.8 12.8" /></g>,
+  reactivar: <path d="M4 12a8 8 0 0 1 13.7-5.6L20 8.7M20 4v4.7h-4.7M20 12a8 8 0 0 1-13.7 5.6L4 15.3M4 20v-4.7h4.7" />,
 }

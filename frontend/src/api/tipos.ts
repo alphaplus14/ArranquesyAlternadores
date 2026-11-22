@@ -61,6 +61,8 @@ export interface Referencia {
   /** RF-14 / S-15: IVA con que se vende (0 = sin IVA). */
   iva_venta_porcentaje: string
   existencia: number
+  /** S-26: false = desactivada (no se lista, no se escanea, no entra a ingresos). */
+  activo?: boolean
   proveedor_id: number
   categoria_id: number
   codigo_universal_id: number | null

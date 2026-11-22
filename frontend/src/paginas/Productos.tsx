@@ -31,11 +31,16 @@ const ALTO_FILA = 56
 type Modo = 'completa' | 'media' | 'tarjetas'
 const modoDe = (ancho: number): Modo => (ancho === 0 || ancho >= 1100 ? 'completa' : ancho >= 760 ? 'media' : 'tarjetas')
 /** Alto de cada tarjeta, con su separación: cabecera + 5 pares + acciones (admin). */
-const ALTO_TARJETA = { admin: 236, otro: 192 }
+const ALTO_TARJETA = { conAcciones: 252, otro: 192 }
 
 /** Columnas por modo. La Descripción es la única flexible; el resto, ancho fijo. */
-function columnasDe(modo: Modo, esAdmin: boolean) {
-  const acciones = esAdmin ? ' 92px' : ''
+/** Ancho de la columna Acciones según cuántos botones de 36 px muestra (0 = sin columna). */
+function anchoAcciones(botones: number) {
+  return botones === 0 ? '' : ` ${botones * 36 + (botones - 1) * 6 + 4}px`
+}
+
+function columnasDe(modo: Modo, botones: number) {
+  const acciones = anchoAcciones(botones)
   if (modo === 'completa') return `176px minmax(0, 1fr) 150px 120px 104px 72px 88px${acciones}`
   return `150px minmax(0, 1fr) 132px 104px 88px${acciones}`
 }
@@ -75,9 +80,10 @@ function comoLista(valor: Busqueda['referencias'] | undefined): Referencia[] {
   return Array.isArray(valor) ? valor : valor.data ?? []
 }
 
-async function traerReferencias(termino: string, proveedorId: string, pagina: number) {
+async function traerReferencias(termino: string, proveedorId: string, inactivas: boolean, pagina: number) {
   const { data } = await api.get<Pagina<Referencia>>('/referencias', {
-    params: { q: termino || undefined, proveedor_id: proveedorId || undefined, page: pagina, por_pagina: POR_PAGINA },
+    // S-26: inactivas=1 las INCLUYE junto con las activas (solo admin y logística).
+    params: { q: termino || undefined, proveedor_id: proveedorId || undefined, inactivas: inactivas ? 1 : undefined, page: pagina, por_pagina: POR_PAGINA },
   })
   return data
 }
@@ -92,6 +98,12 @@ export default function Productos() {
   const qc = useQueryClient()
   const { tieneRol } = useAuth()
   const esAdmin = tieneRol('admin')
+  // S-26: admin y logística crean, editan y desactivan referencias; mostrador solo consulta.
+  const puedeGestionar = tieneRol('logistica') // el admin pasa siempre
+  const [verInactivas, setVerInactivas] = useState(false)
+  /** Fila con la confirmación "¿Desactivar?" abierta, y el error del backend en una fila. */
+  const [confirmando, setConfirmando] = useState<number | null>(null)
+  const [errorFila, setErrorFila] = useState<{ id: number; texto: string } | null>(null)
   const [q, setQ] = useState('')
   const [proveedorId, setProveedorId] = useState('')
   /** Referencias que encontró el último escaneo (S-25: un código de barras puede estar en varios proveedores). */
@@ -103,16 +115,16 @@ export default function Productos() {
   const termino = useDebounce(q.trim())
 
   const { filas, resultado, info, pagina, irA, cargando } = useListaPaginada<Referencia>({
-    clave: ['referencias', termino, proveedorId, POR_PAGINA],
-    filtros: [q, proveedorId],
+    clave: ['referencias', termino, proveedorId, verInactivas, POR_PAGINA],
+    filtros: [q, proveedorId, verInactivas],
     prefetch: true,
-    traer: (n) => traerReferencias(termino, proveedorId, n),
+    traer: (n) => traerReferencias(termino, proveedorId, verInactivas, n),
   })
 
   const agotadosPagina = filas.filter((r) => r.existencia === 0).length
   const tarjeta = useAncho<HTMLElement>()
   const modo = modoDe(tarjeta.ancho)
-  const alto = modo === 'tarjetas' ? (esAdmin ? ALTO_TARJETA.admin : ALTO_TARJETA.otro) : ALTO_FILA
+  const alto = modo === 'tarjetas' ? (puedeGestionar ? ALTO_TARJETA.conAcciones : ALTO_TARJETA.otro) : ALTO_FILA
   const ventana = useVentana(filas, alto)
 
   const scroller = ventana.ref
@@ -214,7 +226,23 @@ export default function Productos() {
     },
   })
 
-  const columnas = columnasDe(modo, esAdmin)
+  // Acciones visibles: Editar + Desactivar/Reactivar (gestión) y Historial (solo admin: Auditoría es del admin).
+  const botonesAcciones = puedeGestionar ? (esAdmin ? 3 : 2) : 0
+  const columnas = columnasDe(modo, botonesAcciones)
+
+  const enfocarCampo = () => setTimeout(() => lectorRef.current?.focus(), 0)
+  const cambiarEstado = useMutation({
+    mutationFn: async ({ r, accion }: { r: Referencia; accion: 'desactivar' | 'reactivar' }) =>
+      (await api.post<Referencia>(`/referencias/${r.id}/${accion}`)).data,
+    onSuccess: (_, { r, accion }) => {
+      setConfirmando(null)
+      setErrorFila(null)
+      setAviso({ tipo: 'ok', texto: `${r.codigo_referencia} ${accion === 'desactivar' ? 'quedó inactiva' : 'quedó activa de nuevo'}.` })
+      qc.invalidateQueries({ queryKey: ['referencias'] })
+      enfocarCampo()
+    },
+    onError: (e, { r }) => { setConfirmando(null); setErrorFila({ id: r.id, texto: mensajeError(e) }) },
+  })
   const completa = modo === 'completa'
 
   return (
@@ -271,9 +299,6 @@ export default function Productos() {
       <section ref={tarjeta.ref} className={`tarjeta-pagina listado-${modo}`} style={{ ['--cols' as string]: columnas }}>
         <div className="fila-titulo">
           <h2>Listado</h2>
-          <div className="acciones">
-            {esAdmin && <button type="button" className="primario" onClick={() => setEditando({ id: null, datos: vacio })}>Nueva referencia</button>}
-          </div>
         </div>
 
         <div className="barra-busqueda">
@@ -283,7 +308,7 @@ export default function Productos() {
               ref={lectorRef}
               className="escaner"
               placeholder="Escanee o busque por código o descripción"
-              onInput={(e) => { setQ(e.currentTarget.value); setResaltadas([]) }}
+              onInput={(e) => { setQ(e.currentTarget.value); setResaltadas([]); setAviso(null); setErrorFila(null) }}
               onKeyDown={(e) => {
                 // Esc con texto limpia el campo, el filtro y el resaltado.
                 if (e.key === 'Escape' && e.currentTarget.value !== '') { e.preventDefault(); quitarFiltro(); return }
@@ -300,7 +325,17 @@ export default function Productos() {
               </button>
             )}
           </div>
-          <SelectorProveedor className="filtro" aria-label="Proveedor" value={proveedorId} onChange={setProveedorId} opcionTodos="Todos los proveedores" />
+          <div className="controles-listado">
+            <SelectorProveedor className="filtro" aria-label="Proveedor" value={proveedorId} onChange={setProveedorId} opcionTodos="Todos los proveedores" />
+            {puedeGestionar && (
+              <>
+                <label className="check ver-inactivas">
+                  <input type="checkbox" checked={verInactivas} onChange={(e) => setVerInactivas(e.target.checked)} /> Ver inactivas
+                </label>
+                <button type="button" className="primario" onClick={() => setEditando({ id: null, datos: vacio })}>Nueva referencia</button>
+              </>
+            )}
+          </div>
         </div>
         {aviso && <div className={`aviso ${aviso.tipo}`} role="status">{aviso.texto}</div>}
 
@@ -314,7 +349,7 @@ export default function Productos() {
             <div role="columnheader" className="col-numero">Precio</div>
             {completa && <div role="columnheader" className="col-numero">IVA</div>}
             <div role="columnheader" className="col-numero">Existencia</div>
-            {esAdmin && <div role="columnheader" className="col-acciones">Acciones</div>}
+            {puedeGestionar && <div role="columnheader" className="col-acciones">Acciones</div>}
           </div>
           <div>
             {filas.length === 0 && !cargando && <div className="vacio">Sin productos para esta búsqueda.</div>}
@@ -322,9 +357,10 @@ export default function Productos() {
               <div style={{ height: ventana.altoTotal }}>
                 <div style={{ transform: `translateY(${ventana.desplazamiento}px)` }}>
                   {ventana.visibles.map((r) => (
-                    <div role="row" key={r.id} className={`tabla-rejilla tabla-fila${resaltadas.includes(r.id) ? ' resaltada' : ''}`} style={{ height: alto }}>
+                    <div role="row" key={r.id} className={`tabla-rejilla tabla-fila${resaltadas.includes(r.id) ? ' resaltada' : ''}${r.activo === false ? ' inactiva' : ''}`} style={{ height: alto }}>
                       <div role="cell" className="corta celda-referencia" title={r.codigo_fabricante ? `${r.codigo_referencia} · código de barras ${r.codigo_fabricante}` : r.codigo_referencia}>
                         <strong>{r.codigo_referencia}</strong>
+                        {r.activo === false && <span className="chip inactiva">Inactiva</span>}
                         {r.calidad && <> <ChipCalidad calidad={r.calidad} /></>}
                         {r.codigo_fabricante && r.codigo_fabricante !== r.codigo_referencia && (
                           <small className="codigo-barras" aria-label={`Código de barras ${r.codigo_fabricante}`}>▮ {r.codigo_fabricante}</small>
@@ -336,25 +372,40 @@ export default function Productos() {
                       <div role="cell" data-etiqueta="Precio" className="col-numero">{sinPrecio(r) ? <span className="chip sin-precio" title="No se puede vender hasta que el administrador le asigne un precio">Sin precio</span> : Number(r.precio_venta).toLocaleString('es-CO')}</div>
                       {(completa || modo === 'tarjetas') && <div role="cell" data-etiqueta="IVA" className="col-numero">{Number(r.iva_venta_porcentaje) === 0 ? <span className="chip">Sin IVA</span> : `${Number(r.iva_venta_porcentaje)} %`}</div>}
                       <div role="cell" data-etiqueta="Existencia" className={r.existencia === 0 ? 'agotado col-numero' : 'col-numero'}>{r.existencia}</div>
-                      {esAdmin && (
+                      {puedeGestionar && (
                         <div role="cell" className="acciones-fila">
-                          <button
-                            type="button"
-                            className="icono-accion"
-                            aria-label={`Editar ${r.codigo_referencia}`}
-                            title="Editar"
-                            onClick={() => editar(r)}
-                          >
-                            <Icono nombre="editar" />
-                          </button>
-                          <Link
-                            className="icono-accion"
-                            to={`/admin/auditoria?tabla=referencias&registro_id=${r.id}`}
-                            aria-label={`Historial de ${r.codigo_referencia}`}
-                            title="Historial"
-                          >
-                            <Icono nombre="auditoria" />
-                          </Link>
+                          {r.activo !== false && (
+                            <button type="button" className="icono-accion" aria-label={`Editar ${r.codigo_referencia}`} title="Editar" onClick={() => editar(r)}>
+                              <Icono nombre="editar" />
+                            </button>
+                          )}
+                          {r.activo === false ? (
+                            <button type="button" className="icono-accion ok" aria-label={`Reactivar ${r.codigo_referencia}`} title="Reactivar" disabled={cambiarEstado.isPending} onClick={() => cambiarEstado.mutate({ r, accion: 'reactivar' })}>
+                              <Icono nombre="reactivar" />
+                            </button>
+                          ) : (
+                            <button type="button" className="icono-accion peligro" aria-label={`Desactivar ${r.codigo_referencia}`} title="Desactivar" onClick={() => { setErrorFila(null); setConfirmando(r.id) }}>
+                              <Icono nombre="prohibido" />
+                            </button>
+                          )}
+                          {esAdmin && (
+                            <Link className="icono-accion" to={`/admin/auditoria?tabla=referencias&registro_id=${r.id}`} aria-label={`Historial de ${r.codigo_referencia}`} title="Historial">
+                              <Icono nombre="auditoria" />
+                            </Link>
+                          )}
+                        </div>
+                      )}
+                      {confirmando === r.id && (
+                        <div className="fila-flotante" role="group" aria-label={`Desactivar ${r.codigo_referencia}`} onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); setConfirmando(null); enfocarCampo() } }}>
+                          <span>¿Desactivar {r.codigo_referencia}?</span>
+                          <button type="button" className="peligro" disabled={cambiarEstado.isPending} onClick={() => cambiarEstado.mutate({ r, accion: 'desactivar' })}>Sí</button>
+                          <button type="button" className="secundario" autoFocus onClick={() => { setConfirmando(null); enfocarCampo() }}>No</button>
+                        </div>
+                      )}
+                      {errorFila?.id === r.id && (
+                        <div className="fila-flotante error" role="alert">
+                          <span>{errorFila.texto}</span>
+                          <button type="button" className="secundario" onClick={() => { setErrorFila(null); enfocarCampo() }}>Entendido</button>
                         </div>
                       )}
                     </div>
@@ -372,8 +423,8 @@ export default function Productos() {
         <FormularioReferencia
           id={editando.id}
           inicial={editando.datos}
-          onListo={() => { setEditando(null); qc.invalidateQueries({ queryKey: ['referencias'] }) }}
-          onCerrar={() => setEditando(null)}
+          onListo={() => { setEditando(null); qc.invalidateQueries({ queryKey: ['referencias'] }); enfocarCampo() }}
+          onCerrar={() => { setEditando(null); enfocarCampo() }}
         />
       )}
     </div>
