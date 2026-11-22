@@ -74,7 +74,7 @@ class VentaController extends Controller
         );
 
         // Respuesta mínima para que el escaneo sea rápido; el frontend refresca la venta aparte.
-        $item->unidad->load('referencia:id,codigo_referencia,descripcion,existencia,marca_id,codigo_universal_id', 'referencia.marca:id,nombre');
+        $item->unidad->load('referencia:id,codigo_referencia,calidad,descripcion,existencia,proveedor_id,codigo_universal_id', 'referencia.proveedor:id,nombre');
 
         return response()->json([
             'venta_item_id' => $item->id,
@@ -88,7 +88,8 @@ class VentaController extends Controller
                 'id' => $item->unidad->referencia->id,
                 'codigo_referencia' => $item->unidad->referencia->codigo_referencia,
                 'descripcion' => $item->unidad->referencia->descripcion,
-                'marca' => $item->unidad->referencia->marca->nombre,
+                'calidad' => $item->unidad->referencia->calidad,
+                'proveedor' => $item->unidad->referencia->proveedor->nombre, // S-23: en lugar de la marca
                 'existencia' => $item->unidad->referencia->existencia,
             ],
         ], 201);
@@ -136,8 +137,8 @@ class VentaController extends Controller
             'items.usuario:id,name',
             'items.reversoItem',
             'items.unidad:id,referencia_id,codigo_barras,estado',
-            'items.unidad.referencia:id,codigo_referencia,descripcion,precio_venta,existencia,marca_id',
-            'items.unidad.referencia.marca:id,nombre',
+            'items.unidad.referencia:id,codigo_referencia,calidad,descripcion,precio_venta,existencia,proveedor_id',
+            'items.unidad.referencia.proveedor:id,nombre',
             'reversos' => fn ($q) => $q->orderBy('id'),
             'reversos.usuario:id,name',
             'reversos.items',

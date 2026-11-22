@@ -8,7 +8,7 @@ import { fechaCorta, sumarDias } from '../../componentes/fechas'
 import CampoDescuento, { type ModoDescuento } from '../../componentes/CampoDescuento'
 import Medida from '../../componentes/Medida'
 import { formatoNumero, leerNumero, pesos } from '../../componentes/numeros'
-import { useCategorias, useMarcas } from '../../hooks/useCatalogos'
+import { useCategorias } from '../../hooks/useCatalogos'
 import { useScanner } from '../../hooks/useScanner'
 import Resumen from '../../componentes/Resumen'
 
@@ -345,7 +345,7 @@ function CeldaEditable({ etiqueta, inicial, validar, guardar, onGuardado, onTerm
 
 /**
  * RF-20: crea la referencia que no existe con el código leído y el proveedor del ingreso (ambos
- * fijos). Precio de venta > 0 (S-20). Logística no crea marcas ni categorías: las crea el admin.
+ * fijos). Precio de venta > 0 (S-20). Calidad opcional (S-23). Logística no crea categorías: las crea el admin.
  */
 function DialogoReferencia({ codigo, proveedor, onCreada, onCerrar }: {
   codigo: string
@@ -353,9 +353,8 @@ function DialogoReferencia({ codigo, proveedor, onCreada, onCerrar }: {
   onCreada: () => void
   onCerrar: () => void
 }) {
-  const marcas = useMarcas()
   const categorias = useCategorias()
-  const [f, setF] = useState({ marca_id: '', categoria_id: '', descripcion: '', precio_venta: '', iva_venta_porcentaje: '19', codigo_universal_id: '' })
+  const [f, setF] = useState({ calidad: '', categoria_id: '', descripcion: '', precio_venta: '', iva_venta_porcentaje: '19', codigo_universal_id: '' })
   const categoria = categorias.data?.find((c) => String(c.id) === f.categoria_id)
   const admiteUniversal = categoria?.admite_codigo_universal ?? false
 
@@ -369,7 +368,7 @@ function DialogoReferencia({ codigo, proveedor, onCreada, onCerrar }: {
     mutationFn: async () => api.post('/referencias', {
       codigo_referencia: codigo,
       proveedor_id: proveedor.id,
-      marca_id: Number(f.marca_id),
+      calidad: f.calidad || null,
       categoria_id: Number(f.categoria_id),
       descripcion: f.descripcion.trim(),
       precio_venta: Number(f.precio_venta),
@@ -380,9 +379,8 @@ function DialogoReferencia({ codigo, proveedor, onCreada, onCerrar }: {
   })
 
   const errorPrecio = f.precio_venta === '' ? null : Number(f.precio_venta) > 0 ? null : 'El precio de venta debe ser mayor que 0.'
-  const sinMarcas = marcas.data?.length === 0
   const sinCategorias = categorias.data?.length === 0
-  const completo = f.marca_id !== '' && f.categoria_id !== '' && f.descripcion.trim() !== '' && f.precio_venta !== '' && errorPrecio === null
+  const completo = f.categoria_id !== '' && f.descripcion.trim() !== '' && f.precio_venta !== '' && errorPrecio === null
   const campo = (k: keyof typeof f) => ({ value: f[k], onChange: (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value }) })
 
   return (
@@ -392,22 +390,23 @@ function DialogoReferencia({ codigo, proveedor, onCreada, onCerrar }: {
         <p className="ayuda">El código no existe para este proveedor. Al guardarla se agrega la línea al ingreso.</p>
         <label>Código de referencia<input value={codigo} readOnly aria-readonly="true" /></label>
         <label>Proveedor<input value={proveedor.nombre} readOnly aria-readonly="true" /></label>
-        <label>Marca
-          <select required autoFocus {...campo('marca_id')}>
-            <option value="">—</option>
-            {marcas.data?.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
-          </select>
-        </label>
         <label>Categoría
-          <select required {...campo('categoria_id')}>
+          <select required autoFocus {...campo('categoria_id')}>
             <option value="">—</option>
             {categorias.data?.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
           </select>
         </label>
-        {(sinMarcas || sinCategorias) && (
-          <div className="aviso atencion">No hay {sinMarcas ? 'marcas' : 'categorías'} en el catálogo. Pídale al administrador que las cree.</div>
+        {sinCategorias && (
+          <div className="aviso atencion">No hay categorías en el catálogo. Pídale al administrador que las cree.</div>
         )}
-        <p className="ayuda">Si la marca o la categoría que necesita no aparece, pídale al administrador que la cree; aquí no se crean.</p>
+        <p className="ayuda">Si la categoría que necesita no aparece, pídale al administrador que la cree; aquí no se crean.</p>
+        <label>Calidad (opcional)
+          <select {...campo('calidad')}>
+            <option value="">—</option>
+            <option value="fino">Fino</option>
+            <option value="generico">Genérico</option>
+          </select>
+        </label>
         {admiteUniversal && (
           <label>Código universal (opcional)
             <select {...campo('codigo_universal_id')}>

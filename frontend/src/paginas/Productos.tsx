@@ -3,11 +3,12 @@ import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeError } from '../api/cliente'
 import { NOMBRE_CALIDAD, type Calidad, type MetodoCaptura, type Pagina, type Referencia } from '../api/tipos'
+import ChipCalidad from '../componentes/ChipCalidad'
 import { useAuth } from '../auth/AuthProvider'
 import Icono from '../componentes/Icono'
 import Paginacion from '../componentes/Paginacion'
 import Resumen from '../componentes/Resumen'
-import { useCategorias, useMarcas, useProveedores } from '../hooks/useCatalogos'
+import { useCategorias, useProveedores } from '../hooks/useCatalogos'
 import { useDebounce } from '../hooks/useDebounce'
 import { useListaPaginada } from '../hooks/useListaPaginada'
 import { useScanner } from '../hooks/useScanner'
@@ -21,7 +22,6 @@ type Formulario = {
   codigo_referencia: string
   /** S-23: '' = sin calidad. */
   calidad: '' | Calidad
-  marca_id: string
   proveedor_id: string
   categoria_id: string
   codigo_universal_id: string
@@ -32,7 +32,7 @@ type Formulario = {
 }
 
 const vacio: Formulario = {
-  codigo_referencia: '', calidad: '', marca_id: '', proveedor_id: '', categoria_id: '',
+  codigo_referencia: '', calidad: '', proveedor_id: '', categoria_id: '',
   codigo_universal_id: '', descripcion: '', precio_venta: '', iva_venta_porcentaje: '19',
 }
 
@@ -122,16 +122,17 @@ export default function Productos() {
       setQ(referencia.codigo_referencia)
       irA(1)
       const vendida = data.unidad?.estado === 'vendida'
-      const marca = referencia.marca?.nombre ?? ''
+      // S-23: sin marca; el proveedor y la calidad distinguen la referencia.
+      const origen = [referencia.proveedor?.nombre, referencia.calidad && NOMBRE_CALIDAD[referencia.calidad]].filter(Boolean).join(' · ')
       setLectura({
         codigo: data.unidad?.codigo_barras ?? codigo,
         metodo,
         titulo: referencia.codigo_referencia,
-        detalle: vendida ? 'Unidad vendida' : `${marca} · existencia ${referencia.existencia}`,
+        detalle: vendida ? 'Unidad vendida' : `${origen ? `${origen} · ` : ''}existencia ${referencia.existencia}`,
       })
       setAviso({
         tipo: vendida ? 'atencion' : 'ok',
-        texto: `${metodo === 'escaneado' ? 'Escaneado' : 'Digitado'} · ${data.unidad?.codigo_barras ?? codigo} · ${referencia.codigo_referencia} ${marca}`.trim(),
+        texto: `${metodo === 'escaneado' ? 'Escaneado' : 'Digitado'} · ${data.unidad?.codigo_barras ?? codigo} · ${referencia.codigo_referencia} ${origen}`.trim(),
       })
     },
     onError: (e) => {
@@ -150,7 +151,6 @@ export default function Productos() {
     datos: {
       codigo_referencia: r.codigo_referencia,
       calidad: r.calidad ?? '',
-      marca_id: String(r.marca_id),
       proveedor_id: String(r.proveedor_id),
       categoria_id: String(r.categoria_id),
       codigo_universal_id: r.codigo_universal_id ? String(r.codigo_universal_id) : '',
@@ -161,8 +161,8 @@ export default function Productos() {
   })
 
   const columnas = esAdmin
-    ? '190px minmax(180px, 1.6fr) 120px 140px 130px 120px 76px 96px 92px'
-    : '190px minmax(180px, 1.6fr) 120px 140px 130px 120px 76px 96px'
+    ? '190px minmax(180px, 1.6fr) 140px 130px 120px 76px 96px 92px'
+    : '190px minmax(180px, 1.6fr) 140px 130px 120px 76px 96px'
 
   return (
     <div>
@@ -253,7 +253,6 @@ export default function Productos() {
           <div role="row" className="tabla-rejilla tabla-cabeza">
             <div role="columnheader">Referencia</div>
             <div role="columnheader">Descripción</div>
-            <div role="columnheader">Marca</div>
             <div role="columnheader">Proveedor</div>
             <div role="columnheader">Categoría</div>
             <div role="columnheader">Precio</div>
@@ -270,10 +269,9 @@ export default function Productos() {
                     <div role="row" key={r.id} className={r.id === resaltada ? 'tabla-rejilla tabla-fila resaltada' : 'tabla-rejilla tabla-fila'} style={{ height: ALTO_FILA }}>
                       <div role="cell" className="corta">
                         <strong>{r.codigo_referencia}</strong>
-                        {r.calidad && <> <span className="chip calidad">{NOMBRE_CALIDAD[r.calidad]}</span></>}
+                        {r.calidad && <> <ChipCalidad calidad={r.calidad} /></>}
                       </div>
                       <div role="cell" className="corta">{r.descripcion}</div>
-                      <div role="cell" className="corta">{r.marca?.nombre}</div>
                       <div role="cell" className="corta">{r.proveedor?.nombre}</div>
                       <div role="cell" className="corta">{r.categoria?.nombre}</div>
                       <div role="cell">{sinPrecio(r) ? <span className="chip sin-precio" title="No se puede vender hasta que el administrador le asigne un precio">Sin precio</span> : Number(r.precio_venta).toLocaleString('es-CO')}</div>
@@ -325,7 +323,6 @@ export default function Productos() {
 
 function FormularioReferencia({ id, inicial, onListo, onCerrar }: { id: number | null; inicial: Formulario; onListo: () => void; onCerrar: () => void }) {
   const [f, setF] = useState(inicial)
-  const marcas = useMarcas()
   const proveedores = useProveedores()
   const categorias = useCategorias()
   const categoria = categorias.data?.find((c) => String(c.id) === f.categoria_id)
@@ -360,9 +357,6 @@ function FormularioReferencia({ id, inicial, onListo, onCerrar }: { id: number |
             <option value="fino">Fino</option>
             <option value="generico">Genérico</option>
           </select>
-        </label>
-        <label>Marca
-          <select required {...campo('marca_id')}><option value="">—</option>{marcas.data?.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}</select>
         </label>
         <label>Proveedor
           <select required {...campo('proveedor_id')}><option value="">—</option>{proveedores.data?.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}</select>

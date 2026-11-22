@@ -4,7 +4,6 @@ use App\Enums\EstadoIngreso;
 use App\Enums\Rol;
 use App\Models\Categoria;
 use App\Models\IngresoItem;
-use App\Models\Marca;
 use App\Models\Referencia;
 
 beforeEach(fn () => sembrarDemo());
@@ -31,7 +30,6 @@ function referenciaDelProveedor(int $proveedorId, string $codigo, array $cambios
     return [
         'codigo_referencia' => $codigo,
         'proveedor_id' => $proveedorId,
-        'marca_id' => Marca::value('id'),
         'categoria_id' => Categoria::where('admite_codigo_universal', false)->value('id') ?? Categoria::value('id'),
         'descripcion' => 'Pieza recibida',
         'precio_venta' => 50000,

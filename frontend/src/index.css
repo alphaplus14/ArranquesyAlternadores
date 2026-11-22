@@ -55,8 +55,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   top: 0;
   z-index: 30;
 }
-.marca-logo { height: 3.25rem; width: auto; display: block; object-fit: contain; }
-.marca-nombre { font-size: 1.05rem; letter-spacing: 0.01em; }
+.logo-empresa { height: 3.25rem; width: auto; display: block; object-fit: contain; }
 .barra-espacio { flex: 1; }
 .icono-boton {
   width: 2.4rem; height: 2.4rem; display: grid; place-items: center;
@@ -390,7 +389,7 @@ input[aria-invalid='true'] { border-color: var(--peligro); }
   .campos-dos { grid-template-columns: 1fr; }
 }
 
-/* Login al estilo Sakai: marco con el color de la marca, tarjeta blanca y el logo arriba. */
+/* Login al estilo Sakai: marco con el color de la empresa, tarjeta blanca y el logo arriba. */
 .login {
   min-height: 100vh;
   display: flex;

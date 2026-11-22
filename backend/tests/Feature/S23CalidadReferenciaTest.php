@@ -2,7 +2,6 @@
 
 use App\Enums\Rol;
 use App\Models\Categoria;
-use App\Models\Marca;
 use App\Models\Proveedor;
 
 /*
@@ -17,7 +16,6 @@ function referenciaConCalidad(array $extra = []): array
 {
     return [
         'codigo_referencia' => 'CAL-'.uniqid(),
-        'marca_id' => Marca::value('id'),
         'proveedor_id' => Proveedor::value('id'),
         'categoria_id' => Categoria::where('admite_codigo_universal', false)->value('id'),
         'descripcion' => 'Pieza de prueba',

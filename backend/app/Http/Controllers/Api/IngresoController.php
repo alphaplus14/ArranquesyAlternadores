@@ -103,7 +103,7 @@ class IngresoController extends Controller
     {
         $unidades = Unidad::query()
             ->whereIn('ingreso_item_id', $ingreso->items()->select('id'))
-            ->with('referencia:id,codigo_referencia,descripcion,marca_id', 'referencia.marca:id,nombre')
+            ->with('referencia:id,codigo_referencia,calidad,descripcion,proveedor_id', 'referencia.proveedor:id,nombre')
             ->orderBy('id')
             ->get(['id', 'referencia_id', 'codigo_barras', 'estado']);
 

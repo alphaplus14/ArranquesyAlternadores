@@ -5,6 +5,7 @@ import { api, mensajeError } from '../../api/cliente'
 import type { Unidad } from '../../api/tipos'
 import Medida from '../../componentes/Medida'
 import Resumen from '../../componentes/Resumen'
+import ChipCalidad from '../../componentes/ChipCalidad'
 
 // Tamaños definidos en el backend (config/etiquetas.php, supuesto S-05).
 interface Tamano { clave: string; nombre: string; ancho: number; alto: number }
@@ -95,14 +96,14 @@ export default function Etiquetas() {
           </fieldset>
 
           <table>
-            <thead><tr><th></th><th>Código</th><th>Referencia</th><th>Marca</th><th>Estado</th></tr></thead>
+            <thead><tr><th></th><th>Código</th><th>Referencia</th><th>Proveedor</th><th>Estado</th></tr></thead>
             <tbody>
               {unidades.data.map((u) => (
                 <tr key={u.id}>
                   <td><input type="checkbox" checked={seleccion.has(u.id)} onChange={() => alternar(u.id)} /></td>
                   <td className="mono">{u.codigo_barras}</td>
                   <td>{u.referencia?.codigo_referencia} <small>{u.referencia?.descripcion}</small></td>
-                  <td>{u.referencia?.marca?.nombre}</td>
+                  <td>{u.referencia?.proveedor?.nombre} <ChipCalidad calidad={u.referencia?.calidad} /></td>
                   <td>{u.estado}</td>
                 </tr>
               ))}

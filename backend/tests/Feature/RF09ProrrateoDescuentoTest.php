@@ -5,7 +5,6 @@ use App\Models\Auditoria;
 use App\Models\Categoria;
 use App\Models\Ingreso;
 use App\Models\IngresoItem;
-use App\Models\Marca;
 use App\Models\Proveedor;
 use App\Models\Referencia;
 use App\Support\TotalesIngreso;
@@ -162,7 +161,7 @@ describe('por la API', function () {
     function referenciaDePrueba(string $codigo, int $proveedorId, int|string $ivaVenta = 19): Referencia
     {
         return Referencia::create([
-            'codigo_referencia' => $codigo, 'proveedor_id' => $proveedorId, 'marca_id' => Marca::value('id'),
+            'codigo_referencia' => $codigo, 'proveedor_id' => $proveedorId,
             'categoria_id' => Categoria::where('admite_codigo_universal', false)->value('id'),
             'descripcion' => "Pieza {$codigo}", 'precio_venta' => 1000, 'iva_venta_porcentaje' => $ivaVenta,
         ]);

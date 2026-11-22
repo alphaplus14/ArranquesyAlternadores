@@ -27,15 +27,21 @@ class ReferenciaRequest extends FormRequest
                     ->where('proveedor_id', $this->input('proveedor_id', $referencia?->proveedor_id))
                     ->ignore($referencia?->id),
             ],
-            'marca_id' => [$requerido, 'integer', 'exists:marcas,id'],
             'proveedor_id' => [$requerido, 'integer', 'exists:proveedores,id'],
             'categoria_id' => [$requerido, 'integer', 'exists:categorias,id'],
             'codigo_universal_id' => ['nullable', 'integer', 'exists:codigos_universales,id'],
             'calidad' => ['sometimes', 'nullable', Rule::enum(Calidad::class)], // S-23: fino | generico
+            // S-23: el sistema no maneja marcas; un cliente viejo que la mande recibe 422.
+            'marca_id' => ['prohibited'],
             'descripcion' => [$requerido, 'string', 'max:255'],
             'precio_venta' => [$requerido, 'numeric', 'gt:0', 'max:9999999999'], // RF-14: ningún precio puede ser 0
             'iva_venta_porcentaje' => ['sometimes', 'numeric', Rule::in([0, 19])], // RF-14 / S-15
         ];
+    }
+
+    public function messages(): array
+    {
+        return ['marca_id.prohibited' => 'El sistema no maneja marcas: la referencia se distingue por código, proveedor y calidad (S-23).'];
     }
 
     public function after(): array

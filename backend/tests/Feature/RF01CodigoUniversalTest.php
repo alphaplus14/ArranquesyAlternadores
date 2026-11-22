@@ -3,7 +3,6 @@
 use App\Enums\Rol;
 use App\Models\Categoria;
 use App\Models\CodigoUniversal;
-use App\Models\Marca;
 use App\Models\Proveedor;
 
 beforeEach(fn () => sembrarDemo());
@@ -26,7 +25,6 @@ it('RF-01: una referencia de una categoría que no admite universal no puede ten
 
     $this->postJson('/api/referencias', [
         'codigo_referencia' => 'ARR-X1',
-        'marca_id' => Marca::first()->id,
         'proveedor_id' => Proveedor::first()->id,
         'categoria_id' => $arranques->id,
         'codigo_universal_id' => $im204->id,
@@ -49,7 +47,6 @@ it('RF-01: el universal debe ser de la misma categoría que la referencia', func
 
     $this->postJson('/api/referencias', [
         'codigo_referencia' => 'POL-1',
-        'marca_id' => Marca::first()->id,
         'proveedor_id' => Proveedor::first()->id,
         'categoria_id' => $poleas->id,
         'codigo_universal_id' => CodigoUniversal::where('codigo', 'IM204')->value('id'), // es de reguladores

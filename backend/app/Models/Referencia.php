@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * RF-01 / RF-02. `existencia` no es asignable en masa: solo la cambian los servicios de inventario.
+ * S-23: no hay marcas; las referencias de un repuesto se distinguen por código, proveedor y calidad.
  */
 class Referencia extends Model
 {
@@ -19,7 +20,7 @@ class Referencia extends Model
     protected $table = 'referencias';
 
     protected $fillable = [
-        'codigo_referencia', 'calidad', 'marca_id', 'proveedor_id', 'categoria_id',
+        'codigo_referencia', 'calidad', 'proveedor_id', 'categoria_id',
         'codigo_universal_id', 'descripcion', 'precio_venta', 'iva_venta_porcentaje',
     ];
 
@@ -31,11 +32,6 @@ class Referencia extends Model
             'iva_venta_porcentaje' => 'decimal:2', // RF-14 / S-15: 19, o 0 = sin IVA
             'existencia' => 'integer',
         ];
-    }
-
-    public function marca(): BelongsTo
-    {
-        return $this->belongsTo(Marca::class);
     }
 
     public function proveedor(): BelongsTo

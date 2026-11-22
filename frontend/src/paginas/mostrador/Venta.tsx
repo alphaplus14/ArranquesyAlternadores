@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeError } from '../../api/cliente'
-import type { Cliente, MetodoCaptura, Pagina, Referencia, Venta as TVenta, VentaItem } from '../../api/tipos'
+import { NOMBRE_CALIDAD, type Calidad, type Cliente, type MetodoCaptura, type Pagina, type Referencia, type Venta as TVenta, type VentaItem } from '../../api/tipos'
+import ChipCalidad from '../../componentes/ChipCalidad'
 import Medida from '../../componentes/Medida'
 import Resumen from '../../componentes/Resumen'
 import { useScanner } from '../../hooks/useScanner'
@@ -77,7 +78,7 @@ export default function Venta() {
     onSuccess: (r) => {
       setAviso({
         tipo: 'ok',
-        texto: `✓ ${r.unidad.codigo_barras} · ${r.referencia.codigo_referencia} ${r.referencia.marca} — quedan ${r.referencia.existencia} (${r.metodo_captura})`,
+        texto: `✓ ${r.unidad.codigo_barras} · ${r.referencia.codigo_referencia} · ${[r.referencia.proveedor, r.referencia.calidad && NOMBRE_CALIDAD[r.referencia.calidad as Calidad]].filter(Boolean).join(' · ')} — quedan ${r.referencia.existencia} (${r.metodo_captura})`,
       })
       qc.invalidateQueries({ queryKey: ['venta', ventaId] })
     },
@@ -201,14 +202,14 @@ export default function Venta() {
         {v && (
           <table>
             <thead>
-              <tr><th>Código</th><th>Referencia</th><th>Marca</th><th>Precio</th><th>Captura</th><th>Usuario</th><th>Hora</th><th></th></tr>
+              <tr><th>Código</th><th>Referencia</th><th>Proveedor</th><th>Precio</th><th>Captura</th><th>Usuario</th><th>Hora</th><th></th></tr>
             </thead>
             <tbody>
               {v.items.map((i) => (
                 <tr key={i.id} className={i.reverso_id ? 'reversado' : ''}>
                   <td className="mono">{i.unidad.codigo_barras}</td>
                   <td>{i.unidad.referencia?.codigo_referencia} <small>{i.unidad.referencia?.descripcion}</small></td>
-                  <td>{i.unidad.referencia?.marca?.nombre}</td>
+                  <td>{i.unidad.referencia?.proveedor?.nombre} <ChipCalidad calidad={i.unidad.referencia?.calidad} /></td>
                   <td>
                     {v && precioEditable(i) && editandoPrecio === i.id ? (
                       <CeldaPrecio
@@ -322,7 +323,7 @@ function BusquedaRespaldo({ onElegir, onCerrar }: { onElegir: (codigo: string) =
         {resultado.data?.referencias.map((r) => (
           <div key={r.id} className="resultado">
             <div>
-              <strong>{r.codigo_referencia}</strong> {r.codigo_universal && <span className="chip">{r.codigo_universal.codigo}</span>} · {r.marca?.nombre} · {r.proveedor?.nombre} · existencia {r.existencia}
+              <strong>{r.codigo_referencia}</strong> {r.codigo_universal && <span className="chip">{r.codigo_universal.codigo}</span>} <ChipCalidad calidad={r.calidad} /> · {r.proveedor?.nombre} · existencia {r.existencia}
             </div>
             <div className="unidades">
               {r.unidades_disponibles?.map((u) => (

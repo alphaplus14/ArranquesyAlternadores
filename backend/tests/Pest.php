@@ -38,7 +38,7 @@ function comoSpa(): array
     return ['Referer' => 'http://'.config('sanctum.stateful')[0], 'Accept' => 'application/json'];
 }
 
-/** Siembra los ejemplos del documento (IM204 = 2+2+2, regulador IM210 en tres marcas). */
+/** Siembra los ejemplos del documento (IM204 = 2+2+2; IM210 con tres referencias, S-23). */
 function sembrarDemo(): void
 {
     test()->seed();

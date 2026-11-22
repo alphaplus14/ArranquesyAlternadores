@@ -27,22 +27,22 @@ it('RF-03: los códigos de barras son consecutivos entre ingresos y nunca se rep
     expect(Unidad::count())->toBe(Unidad::distinct()->count('codigo_barras'));
 });
 
-it('RF-03: escanear la unidad Bosch la deja en 0 y el total baja de 3 a 2, sin tocar las otras marcas', function () {
+it('RF-03: escanear la unidad de F00M144136 la deja en 0 y el total baja de 3 a 2, sin tocar las otras referencias', function () {
     $mostrador = actuarComo(Rol::Mostrador);
     $im210 = CodigoUniversal::where('codigo', 'IM210')->first();
-    $bosch = unidadDe('F00M144136');
+    $fina = unidadDe('F00M144136');
     $venta = Venta::create(['usuario_id' => $mostrador->id]);
 
     expect((int) CodigoUniversal::conExistencia()->find($im210->id)->existencia)->toBe(3);
 
     $this->postJson("/api/ventas/{$venta->id}/escanear", [
-        'codigo_barras' => $bosch->codigo_barras,
+        'codigo_barras' => $fina->codigo_barras,
         'metodo_captura' => 'escaneado',
     ])->assertCreated();
 
-    $porMarca = collect($this->getJson("/api/codigos-universales/{$im210->id}")->json('por_marca'))->pluck('existencia', 'marca');
+    $porReferencia = collect($this->getJson("/api/codigos-universales/{$im210->id}")->json('referencias'))->pluck('existencia', 'codigo_referencia');
 
-    expect($porMarca->all())->toEqual(['Bosch' => 0, 'Transpo' => 1, 'Marca Ejemplo' => 1])
+    expect($porReferencia->all())->toEqual(['F00M144136' => 0, 'IM210' => 1, 'ME-210' => 1])
         ->and((int) CodigoUniversal::conExistencia()->find($im210->id)->existencia)->toBe(2);
 });
 

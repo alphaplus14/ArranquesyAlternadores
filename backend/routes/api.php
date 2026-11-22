@@ -9,7 +9,6 @@ use App\Http\Controllers\Api\CodigoUniversalController;
 use App\Http\Controllers\Api\CuentaController;
 use App\Http\Controllers\Api\EtiquetaController;
 use App\Http\Controllers\Api\IngresoController;
-use App\Http\Controllers\Api\MarcaController;
 use App\Http\Controllers\Api\ProveedorController;
 use App\Http\Controllers\Api\ReferenciaController;
 use App\Http\Controllers\Api\ReporteController;
@@ -31,7 +30,6 @@ Route::middleware('auth:sanctum')->group(function () {
     // Lectura común a los tres módulos.
     Route::middleware('rol:admin,logistica,mostrador')->group(function () {
         Route::get('/categorias', [CategoriaController::class, 'index']);
-        Route::get('/marcas', [MarcaController::class, 'index']);
         Route::get('/proveedores', [ProveedorController::class, 'index']);
         Route::get('/referencias', [ReferenciaController::class, 'index']);
         Route::get('/referencias/{referencia}', [ReferenciaController::class, 'show']);
@@ -51,7 +49,6 @@ Route::middleware('auth:sanctum')->group(function () {
     // Módulo administrador: catálogo (RF-01), usuarios y auditoría (RF-11).
     Route::middleware('rol:admin')->group(function () {
         Route::apiResource('categorias', CategoriaController::class)->except(['index']);
-        Route::apiResource('marcas', MarcaController::class)->except(['index']);
         Route::apiResource('proveedores', ProveedorController::class)
             ->parameters(['proveedores' => 'proveedor'])->except(['index']);
         Route::apiResource('codigos-universales', CodigoUniversalController::class)

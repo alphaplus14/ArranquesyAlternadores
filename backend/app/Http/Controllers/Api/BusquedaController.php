@@ -29,7 +29,7 @@ class BusquedaController extends Controller
 
         $unidad = Unidad::query()
             ->where('codigo_barras', $q)
-            ->with('referencia.marca:id,nombre', 'referencia.proveedor:id,nombre', 'referencia.codigoUniversal:id,codigo')
+            ->with('referencia.proveedor:id,nombre', 'referencia.codigoUniversal:id,codigo')
             ->first();
 
         $prefijo = addcslashes($q, '%_\\').'%';
@@ -40,7 +40,6 @@ class BusquedaController extends Controller
                 ->where('codigo_referencia', 'like', $prefijo)
                 ->when($universales->isNotEmpty(), fn ($w) => $w->orWhereIn('codigo_universal_id', $universales)))
             ->with([
-                'marca:id,nombre',
                 'proveedor:id,nombre',
                 'codigoUniversal:id,codigo',
                 // Laravel limita por referencia con funciones de ventana (MySQL 8).

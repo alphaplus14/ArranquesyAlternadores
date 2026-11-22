@@ -16,7 +16,7 @@ interface Opciones<T> {
   prefetch?: boolean
 }
 
-function marcaDe(filtros: unknown) {
+function huellaDe(filtros: unknown) {
   return JSON.stringify(filtros ?? null)
 }
 
@@ -30,10 +30,10 @@ export function useListaPaginada<T>({ clave, traer, filtros, enabled = true, pre
   const traerRef = useRef(traer)
   traerRef.current = traer
 
-  const marca = marcaDe(filtros)
-  const [estado, setEstado] = useState({ pagina: 1, marca })
-  if (estado.marca !== marca) setEstado({ pagina: 1, marca })
-  const pagina = estado.marca === marca ? estado.pagina : 1
+  const huella = huellaDe(filtros)
+  const [estado, setEstado] = useState({ pagina: 1, huella })
+  if (estado.huella !== huella) setEstado({ pagina: 1, huella })
+  const pagina = estado.huella === huella ? estado.pagina : 1
 
   const lista = useQuery({
     queryKey: [...clave, pagina],
@@ -56,7 +56,7 @@ export function useListaPaginada<T>({ clave, traer, filtros, enabled = true, pre
   }, [prefetch, lista.data, claveJson, qc])
 
   const filas = useMemo(() => lista.data?.data ?? [], [lista.data])
-  const irA = (n: number) => setEstado({ pagina: n, marca })
+  const irA = (n: number) => setEstado({ pagina: n, huella })
 
   return {
     filas,

@@ -59,11 +59,9 @@ export interface Referencia {
   /** RF-14 / S-15: IVA con que se vende (0 = sin IVA). */
   iva_venta_porcentaje: string
   existencia: number
-  marca_id: number
   proveedor_id: number
   categoria_id: number
   codigo_universal_id: number | null
-  marca?: Opcion
   proveedor?: Opcion
   categoria?: Categoria
   codigo_universal?: { id: number; codigo: string } | null
