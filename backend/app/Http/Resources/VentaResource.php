@@ -26,16 +26,7 @@ class VentaResource extends JsonResource
             'created_at' => $this->created_at,
             'cerrada_at' => $this->cerrada_at,
             'vence_el' => $this->vence_el?->toDateString(),
-            'items' => $this->whenLoaded('items', fn () => $this->items->map(fn ($item) => [
-                'id' => $item->id,
-                'precio_unitario' => $item->precio_unitario,
-                'iva_porcentaje' => $item->iva_porcentaje,
-                'metodo_captura' => $item->metodo_captura,
-                'created_at' => $item->created_at,
-                'usuario' => ['id' => $item->usuario->id, 'name' => $item->usuario->name],
-                'unidad' => new UnidadResource($item->unidad),
-                'reverso_id' => $item->reversoItem?->reverso_id,
-            ])),
+            'items' => VentaItemResource::collection($this->whenLoaded('items')),
             'reversos' => $this->whenLoaded('reversos', fn () => $this->reversos->map(fn ($r) => [
                 'id' => $r->id,
                 'tipo' => $r->tipo,

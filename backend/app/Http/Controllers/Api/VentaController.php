@@ -6,6 +6,7 @@ use App\Enums\MetodoCaptura;
 use App\Enums\TipoReverso;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\AbrirVentaRequest;
+use App\Http\Resources\VentaItemResource;
 use App\Http\Resources\VentaResource;
 use App\Models\Venta;
 use App\Services\ReversoService;
@@ -71,10 +72,15 @@ class VentaController extends Controller
             $request->user(),
         );
 
-        // Respuesta mínima para que el escaneo sea rápido; el frontend refresca la venta aparte.
-        $item->unidad->load('referencia:id,codigo_referencia,descripcion,existencia,marca_id,codigo_universal_id', 'referencia.marca:id,nombre');
+        // RF-06: una sola petición por escaneo. Se devuelve el ítem con la misma forma que en
+        // GET /ventas/{id} para que el frontend lo agregue a la venta en caché sin pedirla otra vez.
+        // El usuario es quien escanea y un ítem recién creado no tiene reverso: sin consultas extra.
+        $item->unidad->load('referencia:id,codigo_referencia,descripcion,precio_venta,existencia,marca_id', 'referencia.marca:id,nombre');
+        $item->setRelation('usuario', $request->user())->setRelation('reversoItem', null);
 
         return response()->json([
+            'venta_id' => $item->venta_id,
+            'item' => new VentaItemResource($item),
             'venta_item_id' => $item->id,
             'metodo_captura' => $item->metodo_captura,
             'unidad' => [
