@@ -204,6 +204,7 @@ function DialogoNuevoIngreso({ onCerrar }: { onCerrar: () => void }) {
                 value={form.proveedor_id}
                 onChange={(proveedor_id) => setForm((f) => ({ ...f, proveedor_id }))}
                 alElegir={() => campoNumero.current?.focus()}
+                permitirCrear
                 error={errores.proveedor_id}
               />
             </label>

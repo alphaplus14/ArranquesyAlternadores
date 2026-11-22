@@ -410,7 +410,7 @@ function FormularioReferencia({ id, inicial, onListo, onCerrar }: { id: number |
           </select>
         </label>
         <label>Proveedor
-          <SelectorProveedor required value={f.proveedor_id} onChange={(proveedor_id) => setF((v) => ({ ...v, proveedor_id }))} />
+          <SelectorProveedor required permitirCrear value={f.proveedor_id} onChange={(proveedor_id) => setF((v) => ({ ...v, proveedor_id }))} />
         </label>
         <label>Categoría
           <select required {...campo('categoria_id')}><option value="">—</option>{categorias.data?.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select>
