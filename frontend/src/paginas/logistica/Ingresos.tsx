@@ -5,7 +5,6 @@ import { AxiosError } from 'axios'
 import { api, erroresCampo, mensajeError } from '../../api/cliente'
 import type { FormaPago, Ingreso, Pagina, TipoIngreso } from '../../api/tipos'
 import { sumarDias } from '../../componentes/fechas'
-import CampoDescuento, { type ModoDescuento } from '../../componentes/CampoDescuento'
 import { useListaPaginada } from '../../hooks/useListaPaginada'
 import { useProveedores } from '../../hooks/useCatalogos'
 import Medida from '../../componentes/Medida'
@@ -114,8 +113,9 @@ export default function Ingresos() {
 }
 
 /**
- * Modal "Nuevo ingreso": el mismo formulario de antes (tipo, proveedor, número, fecha, descuento,
- * pago y vencimiento). Se monta al abrir, así que cada apertura empieza con los valores iniciales.
+ * Modal "Nuevo ingreso": tipo, proveedor, número, fecha, pago y vencimiento. El descuento del
+ * documento no se pide aquí (queda en 0): se fija en el detalle con "Cambiar condiciones".
+ * Se monta al abrir, así que cada apertura empieza con los valores iniciales.
  * Solo se cierra sola cuando la creación tiene éxito (navega al detalle); con error queda abierta.
  */
 function DialogoNuevoIngreso({ onCerrar }: { onCerrar: () => void }) {
@@ -128,9 +128,6 @@ function DialogoNuevoIngreso({ onCerrar }: { onCerrar: () => void }) {
     fecha: new Date().toLocaleDateString('en-CA'),
     forma_pago: 'contado' as FormaPago,
   })
-  // S-22: el descuento del documento es opcional (0), en pesos o en %, en remisiones y facturas.
-  const [modoDescuento, setModoDescuento] = useState<ModoDescuento>('$')
-  const [descuento, setDescuento] = useState('0')
   /** null = sin tocar: se sugiere fecha + plazo del proveedor. */
   const [venceEscrito, setVenceEscrito] = useState<string | null>(null)
   const plazo = proveedores.data?.find((p) => String(p.id) === form.proveedor_id)?.plazo_dias ?? null
@@ -142,7 +139,6 @@ function DialogoNuevoIngreso({ onCerrar }: { onCerrar: () => void }) {
       (await api.post<Ingreso>('/ingresos', {
         ...form,
         vence_el: form.forma_pago === 'credito' ? venceEl || null : null,
-        [modoDescuento === '%' ? 'descuento_documento_porcentaje' : 'descuento_documento']: descuento === '' ? 0 : descuento,
       })).data,
     onSuccess: (i) => navegar(`/logistica/ingresos/${i.id}`),
   })
@@ -195,15 +191,6 @@ function DialogoNuevoIngreso({ onCerrar }: { onCerrar: () => void }) {
             </label>
             <label>N.º del documento<input required maxLength={60} value={form.numero_documento} onChange={(e) => setForm({ ...form, numero_documento: e.target.value })} /></label>
             <label>Fecha<input type="date" required value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} /></label>
-            <CampoDescuento
-              id="descuento-nuevo"
-              modo={modoDescuento}
-              valor={descuento}
-              error={errores.descuento_documento ?? errores.descuento_documento_porcentaje}
-              ayuda={modoDescuento === '%' ? 'Se aplica sobre las líneas que escanee.' : undefined}
-              onModo={setModoDescuento}
-              onValor={setDescuento}
-            />
             <label>Pago
               <select value={form.forma_pago} onChange={(e) => setForm({ ...form, forma_pago: e.target.value as FormaPago })}>
                 <option value="contado">Contado</option>
