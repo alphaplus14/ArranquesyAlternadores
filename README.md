@@ -44,19 +44,9 @@ Usuarios de desarrollo (contraseña `cambiar123`): `admin`, `logistica`, `mostra
 | Rol | Pantallas |
 |---|---|
 | mostrador | Venta (escáner siempre enfocado, búsqueda de respaldo, reversos), agotados |
-| logistica | Ingreso por remisión, ingreso por factura con QR (RF-04), etiquetas (grande, pequeño, más pequeño), agotados |
+| logistica | Ingreso de remisiones y facturas (RF-05, RF-04), etiquetas (grande, pequeño, más pequeño), agotados |
 | admin | Todo lo anterior + referencias, códigos universales, catálogos, usuarios y auditoría |
 
-## Ingreso por factura con QR (RF-04)
+## Ingreso de remisiones y facturas
 
-Se descartó leer el XML de la factura (decisión del 14-nov-2026, ver S-06 en `docs/supuestos.md`). El flujo es:
-
-1. Logística abre **Factura (QR)** y escanea el QR de la factura de compra.
-2. El sistema ubica la factura por su CUFE:
-   - si es nueva, crea un borrador `factura_qr` con proveedor (por NIT del emisor), número, fecha y totales del QR;
-   - si ya está en borrador, lo reabre;
-   - si ya se confirmó, la rechaza: un CUFE no entra dos veces.
-3. Los ítems se digitan como en la remisión (RF-05, RF-09, RF-10).
-4. Al confirmar, si el total digitado no cuadra con el total del QR (tolerancia en `INGRESOS_TOLERANCIA_TOTAL`, $1 por defecto), hay que aceptar la diferencia explícitamente y escribir el motivo (por ejemplo, qué no llegó). La diferencia queda registrada en el ingreso con quién la aceptó; los ingresos con diferencia se listan con `GET /api/ingresos?con_diferencia=1`. Un ingreso confirmado ya no se edita. Las unidades y la existencia salen por el mismo camino de la remisión.
-
-Requisitos: el proveedor debe tener su NIT en el catálogo (el admin lo agrega). Si el QR no trae proveedor, número o fecha, la pantalla los pide. Las claves que se leen del QR son provisionales hasta probar con una factura y un lector reales.
+Logística crea el ingreso a mano: tipo (factura o remisión), proveedor, número y fecha. Luego escanea los productos: cada lectura busca el código entre las referencias de ese proveedor y suma 1 a su línea. Si el código no existe, la pantalla ofrece crear la referencia y la agrega sola. Cantidad, costo, descuento e IVA se corrigen en la tabla. Al confirmar se crean las unidades y se imprimen las etiquetas. Un mismo documento no entra dos veces. El QR y el XML de la factura ya no se leen (ver S-06, S-19 y S-20 en `docs/supuestos.md`).

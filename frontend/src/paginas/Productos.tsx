@@ -2,12 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeError } from '../api/cliente'
-import type { MetodoCaptura, Pagina, Referencia } from '../api/tipos'
+import { NOMBRE_CALIDAD, type Calidad, type MetodoCaptura, type Pagina, type Referencia } from '../api/tipos'
+import ChipCalidad from '../componentes/ChipCalidad'
 import { useAuth } from '../auth/AuthProvider'
 import Icono from '../componentes/Icono'
 import Paginacion from '../componentes/Paginacion'
 import Resumen from '../componentes/Resumen'
-import { useCategorias, useMarcas, useProveedores } from '../hooks/useCatalogos'
+import { useCategorias, useProveedores } from '../hooks/useCatalogos'
 import { useDebounce } from '../hooks/useDebounce'
 import { useListaPaginada } from '../hooks/useListaPaginada'
 import { useScanner } from '../hooks/useScanner'
@@ -19,7 +20,8 @@ const ALTO_FILA = 56
 
 type Formulario = {
   codigo_referencia: string
-  marca_id: string
+  /** S-23: '' = sin calidad. */
+  calidad: '' | Calidad
   proveedor_id: string
   categoria_id: string
   codigo_universal_id: string
@@ -30,11 +32,11 @@ type Formulario = {
 }
 
 const vacio: Formulario = {
-  codigo_referencia: '', marca_id: '', proveedor_id: '', categoria_id: '',
+  codigo_referencia: '', calidad: '', proveedor_id: '', categoria_id: '',
   codigo_universal_id: '', descripcion: '', precio_venta: '', iva_venta_porcentaje: '19',
 }
 
-/** Una venta a crédito guarda el precio al escanear: con precio 0 quedaría en $0 en la cartera. */
+/** S-18: ningún precio puede ser 0. Las referencias antiguas en 0 no se pueden vender hasta asignarles uno. */
 function sinPrecio(r: Referencia) {
   return Number(r.precio_venta) === 0
 }
@@ -120,16 +122,17 @@ export default function Productos() {
       setQ(referencia.codigo_referencia)
       irA(1)
       const vendida = data.unidad?.estado === 'vendida'
-      const marca = referencia.marca?.nombre ?? ''
+      // S-23: sin marca; el proveedor y la calidad distinguen la referencia.
+      const origen = [referencia.proveedor?.nombre, referencia.calidad && NOMBRE_CALIDAD[referencia.calidad]].filter(Boolean).join(' · ')
       setLectura({
         codigo: data.unidad?.codigo_barras ?? codigo,
         metodo,
         titulo: referencia.codigo_referencia,
-        detalle: vendida ? 'Unidad vendida' : `${marca} · existencia ${referencia.existencia}`,
+        detalle: vendida ? 'Unidad vendida' : `${origen ? `${origen} · ` : ''}existencia ${referencia.existencia}`,
       })
       setAviso({
         tipo: vendida ? 'atencion' : 'ok',
-        texto: `${metodo === 'escaneado' ? 'Escaneado' : 'Digitado'} · ${data.unidad?.codigo_barras ?? codigo} · ${referencia.codigo_referencia} ${marca}`.trim(),
+        texto: `${metodo === 'escaneado' ? 'Escaneado' : 'Digitado'} · ${data.unidad?.codigo_barras ?? codigo} · ${referencia.codigo_referencia} ${origen}`.trim(),
       })
     },
     onError: (e) => {
@@ -147,7 +150,7 @@ export default function Productos() {
     id: r.id,
     datos: {
       codigo_referencia: r.codigo_referencia,
-      marca_id: String(r.marca_id),
+      calidad: r.calidad ?? '',
       proveedor_id: String(r.proveedor_id),
       categoria_id: String(r.categoria_id),
       codigo_universal_id: r.codigo_universal_id ? String(r.codigo_universal_id) : '',
@@ -158,8 +161,8 @@ export default function Productos() {
   })
 
   const columnas = esAdmin
-    ? '148px minmax(180px, 1.6fr) 120px 140px 130px 120px 76px 96px 92px'
-    : '148px minmax(180px, 1.6fr) 120px 140px 130px 120px 76px 96px'
+    ? '190px minmax(180px, 1.6fr) 140px 130px 120px 76px 96px 92px'
+    : '190px minmax(180px, 1.6fr) 140px 130px 120px 76px 96px'
 
   return (
     <div>
@@ -250,7 +253,6 @@ export default function Productos() {
           <div role="row" className="tabla-rejilla tabla-cabeza">
             <div role="columnheader">Referencia</div>
             <div role="columnheader">Descripción</div>
-            <div role="columnheader">Marca</div>
             <div role="columnheader">Proveedor</div>
             <div role="columnheader">Categoría</div>
             <div role="columnheader">Precio</div>
@@ -265,12 +267,14 @@ export default function Productos() {
                 <div style={{ transform: `translateY(${ventana.desplazamiento}px)` }}>
                   {ventana.visibles.map((r) => (
                     <div role="row" key={r.id} className={r.id === resaltada ? 'tabla-rejilla tabla-fila resaltada' : 'tabla-rejilla tabla-fila'} style={{ height: ALTO_FILA }}>
-                      <div role="cell" className="corta"><strong>{r.codigo_referencia}</strong></div>
+                      <div role="cell" className="corta">
+                        <strong>{r.codigo_referencia}</strong>
+                        {r.calidad && <> <ChipCalidad calidad={r.calidad} /></>}
+                      </div>
                       <div role="cell" className="corta">{r.descripcion}</div>
-                      <div role="cell" className="corta">{r.marca?.nombre}</div>
                       <div role="cell" className="corta">{r.proveedor?.nombre}</div>
                       <div role="cell" className="corta">{r.categoria?.nombre}</div>
-                      <div role="cell">{sinPrecio(r) ? <span className="chip sin-precio" title="Una venta a crédito de esta referencia quedaría en $0">Sin precio</span> : Number(r.precio_venta).toLocaleString('es-CO')}</div>
+                      <div role="cell">{sinPrecio(r) ? <span className="chip sin-precio" title="No se puede vender hasta que el administrador le asigne un precio">Sin precio</span> : Number(r.precio_venta).toLocaleString('es-CO')}</div>
                       <div role="cell">{Number(r.iva_venta_porcentaje) === 0 ? <span className="chip">Sin IVA</span> : `${Number(r.iva_venta_porcentaje)} %`}</div>
                       <div role="cell" className={r.existencia === 0 ? 'agotado col-numero' : 'col-numero'}>{r.existencia}</div>
                       {esAdmin && (
@@ -319,7 +323,6 @@ export default function Productos() {
 
 function FormularioReferencia({ id, inicial, onListo, onCerrar }: { id: number | null; inicial: Formulario; onListo: () => void; onCerrar: () => void }) {
   const [f, setF] = useState(inicial)
-  const marcas = useMarcas()
   const proveedores = useProveedores()
   const categorias = useCategorias()
   const categoria = categorias.data?.find((c) => String(c.id) === f.categoria_id)
@@ -333,12 +336,13 @@ function FormularioReferencia({ id, inicial, onListo, onCerrar }: { id: number |
 
   const guardar = useMutation({
     mutationFn: async () => {
-      const datos = { ...f, iva_venta_porcentaje: Number(f.iva_venta_porcentaje), codigo_universal_id: admiteUniversal && f.codigo_universal_id ? Number(f.codigo_universal_id) : null }
+      const datos = { ...f, calidad: f.calidad || null, iva_venta_porcentaje: Number(f.iva_venta_porcentaje), codigo_universal_id: admiteUniversal && f.codigo_universal_id ? Number(f.codigo_universal_id) : null }
       return id ? api.put(`/referencias/${id}`, datos) : api.post('/referencias', datos)
     },
     onSuccess: onListo,
   })
 
+  const errorPrecioVenta = f.precio_venta === '' ? null : Number(f.precio_venta) > 0 ? null : 'El precio de venta debe ser mayor que 0.'
   const campo = (k: keyof Formulario) => ({ value: f[k], onChange: (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value }) })
 
   return (
@@ -347,8 +351,12 @@ function FormularioReferencia({ id, inicial, onListo, onCerrar }: { id: number |
         <h2>{id ? 'Editar referencia' : 'Nueva referencia'}</h2>
         <label>Código de referencia<input required {...campo('codigo_referencia')} /></label>
         <label>Descripción<input required {...campo('descripcion')} /></label>
-        <label>Marca
-          <select required {...campo('marca_id')}><option value="">—</option>{marcas.data?.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}</select>
+        <label>Calidad
+          <select {...campo('calidad')}>
+            <option value="">—</option>
+            <option value="fino">Fino</option>
+            <option value="generico">Genérico</option>
+          </select>
         </label>
         <label>Proveedor
           <select required {...campo('proveedor_id')}><option value="">—</option>{proveedores.data?.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}</select>
@@ -364,10 +372,12 @@ function FormularioReferencia({ id, inicial, onListo, onCerrar }: { id: number |
             </select>
           </label>
         )}
-        <label>Precio de venta<input type="number" min="0" step="0.01" required {...campo('precio_venta')} /></label>
-        {f.precio_venta !== '' && Number(f.precio_venta) === 0 && (
-          <p className="ayuda atencion">Con precio 0, una venta a crédito de esta referencia quedaría en $0 en la cartera.</p>
-        )}
+        <label>Precio de venta
+          <input type="number" min="0.01" step="0.01" required aria-invalid={errorPrecioVenta !== null} aria-describedby="precio-venta-ayuda" {...campo('precio_venta')} />
+        </label>
+        <p id="precio-venta-ayuda" className={errorPrecioVenta ? 'ayuda error' : 'ayuda'}>
+          {errorPrecioVenta ?? 'Mayor que 0. Una referencia sin precio no se puede vender.'}
+        </p>
         <label>IVA de venta (%)
           <select {...campo('iva_venta_porcentaje')}>
             <option value="19">19 %</option>
@@ -378,7 +388,7 @@ function FormularioReferencia({ id, inicial, onListo, onCerrar }: { id: number |
         {guardar.isError && <div className="aviso error">{mensajeError(guardar.error)}</div>}
         <div className="acciones">
           <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
-          <button className="primario" disabled={guardar.isPending}>Guardar</button>
+          <button className="primario" disabled={guardar.isPending || errorPrecioVenta !== null}>Guardar</button>
         </div>
       </form>
     </div>

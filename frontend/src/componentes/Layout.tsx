@@ -48,7 +48,6 @@ export default function Layout() {
           etiqueta: 'Logística',
           items: [
             { to: '/logistica/ingresos', texto: 'Ingresos', icono: 'ingreso', fin: true },
-            { to: '/logistica/ingresos/qr', texto: 'Factura (QR)', icono: 'qr' },
             { to: '/logistica/etiquetas', texto: 'Etiquetas', icono: 'etiqueta' },
           ],
         }
@@ -74,7 +73,7 @@ export default function Layout() {
         <button type="button" className="icono-boton" aria-label="Abrir o cerrar el menú" aria-expanded={abierto} onClick={() => setAbierto((v) => !v)}>
           <Icono nombre="menu" />
         </button>
-        <img className="marca-logo" src={logo} alt="Arranques y Alternadores La 8va" />
+        <img className="logo-empresa" src={logo} alt="Arranques y Alternadores La 8va" />
         <span className="barra-espacio" />
         <div className="cuenta" ref={cuentaRef}>
           <button

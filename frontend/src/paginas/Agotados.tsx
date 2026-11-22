@@ -6,6 +6,7 @@ import { useListaPaginada } from '../hooks/useListaPaginada'
 import Medida from '../componentes/Medida'
 import Resumen from '../componentes/Resumen'
 import Paginacion from '../componentes/Paginacion'
+import ChipCalidad from '../componentes/ChipCalidad'
 
 /** RF-08: referencias con existencia 0 de un proveedor. */
 export default function Agotados() {
@@ -54,13 +55,13 @@ export default function Agotados() {
       {resultado && (
         <>
           <table>
-            <thead><tr><th>Referencia</th><th>Universal</th><th>Marca</th><th>Categoría</th></tr></thead>
+            <thead><tr><th>Referencia</th><th>Universal</th><th>Calidad</th><th>Categoría</th></tr></thead>
             <tbody>
               {filas.map((r) => (
                 <tr key={r.id}>
                   <td><strong>{r.codigo_referencia}</strong> <small>{r.descripcion}</small></td>
                   <td>{r.codigo_universal?.codigo ?? '—'}</td>
-                  <td>{r.marca?.nombre}</td>
+                  <td><ChipCalidad calidad={r.calidad} /></td>
                   <td>{r.categoria?.nombre}</td>
                 </tr>
               ))}

@@ -3,22 +3,23 @@
 namespace App\Services;
 
 use App\Enums\EstadoIngreso;
+use App\Enums\FormaPago;
 use App\Enums\TipoIngreso;
 use App\Exceptions\ReglaInventarioException;
 use App\Models\Ingreso;
 use App\Models\IngresoItem;
-use App\Models\Proveedor;
+use App\Models\Referencia;
 use App\Models\User;
-use App\Services\FacturaQr\DatosFacturaQr;
-use App\Services\FacturaQr\FacturaQrService;
+use App\Support\TotalesIngreso;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\ValidationException;
 
 /**
  * RF-05: ingreso por remisión, ítem por ítem, al mismo inventario.
- * RF-04 (S-06): factura de compra cuyo encabezado sale del QR; los ítems se digitan igual.
+ * RF-04: la factura de compra se ingresa a mano, igual que la remisión (sin QR ni XML).
  * RF-09 / RF-10: descuento de la factura y líneas sin IVA.
+ * RF-20: los ítems se agregan escaneando el código de referencia del proveedor del ingreso.
+ * RF-16: forma de pago y vencimiento digitado; al confirmar se guarda el total (RF-09, ajuste).
  * RF-03: al confirmar se crean las unidades con su código de barras.
  */
 class IngresoService
@@ -26,74 +27,114 @@ class IngresoService
     public function __construct(
         private readonly InventarioService $inventario,
         private readonly CodigoBarrasService $codigos,
-        private readonly FacturaQrService $qr,
     ) {}
 
-    /** @param array{proveedor_id:int, numero_documento:string, fecha:string, descuento_total?:float} $datos */
+    /**
+     * RF-04 / RF-05: crea el borrador de una remisión o una factura, digitado a mano (sin tipo,
+     * remisión). El mismo documento (proveedor + tipo + número) no entra dos veces: si ya hay un
+     * borrador se devuelve para reabrirlo (wasRecentlyCreated = false); si está confirmado, se rechaza.
+     *
+     * @param  array{tipo?:TipoIngreso|string, proveedor_id:int, numero_documento:string, fecha:string, descuento_documento?:float, descuento_documento_porcentaje?:float}  $datos
+     */
     public function crearBorrador(array $datos, User $usuario): Ingreso
     {
-        return Ingreso::create([
-            ...$datos,
-            'tipo' => TipoIngreso::Remision,
-            'usuario_id' => $usuario->id,
-        ])->refresh();
-    }
+        $tipo = $datos['tipo'] ?? TipoIngreso::Remision;
+        $datos['tipo'] = $tipo instanceof TipoIngreso ? $tipo : TipoIngreso::from($tipo);
+        $datos['numero_documento'] = Ingreso::normalizarNumero($datos['numero_documento']);
+        $datos = $this->condicionDePago($datos, null);
+        $datos = $this->descuentoDocumento($datos);
 
-    /**
-     * RF-04: ubica la factura por el CUFE del QR.
-     * - Ya en borrador: la reabre para seguir digitando ítems.
-     * - Ya confirmada: la rechaza (un CUFE no entra dos veces).
-     * - Nueva: crea el borrador factura_qr con el encabezado del QR. Lo que el QR no traiga
-     *   (proveedor, número, fecha) se toma de $complemento; si falta, error de validación.
-     *
-     * @param  array{proveedor_id?:int|null, numero_documento?:string|null, fecha?:string|null}  $complemento
-     */
-    public function crearDesdeQr(string $contenido, array $complemento, User $usuario): Ingreso
-    {
-        $datos = $this->qr->interpretar($contenido);
-
-        if ($existente = Ingreso::query()->where('cufe', $datos->cufe)->first()) {
-            return $this->reabrirPorCufe($existente);
-        }
-
-        $encabezado = [
-            'tipo' => TipoIngreso::FacturaQr,
-            'cufe' => $datos->cufe,
-            'proveedor_id' => $this->proveedorDelQr($datos) ?? ($complemento['proveedor_id'] ?? null),
-            'numero_documento' => $datos->numero ?? ($complemento['numero_documento'] ?? null),
-            'fecha' => $datos->fecha ?? ($complemento['fecha'] ?? null),
-            'subtotal_qr' => $datos->subtotal,
-            'iva_qr' => $datos->iva,
-            'total_qr' => $datos->total,
-            'usuario_id' => $usuario->id,
-        ];
-
-        $faltan = array_filter(['proveedor_id', 'numero_documento', 'fecha'], fn ($c) => blank($encabezado[$c]));
-        if ($faltan) {
-            throw ValidationException::withMessages(
-                array_fill_keys($faltan, 'El QR no trae este dato; digítelo.'),
-            );
+        if ($existente = $this->buscarDocumento($datos)) {
+            return $this->reabrir($existente);
         }
 
         try {
-            return Ingreso::create($encabezado)->refresh();
+            return Ingreso::create([...$datos, 'usuario_id' => $usuario->id])->refresh();
         } catch (UniqueConstraintViolationException) {
-            // Otro usuario escaneó la misma factura al mismo tiempo.
-            return $this->reabrirPorCufe(Ingreso::query()->where('cufe', $datos->cufe)->firstOrFail());
+            // Otro usuario creó el mismo documento al mismo tiempo.
+            return $this->reabrir($this->buscarDocumento($datos));
         }
     }
 
     public function actualizarEncabezado(Ingreso $ingreso, array $datos): Ingreso
     {
+        if (isset($datos['numero_documento'])) {
+            $datos['numero_documento'] = Ingreso::normalizarNumero($datos['numero_documento']);
+        }
+
         return $this->enBorrador($ingreso, function (Ingreso $bloqueado) use ($datos) {
-            $bloqueado->update($datos);
+            $datos = $this->descuentoDocumento($this->condicionDePago($datos, $bloqueado));
+            $bloqueado->fill($datos);
+
+            // RF-09: el descuento del documento no puede superar el subtotal neto de las líneas.
+            if ($bloqueado->isDirty(['descuento_documento', 'descuento_documento_porcentaje'])) {
+                TotalesIngreso::calcular(
+                    $bloqueado->items()->get(),
+                    $bloqueado->descuento_documento,
+                    $bloqueado->descuento_documento_porcentaje,
+                )->exigirDescuentoValido();
+            }
+
+            try {
+                $bloqueado->save();
+            } catch (UniqueConstraintViolationException) {
+                throw new ReglaInventarioException('Ya hay otro ingreso de ese proveedor con el mismo tipo y número de documento.', 422);
+            }
 
             return $bloqueado;
         });
     }
 
+    /**
+     * RF-20 (S-19): el código leído es el codigo_referencia del proveedor del ingreso; se busca
+     * solo entre sus referencias, con igualdad exacta (sin prefijos). Si ya hay una línea de esa
+     * referencia, suma 1; si no, la crea con cantidad 1 y el último costo confirmado de la
+     * referencia (0 si no hay, y se pide antes de confirmar). wasRecentlyCreated dice cuál pasó.
+     * Si la referencia no existe responde 404 con motivo referencia_inexistente y el código leído.
+     */
+    public function escanear(Ingreso $ingreso, string $codigo): IngresoItem
+    {
+        $codigo = trim($codigo);
+
+        return $this->enBorrador($ingreso, function (Ingreso $bloqueado) use ($codigo) {
+            $referencia = Referencia::query()
+                ->where('proveedor_id', $bloqueado->proveedor_id)
+                ->where('codigo_referencia', $codigo)
+                ->first(['id', 'codigo_referencia', 'descripcion', 'iva_venta_porcentaje']);
+
+            if ($referencia === null) {
+                throw new ReglaInventarioException(
+                    "El código {$codigo} no es una referencia de este proveedor.",
+                    404,
+                    ['motivo' => 'referencia_inexistente', 'codigo' => $codigo],
+                );
+            }
+
+            // La fila del ingreso ya está bloqueada: dos lecturas simultáneas no duplican la línea.
+            $item = $bloqueado->items()->where('referencia_id', $referencia->id)->orderBy('id')->first();
+
+            if ($item) {
+                $item->increment('cantidad');
+            } else {
+                $item = $bloqueado->items()->create([
+                    'referencia_id' => $referencia->id,
+                    'cantidad' => 1,
+                    'costo_unitario' => $this->ultimoCosto($referencia->id) ?? 0,
+                    'descuento_porcentaje' => 0,
+                    // S-22: el IVA de la línea se copia de la referencia y se corrige en la tabla.
+                    'iva_porcentaje' => $referencia->iva_venta_porcentaje ?? 0,
+                ]);
+            }
+
+            return $item->setRelation('referencia', $referencia);
+        });
+    }
+
     public function agregarItem(Ingreso $ingreso, array $datos): IngresoItem
     {
+        // S-22: sin IVA explícito, la línea toma el de la referencia (como en ventas).
+        $datos['iva_porcentaje'] ??= Referencia::whereKey($datos['referencia_id'])->value('iva_venta_porcentaje') ?? 0;
+
         return $this->enBorrador($ingreso, fn (Ingreso $bloqueado) => $bloqueado->items()->create($datos));
     }
 
@@ -112,15 +153,10 @@ class IngresoService
         $this->enBorrador($ingreso, fn () => $item->delete());
     }
 
-    /**
-     * RF-05: confirma el ingreso, crea las unidades y suma existencia.
-     * RF-04: en una factura_qr con total, la diferencia (digitado − QR) queda registrada siempre.
-     * Si supera la tolerancia, solo se confirma aceptándola con un motivo (por ejemplo, qué no
-     * llegó); quien confirma queda como quien la aceptó.
-     */
-    public function confirmar(Ingreso $ingreso, User $usuario, bool $aceptarDiferencia = false, ?string $motivo = null): Ingreso
+    /** RF-05: confirma el ingreso, crea las unidades y suma existencia. Queda quién confirmó. */
+    public function confirmar(Ingreso $ingreso, User $usuario): Ingreso
     {
-        return DB::transaction(function () use ($ingreso, $usuario, $aceptarDiferencia, $motivo) {
+        return DB::transaction(function () use ($ingreso, $usuario) {
             $ingreso = Ingreso::query()->lockForUpdate()->findOrFail($ingreso->id);
             $this->exigirBorrador($ingreso);
 
@@ -130,9 +166,26 @@ class IngresoService
                 throw new ReglaInventarioException('El ingreso no tiene ítems.', 422);
             }
 
-            $ingreso->setRelation('items', $items);
-            $diferencia = $ingreso->diferenciaQr();
-            $aceptada = $this->exigirCuadreConQr($ingreso, $diferencia, $aceptarDiferencia, $motivo);
+            // RF-20: una línea sin costo (0, como queda al escanear algo sin historial) no se confirma.
+            $sinCosto = $items->filter(fn (IngresoItem $i) => (float) $i->costo_unitario <= 0);
+            if ($sinCosto->isNotEmpty()) {
+                $codigos = Referencia::query()->whereKey($sinCosto->pluck('referencia_id'))->orderBy('codigo_referencia')->pluck('codigo_referencia');
+
+                throw new ReglaInventarioException(
+                    'No se puede confirmar: falta el costo de '.$codigos->implode(', ').'. Escríbalo en la tabla de ítems.',
+                    422,
+                );
+            }
+
+            // RF-09 (ajuste): el total se calcula con el descuento prorrateado y queda fijo (RF-16).
+            $totales = TotalesIngreso::calcular($items, $ingreso->descuento_documento, $ingreso->descuento_documento_porcentaje);
+            $totales->exigirDescuentoValido();
+            $this->exigirVencimiento($ingreso);
+
+            // S-22: un documento en $0 (mercancía obsequiada) se acepta de contado, no a crédito.
+            if ($ingreso->esCredito() && bccomp($totales->total, '0', 2) === 0) {
+                throw new ReglaInventarioException('Un ingreso a crédito no puede confirmarse con total $0.', 422);
+            }
 
             $codigos = $this->codigos->reservar($items->sum('cantidad'));
             $this->inventario->darEntrada($ingreso, $items, $codigos, $usuario->id);
@@ -140,9 +193,10 @@ class IngresoService
             $ingreso->estado = EstadoIngreso::Confirmado;
             $ingreso->confirmado_at = now();
             $ingreso->confirmado_por = $usuario->id;
-            $ingreso->diferencia_qr = $diferencia;
-            $ingreso->diferencia_aceptada = $aceptada;
-            $ingreso->diferencia_motivo = $aceptada ? trim((string) $motivo) : null;
+            $ingreso->total = $totales->total;
+            // Confirmado, el descuento queda fijo y solo en pesos (S-22).
+            $ingreso->descuento_documento = $totales->descuentoDocumento;
+            $ingreso->descuento_documento_porcentaje = null;
             $ingreso->save();
 
             return $ingreso;
@@ -151,7 +205,7 @@ class IngresoService
 
     /**
      * Ediciones del borrador con la fila del ingreso bloqueada: así no se cuela un ítem mientras
-     * otro usuario lo confirma (quedaría un ítem sin unidades y la diferencia mal registrada).
+     * otro usuario lo confirma (quedaría un ítem sin unidades).
      *
      * @template T
      *
@@ -168,67 +222,98 @@ class IngresoService
         });
     }
 
-    private function reabrirPorCufe(Ingreso $ingreso): Ingreso
+    /**
+     * RF-16 / S-21: a contado no hay vencimiento (se guarda null aunque llegue). A crédito el
+     * vencimiento se digita; el plazo del proveedor solo lo prellena la pantalla.
+     *
+     * @param  array<string, mixed>  $datos
+     * @return array<string, mixed>
+     */
+    private function condicionDePago(array $datos, ?Ingreso $actual): array
     {
-        if (! $ingreso->esBorrador()) {
-            $cuando = $ingreso->confirmado_at?->format('Y-m-d H:i');
-            throw new ReglaInventarioException(
-                "Esta factura ({$ingreso->numero_documento}) ya se ingresó el {$cuando} (ingreso #{$ingreso->id}). Un CUFE no se ingresa dos veces.",
-            );
+        $forma = isset($datos['forma_pago'])
+            ? ($datos['forma_pago'] instanceof FormaPago ? $datos['forma_pago'] : FormaPago::from($datos['forma_pago']))
+            : ($actual?->forma_pago ?? FormaPago::Contado);
+
+        if ($forma === FormaPago::Contado) {
+            $datos['vence_el'] = null;
         }
 
-        return $ingreso;
-    }
-
-    /** NIT del emisor → proveedor. Si el QR trae NIT y no hay proveedor con él, no se crea solo. */
-    private function proveedorDelQr(DatosFacturaQr $datos): ?int
-    {
-        if ($datos->nitEmisor === null) {
-            return null;
-        }
-
-        // proveedores.nit puede estar guardado con o sin dígito de verificación; ambos usan el índice único.
-        $proveedor = Proveedor::query()
-            ->where('nit', $datos->nitEmisor)
-            ->orWhere('nit', 'like', $datos->nitEmisor.'-%')
-            ->first(['id']);
-
-        if ($proveedor === null) {
-            throw new ReglaInventarioException(
-                "No hay un proveedor con NIT {$datos->nitEmisor}. Pida al administrador que lo cree (o le agregue ese NIT) y vuelva a escanear.",
-                422,
-            );
-        }
-
-        return $proveedor->id;
+        return $datos;
     }
 
     /**
-     * RF-04: true si la diferencia supera la tolerancia y se aceptó con motivo; false si cuadra
-     * (o no hay total del QR). Sin aceptación o sin motivo, no se confirma.
+     * S-22: el descuento del documento llega en pesos o en %. En pesos, borra el %; en %, se
+     * guarda el % (los pesos los recalcula TotalesIngreso con las líneas) y los pesos quedan en 0
+     * hasta confirmar.
+     *
+     * @param  array<string, mixed>  $datos
+     * @return array<string, mixed>
      */
-    private function exigirCuadreConQr(Ingreso $ingreso, ?float $diferencia, bool $aceptarDiferencia, ?string $motivo): bool
+    private function descuentoDocumento(array $datos): array
     {
-        if ($diferencia === null || abs($diferencia) <= (float) config('ingresos.tolerancia_total')) {
-            return false;
+        if (array_key_exists('descuento_documento_porcentaje', $datos) && $datos['descuento_documento_porcentaje'] !== null) {
+            $datos['descuento_documento'] = 0;
+        } elseif (array_key_exists('descuento_documento', $datos) || array_key_exists('descuento_documento_porcentaje', $datos)) {
+            $datos['descuento_documento'] ??= 0;
+            $datos['descuento_documento_porcentaje'] = null;
         }
 
-        if (! $aceptarDiferencia) {
-            $digitado = number_format($ingreso->totalCalculado(), 0, ',', '.');
-            $qr = number_format((float) $ingreso->total_qr, 0, ',', '.');
+        return $datos;
+    }
+
+    /** RF-16: un ingreso a crédito no se confirma sin vencimiento o con uno anterior a la fecha. */
+    private function exigirVencimiento(Ingreso $ingreso): void
+    {
+        if (! $ingreso->esCredito()) {
+            return;
+        }
+
+        if ($ingreso->vence_el === null || $ingreso->vence_el->lt($ingreso->fecha)) {
             throw new ReglaInventarioException(
-                "El total digitado (\${$digitado}) no cuadra con el total de la factura según el QR (\${$qr}). Revise los ítems o acepte la diferencia.",
+                'A crédito, el ingreso necesita una fecha de vencimiento igual o posterior a la del documento.',
                 422,
+                ['errors' => ['vence_el' => ['Escriba el vencimiento que trae el documento.']]],
             );
         }
+    }
 
-        if (blank($motivo)) {
-            throw ValidationException::withMessages([
-                'diferencia_motivo' => 'Para aceptar la diferencia con el QR escriba el motivo (por ejemplo, qué no llegó).',
-            ]);
+    /** Último costo con que entró la referencia en un ingreso confirmado (null si nunca entró). */
+    private function ultimoCosto(int $referenciaId): ?string
+    {
+        return IngresoItem::query()
+            ->join('ingresos', 'ingresos.id', '=', 'ingreso_items.ingreso_id')
+            ->where('ingreso_items.referencia_id', $referenciaId)
+            ->where('ingresos.estado', EstadoIngreso::Confirmado)
+            ->where('ingreso_items.costo_unitario', '>', 0)
+            ->orderByDesc('ingreso_items.id')
+            ->value('ingreso_items.costo_unitario');
+    }
+
+    /** @param array{tipo:TipoIngreso, proveedor_id:int, numero_documento:string} $datos */
+    private function buscarDocumento(array $datos): ?Ingreso
+    {
+        return Ingreso::query()
+            ->where('proveedor_id', $datos['proveedor_id'])
+            ->where('tipo', $datos['tipo'])
+            ->where('numero_documento', $datos['numero_documento'])
+            ->first();
+    }
+
+    private function reabrir(Ingreso $ingreso): Ingreso
+    {
+        if ($ingreso->esBorrador()) {
+            return $ingreso;
         }
 
-        return true;
+        $tipo = $ingreso->tipo === TipoIngreso::Factura ? 'La factura' : 'La remisión';
+        $cuando = $ingreso->confirmado_at?->format('d/m/Y');
+
+        throw new ReglaInventarioException(
+            "{$tipo} {$ingreso->numero_documento} de este proveedor ya se ingresó (ingreso #{$ingreso->id}, confirmado el {$cuando}). No se ingresa dos veces.",
+            422,
+            ['motivo' => 'documento_confirmado', 'ingreso_id' => $ingreso->id],
+        );
     }
 
     private function exigirBorrador(Ingreso $ingreso): void

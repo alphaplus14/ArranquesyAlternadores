@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeError } from '../../api/cliente'
-import type { Cliente, MetodoCaptura, Pagina, Referencia, RespuestaEscaneo, Venta as TVenta, VentaItem } from '../../api/tipos'
+import { NOMBRE_CALIDAD, type Calidad, type Cliente, type MetodoCaptura, type Pagina, type Referencia, type RespuestaEscaneo, type Venta as TVenta, type VentaItem } from '../../api/tipos'
+import ChipCalidad from '../../componentes/ChipCalidad'
 import Medida from '../../componentes/Medida'
 import Resumen from '../../componentes/Resumen'
 import { useScanner } from '../../hooks/useScanner'
 import { useDebounce } from '../../hooks/useDebounce'
+import { formatoNumero, leerNumero } from '../../componentes/numeros'
 
 interface Aviso { tipo: 'ok' | 'error'; texto: string }
 interface ReversoPendiente { item?: VentaItem; tipo: 'devolucion' | 'anulacion' }
@@ -17,9 +19,15 @@ function fechaCorta(iso: string) {
   return new Date(a, m - 1, d).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
-function sinPrecio(item: VentaItem) {
-  return item.precio_unitario === null || Number(item.precio_unitario) === 0
+/** Validación en vivo. El backend vuelve a exigir precio > 0 (S-18). */
+function errorPrecio(texto: string): string | null {
+  const n = leerNumero(texto)
+  if (n === null) return 'Escriba el precio.'
+  if (Number.isNaN(n)) return 'Use solo números; los centavos van después de la coma (máximo 2).'
+  if (n <= 0) return 'El precio debe ser mayor que 0.'
+  return null
 }
+
 
 /**
  * RF-06: venta de mostrador. Cada escaneo descuenta de inmediato (no al cerrar).
@@ -33,8 +41,8 @@ export default function Venta() {
   const [respaldo, setRespaldo] = useState(false)
   const [reverso, setReverso] = useState<ReversoPendiente | null>(null)
   const [eligiendoCliente, setEligiendoCliente] = useState(false)
-  /** Último ítem escaneado en esta pantalla; sirve para avisar si quedó sin precio en una venta a crédito. */
-  const [ultimoEscaneado, setUltimoEscaneado] = useState<number | null>(null)
+  /** RF-14 / S-18: ítem cuyo precio se está editando (solo en una venta a crédito abierta). */
+  const [editandoPrecio, setEditandoPrecio] = useState<number | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   // Retoma la última venta abierta del usuario.
@@ -61,7 +69,7 @@ export default function Venta() {
   const abrir = useMutation({
     mutationFn: async (credito?: DatosCredito) =>
       (await api.post<TVenta>('/ventas', credito ? { forma_pago: 'credito', ...credito } : undefined)).data,
-    onSuccess: (v) => { setVentaId(v.id); qc.setQueryData(['venta', v.id], v); setAviso(null); setUltimoEscaneado(null) },
+    onSuccess: (v) => { setVentaId(v.id); qc.setQueryData(['venta', v.id], v); setAviso(null); setEditandoPrecio(null) },
   })
 
   const escanear = useMutation({
@@ -70,17 +78,14 @@ export default function Venta() {
     onSuccess: (r) => {
       setAviso({
         tipo: 'ok',
-        texto: `✓ ${r.unidad.codigo_barras} · ${r.referencia.codigo_referencia} ${r.referencia.marca} — quedan ${r.referencia.existencia} (${r.metodo_captura})`,
+        texto: `✓ ${r.unidad.codigo_barras} · ${r.referencia.codigo_referencia} · ${[r.referencia.proveedor, r.referencia.calidad && NOMBRE_CALIDAD[r.referencia.calidad as Calidad]].filter(Boolean).join(' · ')} — quedan ${r.referencia.existencia} (${r.metodo_captura})`,
       })
-      setUltimoEscaneado(r.venta_item_id)
       // RF-06: una sola petición por escaneo. El ítem llega completo y se agrega a la venta en caché.
-      // Actualización funcional: dos escaneos seguidos parten cada uno del estado más reciente.
       const clave = ['venta', r.venta_id]
       if (!qc.getQueryData<TVenta>(clave)) {
         qc.invalidateQueries({ queryKey: clave })
         return
       }
-      // Un GET en vuelo (p. ej. al volver a enfocar la ventana) podría pisar el ítem recién agregado.
       void qc.cancelQueries({ queryKey: clave })
       qc.setQueryData<TVenta>(clave, (actual) =>
         actual && !actual.items.some((i) => i.id === r.item.id)
@@ -90,7 +95,6 @@ export default function Venta() {
     },
     onError: (e) => {
       setAviso({ tipo: 'error', texto: mensajeError(e) })
-      // Si falló (venta cerrada en otro equipo, unidad ya vendida…), se trae la venta como estaba.
       qc.invalidateQueries({ queryKey: ['venta', ventaId] })
     },
   })
@@ -123,24 +127,30 @@ export default function Venta() {
   )
   const scanner = useScanner(onCodigo)
 
+  const v = venta.data
+  const abierta = v?.estado === 'abierta'
+  const credito = v?.forma_pago === 'credito'
+  // S-18: el precio solo se cambia en crédito abierto y en ítems vigentes. Si la venta se cierra
+  // o el ítem se reversa mientras se edita, la edición deja de contar.
+  const precioEditable = (i: VentaItem) => credito && abierta && !i.reverso_id
+  const precioEnEdicion = editandoPrecio !== null && (v?.items.some((i) => i.id === editandoPrecio && precioEditable(i)) ?? false)
+
   // El input del lector recupera el foco siempre que no haya un diálogo abierto.
-  const hayDialogo = respaldo || reverso !== null || eligiendoCliente
+  // Editar un precio cuenta como diálogo: el lector no le roba el foco al campo.
+  const hayDialogo = respaldo || reverso !== null || eligiendoCliente || precioEnEdicion
   useEffect(() => {
     if (!hayDialogo) inputRef.current?.focus()
-  }, [hayDialogo, ventaId, escanear.isPending])
+  }, [hayDialogo, ventaId, abierta, escanear.isPending])
   // Al pulsar un botón que abre un diálogo, el blur llega antes que el clic: el timeout debe leer
   // si hay diálogo cuando corre, no cuando se pintó el input, o le roba el foco al diálogo.
   const hayDialogoRef = useRef(hayDialogo)
   hayDialogoRef.current = hayDialogo
   const reenfocar = () => setTimeout(() => { if (!hayDialogoRef.current) inputRef.current?.focus() }, 0)
 
-  const v = venta.data
-  const abierta = v?.estado === 'abierta'
   const vigentes = v?.items.filter((i) => !i.reverso_id) ?? []
   const ultimo = [...(v?.items ?? [])].reverse().find((i) => !i.reverso_id)
-  const credito = v?.forma_pago === 'credito'
-  // El precio lo copia el backend al escanear; aquí solo se avisa, no se bloquea.
-  const escaneadoSinPrecio = credito && abierta && v.items.some((i) => i.id === ultimoEscaneado && !i.reverso_id && sinPrecio(i))
+  // Solo cierra la edición de ese ítem: si ya se abrió la de otro, la deja abierta.
+  const dejarDeEditar = (id: number) => setEditandoPrecio((actual) => (actual === id ? null : actual))
 
   return (
     <div>
@@ -202,21 +212,37 @@ export default function Venta() {
           autoComplete="off"
         />
         {aviso && <div className={`aviso ${aviso.tipo}`} role="status">{aviso.texto}</div>}
-        {escaneadoSinPrecio && <div className="aviso atencion" role="alert">Esta referencia no tiene precio; este ítem quedará en $0 en la cartera.</div>}
 
         {v && (
           <table>
             <thead>
-              <tr><th>Código</th><th>Referencia</th><th>Marca</th><th>Precio</th><th>Captura</th><th>Usuario</th><th>Hora</th><th></th></tr>
+              <tr><th>Código</th><th>Referencia</th><th>Proveedor</th><th>Precio</th><th>Captura</th><th>Usuario</th><th>Hora</th><th></th></tr>
             </thead>
             <tbody>
               {v.items.map((i) => (
                 <tr key={i.id} className={i.reverso_id ? 'reversado' : ''}>
                   <td className="mono">{i.unidad.codigo_barras}</td>
                   <td>{i.unidad.referencia?.codigo_referencia} <small>{i.unidad.referencia?.descripcion}</small></td>
-                  <td>{i.unidad.referencia?.marca?.nombre}</td>
+                  <td>{i.unidad.referencia?.proveedor?.nombre} <ChipCalidad calidad={i.unidad.referencia?.calidad} /></td>
                   <td>
-                    {i.precio_unitario === null ? '—' : Number(i.precio_unitario).toLocaleString('es-CO')}
+                    {v && precioEditable(i) && editandoPrecio === i.id ? (
+                      <CeldaPrecio
+                        ventaId={v.id}
+                        item={i}
+                        onGuardado={(nueva, precio) => {
+                          qc.setQueryData(['venta', nueva.id], nueva)
+                          dejarDeEditar(i.id)
+                          setAviso({ tipo: 'ok', texto: `Precio de ${i.unidad.codigo_barras} cambiado a $${formatoNumero(precio)}.` })
+                        }}
+                        onTerminar={() => dejarDeEditar(i.id)}
+                      />
+                    ) : precioEditable(i) ? (
+                      <button type="button" className="enlace" title="Cambiar el precio de este ítem" onClick={() => setEditandoPrecio(i.id)}>
+                        {i.precio_unitario === null ? '—' : formatoNumero(i.precio_unitario)}
+                      </button>
+                    ) : (
+                      i.precio_unitario === null ? '—' : formatoNumero(i.precio_unitario)
+                    )}
                     {i.iva_porcentaje !== null && <> <small>{Number(i.iva_porcentaje) === 0 ? 'sin IVA' : `IVA ${Number(i.iva_porcentaje)} %`}</small></>}
                   </td>
                   <td><span className={`chip ${i.metodo_captura}`}>{i.metodo_captura}</span></td>
@@ -332,7 +358,7 @@ function BusquedaRespaldo({ onElegir, onCerrar }: { onElegir: (codigo: string) =
             return (
               <div key={r.id} className="resultado">
                 <div>
-                  <strong>{r.codigo_referencia}</strong> {r.codigo_universal && <span className="chip">{r.codigo_universal.codigo}</span>} · {r.marca?.nombre} · {r.proveedor?.nombre} ·{' '}
+                  <strong>{r.codigo_referencia}</strong> {r.codigo_universal && <span className="chip">{r.codigo_universal.codigo}</span>} <ChipCalidad calidad={r.calidad} /> · {r.proveedor?.nombre} ·{' '}
                   <span className={r.existencia > 0 ? '' : 'agotado'}>existencia {r.existencia}</span>
                 </div>
                 <div><small>{r.descripcion}</small></div>
@@ -491,6 +517,75 @@ function DialogoCredito({ abriendo, error, onConfirmar, onCerrar }: {
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * RF-14 / S-18: precio libre de un ítem en una venta a crédito abierta, mayor que 0 y sin piso.
+ * Enter o salir del campo guarda; Escape cancela. El backend audita cada cambio.
+ * El lector no escucha este campo: useScanner solo está en el input del escáner.
+ */
+function CeldaPrecio({ ventaId, item, onGuardado, onTerminar }: {
+  ventaId: number
+  item: VentaItem
+  onGuardado: (venta: TVenta, precio: number) => void
+  onTerminar: () => void
+}) {
+  const [texto, setTexto] = useState(item.precio_unitario === null ? '' : formatoNumero(item.precio_unitario))
+  const campoRef = useRef<HTMLInputElement>(null)
+  // Evita guardar dos veces (Enter y luego el blur al desmontarse) o guardar tras cancelar.
+  const listo = useRef(false)
+  const error = errorPrecio(texto)
+
+  const guardar = useMutation({
+    mutationFn: async (precio: number) =>
+      (await api.patch<TVenta>(`/ventas/${ventaId}/items/${item.id}`, { precio_unitario: precio })).data,
+    onSuccess: (nueva, precio) => onGuardado(nueva, precio),
+    onError: () => { listo.current = false; campoRef.current?.focus() },
+  })
+
+  const cancelar = () => { listo.current = true; onTerminar() }
+
+  const confirmar = (alSalir: boolean) => {
+    if (listo.current || guardar.isPending) return
+    const precio = leerNumero(texto)
+    if (error || precio === null) {
+      // Al salir con un valor inválido se descarta; con Enter se queda para corregirlo.
+      if (alSalir) cancelar()
+      return
+    }
+    if (item.precio_unitario !== null && precio === Number(item.precio_unitario)) {
+      cancelar()
+      return
+    }
+    listo.current = true
+    guardar.mutate(precio)
+  }
+
+  return (
+    <div className="precio-editable">
+      <input
+        ref={campoRef}
+        autoFocus
+        inputMode="decimal"
+        autoComplete="off"
+        aria-label={`Precio de ${item.unidad.codigo_barras}`}
+        aria-invalid={error !== null}
+        aria-describedby={`precio-${item.id}-ayuda`}
+        value={texto}
+        disabled={guardar.isPending}
+        onFocus={(e) => e.target.select()}
+        onChange={(e) => { setTexto(e.target.value); guardar.reset() }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') { e.preventDefault(); confirmar(false) }
+          if (e.key === 'Escape') { e.preventDefault(); cancelar() }
+        }}
+        onBlur={() => confirmar(true)}
+      />
+      <small id={`precio-${item.id}-ayuda`} className={error || guardar.isError ? 'ayuda error' : 'ayuda'}>
+        {guardar.isError ? mensajeError(guardar.error) : error ?? 'Enter guarda · Esc cancela'}
+      </small>
     </div>
   )
 }

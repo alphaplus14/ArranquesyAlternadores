@@ -6,9 +6,11 @@ use App\Enums\MetodoCaptura;
 use App\Enums\TipoReverso;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\AbrirVentaRequest;
+use App\Http\Requests\CambiarPrecioItemRequest;
 use App\Http\Resources\VentaItemResource;
 use App\Http\Resources\VentaResource;
 use App\Models\Venta;
+use App\Models\VentaItem;
 use App\Services\ReversoService;
 use App\Services\VentaService;
 use Illuminate\Http\JsonResponse;
@@ -74,8 +76,10 @@ class VentaController extends Controller
 
         // RF-06: una sola petición por escaneo. Se devuelve el ítem con la misma forma que en
         // GET /ventas/{id} para que el frontend lo agregue a la venta en caché sin pedirla otra vez.
-        // El usuario es quien escanea y un ítem recién creado no tiene reverso: sin consultas extra.
-        $item->unidad->load('referencia:id,codigo_referencia,descripcion,precio_venta,existencia,marca_id', 'referencia.marca:id,nombre');
+        $item->unidad->load(
+            'referencia:id,codigo_referencia,calidad,descripcion,precio_venta,existencia,proveedor_id',
+            'referencia.proveedor:id,nombre',
+        );
         $item->setRelation('usuario', $request->user())->setRelation('reversoItem', null);
 
         return response()->json([
@@ -92,7 +96,8 @@ class VentaController extends Controller
                 'id' => $item->unidad->referencia->id,
                 'codigo_referencia' => $item->unidad->referencia->codigo_referencia,
                 'descripcion' => $item->unidad->referencia->descripcion,
-                'marca' => $item->unidad->referencia->marca->nombre,
+                'calidad' => $item->unidad->referencia->calidad,
+                'proveedor' => $item->unidad->referencia->proveedor->nombre, // S-23: en lugar de la marca
                 'existencia' => $item->unidad->referencia->existencia,
             ],
         ], 201);
@@ -101,6 +106,14 @@ class VentaController extends Controller
     public function cerrar(Venta $venta): VentaResource
     {
         return new VentaResource($this->cargar($this->ventas->cerrar($venta)));
+    }
+
+    /** RF-14 / S-18: precio libre en una venta a crédito abierta; el servicio lo audita. */
+    public function cambiarPrecio(CambiarPrecioItemRequest $request, Venta $venta, VentaItem $item): VentaResource
+    {
+        $venta = $this->ventas->cambiarPrecio($venta, $item, $request->validated('precio_unitario'), $request->user());
+
+        return new VentaResource($this->cargar($venta));
     }
 
     /** RF-07 */
@@ -132,8 +145,8 @@ class VentaController extends Controller
             'items.usuario:id,name',
             'items.reversoItem',
             'items.unidad:id,referencia_id,codigo_barras,estado',
-            'items.unidad.referencia:id,codigo_referencia,descripcion,precio_venta,existencia,marca_id',
-            'items.unidad.referencia.marca:id,nombre',
+            'items.unidad.referencia:id,codigo_referencia,calidad,descripcion,precio_venta,existencia,proveedor_id',
+            'items.unidad.referencia.proveedor:id,nombre',
             'reversos' => fn ($q) => $q->orderBy('id'),
             'reversos.usuario:id,name',
             'reversos.items',

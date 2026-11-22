@@ -10,7 +10,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * @mixin VentaItem  RF-06 / RF-07: un ítem de la venta tal como lo pinta la tabla del mostrador.
  * Lo usan GET /ventas/{id} (dentro de VentaResource) y POST /ventas/{id}/escanear, para que el
  * frontend agregue el ítem escaneado a la venta en caché sin volver a pedirla.
- * Espera cargados usuario, reversoItem y unidad.referencia.marca.
+ * Espera cargados usuario, reversoItem y unidad.referencia.proveedor.
  */
 class VentaItemResource extends JsonResource
 {

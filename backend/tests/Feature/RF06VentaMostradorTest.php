@@ -36,7 +36,7 @@ it('RF-06: escanear devuelve el ítem con la misma forma que GET /ventas/{id}, s
         ->assertJsonStructure([
             'venta_item_id', 'metodo_captura',
             'unidad' => ['id', 'codigo_barras', 'estado'],
-            'referencia' => ['id', 'codigo_referencia', 'descripcion', 'marca', 'existencia'],
+            'referencia' => ['id', 'codigo_referencia', 'descripcion', 'calidad', 'proveedor', 'existencia'],
         ])
         // Lo nuevo: el ítem listo para agregarlo a la venta en caché, sin otro GET.
         ->assertJsonPath('venta_id', $ventaId)

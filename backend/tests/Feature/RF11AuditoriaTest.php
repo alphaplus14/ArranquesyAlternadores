@@ -3,7 +3,7 @@
 use App\Enums\Rol;
 use App\Exceptions\RegistroInmutableException;
 use App\Models\Auditoria;
-use App\Models\Marca;
+use App\Models\Proveedor;
 
 beforeEach(fn () => sembrarDemo());
 
@@ -34,16 +34,16 @@ it('RF-11: una edición sin cambios reales no genera filas', function () {
     expect(Auditoria::where('tabla', 'referencias')->count())->toBe(0);
 });
 
-it('RF-11: se auditan marcas, usuarios y el resto del catálogo, sin copiar contraseñas', function () {
+it('RF-11: se auditan proveedores, usuarios y el resto del catálogo, sin copiar contraseñas', function () {
     actuarComo(Rol::Admin);
-    $marca = Marca::where('nombre', 'Marca Ejemplo')->first();
+    $proveedor = Proveedor::where('nombre', 'Autopartes Central')->first();
     $usuario = actuarComo(Rol::Mostrador);
     actuarComo(Rol::Admin);
 
-    $this->putJson("/api/marcas/{$marca->id}", ['nombre' => 'Jota'])->assertOk();
+    $this->putJson("/api/proveedores/{$proveedor->id}", ['nombre' => 'Autopartes Central SAS'])->assertOk();
     $this->patchJson("/api/usuarios/{$usuario->id}", ['activo' => false, 'password' => 'nueva-clave-123', 'password_confirmation' => 'nueva-clave-123'])->assertOk();
 
-    $this->assertDatabaseHas('auditoria', ['tabla' => 'marcas', 'registro_id' => $marca->id, 'campo' => 'nombre', 'valor_anterior' => 'Marca Ejemplo', 'valor_nuevo' => 'Jota']);
+    $this->assertDatabaseHas('auditoria', ['tabla' => 'proveedores', 'registro_id' => $proveedor->id, 'campo' => 'nombre', 'valor_anterior' => 'Autopartes Central', 'valor_nuevo' => 'Autopartes Central SAS']);
     $this->assertDatabaseHas('auditoria', ['tabla' => 'users', 'registro_id' => $usuario->id, 'campo' => 'activo', 'valor_anterior' => '1', 'valor_nuevo' => '0']);
     $this->assertDatabaseHas('auditoria', ['tabla' => 'users', 'campo' => 'password', 'valor_anterior' => '••••', 'valor_nuevo' => '••••']);
 });

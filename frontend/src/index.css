@@ -55,8 +55,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   top: 0;
   z-index: 30;
 }
-.marca-logo { height: 3.25rem; width: auto; display: block; object-fit: contain; }
-.marca-nombre { font-size: 1.05rem; letter-spacing: 0.01em; }
+.logo-empresa { height: 3.25rem; width: auto; display: block; object-fit: contain; }
 .barra-espacio { flex: 1; }
 .icono-boton {
   width: 2.4rem; height: 2.4rem; display: grid; place-items: center;
@@ -234,7 +233,6 @@ label { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; col
 label.check { flex-direction: row; align-items: center; }
 .formulario { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
 .formulario.en-linea { flex-direction: row; flex-wrap: wrap; align-items: flex-end; }
-.crece { flex: 1; min-width: 240px; position: relative; }
 
 .escaner {
   width: 100%; font-size: 1.25rem; padding: 12px 14px; margin-bottom: 8px;
@@ -317,6 +315,7 @@ tr.reversado td:last-child { text-decoration: none; }
 .chip.abierta, .chip.borrador { background: var(--aviso-fondo); color: var(--aviso); }
 .chip.cerrada, .chip.confirmado { background: var(--ok-fondo); color: var(--ok); }
 .chip.digitado { background: #F3E8FF; color: #5B2EA6; }
+.chip.calidad { font-weight: 600; } /* S-23: fino / genérico */
 .chip.sin-precio, .chip.credito { background: var(--aviso-fondo); color: var(--aviso); font-weight: 600; }
 
 .aviso { padding: 10px 12px; border-radius: 8px; margin: 8px 0; font-weight: 600; }
@@ -341,10 +340,9 @@ tr.reversado td:last-child { text-decoration: none; }
 .reversos { padding-left: 18px; }
 .resultado { border-bottom: 1px solid var(--borde); padding: 8px 0; }
 .venta-credito { margin: 0 0 8px; }
+.precio-editable { display: flex; flex-direction: column; gap: 2px; min-width: 130px; }
+.precio-editable input { width: 130px; padding: 4px 6px; }
 .unidades { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-.sugerencias { position: absolute; top: 100%; left: 0; right: 0; z-index: 5; list-style: none; margin: 0; padding: 4px; background: #fff; border: 1px solid var(--borde); border-radius: 8px; max-height: 260px; overflow-y: auto; }
-.sugerencias button { width: 100%; text-align: left; border: none; background: transparent; }
-.sugerencias button:hover { background: var(--suave-fondo); }
 .totales { display: grid; grid-template-columns: auto auto; gap: 4px 16px; justify-content: end; margin-top: 12px; }
 .totales dt { color: var(--suave); }
 .totales dd { margin: 0; text-align: right; }
@@ -394,7 +392,7 @@ input[aria-invalid='true'] { border-color: var(--peligro); }
   .campos-dos { grid-template-columns: 1fr; }
 }
 
-/* Login al estilo Sakai: marco con el color de la marca, tarjeta blanca y el logo arriba. */
+/* Login al estilo Sakai: marco con el color de la empresa, tarjeta blanca y el logo arriba. */
 .login {
   min-height: 100vh;
   display: flex;
@@ -646,3 +644,73 @@ button.accion:hover { background: var(--suave-fondo); border-color: var(--primar
     transition: none;
   }
 }
+
+/* S-22: descuento del documento con selector $ / % */
+.campo-con-unidad { display: flex; gap: 6px; }
+.campo-con-unidad select { width: auto; flex: 0 0 auto; }
+.campo-con-unidad input { flex: 1; min-width: 0; }
+
+/* Líneas del ingreso: en móvil cada fila pasa a ser una tarjeta, sin desborde horizontal. */
+@media (max-width: 720px) {
+  .tabla-lineas thead { display: none; }
+  .tabla-lineas, .tabla-lineas tbody, .tabla-lineas tr, .tabla-lineas td { display: block; width: 100%; }
+  .tabla-lineas tr { border: 1px solid var(--borde); border-radius: 8px; padding: 6px 10px; margin-bottom: 10px; }
+  .tabla-lineas td { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 4px 0; border: none; text-align: right; }
+  .tabla-lineas td::before { content: attr(data-label); color: var(--suave); font-size: 0.8rem; text-align: left; }
+  .tabla-lineas td[data-label=""]::before, .tabla-lineas td.vacio::before { content: none; }
+  .tabla-lineas td:first-child { display: block; text-align: left; font-weight: 600; }
+  .tabla-lineas td:first-child::before { content: none; }
+  .tabla-lineas .precio-editable { align-items: flex-end; }
+}
+
+/* Tablas anchas: se desplazan dentro de su caja, no la página. */
+.tabla-desplazable { overflow-x: auto; }
+
+/* Ingresos: botón "Nuevo ingreso" junto al título; debajo y a todo el ancho en pantallas angostas. */
+.encabezado-con-accion { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.encabezado-con-accion > .primario { flex: none; min-height: 44px; }
+
+/* Modal "Nuevo ingreso": cabecera y pie fijos, el contenido hace scroll interno. */
+.modal-ingreso { align-items: center; padding: 32px 16px; }
+.ingreso-modal { display: flex; flex-direction: column; max-height: calc(100dvh - 64px); }
+.ingreso-modal-cuerpo { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.ingreso-campos { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.ingreso-modal select, .ingreso-modal input, .ingreso-modal .modal-pie button, .ingreso-modal .modal-cerrar { min-height: 44px; }
+.ingreso-modal .modal-cerrar { min-width: 44px; }
+.ingreso-modal .modal-cabeza { padding: 8px 12px 8px 22px; }
+.ingreso-modal .ingreso-modal-cuerpo { padding-top: 16px; }
+.ingreso-campos .campo-ancho { grid-column: 1 / -1; }
+.campo-con-ayuda { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ingreso-modal .modal-pie { align-items: center; flex-wrap: wrap; }
+.nota-obligatorio { margin-right: auto; color: var(--suave); }
+
+/* Etiqueta de un campo (también fuera de <label>, p. ej. sobre un radiogroup). */
+.etiqueta-campo { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 0.85rem; color: var(--suave); }
+.obligatorio { color: var(--peligro); font-weight: 700; margin-left: -3px; }
+.chip.plazo-proveedor { margin-left: auto; }
+
+/* Control segmentado (radiogroup): la opción elegida lleva ✓, borde y negrita, no solo color. */
+.campo-segmentado { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.segmentado { display: flex; gap: 4px; padding: 3px; border: 1px solid var(--borde); border-radius: 10px; background: var(--suave-fondo); }
+button.segmento {
+  flex: 1 1 0; min-width: 0; min-height: 40px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 6px 10px; border: 1px solid transparent; border-radius: 8px;
+  background: transparent; color: var(--suave); font-weight: 500;
+}
+button.segmento:hover { color: var(--texto); }
+button.segmento.elegido { background: #fff; border-color: var(--primario); color: var(--primario); font-weight: 700; box-shadow: var(--sombra-barra); }
+
+@media (max-width: 639px) {
+  .nota-obligatorio { flex-basis: 100%; }
+  .encabezado-con-accion { flex-direction: column; align-items: stretch; }
+  .encabezado-con-accion > .primario { width: 100%; }
+  .modal-ingreso { padding: 0; align-items: stretch; }
+  .ingreso-modal { max-width: none; height: 100dvh; max-height: 100dvh; border-radius: 0; }
+  .ingreso-campos { grid-template-columns: 1fr; }
+  .ingreso-modal .modal-pie button { flex: 1; }
+}
+
+/* S-23: total del universal junto al título del desglose. */
+.total-universal { color: var(--suave); font-size: 0.95rem; }
+.total-universal strong { color: var(--texto); font-size: 1.1rem; }

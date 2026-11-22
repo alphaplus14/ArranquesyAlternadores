@@ -3,19 +3,30 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\User;
 use App\Rules\NombreUsuario;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 
 /** Sanctum en modo SPA: sesión con cookies (GET /sanctum/csrf-cookie antes del login). */
 class AuthController extends Controller
 {
+    public const MENSAJE_FALLIDO = 'Usuario o contraseña incorrectos.';
+
     /**
-     * Inicio de sesión con nombre de usuario (recortado y en minúsculas). Ante cualquier fallo
-     * (usuario inexistente, contraseña errónea o cuenta inactiva) el mensaje es el mismo.
+     * Hash bcrypt (costo 12, el de producción) de una clave que nadie usa. Se compara contra él
+     * cuando el usuario no existe o está inactivo, para que esos casos tarden lo mismo que una
+     * contraseña errónea y no se distingan por el tiempo de respuesta.
+     */
+    private const HASH_FALSO = '$2y$12$HWSTXAOSt0bALG8dvjBKNeEEqVHlIqvEZYCuySCkmJoktMnk74p.2';
+
+    /**
+     * Inicio de sesión con nombre de usuario (recortado y en minúsculas). Usuario inexistente,
+     * contraseña errónea y cuenta inactiva responden exactamente igual: 422 y MENSAJE_FALLIDO.
+     * El límite de intentos lo pone el rate limiter "login" (AppServiceProvider).
      */
     public function login(Request $request): JsonResponse
     {
@@ -31,11 +42,18 @@ class AuthController extends Controller
             'email.prohibited' => 'Inicie sesión con su nombre de usuario, no con el correo.',
         ]);
 
-        $credenciales = Arr::only($credenciales, ['usuario', 'password']);
+        $usuario = User::where('usuario', $credenciales['usuario'])->first();
+        // Siempre se compara un hash, exista o no el usuario.
+        $claveValida = Hash::check($credenciales['password'], $usuario?->password ?? self::HASH_FALSO);
 
-        if (! Auth::guard('web')->attempt([...$credenciales, 'activo' => true])) {
-            throw ValidationException::withMessages(['usuario' => 'Usuario o contraseña incorrectos, o usuario inactivo.']);
+        if (! $usuario || ! $usuario->activo || ! $claveValida) {
+            throw ValidationException::withMessages(['usuario' => self::MENSAJE_FALLIDO]);
         }
+
+        // Lo mismo que hacía Auth::attempt: rehash si cambió el costo, y abrir la sesión.
+        $guardia = Auth::guard('web');
+        $guardia->getProvider()->rehashPasswordIfRequired($usuario, ['password' => $credenciales['password']]);
+        $guardia->login($usuario);
 
         $request->session()->regenerate();
 

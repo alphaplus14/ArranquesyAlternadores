@@ -36,22 +36,16 @@ class CodigoUniversalController extends Controller
     }
 
     /**
-     * RF-02: total del universal = suma de sus referencias, con desglose por referencia y por marca.
+     * RF-02 / S-23: total del universal = suma de sus referencias, con el desglose por referencia
+     * (código, proveedor, calidad y existencia), ordenado por código.
      */
     public function show(CodigoUniversal $codigoUniversal): JsonResponse
     {
         $referencias = Referencia::query()
             ->where('codigo_universal_id', $codigoUniversal->id)
-            ->with(['marca:id,nombre', 'proveedor:id,nombre'])
-            ->orderBy('marca_id')
+            ->with('proveedor:id,nombre')
             ->orderBy('codigo_referencia')
-            ->get();
-
-        $porMarca = $referencias->groupBy('marca_id')->map(fn ($grupo) => [
-            'marca_id' => $grupo->first()->marca_id,
-            'marca' => $grupo->first()->marca->nombre,
-            'existencia' => $grupo->sum('existencia'),
-        ])->values();
+            ->get(['id', 'codigo_referencia', 'calidad', 'descripcion', 'proveedor_id', 'existencia', 'updated_at']);
 
         return response()->json([
             'id' => $codigoUniversal->id,
@@ -63,12 +57,11 @@ class CodigoUniversalController extends Controller
                 'id' => $r->id,
                 'codigo_referencia' => $r->codigo_referencia,
                 'descripcion' => $r->descripcion,
-                'marca' => ['id' => $r->marca->id, 'nombre' => $r->marca->nombre],
                 'proveedor' => ['id' => $r->proveedor->id, 'nombre' => $r->proveedor->nombre],
+                'calidad' => $r->calidad,
                 'existencia' => $r->existencia,
                 'updated_at' => $r->updated_at,
             ]),
-            'por_marca' => $porMarca,
         ]);
     }
 

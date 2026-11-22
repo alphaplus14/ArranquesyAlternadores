@@ -5,7 +5,6 @@ namespace App\Console\Commands;
 use App\Enums\MetodoCaptura;
 use App\Enums\Rol;
 use App\Models\Categoria;
-use App\Models\Marca;
 use App\Models\Proveedor;
 use App\Models\Referencia;
 use App\Models\Unidad;
@@ -38,13 +37,12 @@ class BenchmarkInventario extends Command
             $usuario = User::create(['name' => 'bench', 'usuario' => 'bench-'.uniqid(), 'password' => 'x', 'rol' => Rol::Admin, 'activo' => true]);
             Auth::login($usuario);
             $proveedor = Proveedor::create(['nombre' => 'Proveedor benchmark']);
-            $marca = Marca::firstOrCreate(['nombre' => 'Marca benchmark']);
             $categoria = Categoria::firstOrCreate(['nombre' => 'Categoría benchmark']);
 
             $this->info("Sembrando {$this->option('referencias')} referencias y {$n} unidades…");
             $filas = [];
             for ($i = 1; $i <= (int) $this->option('referencias'); $i++) {
-                $filas[] = ['codigo_referencia' => sprintf('BX%06d', $i), 'marca_id' => $marca->id, 'proveedor_id' => $proveedor->id,
+                $filas[] = ['codigo_referencia' => sprintf('BX%06d', $i), 'proveedor_id' => $proveedor->id,
                     'categoria_id' => $categoria->id, 'descripcion' => "Pieza de prueba {$i}", 'precio_venta' => 1000,
                     'existencia' => 0, 'created_at' => now(), 'updated_at' => now()];
             }

@@ -3,17 +3,36 @@
 namespace App\Models;
 
 use App\Enums\MetodoCaptura;
-use App\Models\Concerns\Inmutable;
+use App\Exceptions\RegistroInmutableException;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-/** RF-06 / RF-12. RF-14: precio e IVA copiados de la referencia al escanear (S-10, S-15). */
+/**
+ * RF-06 / RF-12. RF-14: precio e IVA copiados de la referencia al escanear (S-10, S-15).
+ * Inmutable, con una sola excepción (S-18): cambiar precio_unitario, y nada más, mientras su
+ * venta es a crédito y está abierta. Ese cambio lo hace VentaService::cambiarPrecio, que lo audita.
+ */
 class VentaItem extends Model
 {
-    use Inmutable;
-
     public const UPDATED_AT = null;
+
+    protected static function booted(): void
+    {
+        static::updating(function (VentaItem $item) {
+            $soloPrecio = array_keys($item->getDirty()) === ['precio_unitario'];
+            // La venta se lee de la base, no de la relación en memoria, para no confiar en un estado viejo.
+            $venta = $soloPrecio ? Venta::query()->find($item->venta_id) : null;
+
+            if (! ($venta?->esCredito() && $venta->estaAbierta())) {
+                throw RegistroInmutableException::para($item, 'editar');
+            }
+        });
+
+        static::deleting(function (VentaItem $item) {
+            throw RegistroInmutableException::para($item, 'borrar');
+        });
+    }
 
     protected $table = 'venta_items';
 

@@ -3,9 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\ConfirmarIngresoRequest;
+use App\Http\Requests\IngresoEncabezadoRequest;
 use App\Http\Requests\IngresoItemRequest;
-use App\Http\Requests\IngresoQrRequest;
+use App\Http\Resources\IngresoItemResource;
 use App\Http\Resources\IngresoResource;
 use App\Http\Resources\UnidadResource;
 use App\Models\Ingreso;
@@ -19,7 +19,8 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 /**
  * RF-05: ingreso por remisión: crear borrador, agregar ítems y confirmar.
  * RF-09 / RF-10: descuento y líneas sin IVA. RF-03: al confirmar se crean las unidades.
- * RF-04: factura de compra ubicada por el CUFE del QR; los ítems se digitan igual.
+ * RF-04: la factura de compra se ingresa a mano, igual que la remisión. RF-20: ítems por escaneo.
+ * RF-16: forma de pago, vencimiento digitado y total fijado al confirmar.
  */
 class IngresoController extends Controller
 {
@@ -32,19 +33,20 @@ class IngresoController extends Controller
             ->withSum('items as unidades', 'cantidad')
             ->when($request->query('proveedor_id'), fn ($q, $v) => $q->where('proveedor_id', $v))
             ->when($request->query('estado'), fn ($q, $v) => $q->where('estado', $v))
-            // RF-04: ingresos confirmados aceptando una diferencia contra el total del QR.
-            ->when($request->boolean('con_diferencia'), fn ($q) => $q->where('diferencia_aceptada', true))
             ->orderByDesc('id')
             ->paginate(25);
 
         return response()->json($pagina);
     }
 
-    public function store(Request $request): JsonResponse
+    /** RF-04 / RF-05: 201 si crea el borrador; 200 si el documento ya estaba en borrador y se reabre. */
+    public function store(IngresoEncabezadoRequest $request): JsonResponse
     {
-        $ingreso = $this->servicio->crearBorrador($this->validarEncabezado($request), $request->user());
+        $ingreso = $this->servicio->crearBorrador($request->validated(), $request->user());
 
-        return (new IngresoResource($ingreso->load('proveedor:id,nombre', 'items')))->response()->setStatusCode(201);
+        return (new IngresoResource($this->cargar($ingreso)))
+            ->response()
+            ->setStatusCode($ingreso->wasRecentlyCreated ? 201 : 200);
     }
 
     public function show(Ingreso $ingreso): IngresoResource
@@ -52,11 +54,20 @@ class IngresoController extends Controller
         return new IngresoResource($this->cargar($ingreso));
     }
 
-    public function update(Request $request, Ingreso $ingreso): IngresoResource
+    public function update(IngresoEncabezadoRequest $request, Ingreso $ingreso): IngresoResource
     {
-        $ingreso = $this->servicio->actualizarEncabezado($ingreso, $this->validarEncabezado($request, parcial: true));
+        $ingreso = $this->servicio->actualizarEncabezado($ingreso, $request->validated());
 
         return new IngresoResource($this->cargar($ingreso));
+    }
+
+    /** RF-20: 201 si crea la línea, 200 si sumó 1 a la existente; 404 con motivo si el código no existe. */
+    public function escanear(Request $request, Ingreso $ingreso): JsonResponse
+    {
+        $codigo = $request->validate(['codigo' => ['required', 'string', 'max:80']])['codigo'];
+        $item = $this->servicio->escanear($ingreso, $codigo);
+
+        return (new IngresoItemResource($item))->response()->setStatusCode($item->wasRecentlyCreated ? 201 : 200);
     }
 
     public function agregarItem(IngresoItemRequest $request, Ingreso $ingreso): IngresoResource
@@ -80,28 +91,9 @@ class IngresoController extends Controller
         return new IngresoResource($this->cargar($ingreso));
     }
 
-    /** RF-04: escanear el QR ubica la factura por CUFE (201 si la crea, 200 si reabre el borrador). */
-    public function desdeQr(IngresoQrRequest $request): JsonResponse
+    public function confirmar(Request $request, Ingreso $ingreso): IngresoResource
     {
-        $ingreso = $this->servicio->crearDesdeQr(
-            $request->validated('contenido'),
-            $request->safe()->only(['proveedor_id', 'numero_documento', 'fecha']),
-            $request->user(),
-        );
-
-        return (new IngresoResource($this->cargar($ingreso)))
-            ->response()
-            ->setStatusCode($ingreso->wasRecentlyCreated ? 201 : 200);
-    }
-
-    public function confirmar(ConfirmarIngresoRequest $request, Ingreso $ingreso): IngresoResource
-    {
-        $ingreso = $this->servicio->confirmar(
-            $ingreso,
-            $request->user(),
-            $request->boolean('aceptar_diferencia'),
-            $request->validated('diferencia_motivo'),
-        );
+        $ingreso = $this->servicio->confirmar($ingreso, $request->user());
 
         return new IngresoResource($this->cargar($ingreso));
     }
@@ -111,7 +103,7 @@ class IngresoController extends Controller
     {
         $unidades = Unidad::query()
             ->whereIn('ingreso_item_id', $ingreso->items()->select('id'))
-            ->with('referencia:id,codigo_referencia,descripcion,marca_id', 'referencia.marca:id,nombre')
+            ->with('referencia:id,codigo_referencia,calidad,descripcion,proveedor_id', 'referencia.proveedor:id,nombre')
             ->orderBy('id')
             ->get(['id', 'referencia_id', 'codigo_barras', 'estado']);
 
@@ -121,23 +113,11 @@ class IngresoController extends Controller
     private function cargar(Ingreso $ingreso): Ingreso
     {
         return $ingreso->load([
-            'proveedor:id,nombre',
+            'proveedor:id,nombre,plazo_dias',
             'usuario:id,name',
             'confirmadoPor:id,name',
             'items' => fn ($q) => $q->orderBy('id'),
             'items.referencia:id,codigo_referencia,descripcion',
-        ]);
-    }
-
-    private function validarEncabezado(Request $request, bool $parcial = false): array
-    {
-        $requerido = $parcial ? 'sometimes' : 'required';
-
-        return $request->validate([
-            'proveedor_id' => [$requerido, 'integer', 'exists:proveedores,id'],
-            'numero_documento' => [$requerido, 'string', 'max:60'],
-            'fecha' => [$requerido, 'date'],
-            'descuento_total' => ['sometimes', 'numeric', 'min:0', 'max:999999999999'], // RF-09
         ]);
     }
 }

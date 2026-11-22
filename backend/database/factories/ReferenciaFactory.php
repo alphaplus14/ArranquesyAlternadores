@@ -3,7 +3,6 @@
 namespace Database\Factories;
 
 use App\Models\Categoria;
-use App\Models\Marca;
 use App\Models\Proveedor;
 use App\Models\Referencia;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -17,7 +16,7 @@ class ReferenciaFactory extends Factory
     {
         return [
             'codigo_referencia' => strtoupper(fake()->unique()->bothify('??-####')),
-            'marca_id' => Marca::factory(),
+            'calidad' => null,
             'proveedor_id' => Proveedor::factory(),
             'categoria_id' => Categoria::factory(),
             'codigo_universal_id' => null,

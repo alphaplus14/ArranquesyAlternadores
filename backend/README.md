@@ -14,7 +14,7 @@ API REST bajo `/api`, con autenticación Sanctum en modo SPA (sesión por cookie
 composer install
 cp .env.example .env              # DB_PORT=3307 por defecto
 php artisan key:generate
-php artisan migrate --seed        # usuarios, categorías, marcas y los ejemplos IM204 / IM210
+php artisan migrate --seed        # usuarios, categorías y los ejemplos IM204 / IM210
 php artisan serve                 # http://localhost:8000
 ```
 
@@ -39,8 +39,7 @@ app/
     Middleware/        EnsureRol (rol por endpoint) y MedirDuracion (S-04).
   Services/            Casos de uso y transacciones. Toda escritura de inventario pasa por aquí.
     InventarioService   ÚNICO punto que cambia referencias.existencia y el estado de las unidades.
-    IngresoService      RF-05/09/10/03 y RF-04 (crearDesdeQr) · VentaService RF-06/12 · ReversoService RF-07
-    FacturaQr/          RF-04: FacturaQrService lee el QR de la factura (sin tocar la base)
+    IngresoService      RF-05/04/09/10/03 · VentaService RF-06/12/14 · ReversoService RF-07
     CodigoBarrasService RF-03 · EtiquetaService RF-03 (PDF)
   Models/              Eloquent: relaciones, casts y reglas de integridad del propio registro.
     Concerns/Auditable  RF-11 · Concerns/Inmutable: ventas, reversos, movimientos y auditoría.
@@ -54,7 +53,16 @@ Reglas:
 - Un controlador **no** abre transacciones ni toca `existencia`: delega en un servicio.
 - Las lecturas sencillas (listados, reportes) pueden consultar modelos desde el controlador, siempre con `with()` y paginación en el servidor. `preventLazyLoading` está activo fuera de producción.
 - Las violaciones de reglas de negocio se lanzan como `ReglaInventarioException` y `bootstrap/app.php` las convierte en JSON.
-- La configuración del dominio vive en `config/etiquetas.php` (prefijo del código de barras y tamaños de etiqueta) y `config/ingresos.php` (tolerancia del total contra el QR, RF-04).
+- La configuración del dominio vive en `config/etiquetas.php` (prefijo del código de barras y tamaños de etiqueta).
+
+## Ingreso de remisiones y facturas (RF-04, RF-05, RF-20)
+
+No se lee el QR ni el XML de la factura.
+
+1. `POST /ingresos` con `tipo` (`factura` | `remision`), `proveedor_id`, `numero_documento` (se recorta y compacta) y `fecha`. El mismo proveedor + tipo + número no entra dos veces: un borrador se devuelve (200) y uno confirmado responde 422 con `motivo: documento_confirmado` e `ingreso_id`.
+2. `POST /ingresos/{ingreso}/escanear` con `codigo`: busca el `codigo_referencia` entre las referencias del proveedor del ingreso. Si existe, crea la línea con cantidad 1 y el último costo confirmado (201) o suma 1 a la que ya hay (200). Si no existe, 404 con `motivo: referencia_inexistente` y el `codigo` leído; logística puede crearla con `POST /referencias` y volver a escanear.
+3. Las líneas se corrigen con `PATCH /ingresos/{ingreso}/items/{item}` y se quitan con `DELETE` mientras es borrador.
+4. `POST /ingresos/{ingreso}/confirmar` rechaza líneas sin costo (422), crea las unidades con su código de barras y suma existencia.
 
 ## Tests
 

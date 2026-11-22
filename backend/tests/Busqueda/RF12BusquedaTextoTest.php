@@ -1,8 +1,8 @@
 <?php
 
 use App\Enums\Rol;
+use App\Enums\Calidad;
 use App\Models\Categoria;
-use App\Models\Marca;
 use App\Models\Proveedor;
 use App\Models\Referencia;
 
@@ -14,9 +14,8 @@ use App\Models\Referencia;
 
 beforeEach(function () {
     actuarComo(Rol::Mostrador);
-    $this->marca = Marca::factory()->create();
-    $this->otraMarca = Marca::factory()->create();
     $this->proveedor = Proveedor::factory()->create();
+    $this->otroProveedor = Proveedor::factory()->create();
     $this->categoria = Categoria::factory()->create();
 
     $catalogo = [
@@ -47,7 +46,6 @@ function crearReferenciaBuscable(string $codigo, string $descripcion): Referenci
     return Referencia::factory()->create([
         'codigo_referencia' => $codigo,
         'descripcion' => $descripcion,
-        'marca_id' => test()->marca->id,
         'proveedor_id' => test()->proveedor->id,
         'categoria_id' => test()->categoria->id,
     ]);
@@ -121,14 +119,17 @@ it('RF-12 búsqueda: no distingue mayúsculas ni tildes', function () {
 });
 
 it('RF-12 búsqueda: la paginación y los filtros siguen funcionando con q', function () {
-    Referencia::where('codigo_referencia', 'A-002')->update(['marca_id' => $this->otraMarca->id]);
+    Referencia::where('codigo_referencia', 'A-002')->update([
+        'proveedor_id' => $this->otroProveedor->id,
+        'calidad' => Calidad::Generico,
+    ]);
 
     $this->getJson('/api/referencias?q=alternador&por_pagina=2')->assertOk()
         ->assertJsonCount(2, 'data')
         ->assertJsonPath('meta.total', 5)
         ->assertJsonPath('meta.last_page', 3);
 
-    expect(codigosBuscados('alternador', ['marca_id' => $this->otraMarca->id]))->toBe(['A-002'])
+    expect(codigosBuscados('alternador', ['proveedor_id' => $this->otroProveedor->id]))->toBe(['A-002'])
         ->and(codigosBuscados('alternador', ['categoria_id' => $this->categoria->id]))->toHaveCount(5);
 });
 

@@ -22,7 +22,7 @@ class EtiquetaService
 
         $unidades = Unidad::query()
             ->whereIn('id', $unidadIds)
-            ->with('referencia:id,codigo_referencia,descripcion,marca_id,codigo_universal_id', 'referencia.marca:id,nombre', 'referencia.codigoUniversal:id,codigo')
+            ->with('referencia:id,codigo_referencia,descripcion,proveedor_id,codigo_universal_id', 'referencia.proveedor:id,nombre', 'referencia.codigoUniversal:id,codigo')
             ->orderBy('id')
             ->get(['id', 'referencia_id', 'codigo_barras']);
 
@@ -34,7 +34,7 @@ class EtiquetaService
             'barras' => base64_encode($renderer->render($tipo->getBarcode($u->codigo_barras), 600, 160)),
             'referencia' => $u->referencia->codigo_referencia,
             'universal' => $u->referencia->codigoUniversal?->codigo,
-            'marca' => $u->referencia->marca->nombre,
+            'proveedor' => $u->referencia->proveedor->nombre, // S-23: en lugar de la marca
             'descripcion' => $u->referencia->descripcion,
         ]);
 

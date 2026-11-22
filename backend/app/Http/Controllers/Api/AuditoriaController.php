@@ -11,7 +11,7 @@ use Illuminate\Validation\Rule;
 /** RF-11: historial de ediciones. Solo lectura. */
 class AuditoriaController extends Controller
 {
-    public const TABLAS = ['referencias', 'codigos_universales', 'marcas', 'proveedores', 'categorias', 'users'];
+    public const TABLAS = ['referencias', 'codigos_universales', 'proveedores', 'categorias', 'clientes', 'ingresos', 'ingreso_items', 'users', 'venta_items'];
 
     public function index(Request $request): JsonResponse
     {

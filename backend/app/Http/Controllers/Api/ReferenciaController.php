@@ -13,7 +13,7 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 /** RF-01 / RF-11. Catálogo con búsqueda y paginación en servidor. */
 class ReferenciaController extends Controller
 {
-    private const RELACIONES = ['marca:id,nombre', 'proveedor:id,nombre', 'categoria:id,nombre,admite_codigo_universal', 'codigoUniversal:id,codigo'];
+    private const RELACIONES = ['proveedor:id,nombre', 'categoria:id,nombre,admite_codigo_universal', 'codigoUniversal:id,codigo'];
 
     public function index(Request $request): AnonymousResourceCollection
     {
@@ -22,7 +22,6 @@ class ReferenciaController extends Controller
         $pagina = Referencia::query()
             ->with(self::RELACIONES)
             ->when($request->query('categoria_id'), fn ($query, $v) => $query->where('categoria_id', $v))
-            ->when($request->query('marca_id'), fn ($query, $v) => $query->where('marca_id', $v))
             ->when($request->query('proveedor_id'), fn ($query, $v) => $query->where('proveedor_id', $v))
             ->when($request->query('codigo_universal_id'), fn ($query, $v) => $query->where('codigo_universal_id', $v))
             // Con q: prefijo del código o todas las palabras de la descripción, por relevancia (RF-12).

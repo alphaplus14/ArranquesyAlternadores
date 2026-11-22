@@ -13,7 +13,12 @@ class Proveedor extends Model
 
     protected $table = 'proveedores';
 
-    protected $fillable = ['nombre', 'nit'];
+    protected $fillable = ['nombre', 'nit', 'plazo_dias'];
+
+    protected function casts(): array
+    {
+        return ['plazo_dias' => 'integer'];
+    }
 
     public function referencias(): HasMany
     {

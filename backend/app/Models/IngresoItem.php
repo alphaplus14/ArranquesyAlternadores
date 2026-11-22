@@ -2,17 +2,23 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\Auditable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-/** RF-05 / RF-09 / RF-10 */
+/**
+ * RF-05 / RF-09 / RF-10 / S-22: descuento de línea en % e IVA por línea (0 % = sin IVA).
+ * Sus netos, bases e IVA se calculan en App\Support\TotalesIngreso. RF-11: cada edición se audita.
+ */
 class IngresoItem extends Model
 {
+    use Auditable;
+
     protected $table = 'ingreso_items';
 
     protected $fillable = [
-        'referencia_id', 'cantidad', 'costo_unitario', 'descuento', 'iva_porcentaje', 'sin_iva',
+        'referencia_id', 'cantidad', 'costo_unitario', 'descuento_porcentaje', 'iva_porcentaje',
     ];
 
     protected function casts(): array
@@ -20,9 +26,8 @@ class IngresoItem extends Model
         return [
             'cantidad' => 'integer',
             'costo_unitario' => 'decimal:2',
-            'descuento' => 'decimal:2',
+            'descuento_porcentaje' => 'decimal:2',
             'iva_porcentaje' => 'decimal:2',
-            'sin_iva' => 'boolean',
         ];
     }
 
@@ -39,17 +44,5 @@ class IngresoItem extends Model
     public function unidades(): HasMany
     {
         return $this->hasMany(Unidad::class);
-    }
-
-    /** Subtotal de la línea después de su descuento (RF-09). */
-    public function subtotal(): float
-    {
-        return round($this->cantidad * (float) $this->costo_unitario - (float) $this->descuento, 2);
-    }
-
-    /** RF-10: las líneas sin IVA no suman impuesto. */
-    public function iva(): float
-    {
-        return $this->sin_iva ? 0.0 : round($this->subtotal() * (float) $this->iva_porcentaje / 100, 2);
     }
 }

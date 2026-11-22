@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Hash;
  * Los tests usan la cabecera de la SPA para que Sanctum abra sesión con cookies.
  */
 
-const MENSAJE_GENERICO = 'Usuario o contraseña incorrectos, o usuario inactivo.';
+const MENSAJE_GENERICO = 'Usuario o contraseña incorrectos.';
 
 function entrar(array $datos)
 {

@@ -2,71 +2,59 @@
 
 namespace App\Http\Resources;
 
+use App\Models\Ingreso;
+use App\Models\IngresoItem;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/** @mixin \App\Models\Ingreso  RF-05 / RF-09 / RF-10 */
+/**
+ * @mixin Ingreso  RF-05 / RF-09 / RF-10 / RF-16.
+ * Todas las cifras salen de Ingreso::totales() (TotalesIngreso): el frontend no recalcula.
+ */
 class IngresoResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
-        $items = $this->whenLoaded('items');
-        $cargados = $this->relationLoaded('items');
-
-        $subtotal = $cargados ? round($this->items->sum(fn ($i) => $i->subtotal()), 2) : null;
-        $iva = $cargados ? round($this->items->sum(fn ($i) => $i->iva()), 2) : null;
-        $descuentoLineas = $cargados ? round($this->items->sum(fn ($i) => (float) $i->descuento), 2) : null;
+        $totales = $this->relationLoaded('items') ? $this->totales() : null;
 
         return [
             'id' => $this->id,
             'tipo' => $this->tipo,
             'estado' => $this->estado,
+            'forma_pago' => $this->forma_pago, // RF-16
             'proveedor_id' => $this->proveedor_id,
-            'proveedor' => $this->whenLoaded('proveedor', fn () => ['id' => $this->proveedor->id, 'nombre' => $this->proveedor->nombre]),
+            'proveedor' => $this->whenLoaded('proveedor', fn () => [
+                'id' => $this->proveedor->id,
+                'nombre' => $this->proveedor->nombre,
+                'plazo_dias' => $this->proveedor->plazo_dias,
+            ]),
             'numero_documento' => $this->numero_documento,
-            'cufe' => $this->cufe,
-            // RF-04: totales leídos del QR y diferencia contra lo digitado. En borrador se calcula
-            // con los ítems actuales; confirmado, es la registrada al confirmar.
-            'qr' => $this->esFacturaQr() ? [
-                'subtotal' => $this->subtotal_qr,
-                'iva' => $this->iva_qr,
-                'total' => $this->total_qr,
-                'diferencia' => $this->esBorrador()
-                    ? ($cargados ? $this->diferenciaQr() : null)
-                    : ($this->diferencia_qr === null ? null : (float) $this->diferencia_qr),
-                'tolerancia' => (float) config('ingresos.tolerancia_total'),
-                'diferencia_aceptada' => $this->diferencia_aceptada,
-                'diferencia_motivo' => $this->diferencia_motivo,
-            ] : null,
             'fecha' => $this->fecha?->toDateString(),
+            'vence_el' => $this->vence_el?->toDateString(), // RF-16: digitado; null en contado
+            // S-22: en pesos; si se digitó en %, los pesos vigentes salen de las líneas (totales).
+            'descuento_documento' => $totales?->descuentoDocumento ?? $this->descuento_documento,
+            'descuento_documento_porcentaje' => $this->descuento_documento_porcentaje,
+            // RF-16: fijado al confirmar; null en borrador (y en los confirmados antes de RF-16).
+            'total' => $this->total,
             'usuario' => $this->whenLoaded('usuario', fn () => ['id' => $this->usuario->id, 'name' => $this->usuario->name]),
             'confirmado_at' => $this->confirmado_at,
             'confirmado_por' => $this->whenLoaded('confirmadoPor', fn () => $this->confirmadoPor
                 ? ['id' => $this->confirmadoPor->id, 'name' => $this->confirmadoPor->name]
                 : null),
-            'items' => $this->whenLoaded('items', fn () => $items->map(fn ($i) => [
-                'id' => $i->id,
-                'referencia_id' => $i->referencia_id,
-                'referencia' => $i->relationLoaded('referencia') ? [
-                    'codigo_referencia' => $i->referencia->codigo_referencia,
-                    'descripcion' => $i->referencia->descripcion,
-                ] : null,
-                'cantidad' => $i->cantidad,
-                'costo_unitario' => $i->costo_unitario,
-                'descuento' => $i->descuento,
-                'iva_porcentaje' => $i->iva_porcentaje,
-                'sin_iva' => $i->sin_iva,
-                'subtotal' => $i->subtotal(),
-                'iva' => $i->iva(),
-            ])),
-            // RF-09: el descuento de la factura se muestra explícito.
-            'totales' => $cargados ? [
-                'subtotal' => $subtotal,
-                'descuento_lineas' => $descuentoLineas,
-                'descuento_total' => $this->descuento_total,
-                'iva' => $iva,
-                'lineas_sin_iva' => $this->items->where('sin_iva', true)->count(), // RF-10
-                'total' => $this->totalCalculado(),
+            'items' => $this->whenLoaded('items', fn () => $this->items
+                ->map(fn (IngresoItem $i) => (new IngresoItemResource($i))->conTotales($totales?->lineas[$i->id] ?? null))
+                ->all()),
+            // RF-09 (ajuste) / S-21 / S-22: el descuento del documento se prorratea antes del IVA.
+            'totales' => $totales ? [
+                'subtotal_bruto' => $totales->subtotalBruto,
+                'descuento_lineas' => $totales->descuentoLineas,
+                'subtotal_neto' => $totales->subtotalNeto,
+                'descuento_documento' => $totales->descuentoDocumento,
+                'base_gravada' => $totales->baseGravada,
+                'base_sin_iva' => $totales->baseSinIva,
+                'iva' => $totales->iva,
+                'lineas_sin_iva' => $totales->lineasSinIva, // RF-10
+                'total' => $totales->total,
             ] : null,
         ];
     }

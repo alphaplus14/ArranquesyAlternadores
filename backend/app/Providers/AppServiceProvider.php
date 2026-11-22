@@ -5,9 +5,13 @@ namespace App\Providers;
 use App\Models\Ingreso;
 use App\Models\Reverso;
 use App\Models\Venta;
+use App\Rules\NombreUsuario;
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -36,5 +40,17 @@ class AppServiceProvider extends ServiceProvider
         Model::preventLazyLoading(! $this->app->isProduction());
 
         JsonResource::withoutWrapping();
+
+        // Login: 5 intentos por minuto por usuario + IP. Al pasarse, 429 con los segundos que faltan.
+        RateLimiter::for('login', function (Request $request) {
+            $usuario = NombreUsuario::normalizar($request->input('usuario'));
+
+            return Limit::perMinute(5)
+                ->by((is_string($usuario) ? $usuario : '').'|'.$request->ip())
+                ->response(fn (Request $request, array $cabeceras) => response()->json([
+                    'message' => 'Demasiados intentos. Espere un minuto e intente de nuevo.',
+                    'retry_after' => (int) ($cabeceras['Retry-After'] ?? 60),
+                ], 429, $cabeceras));
+        });
     }
 }

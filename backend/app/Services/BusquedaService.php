@@ -30,7 +30,7 @@ class BusquedaService
     {
         $unidad = Unidad::query()
             ->where('codigo_barras', $q)
-            ->with('referencia.marca:id,nombre', 'referencia.proveedor:id,nombre', 'referencia.codigoUniversal:id,codigo')
+            ->with('referencia.proveedor:id,nombre', 'referencia.codigoUniversal:id,codigo')
             ->first();
 
         $porCodigo = $this->porCodigo($q);
@@ -45,7 +45,6 @@ class BusquedaService
             : new Collection;
 
         $referencias = $porCodigo->concat($porDescripcion)->load([
-            'marca:id,nombre',
             'proveedor:id,nombre',
             'codigoUniversal:id,codigo',
             // Laravel limita por referencia con funciones de ventana (MySQL 8).

@@ -25,11 +25,13 @@
 <body>
 @foreach ($etiquetas as $e)
     <div class="etiqueta">
-        <div class="linea ref">{{ $e['universal'] ? $e['universal'].' · ' : '' }}{{ $e['referencia'] }}@unless($minima) · {{ $e['marca'] }}@endunless</div>
+        <div class="linea ref">{{ $e['universal'] ? $e['universal'].' · ' : '' }}{{ $e['referencia'] }}</div>
         <img class="barras" src="data:image/png;base64,{{ $e['barras'] }}" alt="">
         <div class="linea codigo">{{ $e['codigo'] }}</div>
         @if ($grande)
             <div class="linea">{{ \Illuminate\Support\Str::limit($e['descripcion'], 60) }}</div>
+            {{-- S-23: sin marca; el proveedor corto solo en la grande, que tiene espacio. --}}
+            <div class="linea">{{ \Illuminate\Support\Str::limit($e['proveedor'], 30) }}</div>
         @endif
     </div>
 @endforeach

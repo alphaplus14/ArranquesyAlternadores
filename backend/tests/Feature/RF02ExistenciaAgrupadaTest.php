@@ -21,14 +21,14 @@ it('RF-02: si una referencia pasa de 2 a 3, el universal pasa de 6 a 7 y el deta
         ->and($detalle['AC-77812']['existencia'])->toBe(2);
 });
 
-it('RF-02: el desglose por marca conserva la existencia de cada marca', function () {
+it('RF-02 / S-23: el desglose por referencia conserva la existencia de cada una', function () {
     actuarComo(Rol::Admin);
     $im210 = CodigoUniversal::where('codigo', 'IM210')->first();
 
-    $porMarca = collect($this->getJson("/api/codigos-universales/{$im210->id}")->json('por_marca'))
-        ->pluck('existencia', 'marca');
+    $porReferencia = collect($this->getJson("/api/codigos-universales/{$im210->id}")->json('referencias'))
+        ->pluck('existencia', 'codigo_referencia');
 
-    expect($porMarca->all())->toEqual(['Bosch' => 1, 'Transpo' => 1, 'Marca Ejemplo' => 1]);
+    expect($porReferencia->all())->toEqual(['F00M144136' => 1, 'IM210' => 1, 'ME-210' => 1]);
 });
 
 it('RF-02: el listado de universales trae el total calculado, no guardado', function () {

@@ -3,25 +3,22 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeError } from '../../api/cliente'
 import type { Categoria, Opcion } from '../../api/tipos'
 import Icono from '../../componentes/Icono'
-import { useCategorias, useMarcas, useProveedores } from '../../hooks/useCatalogos'
+import { useCategorias, useProveedores } from '../../hooks/useCatalogos'
 
-type Clave = 'marcas' | 'proveedores' | 'categorias'
+type Clave = 'proveedores' | 'categorias'
 
 const PESTANAS: { clave: Clave; titulo: string; singular: string; alta: string; ruta: string }[] = [
-  { clave: 'marcas', titulo: 'Marcas', singular: 'marca', alta: 'Nueva marca', ruta: 'marcas' },
   { clave: 'proveedores', titulo: 'Proveedores', singular: 'proveedor', alta: 'Nuevo proveedor', ruta: 'proveedores' },
   { clave: 'categorias', titulo: 'Categorías', singular: 'categoría', alta: 'Nueva categoría', ruta: 'categorias' },
 ]
 
-/** Catálogos editables (S-03: las marcas no viven en el código). RF-11: cada cambio queda auditado. */
+/** Catálogos editables. RF-11: cada cambio queda auditado. S-23: la empresa no maneja marcas. */
 export default function Catalogos() {
-  const marcas = useMarcas()
   const proveedores = useProveedores()
   const categorias = useCategorias()
-  const [activa, setActiva] = useState<Clave>('marcas')
+  const [activa, setActiva] = useState<Clave>('proveedores')
 
   const datos: Record<Clave, { filas: Array<Opcion | Categoria>; cargando: boolean }> = {
-    marcas: { filas: marcas.data ?? [], cargando: marcas.isLoading },
     proveedores: { filas: proveedores.data ?? [], cargando: proveedores.isLoading },
     categorias: { filas: categorias.data ?? [], cargando: categorias.isLoading },
   }
@@ -41,7 +38,7 @@ export default function Catalogos() {
     <div>
       <div className="pagina-encabezado">
         <h1>Catálogos</h1>
-        <p>Marcas, proveedores y categorías se editan aquí. Cada cambio queda auditado.</p>
+        <p>Proveedores y categorías se editan aquí. Cada cambio queda auditado.</p>
       </div>
       <section className="panel catalogo">
         <div className="pestanas" role="tablist" aria-label="Catálogos" onKeyDown={mover}>

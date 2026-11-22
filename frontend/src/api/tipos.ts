@@ -27,6 +27,12 @@ export interface Opcion {
   nombre: string
 }
 
+/** RF-16: plazo_dias solo prellena el vencimiento de las compras a crédito. */
+export interface Proveedor extends Opcion {
+  nit?: string | null
+  plazo_dias?: number | null
+}
+
 export interface Categoria extends Opcion {
   admite_codigo_universal: boolean
 }
@@ -39,19 +45,23 @@ export interface Unidad {
   referencia?: Referencia
 }
 
+/** S-23: calidad opcional de una referencia. */
+export type Calidad = 'fino' | 'generico'
+
+export const NOMBRE_CALIDAD: Record<Calidad, string> = { fino: 'Fino', generico: 'Genérico' }
+
 export interface Referencia {
   id: number
   codigo_referencia: string
+  calidad: Calidad | null
   descripcion: string
   precio_venta: string
   /** RF-14 / S-15: IVA con que se vende (0 = sin IVA). */
   iva_venta_porcentaje: string
   existencia: number
-  marca_id: number
   proveedor_id: number
   categoria_id: number
   codigo_universal_id: number | null
-  marca?: Opcion
   proveedor?: Opcion
   categoria?: Categoria
   codigo_universal?: { id: number; codigo: string } | null
@@ -64,16 +74,16 @@ export interface DesgloseUniversal {
   descripcion: string | null
   categoria: Opcion
   existencia_total: number
+  /** RF-02 / S-23: desglose por referencia, ordenado por código. */
   referencias: Array<{
     id: number
     codigo_referencia: string
     descripcion: string
-    marca: Opcion
     proveedor: Opcion
+    calidad: Calidad | null
     existencia: number
     updated_at: string
   }>
-  por_marca: Array<{ marca_id: number; marca: string; existencia: number }>
 }
 
 export interface IngresoItem {
@@ -82,39 +92,48 @@ export interface IngresoItem {
   referencia: { codigo_referencia: string; descripcion: string } | null
   cantidad: number
   costo_unitario: string
-  descuento: string
+  /** S-22: descuento de la línea en %. */
+  descuento_porcentaje: string
+  /** IVA de la línea (19, 5, 0…); 0 = sin IVA. */
   iva_porcentaje: string
-  sin_iva: boolean
-  subtotal: number
-  iva: number
+  /** RF-09 / S-22: cifras del backend con el descuento del documento prorrateado; null fuera del ingreso. */
+  neto: string | null
+  base: string | null
+  iva: string | null
 }
+
+export type TipoIngreso = 'remision' | 'factura'
 
 export interface Ingreso {
   id: number
-  tipo: 'remision' | 'factura_qr'
+  /** RF-04: las dos se ingresan a mano y los ítems se escanean (RF-20). */
+  tipo: TipoIngreso
   estado: 'borrador' | 'confirmado'
+  /** RF-16: contado o crédito; a crédito, vence_el es el vencimiento que trae el documento. */
+  forma_pago: FormaPago
   proveedor_id: number
-  proveedor?: Opcion
+  proveedor?: Proveedor
   numero_documento: string
-  cufe: string | null
   fecha: string
+  vence_el: string | null
+  /** S-22: en pesos; si se digitó en %, descuento_documento_porcentaje lo indica (solo en borrador). */
+  descuento_documento: string
+  descuento_documento_porcentaje: string | null
+  /** RF-16: total fijado al confirmar; null en borrador. */
+  total: string | null
   confirmado_at: string | null
-  /** RF-04: totales leídos del QR (solo en factura_qr) y diferencia contra lo digitado. */
-  qr: {
-    subtotal: string | null
-    iva: string | null
-    total: string | null
-    diferencia: number | null
-    tolerancia: number
-  } | null
   items: IngresoItem[]
+  /** RF-09 (ajuste): calculado por el backend; el frontend solo lo muestra. */
   totales: {
-    subtotal: number
-    descuento_lineas: number
-    descuento_total: string
-    iva: number
+    subtotal_bruto: string
+    descuento_lineas: string
+    subtotal_neto: string
+    descuento_documento: string
+    base_gravada: string
+    base_sin_iva: string
+    iva: string
     lineas_sin_iva: number
-    total: number
+    total: string
   } | null
 }
 
@@ -163,7 +182,7 @@ export interface RespuestaEscaneo {
   venta_item_id: number
   metodo_captura: MetodoCaptura
   unidad: { id: number; codigo_barras: string; estado: Unidad['estado'] }
-  referencia: { id: number; codigo_referencia: string; descripcion: string; marca: string; existencia: number }
+  referencia: { id: number; codigo_referencia: string; descripcion: string; calidad: Calidad | null; proveedor: string; existencia: number }
 }
 
 export interface Auditoria {
