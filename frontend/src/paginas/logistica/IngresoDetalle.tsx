@@ -10,6 +10,8 @@ import Medida from '../../componentes/Medida'
 import { formatoNumero, leerNumero, pesos } from '../../componentes/numeros'
 import { useCategorias } from '../../hooks/useCatalogos'
 import { useScanner } from '../../hooks/useScanner'
+import { useBloquearScroll } from '../../hooks/useBloquearScroll'
+import { atraparTab } from '../../componentes/foco'
 import Resumen from '../../componentes/Resumen'
 
 interface Aviso { tipo: 'ok' | 'error' | 'atencion'; texto: string }
@@ -343,6 +345,15 @@ function CeldaEditable({ etiqueta, inicial, validar, guardar, onGuardado, onTerm
   )
 }
 
+/** Candado pequeño de los datos fijos (decorativo: el texto ya dice que es fijo). */
+function Candado() {
+  return (
+    <svg className="candado" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" />
+    </svg>
+  )
+}
+
 /**
  * RF-20: crea la referencia que no existe con el código leído y el proveedor del ingreso (ambos
  * fijos). Precio de venta > 0 (S-20). Calidad opcional (S-23). Logística no crea categorías: las crea el admin.
@@ -354,7 +365,14 @@ function DialogoReferencia({ codigo, proveedor, onCreada, onCerrar }: {
   onCerrar: () => void
 }) {
   const categorias = useCategorias()
+  const campoCategoria = useRef<HTMLSelectElement>(null)
   const [f, setF] = useState({ calidad: '', categoria_id: '', descripcion: '', precio_venta: '', iva_venta_porcentaje: '19', codigo_universal_id: '' })
+  useBloquearScroll()
+  // El foco empieza en Categoría también si algo lo movió durante el montaje.
+  useEffect(() => {
+    const cuadro = requestAnimationFrame(() => campoCategoria.current?.focus())
+    return () => cancelAnimationFrame(cuadro)
+  }, [])
   const categoria = categorias.data?.find((c) => String(c.id) === f.categoria_id)
   const admiteUniversal = categoria?.admite_codigo_universal ?? false
 
@@ -384,14 +402,23 @@ function DialogoReferencia({ codigo, proveedor, onCreada, onCerrar }: {
   const campo = (k: keyof typeof f) => ({ value: f[k], onChange: (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value }) })
 
   return (
-    <div className="modal" onKeyDown={(e) => e.key === 'Escape' && onCerrar()}>
+    <div className="modal" onKeyDown={(e) => { if (e.key === 'Escape') onCerrar(); else atraparTab(e) }}>
       <form className="modal-caja" role="dialog" aria-modal="true" aria-labelledby="crear-referencia-titulo" onSubmit={(e) => { e.preventDefault(); crear.mutate() }}>
         <h2 id="crear-referencia-titulo">Crear referencia</h2>
-        <p className="ayuda">El código no existe para este proveedor. Al guardarla se agrega la línea al ingreso.</p>
-        <label>Código de referencia<input value={codigo} readOnly aria-readonly="true" /></label>
-        <label>Proveedor<input value={proveedor.nombre} readOnly aria-readonly="true" /></label>
+        {/* Datos fijos: no son campos (no se enfocan ni se editan). */}
+        <dl className="datos-fijos">
+          <div>
+            <dt>Código de referencia</dt>
+            <dd><Candado />{codigo}<span className="solo-lector">, fijado por el escaneo</span></dd>
+          </div>
+          <div>
+            <dt>Proveedor</dt>
+            <dd><Candado />{proveedor.nombre}<span className="solo-lector">, fijado por el ingreso</span></dd>
+          </div>
+        </dl>
+        <p className="ayuda">El código no existe para este proveedor. Se crea para el proveedor de este ingreso, con el código escaneado, y al guardarla se agrega la línea.</p>
         <label>Categoría
-          <select required autoFocus {...campo('categoria_id')}>
+          <select ref={campoCategoria} required autoFocus {...campo('categoria_id')}>
             <option value="">—</option>
             {categorias.data?.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
           </select>
@@ -471,9 +498,10 @@ function DialogoCondiciones({ ingreso, onGuardado, onCerrar }: {
   })
   const errores = guardar.isError ? erroresCampo(guardar.error) : {}
   const general = guardar.isError && Object.keys(errores).length === 0 ? mensajeError(guardar.error) : null
+  useBloquearScroll()
 
   return (
-    <div className="modal" onKeyDown={(e) => e.key === 'Escape' && onCerrar()}>
+    <div className="modal" onKeyDown={(e) => { if (e.key === 'Escape') onCerrar(); else atraparTab(e) }}>
       <form className="modal-caja" role="dialog" aria-modal="true" aria-labelledby="condiciones-titulo" onSubmit={(e) => { e.preventDefault(); guardar.mutate() }}>
         <h2 id="condiciones-titulo">Condiciones del documento</h2>
         <label>Pago
