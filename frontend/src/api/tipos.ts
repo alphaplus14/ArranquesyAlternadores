@@ -45,9 +45,15 @@ export interface Unidad {
   referencia?: Referencia
 }
 
+/** S-23: calidad opcional de una referencia. */
+export type Calidad = 'fino' | 'generico'
+
+export const NOMBRE_CALIDAD: Record<Calidad, string> = { fino: 'Fino', generico: 'Genérico' }
+
 export interface Referencia {
   id: number
   codigo_referencia: string
+  calidad: Calidad | null
   descripcion: string
   precio_venta: string
   /** RF-14 / S-15: IVA con que se vende (0 = sin IVA). */

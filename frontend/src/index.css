@@ -316,6 +316,7 @@ tr.reversado td:last-child { text-decoration: none; }
 .chip.abierta, .chip.borrador { background: var(--aviso-fondo); color: var(--aviso); }
 .chip.cerrada, .chip.confirmado { background: var(--ok-fondo); color: var(--ok); }
 .chip.digitado { background: #F3E8FF; color: #5B2EA6; }
+.chip.calidad { font-weight: 600; } /* S-23: fino / genérico */
 .chip.sin-precio, .chip.credito { background: var(--aviso-fondo); color: var(--aviso); font-weight: 600; }
 
 .aviso { padding: 10px 12px; border-radius: 8px; margin: 8px 0; font-weight: 600; }

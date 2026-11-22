@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeError } from '../api/cliente'
-import type { MetodoCaptura, Pagina, Referencia } from '../api/tipos'
+import { NOMBRE_CALIDAD, type Calidad, type MetodoCaptura, type Pagina, type Referencia } from '../api/tipos'
 import { useAuth } from '../auth/AuthProvider'
 import Icono from '../componentes/Icono'
 import Paginacion from '../componentes/Paginacion'
@@ -19,6 +19,8 @@ const ALTO_FILA = 56
 
 type Formulario = {
   codigo_referencia: string
+  /** S-23: '' = sin calidad. */
+  calidad: '' | Calidad
   marca_id: string
   proveedor_id: string
   categoria_id: string
@@ -30,7 +32,7 @@ type Formulario = {
 }
 
 const vacio: Formulario = {
-  codigo_referencia: '', marca_id: '', proveedor_id: '', categoria_id: '',
+  codigo_referencia: '', calidad: '', marca_id: '', proveedor_id: '', categoria_id: '',
   codigo_universal_id: '', descripcion: '', precio_venta: '', iva_venta_porcentaje: '19',
 }
 
@@ -147,6 +149,7 @@ export default function Productos() {
     id: r.id,
     datos: {
       codigo_referencia: r.codigo_referencia,
+      calidad: r.calidad ?? '',
       marca_id: String(r.marca_id),
       proveedor_id: String(r.proveedor_id),
       categoria_id: String(r.categoria_id),
@@ -158,8 +161,8 @@ export default function Productos() {
   })
 
   const columnas = esAdmin
-    ? '148px minmax(180px, 1.6fr) 120px 140px 130px 120px 76px 96px 92px'
-    : '148px minmax(180px, 1.6fr) 120px 140px 130px 120px 76px 96px'
+    ? '190px minmax(180px, 1.6fr) 120px 140px 130px 120px 76px 96px 92px'
+    : '190px minmax(180px, 1.6fr) 120px 140px 130px 120px 76px 96px'
 
   return (
     <div>
@@ -265,7 +268,10 @@ export default function Productos() {
                 <div style={{ transform: `translateY(${ventana.desplazamiento}px)` }}>
                   {ventana.visibles.map((r) => (
                     <div role="row" key={r.id} className={r.id === resaltada ? 'tabla-rejilla tabla-fila resaltada' : 'tabla-rejilla tabla-fila'} style={{ height: ALTO_FILA }}>
-                      <div role="cell" className="corta"><strong>{r.codigo_referencia}</strong></div>
+                      <div role="cell" className="corta">
+                        <strong>{r.codigo_referencia}</strong>
+                        {r.calidad && <> <span className="chip calidad">{NOMBRE_CALIDAD[r.calidad]}</span></>}
+                      </div>
                       <div role="cell" className="corta">{r.descripcion}</div>
                       <div role="cell" className="corta">{r.marca?.nombre}</div>
                       <div role="cell" className="corta">{r.proveedor?.nombre}</div>
@@ -333,7 +339,7 @@ function FormularioReferencia({ id, inicial, onListo, onCerrar }: { id: number |
 
   const guardar = useMutation({
     mutationFn: async () => {
-      const datos = { ...f, iva_venta_porcentaje: Number(f.iva_venta_porcentaje), codigo_universal_id: admiteUniversal && f.codigo_universal_id ? Number(f.codigo_universal_id) : null }
+      const datos = { ...f, calidad: f.calidad || null, iva_venta_porcentaje: Number(f.iva_venta_porcentaje), codigo_universal_id: admiteUniversal && f.codigo_universal_id ? Number(f.codigo_universal_id) : null }
       return id ? api.put(`/referencias/${id}`, datos) : api.post('/referencias', datos)
     },
     onSuccess: onListo,
@@ -348,6 +354,13 @@ function FormularioReferencia({ id, inicial, onListo, onCerrar }: { id: number |
         <h2>{id ? 'Editar referencia' : 'Nueva referencia'}</h2>
         <label>Código de referencia<input required {...campo('codigo_referencia')} /></label>
         <label>Descripción<input required {...campo('descripcion')} /></label>
+        <label>Calidad
+          <select {...campo('calidad')}>
+            <option value="">—</option>
+            <option value="fino">Fino</option>
+            <option value="generico">Genérico</option>
+          </select>
+        </label>
         <label>Marca
           <select required {...campo('marca_id')}><option value="">—</option>{marcas.data?.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}</select>
         </label>

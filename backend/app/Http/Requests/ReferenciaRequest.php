@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Enums\Calidad;
 use App\Models\Categoria;
 use App\Models\CodigoUniversal;
 use Illuminate\Foundation\Http\FormRequest;
@@ -30,6 +31,7 @@ class ReferenciaRequest extends FormRequest
             'proveedor_id' => [$requerido, 'integer', 'exists:proveedores,id'],
             'categoria_id' => [$requerido, 'integer', 'exists:categorias,id'],
             'codigo_universal_id' => ['nullable', 'integer', 'exists:codigos_universales,id'],
+            'calidad' => ['sometimes', 'nullable', Rule::enum(Calidad::class)], // S-23: fino | generico
             'descripcion' => [$requerido, 'string', 'max:255'],
             'precio_venta' => [$requerido, 'numeric', 'gt:0', 'max:9999999999'], // RF-14: ningún precio puede ser 0
             'iva_venta_porcentaje' => ['sometimes', 'numeric', Rule::in([0, 19])], // RF-14 / S-15
