@@ -23,6 +23,11 @@ pest()->extend(TestCase::class)
     ->use(DatabaseTruncation::class)
     ->in('Concurrencia');
 
+// FULLTEXT de InnoDB solo ve filas confirmadas: la búsqueda por descripción no cabe en RefreshDatabase.
+pest()->extend(TestCase::class)
+    ->use(DatabaseTruncation::class)
+    ->in('TextoCompleto');
+
 /** Crea un usuario del rol indicado y deja la sesión iniciada con él. */
 function actuarComo(Rol $rol): User
 {
