@@ -59,10 +59,11 @@ Reglas:
 ## Tests
 
 ```bash
-php artisan test                              # Unit + Feature + Concurrencia, contra inventario_test
+php artisan test                              # Unit + Feature + Concurrencia + Busqueda, contra inventario_test
 ./vendor/bin/pest --testsuite=Unit            # lectura del QR de la factura (RF-04), sin base de datos
 ./vendor/bin/pest --testsuite=Feature         # un test por criterio de aceptación de cada RF
 ./vendor/bin/pest --testsuite=Concurrencia    # dos procesos PHP venden la misma unidad: solo uno gana
+./vendor/bin/pest --testsuite=Busqueda        # búsqueda por texto (FULLTEXT): datos confirmados, sin transacción
 ```
 
 ## Mantenimiento y rendimiento

@@ -23,6 +23,11 @@ pest()->extend(TestCase::class)
     ->use(DatabaseTruncation::class)
     ->in('Concurrencia');
 
+// RF-12: el índice FULLTEXT de InnoDB no ve filas sin confirmar dentro de una transacción.
+pest()->extend(TestCase::class)
+    ->use(DatabaseTruncation::class)
+    ->in('Busqueda');
+
 /** Crea un usuario del rol indicado y deja la sesión iniciada con él. */
 function actuarComo(Rol $rol): User
 {
