@@ -14,10 +14,29 @@ import { useDebounce } from '../hooks/useDebounce'
 import { useListaPaginada } from '../hooks/useListaPaginada'
 import { useScanner } from '../hooks/useScanner'
 import { useVentana } from '../hooks/useVentana'
+import { useAncho } from '../hooks/useAncho'
 
 /** Filas por petición. El tope del API es 100; el DOM solo pinta las visibles. */
 const POR_PAGINA = 100
 const ALTO_FILA = 56
+
+/**
+ * Modo del listado según el ancho de la tarjeta (no de la ventana):
+ * - completa (≥ 1100 px): todas las columnas;
+ * - media (760–1099 px): sin Categoría ni IVA (se ven al editar);
+ * - tarjetas (< 760 px): cada producto es una tarjeta de alto fijo (la lista sigue virtualizada).
+ */
+type Modo = 'completa' | 'media' | 'tarjetas'
+const modoDe = (ancho: number): Modo => (ancho === 0 || ancho >= 1100 ? 'completa' : ancho >= 760 ? 'media' : 'tarjetas')
+/** Alto de cada tarjeta, con su separación: cabecera + 5 pares + acciones (admin). */
+const ALTO_TARJETA = { admin: 236, otro: 192 }
+
+/** Columnas por modo. La Descripción es la única flexible; el resto, ancho fijo. */
+function columnasDe(modo: Modo, esAdmin: boolean) {
+  const acciones = esAdmin ? ' 92px' : ''
+  if (modo === 'completa') return `168px minmax(0, 1fr) 150px 120px 104px 64px 88px${acciones}`
+  return `150px minmax(0, 1fr) 132px 104px 88px${acciones}`
+}
 
 type Formulario = {
   codigo_referencia: string
@@ -84,7 +103,10 @@ export default function Productos() {
   })
 
   const agotadosPagina = filas.filter((r) => r.existencia === 0).length
-  const ventana = useVentana(filas, ALTO_FILA)
+  const tarjeta = useAncho<HTMLElement>()
+  const modo = modoDe(tarjeta.ancho)
+  const alto = modo === 'tarjetas' ? (esAdmin ? ALTO_TARJETA.admin : ALTO_TARJETA.otro) : ALTO_FILA
+  const ventana = useVentana(filas, alto)
 
   const scroller = ventana.ref
   const sincronizar = ventana.sincronizar
@@ -99,9 +121,9 @@ export default function Productos() {
     if (!el || resaltada == null) return
     const indice = filas.findIndex((r) => r.id === resaltada)
     if (indice < 0) return
-    el.scrollTop = indice * ALTO_FILA
+    el.scrollTop = indice * alto
     sincronizar()
-  }, [resaltada, filas, scroller, sincronizar])
+  }, [resaltada, filas, alto, scroller, sincronizar])
 
   const localizar = useMutation({
     mutationFn: async ({ codigo, metodo }: { codigo: string; metodo: MetodoCaptura }) => {
@@ -157,9 +179,8 @@ export default function Productos() {
     },
   })
 
-  const columnas = esAdmin
-    ? '190px minmax(180px, 1.6fr) 140px 130px 120px 76px 96px 92px'
-    : '190px minmax(180px, 1.6fr) 140px 130px 120px 76px 96px'
+  const columnas = columnasDe(modo, esAdmin)
+  const completa = modo === 'completa'
 
   return (
     <div>
@@ -212,7 +233,7 @@ export default function Productos() {
             </article>
       </Resumen>
 
-      <section className="tarjeta-pagina" style={{ ['--cols' as string]: columnas }}>
+      <section ref={tarjeta.ref} className={`tarjeta-pagina listado-${modo}`} style={{ ['--cols' as string]: columnas }}>
         <div className="fila-titulo">
           <h2>Listado</h2>
           <div className="acciones">
@@ -248,9 +269,9 @@ export default function Productos() {
             <div role="columnheader">Referencia</div>
             <div role="columnheader">Descripción</div>
             <div role="columnheader">Proveedor</div>
-            <div role="columnheader">Categoría</div>
-            <div role="columnheader">Precio</div>
-            <div role="columnheader">IVA</div>
+            {completa && <div role="columnheader">Categoría</div>}
+            <div role="columnheader" className="col-numero">Precio</div>
+            {completa && <div role="columnheader">IVA</div>}
             <div role="columnheader" className="col-numero">Existencia</div>
             {esAdmin && <div role="columnheader" className="col-acciones">Acciones</div>}
           </div>
@@ -260,17 +281,17 @@ export default function Productos() {
               <div style={{ height: ventana.altoTotal }}>
                 <div style={{ transform: `translateY(${ventana.desplazamiento}px)` }}>
                   {ventana.visibles.map((r) => (
-                    <div role="row" key={r.id} className={r.id === resaltada ? 'tabla-rejilla tabla-fila resaltada' : 'tabla-rejilla tabla-fila'} style={{ height: ALTO_FILA }}>
-                      <div role="cell" className="corta">
+                    <div role="row" key={r.id} className={`tabla-rejilla tabla-fila${r.id === resaltada ? ' resaltada' : ''}`} style={{ height: alto }}>
+                      <div role="cell" className="corta celda-referencia" title={r.codigo_referencia}>
                         <strong>{r.codigo_referencia}</strong>
                         {r.calidad && <> <ChipCalidad calidad={r.calidad} /></>}
                       </div>
-                      <div role="cell" className="corta">{r.descripcion}</div>
-                      <div role="cell" className="corta">{r.proveedor?.nombre}</div>
-                      <div role="cell" className="corta">{r.categoria?.nombre}</div>
-                      <div role="cell">{sinPrecio(r) ? <span className="chip sin-precio" title="No se puede vender hasta que el administrador le asigne un precio">Sin precio</span> : Number(r.precio_venta).toLocaleString('es-CO')}</div>
-                      <div role="cell">{Number(r.iva_venta_porcentaje) === 0 ? <span className="chip">Sin IVA</span> : `${Number(r.iva_venta_porcentaje)} %`}</div>
-                      <div role="cell" className={r.existencia === 0 ? 'agotado col-numero' : 'col-numero'}>{r.existencia}</div>
+                      <div role="cell" data-etiqueta="Descripción" className="corta" title={r.descripcion}>{r.descripcion}</div>
+                      <div role="cell" data-etiqueta="Proveedor" className="corta" title={r.proveedor?.nombre}>{r.proveedor?.nombre}</div>
+                      {completa && <div role="cell" className="corta" title={r.categoria?.nombre}>{r.categoria?.nombre}</div>}
+                      <div role="cell" data-etiqueta="Precio" className="col-numero">{sinPrecio(r) ? <span className="chip sin-precio" title="No se puede vender hasta que el administrador le asigne un precio">Sin precio</span> : Number(r.precio_venta).toLocaleString('es-CO')}</div>
+                      {(completa || modo === 'tarjetas') && <div role="cell" data-etiqueta="IVA">{Number(r.iva_venta_porcentaje) === 0 ? <span className="chip">Sin IVA</span> : `${Number(r.iva_venta_porcentaje)} %`}</div>}
+                      <div role="cell" data-etiqueta="Existencia" className={r.existencia === 0 ? 'agotado col-numero' : 'col-numero'}>{r.existencia}</div>
                       {esAdmin && (
                         <div role="cell" className="acciones-fila">
                           <button

@@ -253,12 +253,11 @@ label.check { flex-direction: row; align-items: center; }
 .tabla-scroll.actualizando { opacity: 0.72; }
 .tabla-rejilla {
   display: grid;
-  /* El mínimo cubre columnas + huecos + padding. Si es menor, las últimas
-     columnas se pintan fuera de la fila y el borde inferior se corta. */
-  grid-template-columns: var(--cols, 148px minmax(180px, 1.6fr) 120px 140px 130px 110px 96px);
+  /* Las columnas (--cols) las fija el listado según el ancho de la tarjeta: solo la descripción
+     es flexible (minmax(0, 1fr)), así la suma siempre cabe y no hay desborde horizontal. */
+  grid-template-columns: var(--cols, 148px minmax(0, 1fr) 120px 140px 130px 110px 96px);
   gap: 10px; align-items: center;
   width: 100%;
-  min-width: 1240px;
   padding: 0 14px;
   box-sizing: border-box;
 }
@@ -784,3 +783,20 @@ button.celda-editable.pendiente:hover, button.celda-editable.pendiente:focus-vis
   .confirmar-quitar button { min-height: 40px; }
   .tabla-lineas .fila-error { border-color: var(--peligro); }
 }
+
+/* Productos < 760 px de tarjeta: cada producto es una tarjeta de alto fijo (lista virtualizada).
+   El borde inferior del color del panel hace de separación sin cambiar el alto de la fila. */
+.listado-tarjetas .tabla-contenedor { border: none; box-shadow: none; background: transparent; }
+.listado-tarjetas .tabla-cabeza { display: none; }
+.listado-tarjetas .tabla-scroll { max-height: 70vh; }
+.listado-tarjetas .tabla-rejilla.tabla-fila {
+  display: flex; flex-direction: column; align-items: stretch; gap: 3px; padding: 10px 12px; overflow: hidden;
+  border: 0; border-bottom: 10px solid var(--panel); border-radius: 10px;
+  background: var(--panel); background-clip: padding-box; box-shadow: inset 0 0 0 1px var(--borde);
+}
+.listado-tarjetas .tabla-fila:hover { background: #F8FAFE; }
+.listado-tarjetas .tabla-fila.resaltada { background: #FFF8DC; box-shadow: inset 0 0 0 2px var(--acento); }
+.listado-tarjetas .celda-referencia { font-size: 1rem; padding-bottom: 2px; }
+.listado-tarjetas [data-etiqueta] { display: flex; justify-content: space-between; gap: 12px; text-align: right; }
+.listado-tarjetas [data-etiqueta]::before { content: attr(data-etiqueta); flex: none; color: var(--suave); font-size: 0.8rem; font-weight: 400; text-align: left; }
+.listado-tarjetas .acciones-fila { margin-top: auto; display: flex; justify-content: flex-end; gap: 8px; }
