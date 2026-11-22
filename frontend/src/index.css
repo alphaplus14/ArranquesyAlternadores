@@ -268,12 +268,11 @@ label.check { flex-direction: row; align-items: center; }
 .tabla-scroll.actualizando { opacity: 0.72; }
 .tabla-rejilla {
   display: grid;
-  /* El mínimo cubre columnas + huecos + padding. Si es menor, las últimas
-     columnas se pintan fuera de la fila y el borde inferior se corta. */
-  grid-template-columns: var(--cols, 148px minmax(180px, 1.6fr) 120px 140px 130px 110px 96px);
+  /* Las columnas (--cols) las fija el listado según el ancho de la tarjeta: solo la descripción
+     es flexible (minmax(0, 1fr)), así la suma siempre cabe y no hay desborde horizontal. */
+  grid-template-columns: var(--cols, 148px minmax(0, 1fr) 120px 140px 130px 110px 96px);
   gap: 10px; align-items: center;
   width: 100%;
-  min-width: 1240px;
   padding: 0 14px;
   box-sizing: border-box;
 }
@@ -712,8 +711,8 @@ button.accion:hover { background: var(--suave-fondo); border-color: var(--primar
 .ingreso-modal .ingreso-modal-cuerpo { padding-top: 16px; }
 .ingreso-campos .campo-ancho { grid-column: 1 / -1; }
 .campo-con-ayuda { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.ingreso-modal .modal-pie { align-items: center; flex-wrap: wrap; }
-.nota-obligatorio { margin-right: auto; color: var(--suave); }
+.ingreso-modal .modal-cabeza-texto .nota-obligatorio { margin: 1px 0 0; font-size: 0.8rem; }
+.nota-obligatorio .obligatorio { margin-left: 0; }
 
 /* Etiqueta de un campo (también fuera de <label>, p. ej. sobre un radiogroup). */
 .etiqueta-campo { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 0.85rem; color: var(--suave); }
@@ -733,7 +732,6 @@ button.segmento:hover { color: var(--texto); }
 button.segmento.elegido { background: #fff; border-color: var(--primario); color: var(--primario); font-weight: 700; box-shadow: var(--sombra-barra); }
 
 @media (max-width: 639px) {
-  .nota-obligatorio { flex-basis: 100%; }
   .encabezado-con-accion { flex-direction: column; align-items: stretch; }
   .encabezado-con-accion > .primario { width: 100%; }
   .modal-ingreso { padding: 0; align-items: stretch; }
@@ -856,3 +854,113 @@ button.selector-opcion.elegido .selector-avatar { background: var(--primario); c
 @media (max-width: 520px) {
   .filtro-proveedor { width: 100%; }
 }
+
+/* Selector de proveedor con búsqueda (combobox). La lista va en un portal con posición fija. */
+.selector { position: relative; display: flex; align-items: center; min-width: 0; }
+.selector input { width: 100%; padding-right: 34px; text-overflow: ellipsis; }
+.selector.con-limpiar input { padding-right: 62px; }
+.selector-flecha { position: absolute; right: 10px; color: var(--suave); pointer-events: none; }
+button.selector-limpiar {
+  position: absolute; right: 30px; width: 28px; height: 28px; padding: 0;
+  display: grid; place-items: center; border: none; border-radius: 6px; background: transparent; color: var(--suave);
+}
+button.selector-limpiar:hover { background: var(--suave-fondo); color: var(--texto); }
+.selector.filtro { width: 240px; }
+.selector-lista {
+  z-index: 60; overflow-y: auto; overscroll-behavior: contain; padding: 4px;
+  background: #fff; border: 1px solid var(--borde); border-radius: 10px; box-shadow: 0 10px 28px rgba(14, 26, 51, 0.18);
+}
+.selector-lista ul { list-style: none; margin: 0; padding: 0; }
+.selector-opcion {
+  display: flex; flex-direction: column; justify-content: center; gap: 1px;
+  min-height: 40px; padding: 6px 10px; border-radius: 8px; cursor: pointer; color: var(--texto);
+}
+.selector-opcion small { color: var(--suave); font-size: 0.78rem; }
+.selector-opcion.activa { background: var(--suave-fondo); box-shadow: inset 3px 0 0 var(--primario); }
+.selector-opcion.elegida > span { font-weight: 700; }
+.selector-nota { padding: 8px 10px; color: var(--suave); font-size: 0.85rem; }
+@media (max-width: 639px), (pointer: coarse) {
+  .selector-opcion { min-height: 44px; }
+  .selector.filtro { width: 100%; }
+}
+
+/* Solo para lectores de pantalla. */
+.solo-lector { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+/* RF-20: datos fijos del diálogo "Crear referencia" (no son campos: no se enfocan ni se editan). */
+.datos-fijos { display: grid; gap: 8px; margin: 0; padding: 10px 12px; border-radius: 8px; background: var(--suave-fondo); }
+.datos-fijos > div { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.datos-fijos dt { font-size: 0.78rem; color: var(--suave); }
+.datos-fijos dd { margin: 0; display: flex; align-items: center; gap: 6px; color: var(--texto); font-weight: 600; overflow-wrap: anywhere; cursor: default; }
+.datos-fijos .candado { flex: none; color: var(--suave); }
+
+/* Líneas del ingreso en borrador: valores editables como celdas, no como enlaces. */
+button.celda-editable {
+  display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px;
+  min-width: 64px; padding: 4px 8px; font: inherit; color: var(--texto); text-align: right; cursor: pointer;
+  background: #F8FAFE; border: 1px dashed #A9B6CF; border-radius: 6px;
+}
+button.celda-editable:hover, button.celda-editable:focus-visible { border-style: solid; border-color: var(--primario); background: var(--suave-fondo); }
+/* Costo pendiente: borde y texto de atención, icono y la palabra "Costo" (no solo color). */
+button.celda-editable.pendiente { min-width: 96px; justify-content: center; border: 1.5px dashed #B08A00; background: var(--aviso-fondo); color: var(--aviso); font-weight: 600; }
+button.celda-editable.pendiente:hover, button.celda-editable.pendiente:focus-visible { border-style: solid; border-color: var(--aviso); }
+.tabla-lineas td.acciones-linea { white-space: nowrap; text-align: right; }
+.acciones-linea, .confirmar-quitar { display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; }
+.tabla-lineas td.acciones-linea { display: table-cell; }
+.tabla-lineas td.acciones-linea > * + * { margin-left: 6px; }
+.acciones-linea button.primario, .acciones-linea button.secundario, .confirmar-quitar button { padding: 4px 10px; font-size: 0.85rem; }
+.acciones-linea .icono-accion { display: inline-grid; vertical-align: middle; }
+.fila-edicion td { vertical-align: top; background: #FBFCFF; }
+.campo-linea { display: flex; flex-direction: column; gap: 2px; }
+.campo-linea input, .campo-linea select { width: 104px; padding: 4px 6px; }
+.campo-linea .ayuda { max-width: 140px; white-space: normal; }
+.fila-error td { color: var(--peligro); background: var(--error-fondo); font-size: 0.88rem; }
+
+@media (max-width: 639px) {
+  .tabla-lineas .fila-edicion td { align-items: flex-start; }
+  .tabla-lineas .campo-linea { width: 62%; }
+  .tabla-lineas .campo-linea input, .tabla-lineas .campo-linea select { width: 100%; min-height: 44px; }
+  .tabla-lineas .campo-linea .ayuda { max-width: none; text-align: left; }
+  .tabla-lineas td.acciones-linea { display: flex; justify-content: flex-end; gap: 8px; padding-top: 8px; border-top: 1px solid var(--borde); margin-top: 4px; }
+  .tabla-lineas td.acciones-linea > * + * { margin-left: 0; }
+  .tabla-lineas .fila-edicion td.acciones-linea button { flex: 1; min-height: 44px; }
+  .tabla-lineas button.celda-editable { min-height: 40px; }
+  .confirmar-quitar button { min-height: 40px; }
+  .tabla-lineas .fila-error { border-color: var(--peligro); }
+}
+
+/* Productos < 760 px de tarjeta: cada producto es una tarjeta de alto fijo (lista virtualizada).
+   El borde inferior del color del panel hace de separación sin cambiar el alto de la fila. */
+.listado-tarjetas .tabla-contenedor { border: none; box-shadow: none; background: transparent; }
+.listado-tarjetas .tabla-cabeza { display: none; }
+.listado-tarjetas .tabla-scroll { max-height: 70vh; }
+.listado-tarjetas .tabla-rejilla.tabla-fila {
+  display: flex; flex-direction: column; align-items: stretch; gap: 3px; padding: 10px 12px; overflow: hidden;
+  border: 0; border-bottom: 10px solid var(--panel); border-radius: 10px;
+  background: var(--panel); background-clip: padding-box; box-shadow: inset 0 0 0 1px var(--borde);
+}
+.listado-tarjetas .tabla-fila:hover { background: #F8FAFE; }
+.listado-tarjetas .tabla-fila.resaltada { background: #FFF8DC; box-shadow: inset 0 0 0 2px var(--acento); }
+.listado-tarjetas .celda-referencia { font-size: 1rem; padding-bottom: 2px; }
+.listado-tarjetas [data-etiqueta] { display: flex; justify-content: space-between; gap: 12px; text-align: right; }
+.listado-tarjetas [data-etiqueta]::before { content: attr(data-etiqueta); flex: none; color: var(--suave); font-size: 0.8rem; font-weight: 400; text-align: left; }
+.listado-tarjetas .acciones-fila { margin-top: auto; display: flex; justify-content: flex-end; gap: 8px; }
+
+/* Productos: búsqueda con botón para limpiar y chip del filtro que dejó el escaneo. */
+.busca-productos input { min-width: 280px; padding-right: 34px; }
+button.busca-limpiar {
+  position: absolute; right: 6px; width: 26px; height: 26px; padding: 0;
+  display: grid; place-items: center; border: none; border-radius: 6px; background: transparent; color: var(--suave);
+}
+button.busca-limpiar:hover { background: var(--suave-fondo); color: var(--texto); }
+.filtro-activo { margin-top: 8px; }
+.chip.filtro { display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 10px; font-size: 0.85rem; background: #E4EBFA; color: var(--primario); }
+.chip.filtro button { width: 24px; height: 24px; padding: 0; display: grid; place-items: center; border: none; border-radius: 999px; background: transparent; color: inherit; }
+.chip.filtro button:hover { background: #fff; }
+@media (max-width: 639px) {
+  .busca-productos, .busca-productos input { width: 100%; min-width: 0; }
+  .chip.filtro button { width: 32px; height: 32px; }
+}
+/* Referencia: el código se trunca con …; el chip de calidad pasa a una segunda línea si no cabe. */
+.tabla-rejilla .celda-referencia { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; white-space: normal; }
+.tabla-rejilla .celda-referencia strong { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

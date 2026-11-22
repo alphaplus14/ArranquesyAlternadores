@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
@@ -10,11 +10,55 @@ import FichaReferencia from '../../componentes/FichaReferencia'
 import Medida from '../../componentes/Medida'
 import { formatoNumero, leerNumero, pesos } from '../../componentes/numeros'
 import { useScanner } from '../../hooks/useScanner'
+import { useBloquearScroll } from '../../hooks/useBloquearScroll'
+import { atraparTab } from '../../componentes/foco'
 import Resumen from '../../componentes/Resumen'
+import Icono from '../../componentes/Icono'
 
 interface Aviso { tipo: 'ok' | 'error' | 'atencion'; texto: string }
 type Campo = 'cantidad' | 'costo_unitario' | 'descuento_porcentaje' | 'iva_porcentaje'
-interface Edicion { itemId: number; campo: Campo }
+const CAMPOS: Campo[] = ['cantidad', 'costo_unitario', 'descuento_porcentaje', 'iva_porcentaje']
+/** IVA de una línea de compra (S-22): 0 = sin IVA. Si la línea trae otro valor, se agrega. */
+const IVAS = [19, 5, 0]
+
+/** Una fila de líneas en edición: todos sus campos a la vez (solo una fila a la vez). */
+interface Fila {
+  itemId: number
+  codigo: string
+  /** Campo donde empieza el foco (el que se tocó). */
+  foco: Campo
+  valores: Record<Campo, string>
+  originales: Record<Campo, string>
+  /** Se intentó guardar: se muestran todos los errores, no solo los de lo editado. */
+  intentado: boolean
+  errorServidor: string | null
+  guardando: boolean
+}
+
+type LineaEditable = Pick<IngresoItem, 'id' | 'referencia' | 'cantidad' | 'costo_unitario' | 'descuento_porcentaje' | 'iva_porcentaje'>
+
+function valoresDe(it: LineaEditable): Record<Campo, string> {
+  return {
+    cantidad: String(it.cantidad),
+    costo_unitario: formatoNumero(it.costo_unitario),
+    descuento_porcentaje: formatoNumero(it.descuento_porcentaje),
+    iva_porcentaje: String(Number(it.iva_porcentaje)),
+  }
+}
+
+function erroresDe(f: Fila): Record<Campo, string | null> {
+  return Object.fromEntries(CAMPOS.map((c) => [c, REGLAS[c].validar(leerNumero(f.valores[c]))])) as Record<Campo, string | null>
+}
+
+/** Solo los campos que cambiaron, como números: se guardan en una sola petición (PATCH acepta varios). */
+function cambiosDe(f: Fila): Partial<Record<Campo, number>> {
+  const cambios: Partial<Record<Campo, number>> = {}
+  for (const c of CAMPOS) {
+    const nuevo = leerNumero(f.valores[c])
+    if (nuevo !== null && nuevo !== leerNumero(f.originales[c])) cambios[c] = nuevo
+  }
+  return cambios
+}
 
 /** Validación en vivo de cada celda. El backend vuelve a validar al guardar y al confirmar. */
 const REGLAS: Record<Campo, { etiqueta: string; validar: (n: number | null) => string | null }> = {
@@ -56,7 +100,11 @@ export default function IngresoDetalle() {
   const qc = useQueryClient()
   const [aviso, setAviso] = useState<Aviso | null>(null)
   const [creando, setCreando] = useState<string | null>(null)
-  const [editando, setEditando] = useState<Edicion | null>(null)
+  const [fila, setFilaEstado] = useState<Fila | null>(null)
+  // Copia sincrónica: el blur de una fila y el clic en otra llegan en el mismo ciclo.
+  const filaRef = useRef<Fila | null>(null)
+  const ponerFila = (f: Fila | null) => { filaRef.current = f; setFilaEstado(f) }
+  const [quitando, setQuitando] = useState<number | null>(null)
   const [condiciones, setCondiciones] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -69,10 +117,71 @@ export default function IngresoDetalle() {
 
   const actualizar = (nuevo: Ingreso) => qc.setQueryData(['ingreso', id], nuevo)
 
+  const guardarLinea = async (f: Fila, cambios: Partial<Record<Campo, number>>) =>
+    (await api.patch<Ingreso>(`/ingresos/${id}/items/${f.itemId}`, cambios)).data
+
+  /** Al salir de una fila sin Enter ni Esc: guarda si es válida y cambió; si no, la descarta. */
+  const guardarAlSalir = (f: Fila) => {
+    const cambios = cambiosDe(f)
+    if (Object.values(erroresDe(f)).some(Boolean) || Object.keys(cambios).length === 0) return
+    guardarLinea(f, cambios)
+      .then(actualizar)
+      .catch((e) => setAviso({ tipo: 'error', texto: `No se guardó la línea ${f.codigo}: ${mensajeError(e)}` }))
+  }
+
+  const abrirFila = (it: LineaEditable, foco: Campo) => {
+    const actual = filaRef.current
+    if (actual?.itemId === it.id) return
+    if (actual && !actual.guardando) guardarAlSalir(actual)
+    setQuitando(null)
+    const valores = valoresDe(it)
+    ponerFila({ itemId: it.id, codigo: it.referencia?.codigo_referencia ?? '', foco, valores, originales: valores, intentado: false, errorServidor: null, guardando: false })
+  }
+
+  const cambiarValor = (campo: Campo, valor: string) => {
+    const f = filaRef.current
+    if (f) ponerFila({ ...f, valores: { ...f.valores, [campo]: valor }, errorServidor: null })
+  }
+
+  /** Enter o "Guardar": la fila completa en una petición. Con error, la fila sigue abierta. */
+  const guardarFila = async () => {
+    const f = filaRef.current
+    if (!f || f.guardando) return
+    if (Object.values(erroresDe(f)).some(Boolean)) { ponerFila({ ...f, intentado: true }); return }
+    const cambios = cambiosDe(f)
+    if (Object.keys(cambios).length === 0) { ponerFila(null); return }
+    ponerFila({ ...f, guardando: true, errorServidor: null })
+    try {
+      actualizar(await guardarLinea(f, cambios))
+      if (filaRef.current?.itemId === f.itemId) ponerFila(null)
+      // Un error anterior (por ejemplo, "falta el costo") ya no aplica tras corregir.
+      setAviso((a) => (a?.tipo === 'error' ? null : a))
+    } catch (e) {
+      const actual = filaRef.current
+      // El foco va al campo que señala el backend (422), si lo señala.
+      const conError = Object.keys(erroresCampo(e))
+      const foco = CAMPOS.find((c) => conError.includes(c)) ?? f.foco
+      if (actual?.itemId === f.itemId) ponerFila({ ...actual, foco, guardando: false, intentado: true, errorServidor: mensajeError(e) })
+      else setAviso({ tipo: 'error', texto: `No se guardó la línea ${f.codigo}: ${mensajeError(e)}` })
+    }
+  }
+
+  const cancelarFila = () => ponerFila(null)
+
+  const salirDeFila = (itemId: number) => {
+    const f = filaRef.current
+    if (!f || f.itemId !== itemId || f.guardando) return
+    ponerFila(null)
+    guardarAlSalir(f)
+  }
+
   const escanear = useMutation({
     mutationFn: async (codigo: string) => (await api.post<IngresoItem>(`/ingresos/${id}/escanear`, { codigo })).data,
     onSuccess: (linea) => {
       const sinCosto = Number(linea.costo_unitario) <= 0
+      // Captura rápida: línea nueva o sin costo → se abre su costo con el foco (Enter guarda).
+      const nueva = !qc.getQueryData<Ingreso>(['ingreso', id])?.items.some((x) => x.id === linea.id)
+      if (nueva || sinCosto) abrirFila(linea, 'costo_unitario')
       setAviso({
         tipo: sinCosto ? 'atencion' : 'ok',
         texto: `✓ ${linea.referencia?.codigo_referencia} · ${linea.referencia?.descripcion} — cantidad ${linea.cantidad}${sinCosto ? ' · escriba el costo en la tabla' : ''}`,
@@ -94,6 +203,7 @@ export default function IngresoDetalle() {
     mutationFn: async (itemId: number) => (await api.delete<Ingreso>(`/ingresos/${id}/items/${itemId}`)).data,
     onSuccess: actualizar,
     onError: (e) => setAviso({ tipo: 'error', texto: mensajeError(e) }),
+    onSettled: () => { setQuitando(null); inputRef.current?.focus() },
   })
   const confirmar = useMutation({
     mutationFn: async () => (await api.post<Ingreso>(`/ingresos/${id}/confirmar`)).data,
@@ -107,18 +217,22 @@ export default function IngresoDetalle() {
   }, [escanear])
   const scanner = useScanner(onCodigo)
 
-  // El lector recupera el foco salvo que haya un diálogo abierto o se esté editando una celda.
-  const hayDialogo = creando !== null || editando !== null || condiciones
+  // El lector recupera el foco salvo que haya un diálogo abierto, una fila en edición o una
+  // confirmación de quitar. Así lo que se digita en ellos no lo captura el escáner.
+  const hayDialogo = creando !== null || fila !== null || quitando !== null || condiciones
   useEffect(() => {
     if (!hayDialogo && borrador) inputRef.current?.focus()
   }, [hayDialogo, borrador, escanear.isPending])
-  // El blur llega antes que el clic que abre el diálogo: el timeout lee el valor vigente.
+  // El blur llega antes que el clic que abre el diálogo: el timeout lee el valor vigente. Si el
+  // foco pasó a la tabla de líneas (Tab o clic en un valor), se deja ahí; si no, vuelve al lector.
   const hayDialogoRef = useRef(hayDialogo)
   hayDialogoRef.current = hayDialogo
-  const reenfocar = () => setTimeout(() => { if (!hayDialogoRef.current) inputRef.current?.focus() }, 0)
-
-  const dejarDeEditar = (e: Edicion) =>
-    setEditando((actual) => (actual?.itemId === e.itemId && actual.campo === e.campo ? null : actual))
+  const tablaRef = useRef<HTMLTableElement>(null)
+  const reenfocar = () => setTimeout(() => {
+    if (hayDialogoRef.current) return
+    if (tablaRef.current?.contains(document.activeElement)) return
+    inputRef.current?.focus()
+  }, 0)
 
   if (ingreso.isError) return <div className="panel"><div className="aviso error">{mensajeError(ingreso.error)}</div></div>
   if (!i) return <div className="panel">Cargando…</div>
@@ -126,31 +240,29 @@ export default function IngresoDetalle() {
   const unidades = i.items.reduce((suma, it) => suma + it.cantidad, 0)
   const lineasSinCosto = i.items.filter((it) => Number(it.costo_unitario) <= 0).length
 
-  const celda = (it: IngresoItem, campo: Campo, texto: string) => {
-    const edicion = { itemId: it.id, campo }
+  /** Valor de una línea en borrador: se ve como celda editable; clic abre la fila completa. */
+  const valor = (it: IngresoItem, campo: Campo, texto: string) => {
     if (!borrador) return texto
-    if (editando?.itemId === it.id && editando.campo === campo) {
+    const codigo = it.referencia?.codigo_referencia ?? ''
+    if (campo === 'costo_unitario' && Number(it.costo_unitario) <= 0) {
       return (
-        <CeldaEditable
-          etiqueta={`${REGLAS[campo].etiqueta} de ${it.referencia?.codigo_referencia ?? ''}`}
-          inicial={formatoNumero(it[campo])}
-          validar={(t) => REGLAS[campo].validar(leerNumero(t))}
-          guardar={async (t) => (await api.patch<Ingreso>(`/ingresos/${id}/items/${it.id}`, { [campo]: leerNumero(t) })).data}
-          onGuardado={(nuevo) => {
-            actualizar(nuevo)
-            dejarDeEditar(edicion)
-            // Un error anterior (por ejemplo, "falta el costo") ya no aplica tras corregir.
-            setAviso((a) => (a?.tipo === 'error' ? null : a))
-          }}
-          onTerminar={() => dejarDeEditar(edicion)}
-        />
+        <button type="button" className="celda-editable pendiente" title="Clic para editar" aria-label={`Falta el costo de ${codigo}. Editar la línea`} onClick={() => abrirFila(it, campo)}>
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" aria-hidden><path d="M12 7v6M12 17h.01" /><circle cx="12" cy="12" r="9" /></svg>
+          Costo
+        </button>
       )
     }
     return (
-      <button type="button" className="enlace" title={`Corregir ${REGLAS[campo].etiqueta.toLowerCase()}`} onClick={() => setEditando(edicion)}>
+      <button type="button" className="celda-editable" title="Clic para editar" aria-label={`${REGLAS[campo].etiqueta} de ${codigo}: ${texto}. Editar la línea`} onClick={() => abrirFila(it, campo)}>
         {texto}
       </button>
     )
+  }
+
+  /** Quitar: directo con cantidad 1 y sin costo; si no, confirmación breve en la fila. */
+  const pedirQuitar = (it: IngresoItem) => {
+    if (it.cantidad > 1 || Number(it.costo_unitario) > 0) setQuitando(it.id)
+    else quitar.mutate(it.id)
   }
 
   return (
@@ -201,39 +313,70 @@ export default function IngresoDetalle() {
               onBlur={reenfocar}
               autoComplete="off"
             />
-            <p className="ayuda">Se busca entre las referencias de {i.proveedor?.nombre}. Leer el mismo código otra vez suma 1. Haga clic en un valor de la tabla para corregirlo.</p>
+            <p className="ayuda">Se busca entre las referencias de {i.proveedor?.nombre}. Leer el mismo código otra vez suma 1. Haga clic en un valor o en el lápiz para editar la línea: Tab recorre, Enter guarda y Esc cancela.</p>
           </>
         )}
         {aviso && <div className={`aviso ${aviso.tipo}`} role="status">{aviso.texto}</div>}
 
-        <table className="tabla-lineas">
-          <thead><tr><th>Referencia</th><th>Cant.</th><th>Costo</th><th>Desc. %</th><th>IVA %</th><th>Neto</th><th>IVA</th><th></th></tr></thead>
+        <div className="tabla-desplazable">
+        <table ref={tablaRef} className="tabla-lineas">
+          <thead><tr><th>Referencia</th><th>Cant.</th><th>Costo</th><th>Desc. %</th><th>IVA %</th><th>Neto</th><th>IVA</th><th><span className="solo-lector">Acciones</span></th></tr></thead>
           <tbody>
             {i.items.map((it) => {
+              if (borrador && fila?.itemId === it.id) {
+                return (
+                  <FilaEnEdicion
+                    key={it.id}
+                    it={it}
+                    fila={fila}
+                    onCambiar={cambiarValor}
+                    onGuardar={guardarFila}
+                    onCancelar={cancelarFila}
+                    onSalir={() => salirDeFila(it.id)}
+                  />
+                )
+              }
               const exenta = Number(it.iva_porcentaje) === 0
+              const codigo = it.referencia?.codigo_referencia ?? ''
               return (
                 <tr key={it.id}>
-                  <td data-label="Referencia">{it.referencia?.codigo_referencia} <small>{it.referencia?.descripcion}</small></td>
-                  <td data-label="Cant.">{celda(it, 'cantidad', String(it.cantidad))}</td>
-                  <td data-label="Costo" className={Number(it.costo_unitario) <= 0 ? 'agotado' : undefined}>
-                    {celda(it, 'costo_unitario', Number(it.costo_unitario) <= 0 ? 'Sin costo' : pesos(it.costo_unitario))}
+                  <td data-label="Referencia">{codigo} <small>{it.referencia?.descripcion}</small></td>
+                  <td data-label="Cant.">{valor(it, 'cantidad', String(it.cantidad))}</td>
+                  <td data-label="Costo">
+                    {!borrador && Number(it.costo_unitario) <= 0 ? <span className="agotado">Sin costo</span> : valor(it, 'costo_unitario', pesos(it.costo_unitario))}
                   </td>
-                  <td data-label="Desc. %">{celda(it, 'descuento_porcentaje', `${formatoNumero(it.descuento_porcentaje)} %`)}</td>
+                  <td data-label="Desc. %">{valor(it, 'descuento_porcentaje', `${formatoNumero(it.descuento_porcentaje)} %`)}</td>
                   <td data-label="IVA %">
                     <span>
-                      {celda(it, 'iva_porcentaje', `${formatoNumero(it.iva_porcentaje)} %`)}
+                      {valor(it, 'iva_porcentaje', `${formatoNumero(it.iva_porcentaje)} %`)}
                       {exenta && <> <span className="chip">sin IVA</span></>}
                     </span>
                   </td>
                   <td data-label="Neto">{it.neto === null ? '—' : pesos(it.neto)}</td>
                   <td data-label="IVA">{it.iva === null ? '—' : pesos(it.iva)}</td>
-                  <td data-label="">{borrador && <button type="button" className="enlace" disabled={quitar.isPending} onClick={() => quitar.mutate(it.id)}>Quitar</button>}</td>
+                  <td data-label="" className="acciones-linea">
+                    {borrador && (quitando === it.id ? (
+                      <span className="confirmar-quitar" role="group" aria-label={`Quitar ${codigo}`} onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); setQuitando(null) } }}>
+                        ¿Quitar?
+                        <button type="button" className="peligro" disabled={quitar.isPending} onClick={() => quitar.mutate(it.id)}>Sí</button>
+                        <button type="button" className="secundario" autoFocus onClick={() => setQuitando(null)}>No</button>
+                      </span>
+                    ) : (
+                      <>
+                        <button type="button" className="icono-accion" title="Editar" aria-label={`Editar la línea ${codigo}`} onClick={() => abrirFila(it, 'cantidad')}>
+                          <Icono nombre="editar" />
+                        </button>
+                        <button type="button" className="enlace" disabled={quitar.isPending} onClick={() => pedirQuitar(it)}>Quitar</button>
+                      </>
+                    ))}
+                  </td>
                 </tr>
               )
             })}
             {i.items.length === 0 && <tr><td colSpan={8} className="vacio">Escanee el primer producto.</td></tr>}
           </tbody>
         </table>
+        </div>
 
         {i.totales && (
           <dl className="totales">
@@ -281,67 +424,108 @@ export default function IngresoDetalle() {
   )
 }
 
-/** Una celda numérica en edición: Enter o salir del campo guarda; Escape cancela. */
-function CeldaEditable({ etiqueta, inicial, validar, guardar, onGuardado, onTerminar }: {
-  etiqueta: string
-  inicial: string
-  validar: (texto: string) => string | null
-  guardar: (texto: string) => Promise<Ingreso>
-  onGuardado: (ingreso: Ingreso) => void
-  onTerminar: () => void
+/**
+ * Una línea del ingreso en edición: Cant., Costo, Desc. % e IVA % a la vez. Tab recorre los
+ * campos sin guardar; Enter guarda la fila completa; Esc la cancela. Salir de la fila (clic en
+ * otra o fuera) guarda si es válida y cambió, o la descarta. El error del backend queda en la fila.
+ */
+function FilaEnEdicion({ it, fila, onCambiar, onGuardar, onCancelar, onSalir }: {
+  it: IngresoItem
+  fila: Fila
+  onCambiar: (campo: Campo, valor: string) => void
+  onGuardar: () => void
+  onCancelar: () => void
+  onSalir: () => void
 }) {
-  const [texto, setTexto] = useState(inicial)
-  const campoRef = useRef<HTMLInputElement>(null)
-  // Evita guardar dos veces (Enter y luego el blur al desmontarse) o guardar tras cancelar.
-  const listo = useRef(false)
-  const error = validar(texto)
+  const filaRef = useRef<HTMLTableRowElement>(null)
+  const campos = useRef<Partial<Record<Campo, HTMLInputElement | HTMLSelectElement | null>>>({})
+  const errores = erroresDe(fila)
+  const base = `linea-${it.id}`
+  const ivas = IVAS.includes(Number(fila.originales.iva_porcentaje)) ? IVAS : [...IVAS, Number(fila.originales.iva_porcentaje)]
 
-  const mutacion = useMutation({
-    mutationFn: guardar,
-    onSuccess: onGuardado,
-    onError: () => { listo.current = false; campoRef.current?.focus() },
-  })
+  // El foco empieza en el valor que se tocó, con el texto seleccionado.
+  useEffect(() => {
+    const el = campos.current[fila.foco]
+    el?.focus()
+    if (el instanceof HTMLInputElement) el.select()
+  }, [fila.foco])
 
-  const cancelar = () => { listo.current = true; onTerminar() }
+  // Tras un error (de validación o del backend), el foco vuelve al primer campo con problema.
+  useEffect(() => {
+    if (!fila.intentado || fila.guardando) return
+    const primero = CAMPOS.find((c) => errores[c]) ?? (fila.errorServidor ? fila.foco : undefined)
+    if (primero) campos.current[primero]?.focus()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fila.intentado, fila.errorServidor, fila.guardando])
 
-  const confirmarCambio = (alSalir: boolean) => {
-    if (listo.current || mutacion.isPending) return
-    if (error) {
-      // Al salir con un valor inválido se descarta; con Enter se queda para corregirlo.
-      if (alSalir) cancelar()
-      return
-    }
-    if (leerNumero(texto) === leerNumero(inicial)) {
-      cancelar()
-      return
-    }
-    listo.current = true
-    mutacion.mutate(texto)
+  const mostrar = (c: Campo) => (fila.intentado || fila.valores[c] !== fila.originales[c] ? errores[c] : null)
+
+  const alPulsar = (e: KeyboardEvent<HTMLTableRowElement>) => {
+    if (e.key === 'Enter' && !(e.target instanceof HTMLButtonElement)) { e.preventDefault(); onGuardar() }
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onCancelar() }
+  }
+
+  // Salir de la fila: el foco no quedó dentro (otra fila, fuera de la tabla, otro control).
+  const alSalirDelFoco = () => setTimeout(() => {
+    if (!document.hasFocus()) return // cambiar de ventana no cuenta como salir
+    if (filaRef.current?.contains(document.activeElement)) return
+    onSalir()
+  }, 0)
+
+  const numero = (c: Campo, modo: 'numeric' | 'decimal') => {
+    const error = mostrar(c)
+    return (
+      <div className="campo-linea">
+        <input
+          ref={(el) => { campos.current[c] = el }}
+          inputMode={modo}
+          autoComplete="off"
+          aria-label={`${REGLAS[c].etiqueta} de ${fila.codigo}`}
+          aria-invalid={error !== null}
+          aria-describedby={error ? `${base}-${c}-error` : undefined}
+          value={fila.valores[c]}
+          disabled={fila.guardando}
+          onFocus={(e) => e.target.select()}
+          onChange={(e) => onCambiar(c, e.target.value)}
+        />
+        {error && <small id={`${base}-${c}-error`} className="ayuda error">{error}</small>}
+      </div>
+    )
   }
 
   return (
-    <div className="precio-editable">
-      <input
-        ref={campoRef}
-        autoFocus
-        inputMode="decimal"
-        autoComplete="off"
-        aria-label={etiqueta}
-        aria-invalid={error !== null}
-        value={texto}
-        disabled={mutacion.isPending}
-        onFocus={(e) => e.target.select()}
-        onChange={(e) => { setTexto(e.target.value); mutacion.reset() }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') { e.preventDefault(); confirmarCambio(false) }
-          if (e.key === 'Escape') { e.preventDefault(); cancelar() }
-        }}
-        onBlur={() => confirmarCambio(true)}
-      />
-      <small className={error || mutacion.isError ? 'ayuda error' : 'ayuda'}>
-        {mutacion.isError ? mensajeError(mutacion.error) : error ?? 'Enter guarda · Esc cancela'}
-      </small>
-    </div>
+    <>
+      <tr ref={filaRef} className="fila-edicion" onKeyDown={alPulsar} onBlur={alSalirDelFoco}>
+        <td data-label="Referencia">{fila.codigo} <small>{it.referencia?.descripcion}</small></td>
+        <td data-label="Cant.">{numero('cantidad', 'numeric')}</td>
+        <td data-label="Costo">{numero('costo_unitario', 'decimal')}</td>
+        <td data-label="Desc. %">{numero('descuento_porcentaje', 'decimal')}</td>
+        <td data-label="IVA %">
+          <div className="campo-linea">
+            <select
+              ref={(el) => { campos.current.iva_porcentaje = el }}
+              aria-label={`IVA % de ${fila.codigo}`}
+              value={fila.valores.iva_porcentaje}
+              disabled={fila.guardando}
+              onChange={(e) => onCambiar('iva_porcentaje', e.target.value)}
+            >
+              {ivas.map((v) => <option key={v} value={String(v)}>{v === 0 ? '0 % · sin IVA' : `${formatoNumero(String(v))} %`}</option>)}
+            </select>
+          </div>
+        </td>
+        <td data-label="Neto">{it.neto === null ? '—' : pesos(it.neto)}</td>
+        <td data-label="IVA">{it.iva === null ? '—' : pesos(it.iva)}</td>
+        <td data-label="" className="acciones-linea">
+          <button type="button" className="primario" disabled={fila.guardando} onClick={onGuardar}>{fila.guardando ? 'Guardando…' : 'Guardar'}</button>
+          <button type="button" className="secundario" disabled={fila.guardando} onClick={onCancelar}>Cancelar</button>
+        </td>
+      </tr>
+      {fila.errorServidor && (
+        <tr className="fila-error">
+          <td colSpan={8} role="alert">{fila.errorServidor}</td>
+        </tr>
+      )}
+    </>
   )
 }
 
@@ -380,9 +564,10 @@ function DialogoCondiciones({ ingreso, onGuardado, onCerrar }: {
   })
   const errores = guardar.isError ? erroresCampo(guardar.error) : {}
   const general = guardar.isError && Object.keys(errores).length === 0 ? mensajeError(guardar.error) : null
+  useBloquearScroll()
 
   return (
-    <div className="modal" onKeyDown={(e) => e.key === 'Escape' && onCerrar()}>
+    <div className="modal" onKeyDown={(e) => { if (e.key === 'Escape') onCerrar(); else atraparTab(e) }}>
       <form className="modal-caja" role="dialog" aria-modal="true" aria-labelledby="condiciones-titulo" onSubmit={(e) => { e.preventDefault(); guardar.mutate() }}>
         <h2 id="condiciones-titulo">Condiciones del documento</h2>
         <label>Pago

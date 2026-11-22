@@ -6,7 +6,7 @@ export default function Paginacion<T>({ pagina, onCambiar }: { pagina?: Pagina<T
 
   return (
     <div className="paginacion">
-      <span>{total.toLocaleString('es-CO')} registros</span>
+      <span>{total === 0 ? 'Sin registros' : total === 1 ? '1 registro' : `${total.toLocaleString('es-CO')} registros`}</span>
       <div className="paginacion-controles">
         <button type="button" aria-label="Primera página" disabled={actual <= 1} onClick={() => onCambiar(1)}>«</button>
         <button type="button" aria-label="Página anterior" disabled={actual <= 1} onClick={() => onCambiar(actual - 1)}>‹</button>

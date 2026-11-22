@@ -14,6 +14,8 @@ const TABLAS_AUDITORIA = [
   { valor: 'proveedores', etiqueta: 'Proveedores', detalle: 'Catálogo de proveedores' },
   { valor: 'categorias', etiqueta: 'Categorías', detalle: 'Tipos de repuesto' },
   { valor: 'clientes', etiqueta: 'Clientes', detalle: 'Datos de clientes' },
+  { valor: 'ingresos', etiqueta: 'Ingresos', detalle: 'Facturas y remisiones' },
+  { valor: 'ingreso_items', etiqueta: 'Líneas de ingreso', detalle: 'Ítems de compras' },
   { valor: 'users', etiqueta: 'Usuarios', detalle: 'Accesos del sistema' },
   { valor: 'venta_items', etiqueta: 'Ítems de venta', detalle: 'Precios en ventas a crédito' },
 ] as const
