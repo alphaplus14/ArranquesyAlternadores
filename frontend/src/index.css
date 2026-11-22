@@ -207,8 +207,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .acciones { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: flex-end; }
 .acciones-fila { display: flex; gap: 6px; align-items: center; justify-content: flex-end; }
 
-.busca { position: relative; display: flex; align-items: center; }
-.busca svg { position: absolute; left: 10px; color: var(--suave); pointer-events: none; }
+.busca { position: relative; display: flex; flex-direction: row; align-items: center; }
+.busca svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--suave); pointer-events: none; }
 .busca input { padding-left: 34px; min-width: 240px; }
 
 button, .boton {
@@ -360,6 +360,9 @@ tr.reversado td:last-child { text-decoration: none; }
 .modal { position: fixed; inset: 0; background: rgba(14, 26, 51, 0.45); display: flex; align-items: flex-start; justify-content: center; padding: 64px 16px; z-index: 40; overflow-y: auto; }
 .modal-caja { background: #fff; border-radius: var(--radio); padding: 22px; width: 100%; max-width: 480px; display: flex; flex-direction: column; gap: 10px; }
 .modal-caja.ancha { max-width: 800px; }
+.modal.confirmar { z-index: 60; align-items: center; padding-top: 12vh; }
+.modal.confirmar .modal-caja { max-width: 420px; }
+.modal.confirmar p { margin: 0; }
 
 .cuenta-modal { max-width: 560px; padding: 0; gap: 0; overflow: hidden; }
 .modal-cabeza {

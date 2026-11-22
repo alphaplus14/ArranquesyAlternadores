@@ -4,6 +4,7 @@ import { api, mensajeError } from '../api/cliente'
 import type { Usuario } from '../api/tipos'
 import { useAuth } from '../auth/AuthProvider'
 import { errorUsuario, normalizarUsuario } from '../auth/nombreUsuario'
+import Confirmar from './Confirmar'
 
 const vacias = { password_actual: '', password: '', password_confirmation: '' }
 
@@ -15,6 +16,7 @@ export default function MiCuenta({ onCerrar }: { onCerrar: () => void }) {
   const { usuario, actualizarUsuario } = useAuth()
   const [f, setF] = useState({ name: usuario?.name ?? '', usuario: usuario?.usuario ?? '', ...vacias })
   const [listo, setListo] = useState(false)
+  const [confirmando, setConfirmando] = useState(false)
 
   useEffect(() => {
     const alPulsar = (e: KeyboardEvent) => { if (e.key === 'Escape') onCerrar() }
@@ -46,8 +48,17 @@ export default function MiCuenta({ onCerrar }: { onCerrar: () => void }) {
       actualizarUsuario(u)
       setF({ name: u.name, usuario: u.usuario, ...vacias })
       setListo(true)
+      setConfirmando(false)
     },
   })
+
+  const partes: string[] = []
+  if (cambiaNombre) partes.push(`el nombre a «${f.name.trim()}»`)
+  if (cambiaUsuario) partes.push(`el usuario a «${f.usuario}»`)
+  if (tocaClave) partes.push('la contraseña')
+  const lista = partes.length > 1 ? `${partes.slice(0, -1).join(', ')} y ${partes[partes.length - 1]}` : partes[0]
+  const avisoClave = tocaClave ? ' Al cambiar la contraseña, se cierran sus sesiones en otros equipos.' : ''
+  const textoConfirmacion = `Va a cambiar ${lista}.${avisoClave} ¿Está seguro?`
 
   const campo = (k: keyof typeof f) => ({
     value: f[k],
@@ -57,13 +68,14 @@ export default function MiCuenta({ onCerrar }: { onCerrar: () => void }) {
   const inicial = (usuario?.name ?? '?').trim().charAt(0).toUpperCase()
 
   return (
+    <>
     <div className="modal">
       <form
         className="modal-caja cuenta-modal"
         role="dialog"
         aria-modal="true"
         aria-labelledby="mi-cuenta-titulo"
-        onSubmit={(e) => { e.preventDefault(); guardar.mutate() }}
+        onSubmit={(e) => { e.preventDefault(); guardar.reset(); setConfirmando(true) }}
       >
         <header className="modal-cabeza">
           <span className="avatar" aria-hidden>{inicial}</span>
@@ -116,7 +128,7 @@ export default function MiCuenta({ onCerrar }: { onCerrar: () => void }) {
             : <p className="ayuda">Mínimo 8 caracteres.</p>}
         </section>
 
-        {guardar.isError && <div className="aviso error">{mensajeError(guardar.error)}</div>}
+        {guardar.isError && !confirmando && <div className="aviso error">{mensajeError(guardar.error)}</div>}
         {listo && <div className="aviso ok" role="status">Cambios guardados.</div>}
 
         <footer className="modal-pie">
@@ -127,5 +139,18 @@ export default function MiCuenta({ onCerrar }: { onCerrar: () => void }) {
         </footer>
       </form>
     </div>
+    {confirmando && (
+      <Confirmar
+        id="confirmar-cuenta"
+        titulo="Guardar cambios"
+        texto={textoConfirmacion}
+        accion="Sí, guardar"
+        pendiente={guardar.isPending}
+        error={guardar.isError ? mensajeError(guardar.error) : null}
+        onConfirmar={() => guardar.mutate()}
+        onCancelar={() => { if (!guardar.isPending) setConfirmando(false) }}
+      />
+    )}
+    </>
   )
 }
