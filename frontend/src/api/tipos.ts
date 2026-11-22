@@ -74,16 +74,16 @@ export interface DesgloseUniversal {
   descripcion: string | null
   categoria: Opcion
   existencia_total: number
+  /** RF-02 / S-23: desglose por referencia, ordenado por código. */
   referencias: Array<{
     id: number
     codigo_referencia: string
     descripcion: string
-    marca: Opcion
     proveedor: Opcion
+    calidad: Calidad | null
     existencia: number
     updated_at: string
   }>
-  por_marca: Array<{ marca_id: number; marca: string; existencia: number }>
 }
 
 export interface IngresoItem {

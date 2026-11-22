@@ -683,3 +683,7 @@ button.accion:hover { background: var(--suave-fondo); border-color: var(--primar
   .ingreso-campos { grid-template-columns: 1fr; }
   .ingreso-modal .modal-pie button { flex: 1; }
 }
+
+/* S-23: total del universal junto al título del desglose. */
+.total-universal { color: var(--suave); font-size: 0.95rem; }
+.total-universal strong { color: var(--texto); font-size: 1.1rem; }
