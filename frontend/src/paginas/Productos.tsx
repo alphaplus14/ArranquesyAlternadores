@@ -28,13 +28,11 @@ type Formulario = {
   codigo_universal_id: string
   descripcion: string
   precio_venta: string
-  /** RF-14 / S-15: el backend acepta 19 o 0 (sin IVA). */
-  iva_venta_porcentaje: '19' | '0'
 }
 
 const vacio: Formulario = {
   codigo_referencia: '', calidad: '', proveedor_id: '', categoria_id: '',
-  codigo_universal_id: '', descripcion: '', precio_venta: '', iva_venta_porcentaje: '19',
+  codigo_universal_id: '', descripcion: '', precio_venta: '',
 }
 
 /** S-18: ningún precio puede ser 0. Las referencias antiguas en 0 no se pueden vender hasta asignarles uno. */
@@ -156,7 +154,6 @@ export default function Productos() {
       codigo_universal_id: r.codigo_universal_id ? String(r.codigo_universal_id) : '',
       descripcion: r.descripcion,
       precio_venta: r.precio_venta,
-      iva_venta_porcentaje: Number(r.iva_venta_porcentaje) === 0 ? '0' : '19',
     },
   })
 
@@ -332,7 +329,7 @@ function FormularioReferencia({ id, inicial, onListo, onCerrar }: { id: number |
 
   const guardar = useMutation({
     mutationFn: async () => {
-      const datos = { ...f, calidad: f.calidad || null, iva_venta_porcentaje: Number(f.iva_venta_porcentaje), codigo_universal_id: admiteUniversal && f.codigo_universal_id ? Number(f.codigo_universal_id) : null }
+      const datos = { ...f, calidad: f.calidad || null, codigo_universal_id: admiteUniversal && f.codigo_universal_id ? Number(f.codigo_universal_id) : null }
       return id ? api.put(`/referencias/${id}`, datos) : api.post('/referencias', datos)
     },
     onSuccess: onListo,
@@ -374,13 +371,6 @@ function FormularioReferencia({ id, inicial, onListo, onCerrar }: { id: number |
         <p id="precio-venta-ayuda" className={errorPrecioVenta ? 'ayuda error' : 'ayuda'}>
           {errorPrecioVenta ?? 'Mayor que 0. Una referencia sin precio no se puede vender.'}
         </p>
-        <label>IVA de venta (%)
-          <select {...campo('iva_venta_porcentaje')}>
-            <option value="19">19 %</option>
-            <option value="0">0 % · sin IVA</option>
-          </select>
-        </label>
-        <p className="ayuda">0 % significa que la referencia se vende sin IVA. Es el IVA que queda guardado en cada venta.</p>
         {guardar.isError && <div className="aviso error">{mensajeError(guardar.error)}</div>}
         <div className="acciones">
           <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>

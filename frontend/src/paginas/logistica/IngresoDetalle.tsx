@@ -356,7 +356,8 @@ function Candado() {
 
 /**
  * RF-20: crea la referencia que no existe con el código leído y el proveedor del ingreso (ambos
- * fijos). Precio de venta > 0 (S-20). Calidad opcional (S-23). Logística no crea categorías: las crea el admin.
+ * fijos). Precio de venta > 0 (S-20). Calidad opcional (S-23). El IVA de venta no se pide: el
+ * backend lo deja en 19 % (S-15). Logística no crea categorías: las crea el admin.
  */
 function DialogoReferencia({ codigo, proveedor, onCreada, onCerrar }: {
   codigo: string
@@ -366,7 +367,7 @@ function DialogoReferencia({ codigo, proveedor, onCreada, onCerrar }: {
 }) {
   const categorias = useCategorias()
   const campoCategoria = useRef<HTMLSelectElement>(null)
-  const [f, setF] = useState({ calidad: '', categoria_id: '', descripcion: '', precio_venta: '', iva_venta_porcentaje: '19', codigo_universal_id: '' })
+  const [f, setF] = useState({ calidad: '', categoria_id: '', descripcion: '', precio_venta: '', codigo_universal_id: '' })
   useBloquearScroll()
   // El foco empieza en Categoría también si algo lo movió durante el montaje.
   useEffect(() => {
@@ -390,7 +391,6 @@ function DialogoReferencia({ codigo, proveedor, onCreada, onCerrar }: {
       categoria_id: Number(f.categoria_id),
       descripcion: f.descripcion.trim(),
       precio_venta: Number(f.precio_venta),
-      iva_venta_porcentaje: Number(f.iva_venta_porcentaje),
       codigo_universal_id: admiteUniversal && f.codigo_universal_id ? Number(f.codigo_universal_id) : null,
     }),
     onSuccess: onCreada,
@@ -447,12 +447,6 @@ function DialogoReferencia({ codigo, proveedor, onCreada, onCerrar }: {
           <input type="number" min="0.01" step="0.01" required aria-invalid={errorPrecio !== null} {...campo('precio_venta')} />
         </label>
         <p className={errorPrecio ? 'ayuda error' : 'ayuda'}>{errorPrecio ?? 'Mayor que 0. Si no lo conoce, consúltelo con el administrador antes de crearla.'}</p>
-        <label>IVA de venta
-          <select {...campo('iva_venta_porcentaje')}>
-            <option value="19">19 %</option>
-            <option value="0">0 % · sin IVA</option>
-          </select>
-        </label>
         {crear.isError && <div className="aviso error">{mensajeError(crear.error)}</div>}
         <div className="acciones">
           <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
