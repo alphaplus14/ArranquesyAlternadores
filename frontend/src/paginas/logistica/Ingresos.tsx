@@ -5,6 +5,7 @@ import { AxiosError } from 'axios'
 import { api, erroresCampo, mensajeError } from '../../api/cliente'
 import type { FormaPago, Ingreso, Pagina, TipoIngreso } from '../../api/tipos'
 import { sumarDias } from '../../componentes/fechas'
+import ControlSegmentado, { type OpcionSegmento } from '../../componentes/ControlSegmentado'
 import { useListaPaginada } from '../../hooks/useListaPaginada'
 import { useProveedores } from '../../hooks/useCatalogos'
 import Medida from '../../componentes/Medida'
@@ -112,6 +113,14 @@ export default function Ingresos() {
   )
 }
 
+const TIPOS: OpcionSegmento<TipoIngreso>[] = [{ valor: 'factura', texto: 'Factura' }, { valor: 'remision', texto: 'Remisión' }]
+const PAGOS: OpcionSegmento<FormaPago>[] = [{ valor: 'contado', texto: 'Contado' }, { valor: 'credito', texto: 'Crédito' }]
+
+/** Marca visible de campo obligatorio; el lector de pantalla ya lo anuncia por `required`. */
+function Obligatorio() {
+  return <span className="obligatorio" aria-hidden="true">*</span>
+}
+
 /**
  * Modal "Nuevo ingreso": tipo, proveedor, número, fecha, pago y vencimiento. El descuento del
  * documento no se pide aquí (queda en 0): se fija en el detalle con "Cambiar condiciones".
@@ -133,12 +142,17 @@ function DialogoNuevoIngreso({ onCerrar }: { onCerrar: () => void }) {
   const plazo = proveedores.data?.find((p) => String(p.id) === form.proveedor_id)?.plazo_dias ?? null
   const venceSugerido = plazo !== null && form.fecha ? sumarDias(form.fecha, plazo) : ''
   const venceEl = venceEscrito ?? venceSugerido
+  const credito = form.forma_pago === 'credito'
+  // Solo evita envíos vacíos; quien valida es el backend.
+  const completo = form.proveedor_id !== '' && form.numero_documento.trim() !== '' && form.fecha !== '' && (!credito || venceEl !== '')
 
   const crear = useMutation({
     mutationFn: async () =>
       (await api.post<Ingreso>('/ingresos', {
         ...form,
-        vence_el: form.forma_pago === 'credito' ? venceEl || null : null,
+        // Sin espacios al inicio ni al final, ni repetidos por dentro; mayúsculas como se digitaron.
+        numero_documento: form.numero_documento.trim().replace(/\s+/g, ' '),
+        vence_el: credito ? venceEl || null : null,
       })).data,
     onSuccess: (i) => navegar(`/logistica/ingresos/${i.id}`),
   })
@@ -177,36 +191,39 @@ function DialogoNuevoIngreso({ onCerrar }: { onCerrar: () => void }) {
 
         <section className="modal-seccion ingreso-modal-cuerpo">
           <div className="ingreso-campos">
-            <label>Tipo
-              <select autoFocus value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value as TipoIngreso })}>
-                <option value="factura">Factura</option>
-                <option value="remision">Remisión</option>
-              </select>
-            </label>
-            <label>Proveedor
-              <select required value={form.proveedor_id} onChange={(e) => setForm({ ...form, proveedor_id: e.target.value })}>
+            <ControlSegmentado id="nuevo-ingreso-tipo" etiqueta="Tipo" opciones={TIPOS} valor={form.tipo} onCambio={(tipo) => setForm({ ...form, tipo })} />
+            <ControlSegmentado id="nuevo-ingreso-pago" etiqueta="Pago" opciones={PAGOS} valor={form.forma_pago} onCambio={(forma_pago) => setForm({ ...form, forma_pago })} />
+            <label className="campo-ancho">
+              <span className="etiqueta-campo">Proveedor<Obligatorio /></span>
+              <select autoFocus required value={form.proveedor_id} onChange={(e) => setForm({ ...form, proveedor_id: e.target.value })}>
                 <option value="">—</option>
                 {proveedores.data?.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
               </select>
             </label>
-            <label>N.º del documento<input required maxLength={60} value={form.numero_documento} onChange={(e) => setForm({ ...form, numero_documento: e.target.value })} /></label>
-            <label>Fecha<input type="date" required value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} /></label>
-            <label>Pago
-              <select value={form.forma_pago} onChange={(e) => setForm({ ...form, forma_pago: e.target.value as FormaPago })}>
-                <option value="contado">Contado</option>
-                <option value="credito">Crédito</option>
-              </select>
+            <div className="campo-con-ayuda">
+              <label>
+                <span className="etiqueta-campo">N.º del documento<Obligatorio /></span>
+                <input required maxLength={60} aria-describedby="nuevo-ingreso-numero-ayuda" value={form.numero_documento} onChange={(e) => setForm({ ...form, numero_documento: e.target.value })} />
+              </label>
+              <small id="nuevo-ingreso-numero-ayuda" className="ayuda">Si ese documento ya está en borrador, se abre el mismo para seguir escaneando.</small>
+            </div>
+            <label>
+              <span className="etiqueta-campo">Fecha<Obligatorio /></span>
+              <input type="date" required value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} />
             </label>
-            {form.forma_pago === 'credito' && (
-              <label>Vence el
-                <input type="date" aria-invalid={!!errores.vence_el} value={venceEl} onChange={(e) => setVenceEscrito(e.target.value)} />
+            {credito && (
+              <label className="campo-ancho">
+                <span className="etiqueta-campo">
+                  Vence el<Obligatorio />
+                  {plazo !== null && <span className="chip plazo-proveedor">Plazo del proveedor: {plazo} días</span>}
+                </span>
+                <input type="date" required aria-invalid={!!errores.vence_el} value={venceEl} onChange={(e) => setVenceEscrito(e.target.value)} />
                 {errores.vence_el
                   ? <small className="ayuda error">{errores.vence_el}</small>
                   : <small className="ayuda">{venceEscrito === null && plazo !== null ? `Fecha + ${plazo} días del proveedor; corríjalo con el del documento.` : 'El que trae el documento.'}</small>}
               </label>
             )}
           </div>
-          <p className="ayuda">Si ese documento ya está en borrador, se abre el mismo para seguir escaneando.</p>
           {crear.isError && (
             <div className="aviso error" role="alert">
               {mensajeError(crear.error)}
@@ -216,8 +233,9 @@ function DialogoNuevoIngreso({ onCerrar }: { onCerrar: () => void }) {
         </section>
 
         <footer className="modal-pie">
+          <small className="nota-obligatorio"><span aria-hidden="true">*</span> obligatorio</small>
           <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
-          <button className="primario" disabled={crear.isPending}>{crear.isPending ? 'Creando…' : 'Crear borrador'}</button>
+          <button type="submit" className="primario" disabled={!completo || crear.isPending}>{crear.isPending ? 'Creando…' : 'Crear y escanear'}</button>
         </footer>
       </form>
     </div>

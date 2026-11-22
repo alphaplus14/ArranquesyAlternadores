@@ -674,8 +674,32 @@ button.accion:hover { background: var(--suave-fondo); border-color: var(--primar
 .ingreso-campos { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .ingreso-modal select, .ingreso-modal input, .ingreso-modal .modal-pie button, .ingreso-modal .modal-cerrar { min-height: 44px; }
 .ingreso-modal .modal-cerrar { min-width: 44px; }
+.ingreso-modal .modal-cabeza { padding: 8px 12px 8px 22px; }
+.ingreso-modal .ingreso-modal-cuerpo { padding-top: 16px; }
+.ingreso-campos .campo-ancho { grid-column: 1 / -1; }
+.campo-con-ayuda { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ingreso-modal .modal-pie { align-items: center; flex-wrap: wrap; }
+.nota-obligatorio { margin-right: auto; color: var(--suave); }
+
+/* Etiqueta de un campo (también fuera de <label>, p. ej. sobre un radiogroup). */
+.etiqueta-campo { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 0.85rem; color: var(--suave); }
+.obligatorio { color: var(--peligro); font-weight: 700; margin-left: -3px; }
+.chip.plazo-proveedor { margin-left: auto; }
+
+/* Control segmentado (radiogroup): la opción elegida lleva ✓, borde y negrita, no solo color. */
+.campo-segmentado { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.segmentado { display: flex; gap: 4px; padding: 3px; border: 1px solid var(--borde); border-radius: 10px; background: var(--suave-fondo); }
+button.segmento {
+  flex: 1 1 0; min-width: 0; min-height: 40px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 6px 10px; border: 1px solid transparent; border-radius: 8px;
+  background: transparent; color: var(--suave); font-weight: 500;
+}
+button.segmento:hover { color: var(--texto); }
+button.segmento.elegido { background: #fff; border-color: var(--primario); color: var(--primario); font-weight: 700; box-shadow: var(--sombra-barra); }
 
 @media (max-width: 639px) {
+  .nota-obligatorio { flex-basis: 100%; }
   .encabezado-con-accion { flex-direction: column; align-items: stretch; }
   .encabezado-con-accion > .primario { width: 100%; }
   .modal-ingreso { padding: 0; align-items: stretch; }
