@@ -274,37 +274,63 @@ export default function Venta() {
   )
 }
 
-/** RF-12: buscar por referencia o código universal y elegir la unidad. */
+/**
+ * RF-12: buscar por código de barras, referencia, código universal o descripción y elegir la unidad.
+ * El orden lo da el backend (código antes que descripción, con existencia primero); aquí no se reordena.
+ */
 function BusquedaRespaldo({ onElegir, onCerrar }: { onElegir: (codigo: string) => void; onCerrar: () => void }) {
+  // Es el tipo Unidad de api/tipos; se deriva aquí para no tocar los imports del archivo.
+  type Unidad = NonNullable<Referencia['unidades_disponibles']>[number]
   const [q, setQ] = useState('')
   const termino = useDebounce(q.trim())
 
   const resultado = useQuery({
     queryKey: ['buscar', termino],
-    queryFn: async () => (await api.get<{ unidad: unknown; referencias: Referencia[] }>('/buscar', { params: { q: termino } })).data,
+    queryFn: async () => (await api.get<{ unidad: Unidad | null; referencias: Referencia[] }>('/buscar', { params: { q: termino } })).data,
     enabled: termino.length >= 2,
   })
+  const unidad = resultado.data?.unidad
 
   return (
     <div className="modal" onKeyDown={(e) => e.key === 'Escape' && onCerrar()}>
       <div className="modal-caja ancha">
         <h2>Buscar sin escáner</h2>
-        <input autoFocus placeholder="Código de barras, referencia o código universal" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input autoFocus placeholder="Código de barras, referencia, universal o descripción (ej. alternador hilux)" value={q} onChange={(e) => setQ(e.target.value)} />
         {resultado.isFetching && <p>Buscando…</p>}
-        {resultado.data?.referencias.map((r) => (
-          <div key={r.id} className="resultado">
-            <div>
-              <strong>{r.codigo_referencia}</strong> {r.codigo_universal && <span className="chip">{r.codigo_universal.codigo}</span>} · {r.marca?.nombre} · {r.proveedor?.nombre} · existencia {r.existencia}
+        <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+          {unidad && (
+            <div className="resultado">
+              <div>
+                Unidad <strong className="mono">{unidad.codigo_barras}</strong> · {unidad.referencia?.codigo_referencia} <small>{unidad.referencia?.descripcion}</small>
+              </div>
+              <div className="unidades">
+                {unidad.estado === 'disponible'
+                  ? <button type="button" className="primario" onClick={() => onElegir(unidad.codigo_barras)}>Vender esta unidad</button>
+                  : <em>Esta unidad ya no está disponible</em>}
+              </div>
             </div>
-            <div className="unidades">
-              {r.unidades_disponibles?.map((u) => (
-                <button key={u.id} className="mono" onClick={() => onElegir(u.codigo_barras)}>{u.codigo_barras}</button>
-              ))}
-              {r.unidades_disponibles?.length === 0 && <em>Sin unidades disponibles</em>}
-            </div>
-          </div>
-        ))}
-        {resultado.data && resultado.data.referencias.length === 0 && <p>Sin resultados.</p>}
+          )}
+          {resultado.data?.referencias.map((r) => {
+            const primera = r.unidades_disponibles?.[0]
+            return (
+              <div key={r.id} className="resultado">
+                <div>
+                  <strong>{r.codigo_referencia}</strong> {r.codigo_universal && <span className="chip">{r.codigo_universal.codigo}</span>} · {r.marca?.nombre} · {r.proveedor?.nombre} ·{' '}
+                  <span className={r.existencia > 0 ? '' : 'agotado'}>existencia {r.existencia}</span>
+                </div>
+                <div><small>{r.descripcion}</small></div>
+                <div className="unidades">
+                  {primera && <button type="button" className="primario" onClick={() => onElegir(primera.codigo_barras)}>Vender 1</button>}
+                  {r.unidades_disponibles?.map((u) => (
+                    <button key={u.id} type="button" className="mono" onClick={() => onElegir(u.codigo_barras)}>{u.codigo_barras}</button>
+                  ))}
+                  {r.unidades_disponibles?.length === 0 && <em>Sin unidades disponibles</em>}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+        {resultado.data && !unidad && resultado.data.referencias.length === 0 && <p>Sin resultados.</p>}
         <div className="acciones"><button type="button" className="secundario" onClick={onCerrar}>Cerrar</button></div>
       </div>
     </div>
