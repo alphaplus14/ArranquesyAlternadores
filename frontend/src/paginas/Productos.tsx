@@ -8,6 +8,7 @@ import { useAuth } from '../auth/AuthProvider'
 import Icono from '../componentes/Icono'
 import Paginacion from '../componentes/Paginacion'
 import SelectorProveedor from '../componentes/SelectorProveedor'
+import SelectorCategoria from '../componentes/SelectorCategoria'
 import Resumen from '../componentes/Resumen'
 import { useCategorias } from '../hooks/useCatalogos'
 import { useDebounce } from '../hooks/useDebounce'
@@ -412,9 +413,7 @@ function FormularioReferencia({ id, inicial, onListo, onCerrar }: { id: number |
         <label>Proveedor
           <SelectorProveedor required permitirCrear value={f.proveedor_id} onChange={(proveedor_id) => setF((v) => ({ ...v, proveedor_id }))} />
         </label>
-        <label>Categoría
-          <select required {...campo('categoria_id')}><option value="">—</option>{categorias.data?.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select>
-        </label>
+        <SelectorCategoria value={f.categoria_id} onChange={(categoria_id) => setF((v) => ({ ...v, categoria_id }))} />
         {admiteUniversal && (
           <label>Código universal
             <select {...campo('codigo_universal_id')}>

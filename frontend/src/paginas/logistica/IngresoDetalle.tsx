@@ -9,6 +9,7 @@ import CampoDescuento, { type ModoDescuento } from '../../componentes/CampoDescu
 import Medida from '../../componentes/Medida'
 import { formatoNumero, leerNumero, pesos } from '../../componentes/numeros'
 import { useCategorias } from '../../hooks/useCatalogos'
+import SelectorCategoria from '../../componentes/SelectorCategoria'
 import { useScanner } from '../../hooks/useScanner'
 import { useBloquearScroll } from '../../hooks/useBloquearScroll'
 import { atraparTab } from '../../componentes/foco'
@@ -539,7 +540,7 @@ function Candado() {
 /**
  * RF-20: crea la referencia que no existe con el código leído y el proveedor del ingreso (ambos
  * fijos). Precio de venta > 0 (S-20). Calidad opcional (S-23). El IVA de venta no se pide: el
- * backend lo deja en 19 % (S-15). Logística no crea categorías: las crea el admin.
+ * backend lo deja en 19 % (S-15). S-24: logística también puede crear la categoría (sin código universal).
  */
 function DialogoReferencia({ codigo, proveedor, onCreada, onCerrar }: {
   codigo: string
@@ -549,6 +550,7 @@ function DialogoReferencia({ codigo, proveedor, onCreada, onCerrar }: {
 }) {
   const categorias = useCategorias()
   const campoCategoria = useRef<HTMLSelectElement>(null)
+  const campoCalidad = useRef<HTMLSelectElement>(null)
   const [f, setF] = useState({ calidad: '', categoria_id: '', descripcion: '', precio_venta: '', codigo_universal_id: '' })
   useBloquearScroll()
   // El foco empieza en Categoría también si algo lo movió durante el montaje.
@@ -579,7 +581,6 @@ function DialogoReferencia({ codigo, proveedor, onCreada, onCerrar }: {
   })
 
   const errorPrecio = f.precio_venta === '' ? null : Number(f.precio_venta) > 0 ? null : 'El precio de venta debe ser mayor que 0.'
-  const sinCategorias = categorias.data?.length === 0
   const completo = f.categoria_id !== '' && f.descripcion.trim() !== '' && f.precio_venta !== '' && errorPrecio === null
   const campo = (k: keyof typeof f) => ({ value: f[k], onChange: (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value }) })
 
@@ -599,18 +600,15 @@ function DialogoReferencia({ codigo, proveedor, onCreada, onCerrar }: {
           </div>
         </dl>
         <p className="ayuda">El código no existe para este proveedor. Se crea para el proveedor de este ingreso, con el código escaneado, y al guardarla se agrega la línea.</p>
-        <label>Categoría
-          <select ref={campoCategoria} required autoFocus {...campo('categoria_id')}>
-            <option value="">—</option>
-            {categorias.data?.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-          </select>
-        </label>
-        {sinCategorias && (
-          <div className="aviso atencion">No hay categorías en el catálogo. Pídale al administrador que las cree.</div>
-        )}
-        <p className="ayuda">Si la categoría que necesita no aparece, pídale al administrador que la cree; aquí no se crean.</p>
+        <SelectorCategoria
+          selectRef={campoCategoria}
+          autoFocus
+          value={f.categoria_id}
+          onChange={(categoria_id) => setF((v) => ({ ...v, categoria_id }))}
+          alElegir={() => campoCalidad.current?.focus()}
+        />
         <label>Calidad (opcional)
-          <select {...campo('calidad')}>
+          <select ref={campoCalidad} {...campo('calidad')}>
             <option value="">—</option>
             <option value="fino">Fino</option>
             <option value="generico">Genérico</option>

@@ -1,4 +1,4 @@
-import { useEffect, useId, type FormEvent, type ReactNode } from 'react'
+import { useId, useLayoutEffect, type FormEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { atraparTab } from './foco'
 import { useBloquearScroll } from '../hooks/useBloquearScroll'
@@ -19,7 +19,8 @@ export default function DialogoApilado({ titulo, onCerrar, onEnviar, pie, childr
   const tituloId = useId()
   useBloquearScroll()
 
-  useEffect(() => {
+  // En layout: al cerrar, la app deja de estar inerte antes de que se le devuelva el foco.
+  useLayoutEffect(() => {
     const app = document.getElementById('root')
     if (!app || app.hasAttribute('inert')) return
     app.setAttribute('inert', '')

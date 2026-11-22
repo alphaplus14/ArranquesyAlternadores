@@ -833,3 +833,7 @@ button.busca-limpiar:hover { background: var(--suave-fondo); color: var(--texto)
   .dialogo-apilado { max-width: none; height: 100dvh; max-height: 100dvh; border-radius: 0; }
   .dialogo-apilado .modal-pie button { flex: 1; }
 }
+
+/* Campo con una acción al lado (p. ej. «+ Crear categoría», S-24). */
+.campo-con-accion { display: flex; flex-direction: column; gap: 4px; }
+.campo-con-accion .accion-campo { align-self: flex-end; font-size: 0.85rem; min-height: 32px; }

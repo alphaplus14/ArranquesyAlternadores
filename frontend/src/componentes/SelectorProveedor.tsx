@@ -271,16 +271,16 @@ export default function SelectorProveedor({
             setCreando(null)
             onChange(String(nuevo.id))
             // Al siguiente campo (N.º del documento en la modal de ingreso), o de vuelta al selector.
-            requestAnimationFrame(() => (alElegir ? alElegir() : input.current?.focus()))
+            setTimeout(() => (alElegir ? alElegir() : input.current?.focus()), 0)
           }}
           onUsar={(idExistente) => {
             editando.current = false
             setTexto(null)
             setCreando(null)
             onChange(String(idExistente))
-            requestAnimationFrame(() => (alElegir ? alElegir() : input.current?.focus()))
+            setTimeout(() => (alElegir ? alElegir() : input.current?.focus()), 0)
           }}
-          onCerrar={() => { setCreando(null); requestAnimationFrame(() => input.current?.focus()) }}
+          onCerrar={() => { setCreando(null); setTimeout(() => input.current?.focus(), 0) }}
         />
       )}
     </>
