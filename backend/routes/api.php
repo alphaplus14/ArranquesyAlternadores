@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\CodigoUniversalController;
 use App\Http\Controllers\Api\CuentaController;
 use App\Http\Controllers\Api\EtiquetaController;
 use App\Http\Controllers\Api\IngresoController;
+use App\Http\Controllers\Api\PagoController;
 use App\Http\Controllers\Api\ProveedorController;
 use App\Http\Controllers\Api\ReferenciaController;
 use App\Http\Controllers\Api\ReporteController;
@@ -19,7 +20,7 @@ use Illuminate\Support\Facades\Route;
 
 /*
  * Regla 12: todo endpoint protegido por rol (middleware "rol"; el admin pasa siempre).
- * No hay rutas DELETE para ventas, venta_items, reversos, movimientos, abonos ni auditoría (RF-07, RF-11, RF-15).
+ * No hay rutas DELETE para ventas, venta_items, reversos, movimientos, abonos, pagos ni auditoría (RF-07, RF-11, RF-15, RF-17).
  */
 
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login')->name('login');
@@ -72,6 +73,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::match(['put', 'patch'], '/clientes/{cliente}', [ClienteController::class, 'update']); // RF-13
 
         Route::post('/abonos/{abono}/anulaciones', [AbonoController::class, 'anular']); // RF-15
+
+        // RF-17 / S-14: pagos a proveedores, solo admin.
+        Route::get('/proveedores/{proveedor}/saldo', [PagoController::class, 'saldo']);
+        Route::post('/proveedores/{proveedor}/pagos', [PagoController::class, 'store']);
+        Route::post('/pagos/{pago}/anulaciones', [PagoController::class, 'anular']);
     });
 
     // Módulo de logística: ingreso de remisiones y facturas a mano (RF-05, RF-04, RF-09, RF-10) y etiquetas (RF-03).

@@ -24,4 +24,10 @@ class Proveedor extends Model
     {
         return $this->hasMany(Referencia::class);
     }
+
+    /** RF-17 */
+    public function pagos(): HasMany
+    {
+        return $this->hasMany(PagoProveedor::class);
+    }
 }
