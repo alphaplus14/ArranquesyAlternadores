@@ -749,3 +749,38 @@ button.selector-limpiar:hover { background: var(--suave-fondo); color: var(--tex
 .datos-fijos dt { font-size: 0.78rem; color: var(--suave); }
 .datos-fijos dd { margin: 0; display: flex; align-items: center; gap: 6px; color: var(--texto); font-weight: 600; overflow-wrap: anywhere; cursor: default; }
 .datos-fijos .candado { flex: none; color: var(--suave); }
+
+/* Líneas del ingreso en borrador: valores editables como celdas, no como enlaces. */
+button.celda-editable {
+  display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px;
+  min-width: 64px; padding: 4px 8px; font: inherit; color: var(--texto); text-align: right; cursor: pointer;
+  background: #F8FAFE; border: 1px dashed #A9B6CF; border-radius: 6px;
+}
+button.celda-editable:hover, button.celda-editable:focus-visible { border-style: solid; border-color: var(--primario); background: var(--suave-fondo); }
+/* Costo pendiente: borde y texto de atención, icono y la palabra "Costo" (no solo color). */
+button.celda-editable.pendiente { min-width: 96px; justify-content: center; border: 1.5px dashed #B08A00; background: var(--aviso-fondo); color: var(--aviso); font-weight: 600; }
+button.celda-editable.pendiente:hover, button.celda-editable.pendiente:focus-visible { border-style: solid; border-color: var(--aviso); }
+.tabla-lineas td.acciones-linea { white-space: nowrap; text-align: right; }
+.acciones-linea, .confirmar-quitar { display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; }
+.tabla-lineas td.acciones-linea { display: table-cell; }
+.tabla-lineas td.acciones-linea > * + * { margin-left: 6px; }
+.acciones-linea button.primario, .acciones-linea button.secundario, .confirmar-quitar button { padding: 4px 10px; font-size: 0.85rem; }
+.acciones-linea .icono-accion { display: inline-grid; vertical-align: middle; }
+.fila-edicion td { vertical-align: top; background: #FBFCFF; }
+.campo-linea { display: flex; flex-direction: column; gap: 2px; }
+.campo-linea input, .campo-linea select { width: 104px; padding: 4px 6px; }
+.campo-linea .ayuda { max-width: 140px; white-space: normal; }
+.fila-error td { color: var(--peligro); background: var(--error-fondo); font-size: 0.88rem; }
+
+@media (max-width: 639px) {
+  .tabla-lineas .fila-edicion td { align-items: flex-start; }
+  .tabla-lineas .campo-linea { width: 62%; }
+  .tabla-lineas .campo-linea input, .tabla-lineas .campo-linea select { width: 100%; min-height: 44px; }
+  .tabla-lineas .campo-linea .ayuda { max-width: none; text-align: left; }
+  .tabla-lineas td.acciones-linea { display: flex; justify-content: flex-end; gap: 8px; padding-top: 8px; border-top: 1px solid var(--borde); margin-top: 4px; }
+  .tabla-lineas td.acciones-linea > * + * { margin-left: 0; }
+  .tabla-lineas .fila-edicion td.acciones-linea button { flex: 1; min-height: 44px; }
+  .tabla-lineas button.celda-editable { min-height: 40px; }
+  .confirmar-quitar button { min-height: 40px; }
+  .tabla-lineas .fila-error { border-color: var(--peligro); }
+}
