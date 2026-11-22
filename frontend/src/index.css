@@ -678,8 +678,8 @@ button.accion:hover { background: var(--suave-fondo); border-color: var(--primar
 .ingreso-modal .ingreso-modal-cuerpo { padding-top: 16px; }
 .ingreso-campos .campo-ancho { grid-column: 1 / -1; }
 .campo-con-ayuda { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.ingreso-modal .modal-pie { align-items: center; flex-wrap: wrap; }
-.nota-obligatorio { margin-right: auto; color: var(--suave); }
+.ingreso-modal .modal-cabeza-texto .nota-obligatorio { margin: 1px 0 0; font-size: 0.8rem; }
+.nota-obligatorio .obligatorio { margin-left: 0; }
 
 /* Etiqueta de un campo (también fuera de <label>, p. ej. sobre un radiogroup). */
 .etiqueta-campo { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 0.85rem; color: var(--suave); }
@@ -699,7 +699,6 @@ button.segmento:hover { color: var(--texto); }
 button.segmento.elegido { background: #fff; border-color: var(--primario); color: var(--primario); font-weight: 700; box-shadow: var(--sombra-barra); }
 
 @media (max-width: 639px) {
-  .nota-obligatorio { flex-basis: 100%; }
   .encabezado-con-accion { flex-direction: column; align-items: stretch; }
   .encabezado-con-accion > .primario { width: 100%; }
   .modal-ingreso { padding: 0; align-items: stretch; }

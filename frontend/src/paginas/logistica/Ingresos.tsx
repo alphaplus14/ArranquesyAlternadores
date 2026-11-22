@@ -183,6 +183,7 @@ function DialogoNuevoIngreso({ onCerrar }: { onCerrar: () => void }) {
         <header className="modal-cabeza">
           <div className="modal-cabeza-texto">
             <h2 id="nuevo-ingreso-titulo">Nuevo ingreso</h2>
+            <p className="nota-obligatorio">Los campos con <span className="obligatorio">*</span> son obligatorios.</p>
           </div>
           <button type="button" className="icono-boton modal-cerrar" aria-label="Cerrar" onClick={onCerrar}>
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6L6 18" /></svg>
@@ -233,7 +234,6 @@ function DialogoNuevoIngreso({ onCerrar }: { onCerrar: () => void }) {
         </section>
 
         <footer className="modal-pie">
-          <small className="nota-obligatorio"><span aria-hidden="true">*</span> obligatorio</small>
           <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
           <button type="submit" className="primario" disabled={!completo || crear.isPending}>{crear.isPending ? 'Creando…' : 'Crear y escanear'}</button>
         </footer>
