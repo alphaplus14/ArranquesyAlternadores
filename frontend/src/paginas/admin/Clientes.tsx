@@ -113,17 +113,17 @@ export default function Clientes() {
           </div>
         </div>
         {(guardar.isError || alternar.isError) && <div className="aviso error">{mensajeError(guardar.error ?? alternar.error)}</div>}
-        <table>
-          <thead><tr><th>Nombre</th><th>Documento</th><th>Teléfono</th><th>Plazo</th><th>Estado</th><th></th></tr></thead>
+        <table className="tabla-apilable tabla-clientes">
+          <thead><tr><th>Nombre</th><th>Documento</th><th>Teléfono</th><th>Plazo</th><th>Estado</th><th><span className="solo-lector">Acciones</span></th></tr></thead>
           <tbody>
             {filas.map((c) => editando?.id === c.id ? (
               <tr key={c.id}>
-                <td><input required maxLength={150} aria-label="Nombre" {...campoEdicion('nombre')} /></td>
-                <td><input maxLength={30} aria-label="Documento" {...campoEdicion('documento')} /></td>
-                <td><input maxLength={30} aria-label="Teléfono" inputMode="tel" {...campoEdicion('telefono')} /></td>
-                <td><input type="number" min={0} max={365} required aria-label="Plazo en días" {...campoEdicion('plazo_dias')} /></td>
-                <td>{c.activo ? 'Activo' : 'Inactivo'}</td>
-                <td><div className="acciones-fila">
+                <td data-etiqueta="Nombre"><input required maxLength={150} aria-label="Nombre" {...campoEdicion('nombre')} /></td>
+                <td data-etiqueta="Documento"><input maxLength={30} aria-label="Documento" {...campoEdicion('documento')} /></td>
+                <td data-etiqueta="Teléfono"><input maxLength={30} aria-label="Teléfono" inputMode="tel" {...campoEdicion('telefono')} /></td>
+                <td data-etiqueta="Plazo (días)"><input type="number" min={0} max={365} required aria-label="Plazo en días" {...campoEdicion('plazo_dias')} /></td>
+                <td data-etiqueta="Estado">{c.activo ? 'Activo' : 'Inactivo'}</td>
+                <td className="celda-accion"><div className="acciones-fila">
                   <button
                     type="button"
                     className="enlace"
@@ -135,16 +135,16 @@ export default function Clientes() {
               </tr>
             ) : (
               <tr key={c.id} className={c.activo ? '' : 'reversado'}>
-                <td>{c.nombre}</td>
-                <td>{c.documento ?? '—'}</td>
-                <td>{c.telefono ?? '—'}</td>
-                <td>{c.plazo_dias} días</td>
-                <td>
+                <td data-etiqueta="Nombre"><strong>{c.nombre}</strong></td>
+                <td data-etiqueta="Documento">{c.documento ?? '—'}</td>
+                <td data-etiqueta="Teléfono">{c.telefono ?? '—'}</td>
+                <td data-etiqueta="Plazo">{c.plazo_dias} días</td>
+                <td data-etiqueta="Estado">
                   <button type="button" className="enlace" disabled={alternar.isPending} onClick={() => alternar.mutate(c)}>
                     {c.activo ? 'Activo · desactivar' : 'Inactivo · activar'}
                   </button>
                 </td>
-                <td>
+                <td className="celda-accion">
                   <button
                     type="button"
                     className="enlace"

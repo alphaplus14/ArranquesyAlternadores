@@ -983,6 +983,13 @@ tr.fila-con-error td { background: var(--error-fondo); }
   .tabla-apilable td[data-etiqueta]::before { content: attr(data-etiqueta); flex: none; color: var(--suave); font-size: 0.8rem; text-align: left; }
   .tabla-apilable td[data-etiqueta] > * { min-width: 0; }
   .tabla-apilable td.celda-accion:empty { display: none; }
+  /* Contenido largo sin desborde; campos de edición y acciones táctiles de 44 px. */
+  .tabla-apilable td { overflow-wrap: anywhere; }
+  .tabla-apilable td[data-etiqueta] > input, .tabla-apilable td[data-etiqueta] > select { flex: 1; width: auto; min-height: 44px; }
+  .tabla-apilable td.celda-accion { padding-top: 8px; }
+  .tabla-apilable td.celda-accion .acciones-fila { justify-content: stretch; gap: 8px; }
+  .tabla-apilable td.celda-accion button, .tabla-apilable td[data-etiqueta] > button.enlace { min-height: 44px; }
+  .tabla-apilable td.celda-accion button { flex: 1; width: 100%; }
   .tabla-apilable td.celda-accion { text-align: left; padding-top: 8px; }
   .tabla-apilable td.celda-accion button, .barra-lote button { width: 100%; }
   .unidades-ajuste { text-align: right; }

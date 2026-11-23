@@ -84,16 +84,16 @@ export default function Universales() {
           <input aria-label="Buscar código universal" placeholder="Buscar código universal" value={q} onChange={(e) => setQ(e.target.value)} />
         </label>
       </div>
-      <table>
+      <table className="tabla-apilable">
         <thead><tr><th>Código</th><th>Categoría</th><th>Descripción</th><th>Existencia total</th><th>Stock mínimo</th></tr></thead>
         <tbody>
           {filas.map((u) => (
             <tr key={u.id}>
-              <td><Link to={`/admin/universales/${u.id}`}><strong>{u.codigo}</strong></Link></td>
-              <td>{u.categoria.nombre}</td>
-              <td>{u.descripcion}</td>
-              <td>{Number(u.existencia ?? 0)}</td>
-              <td>{textoMinimo(u.stock_minimo)}</td>
+              <td data-etiqueta="Código"><Link to={`/admin/universales/${u.id}`}><strong>{u.codigo}</strong></Link></td>
+              <td data-etiqueta="Categoría">{u.categoria.nombre}</td>
+              <td data-etiqueta="Descripción">{u.descripcion || '—'}</td>
+              <td data-etiqueta="Existencia total">{Number(u.existencia ?? 0)}</td>
+              <td data-etiqueta="Stock mínimo">{textoMinimo(u.stock_minimo)}</td>
             </tr>
           ))}
         </tbody>
