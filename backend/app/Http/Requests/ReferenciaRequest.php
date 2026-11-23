@@ -5,6 +5,7 @@ namespace App\Http\Requests;
 use App\Enums\Calidad;
 use App\Models\Categoria;
 use App\Models\CodigoUniversal;
+use App\Services\StockMinimoService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -61,6 +62,8 @@ class ReferenciaRequest extends FormRequest
             'descripcion' => [$requerido, 'string', 'max:255'],
             'precio_venta' => [$requerido, 'numeric', 'gt:0', 'max:9999999999'], // RF-14: ningún precio puede ser 0
             'iva_venta_porcentaje' => ['sometimes', 'numeric', Rule::in([0, 19])], // RF-14 / S-15
+            // RF-22: null = usa el general; 0 = no maneja mínimo.
+            'stock_minimo' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:'.StockMinimoService::MAXIMO],
         ];
     }
 
@@ -71,6 +74,9 @@ class ReferenciaRequest extends FormRequest
             'codigo_referencia.required' => 'Escriba la referencia del proveedor o el código de barras del producto.',
             'codigo_referencia.unique' => 'Este proveedor ya tiene una referencia con ese código.',
             'codigo_fabricante.unique' => 'Este proveedor ya tiene otra referencia con ese código de barras.',
+            'stock_minimo.integer' => 'El stock mínimo debe ser un número entero.',
+            'stock_minimo.min' => 'El stock mínimo no puede ser negativo.',
+            'stock_minimo.max' => 'El stock mínimo no puede pasar de '.StockMinimoService::MAXIMO.'.',
         ];
     }
 
@@ -87,6 +93,14 @@ class ReferenciaRequest extends FormRequest
                 : $referencia?->codigo_universal_id;
 
             if ($universalId === null) {
+                return;
+            }
+
+            // RF-22: el mínimo de una referencia de un universal se define en el universal.
+            if ($this->input('stock_minimo') !== null) {
+                $codigo = CodigoUniversal::whereKey($universalId)->value('codigo');
+                $validator->errors()->add('stock_minimo', "Esta referencia pertenece al universal {$codigo}: el stock mínimo se define en el universal.");
+
                 return;
             }
 

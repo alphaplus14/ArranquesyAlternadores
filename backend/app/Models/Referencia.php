@@ -24,6 +24,7 @@ class Referencia extends Model
     protected $fillable = [
         'codigo_referencia', 'codigo_fabricante', 'calidad', 'proveedor_id', 'categoria_id',
         'codigo_universal_id', 'descripcion', 'precio_venta', 'iva_venta_porcentaje',
+        'stock_minimo', // RF-22: null = usa el general; 0 = no maneja mínimo
     ];
 
     protected function casts(): array
@@ -34,6 +35,7 @@ class Referencia extends Model
             'iva_venta_porcentaje' => 'decimal:2', // RF-14 / S-15: 19, o 0 = sin IVA
             'existencia' => 'integer',
             'activo' => 'boolean',
+            'stock_minimo' => 'integer',
         ];
     }
 

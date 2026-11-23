@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Enums\MetodoCaptura;
 use App\Enums\Rol;
 use App\Models\Categoria;
+use App\Models\Configuracion;
 use App\Models\Proveedor;
 use App\Models\Referencia;
 use App\Models\Unidad;
@@ -18,7 +19,8 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Supuesto S-04: mide p50/p95 del escaneo (objetivo 300 ms) y de la búsqueda (objetivo 500 ms)
+ * Supuesto S-04: mide p50/p95 del escaneo (objetivo 300 ms), de la búsqueda y del informe Bajo
+ * mínimo (RF-22) (objetivo 500 ms)
  * pasando por todo el stack HTTP de Laravel (rutas, middleware, validación, BD), sin la red.
  * Crea sus datos dentro de una transacción que se revierte al final: no deja rastro.
  */
@@ -70,9 +72,24 @@ class BenchmarkInventario extends Command
                 $busquedas[] = $this->medir($kernel, $usuario, Request::create('/api/buscar', 'GET', ['q' => $q]), 200);
             }
 
+            // RF-22: mínimo general 3 para todo el catálogo de relleno (existencia 0: todas alertan)
+            // y mínimos propios en una de cada diez, para que la consulta haga el trabajo completo.
+            Configuracion::where('clave', Configuracion::STOCK_MINIMO_GENERAL)->update(['valor' => '3']);
+            Referencia::where('proveedor_id', $proveedor->id)->whereRaw('id % 10 = 0')->update(['stock_minimo' => 5]);
+            Referencia::where('proveedor_id', $proveedor->id)->whereRaw('id % 10 = 1')->update(['stock_minimo' => 0]);
+
+            $bajoMinimo = [];
+            for ($i = 0; $i < $n; $i++) {
+                $filtro = match ($i % 3) {
+                    0 => [], 1 => ['proveedor_id' => $proveedor->id], default => ['categoria_id' => $categoria->id]
+                };
+                $bajoMinimo[] = $this->medir($kernel, $usuario, Request::create('/api/reportes/bajo-minimo', 'GET', $filtro), 200);
+            }
+
             $this->table(['endpoint', 'n', 'p50 ms', 'p95 ms', 'máx ms', 'objetivo p95'], [
                 ['POST /ventas/{id}/escanear', count($escaneos), $this->pct($escaneos, 50), $this->pct($escaneos, 95), max($escaneos), 300],
                 ['GET /buscar', count($busquedas), $this->pct($busquedas, 50), $this->pct($busquedas, 95), max($busquedas), 500],
+                ['GET /reportes/bajo-minimo', count($bajoMinimo), $this->pct($bajoMinimo, 50), $this->pct($bajoMinimo, 95), max($bajoMinimo), 500],
             ]);
             $this->line('Sin latencia de red: en red local sumar el RTT (normalmente < 5 ms).');
         } finally {

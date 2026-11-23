@@ -15,7 +15,19 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 /** RF-01 / RF-11. Catálogo con búsqueda y paginación en servidor. */
 class ReferenciaController extends Controller
 {
-    private const RELACIONES = ['proveedor:id,nombre', 'categoria:id,nombre,admite_codigo_universal', 'codigoUniversal:id,codigo'];
+    /**
+     * RF-22: el universal llega con su mínimo y la suma de sus referencias activas, para que el
+     * listado diga si está bajo mínimo sin una consulta por fila.
+     */
+    private static function relaciones(): array
+    {
+        return [
+            'proveedor:id,nombre',
+            'categoria:id,nombre,admite_codigo_universal',
+            'codigoUniversal' => fn ($q) => $q->select('id', 'codigo', 'stock_minimo')
+                ->withSum(['referencias as existencia_total' => fn ($r) => $r->where('activo', true)], 'existencia'),
+        ];
+    }
 
     public function index(Request $request): AnonymousResourceCollection
     {
@@ -25,7 +37,7 @@ class ReferenciaController extends Controller
         $conInactivas = $request->boolean('inactivas') && in_array($request->user()?->rol, [Rol::Admin, Rol::Logistica], true);
 
         $pagina = Referencia::query()
-            ->with(self::RELACIONES)
+            ->with(self::relaciones())
             ->unless($conInactivas, fn ($query) => $query->activas())
             // Prefijo sobre el código (usa el índice), código de barras exacto (S-25) o texto completo sobre la descripción.
             ->when($q !== '', fn ($query) => $query->where(fn ($w) => $w
@@ -77,29 +89,29 @@ class ReferenciaController extends Controller
     {
         $referencia = Referencia::create($request->validated());
 
-        return (new ReferenciaResource($referencia->load(self::RELACIONES)))->response()->setStatusCode(201);
+        return (new ReferenciaResource($referencia->load(self::relaciones())))->response()->setStatusCode(201);
     }
 
     public function show(Referencia $referencia): ReferenciaResource
     {
-        return new ReferenciaResource($referencia->load(self::RELACIONES));
+        return new ReferenciaResource($referencia->load(self::relaciones()));
     }
 
     public function update(ReferenciaRequest $request, Referencia $referencia): ReferenciaResource
     {
         $referencia->update($request->validated());
 
-        return new ReferenciaResource($referencia->load(self::RELACIONES));
+        return new ReferenciaResource($referencia->load(self::relaciones()));
     }
 
     /** S-26: sin unidades disponibles. No hay DELETE: una referencia tiene historial. */
     public function desactivar(Referencia $referencia, ReferenciaService $servicio): ReferenciaResource
     {
-        return new ReferenciaResource($servicio->desactivar($referencia)->load(self::RELACIONES));
+        return new ReferenciaResource($servicio->desactivar($referencia)->load(self::relaciones()));
     }
 
     public function reactivar(Referencia $referencia, ReferenciaService $servicio): ReferenciaResource
     {
-        return new ReferenciaResource($servicio->reactivar($referencia)->load(self::RELACIONES));
+        return new ReferenciaResource($servicio->reactivar($referencia)->load(self::relaciones()));
     }
 }

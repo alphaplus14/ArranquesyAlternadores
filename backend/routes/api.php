@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\BusquedaController;
 use App\Http\Controllers\Api\CategoriaController;
 use App\Http\Controllers\Api\ClienteController;
 use App\Http\Controllers\Api\CodigoUniversalController;
+use App\Http\Controllers\Api\ConfiguracionController;
 use App\Http\Controllers\Api\CuentaController;
 use App\Http\Controllers\Api\DevolucionController;
 use App\Http\Controllers\Api\EtiquetaController;
@@ -42,6 +43,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/codigos-universales/{codigoUniversal}', [CodigoUniversalController::class, 'show']); // RF-02
         Route::get('/buscar', BusquedaController::class)->middleware('medir:500')->name('buscar'); // RF-12
         Route::get('/reportes/agotados', [ReporteController::class, 'agotados']); // RF-08
+        Route::get('/reportes/bajo-minimo', [ReporteController::class, 'bajoMinimo'])->middleware('medir:500'); // RF-22: mismos roles que agotados
         Route::get('/clientes', [ClienteController::class, 'index']); // RF-13
     });
 
@@ -74,6 +76,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('/cuenta', [CuentaController::class, 'update']);
 
         Route::get('/auditoria', [AuditoriaController::class, 'index']);
+
+        // RF-22: mínimo general del almacén (auditado).
+        Route::get('/configuracion/stock-minimo', [ConfiguracionController::class, 'stockMinimo']);
+        Route::put('/configuracion/stock-minimo', [ConfiguracionController::class, 'fijarStockMinimo']);
 
         Route::match(['put', 'patch'], '/clientes/{cliente}', [ClienteController::class, 'update']); // RF-13
     });
