@@ -9,14 +9,15 @@ import { useDebounce } from '../../hooks/useDebounce'
 import Medida from '../../componentes/Medida'
 import Resumen from '../../componentes/Resumen'
 import Paginacion from '../../componentes/Paginacion'
+import { aValorMinimo, errorStockMinimo, textoMinimo } from '../../utilidades/stockMinimo'
 
-interface FilaUniversal { id: number; codigo: string; descripcion: string | null; existencia: string | null; categoria: { nombre: string } }
+interface FilaUniversal { id: number; codigo: string; descripcion: string | null; existencia: string | null; stock_minimo: number | null; categoria: { nombre: string } }
 
 /** RF-01 / RF-02: códigos universales con su existencia calculada. */
 export default function Universales() {
   const qc = useQueryClient()
   const [q, setQ] = useState('')
-  const [nuevo, setNuevo] = useState({ codigo: '', categoria_id: '', descripcion: '' })
+  const [nuevo, setNuevo] = useState({ codigo: '', categoria_id: '', descripcion: '', stock_minimo: '' })
   const termino = useDebounce(q.trim())
   const categorias = useCategorias()
 
@@ -27,8 +28,8 @@ export default function Universales() {
   })
 
   const crear = useMutation({
-    mutationFn: async () => api.post('/codigos-universales', nuevo),
-    onSuccess: () => { setNuevo({ codigo: '', categoria_id: '', descripcion: '' }); qc.invalidateQueries({ queryKey: ['universales'] }) },
+    mutationFn: async () => api.post('/codigos-universales', { ...nuevo, stock_minimo: aValorMinimo(nuevo.stock_minimo) }),
+    onSuccess: () => { setNuevo({ codigo: '', categoria_id: '', descripcion: '', stock_minimo: '' }); qc.invalidateQueries({ queryKey: ['universales'] }) },
   })
 
   return (
@@ -62,7 +63,16 @@ export default function Universales() {
           {categorias.data?.filter((c) => c.admite_codigo_universal).map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
         </select>
         <input placeholder="Descripción" value={nuevo.descripcion} onChange={(e) => setNuevo({ ...nuevo, descripcion: e.target.value })} />
-        <button className="primario" disabled={crear.isPending}>Crear</button>
+        <input
+          type="number" min="0" max="9999" step="1" inputMode="numeric"
+          aria-label="Stock mínimo del universal (opcional)"
+          title="Vacío = usa el general; 0 = no maneja stock mínimo. Se evalúa sobre la suma de sus referencias."
+          placeholder="Stock mínimo (opcional)"
+          aria-invalid={errorStockMinimo(nuevo.stock_minimo) !== null}
+          value={nuevo.stock_minimo}
+          onChange={(e) => setNuevo({ ...nuevo, stock_minimo: e.target.value })}
+        />
+        <button className="primario" disabled={crear.isPending || errorStockMinimo(nuevo.stock_minimo) !== null}>Crear</button>
       </form>
       {crear.isError && <div className="aviso error">{mensajeError(crear.error)}</div>}
       </section>
@@ -75,7 +85,7 @@ export default function Universales() {
         </label>
       </div>
       <table>
-        <thead><tr><th>Código</th><th>Categoría</th><th>Descripción</th><th>Existencia total</th></tr></thead>
+        <thead><tr><th>Código</th><th>Categoría</th><th>Descripción</th><th>Existencia total</th><th>Stock mínimo</th></tr></thead>
         <tbody>
           {filas.map((u) => (
             <tr key={u.id}>
@@ -83,6 +93,7 @@ export default function Universales() {
               <td>{u.categoria.nombre}</td>
               <td>{u.descripcion}</td>
               <td>{Number(u.existencia ?? 0)}</td>
+              <td>{textoMinimo(u.stock_minimo)}</td>
             </tr>
           ))}
         </tbody>

@@ -922,3 +922,22 @@ tr.fila-con-error td { background: var(--error-fondo); }
   .tabla-apilable td.celda-accion button, .barra-lote button { width: 100%; }
   .unidades-ajuste { text-align: right; }
 }
+
+/* RF-22: stock mínimo. */
+.chip.bajo-minimo { background: var(--aviso-fondo); color: var(--aviso); font-weight: 600; white-space: nowrap; }
+.celda-existencia { display: flex; align-items: center; justify-content: flex-end; gap: 6px; white-space: nowrap; }
+.campo-configuracion { max-width: 420px; }
+.campo-configuracion input { min-height: 44px; }
+.filtros-informe { margin-top: 12px; align-items: flex-end; }
+.filtros-informe select { min-height: 40px; }
+.filtros-informe .selector.filtro { width: 260px; }
+.desglose-minimo { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: 0.88rem; }
+.desglose-minimo li { overflow-wrap: anywhere; }
+.origen-minimo { color: var(--suave); }
+.tabla-bajo-minimo td, .tabla-bajo-minimo th { vertical-align: top; }
+@media (max-width: 639px) {
+  .filtros-informe label { flex: 1 1 100%; min-width: 0; }
+  .filtros-informe .selector.filtro, .filtros-informe select { width: 100%; }
+  .tabla-apilable td[data-etiqueta] > span, .desglose-minimo { text-align: right; overflow-wrap: anywhere; }
+  .tabla-bajo-minimo .col-numero { text-align: right; }
+}

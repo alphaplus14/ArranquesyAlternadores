@@ -6,7 +6,7 @@ import Medida from '../../componentes/Medida'
 import Resumen from '../../componentes/Resumen'
 import Paginacion from '../../componentes/Paginacion'
 
-const TABLAS = ['referencias', 'codigos_universales', 'proveedores', 'categorias', 'clientes', 'ingresos', 'ingreso_items', 'users', 'venta_items']
+const TABLAS = ['referencias', 'codigos_universales', 'proveedores', 'categorias', 'clientes', 'ingresos', 'ingreso_items', 'users', 'venta_items', 'configuraciones']
 
 /** RF-11: valor anterior, valor nuevo, usuario y fecha de cada edición. */
 export default function Auditoria() {

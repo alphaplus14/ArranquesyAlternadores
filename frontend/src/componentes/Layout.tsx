@@ -63,10 +63,11 @@ export default function Layout() {
             { to: '/admin/clientes', texto: 'Clientes', icono: 'persona' },
             { to: '/admin/usuarios', texto: 'Usuarios', icono: 'usuarios' },
             { to: '/admin/auditoria', texto: 'Auditoría', icono: 'auditoria' },
+            { to: '/admin/configuracion', texto: 'Configuración', icono: 'configuracion' }, // RF-22
           ],
         }
       : null,
-    { etiqueta: 'Consulta', items: [{ to: '/agotados', texto: 'Agotados', icono: 'agotados' }] },
+    { etiqueta: 'Consulta', items: [{ to: '/agotados', texto: 'Agotados y mínimos', icono: 'agotados' }] },
   ].filter((g): g is { etiqueta: string; items: ItemMenu[] } => g !== null)
 
   return (

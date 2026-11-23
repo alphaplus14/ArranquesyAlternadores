@@ -17,6 +17,7 @@ import Catalogos from './paginas/admin/Catalogos'
 import Usuarios from './paginas/admin/Usuarios'
 import Clientes from './paginas/admin/Clientes'
 import Auditoria from './paginas/admin/Auditoria'
+import Configuracion from './paginas/admin/Configuracion'
 
 /** Protege un grupo de rutas por rol (el backend vuelve a validar cada endpoint). */
 function ConRol({ roles }: { roles: Rol[] }) {
@@ -54,6 +55,7 @@ export default function App() {
           <Route path="/admin/usuarios" element={<Usuarios />} />
           <Route path="/admin/clientes" element={<Clientes />} />
           <Route path="/admin/auditoria" element={<Auditoria />} />
+          <Route path="/admin/configuracion" element={<Configuracion />} />
         </Route>
         <Route path="*" element={<Navigate to={usuario ? rutaInicio(usuario.rol) : '/login'} replace />} />
       </Route>

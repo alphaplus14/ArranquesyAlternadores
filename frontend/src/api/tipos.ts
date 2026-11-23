@@ -66,18 +66,26 @@ export interface Referencia {
   existencia: number
   /** S-26: false = desactivada (no se lista, no se escanea, no entra a ingresos). */
   activo?: boolean
+  /** RF-22: propio (null = usa el general; 0 = no maneja). Con universal manda el del universal. */
+  stock_minimo?: number | null
+  minimo_efectivo?: number | null
+  minimo_origen?: 'general' | 'personalizado' | null
+  minimo_por_universal?: boolean
+  bajo_minimo?: boolean
   proveedor_id: number
   categoria_id: number
   codigo_universal_id: number | null
   proveedor?: Opcion
   categoria?: Categoria
-  codigo_universal?: { id: number; codigo: string } | null
+  codigo_universal?: { id: number; codigo: string; stock_minimo?: number | null } | null
   unidades_disponibles?: Unidad[]
 }
 
 export interface DesgloseUniversal {
   id: number
   codigo: string
+  /** RF-22: null = usa el general; 0 = no maneja. */
+  stock_minimo?: number | null
   descripcion: string | null
   categoria: Opcion
   existencia_total: number
@@ -240,6 +248,22 @@ export interface Devolucion {
     cliente: { id: number; nombre: string; documento: string | null } | null
   }
   reverso: { id: number; tipo: 'devolucion' | 'anulacion'; motivo: string; created_at: string } | null
+}
+
+/** RF-22: fila del informe Bajo mínimo (referencia sin universal o universal con su desglose). */
+export interface FilaBajoMinimo {
+  tipo: 'referencia' | 'universal'
+  id: number
+  codigo: string
+  descripcion: string | null
+  calidad: Calidad | null
+  proveedor: Opcion | null
+  categoria: Opcion
+  existencia: number
+  minimo: number
+  origen: 'general' | 'personalizado'
+  faltante: number
+  referencias: Array<{ id: number; codigo_referencia: string; calidad: Calidad | null; proveedor: Opcion; existencia: number }> | null
 }
 
 export interface Auditoria {

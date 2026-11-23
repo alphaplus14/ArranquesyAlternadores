@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeError } from '../api/cliente'
 import { NOMBRE_CALIDAD, type Calidad, type MetodoCaptura, type Pagina, type Referencia } from '../api/tipos'
 import ChipCalidad from '../componentes/ChipCalidad'
+import { errorStockMinimo } from '../utilidades/stockMinimo'
 import { useAuth } from '../auth/AuthProvider'
 import Icono from '../componentes/Icono'
 import Paginacion from '../componentes/Paginacion'
@@ -41,8 +42,9 @@ function anchoAcciones(botones: number) {
 
 function columnasDe(modo: Modo, botones: number) {
   const acciones = anchoAcciones(botones)
-  if (modo === 'completa') return `176px minmax(0, 1fr) 150px 120px 104px 72px 88px${acciones}`
-  return `150px minmax(0, 1fr) 132px 104px 88px${acciones}`
+  // RF-22: Existencia a 124 px para el chip "Bajo mínimo"; la descripción absorbe la diferencia.
+  if (modo === 'completa') return `176px minmax(0, 1fr) 150px 120px 104px 72px 124px${acciones}`
+  return `150px minmax(0, 1fr) 132px 104px 124px${acciones}`
 }
 
 type Formulario = {
@@ -56,11 +58,13 @@ type Formulario = {
   codigo_universal_id: string
   descripcion: string
   precio_venta: string
+  /** RF-22: '' = usa el general; '0' = no maneja stock mínimo. */
+  stock_minimo: string
 }
 
 const vacio: Formulario = {
   codigo_referencia: '', codigo_fabricante: '', calidad: '', proveedor_id: '', categoria_id: '',
-  codigo_universal_id: '', descripcion: '', precio_venta: '',
+  codigo_universal_id: '', descripcion: '', precio_venta: '', stock_minimo: '',
 }
 
 /** S-18: ningún precio puede ser 0. Las referencias antiguas en 0 no se pueden vender hasta asignarles uno. */
@@ -224,6 +228,7 @@ export default function Productos() {
       codigo_universal_id: r.codigo_universal_id ? String(r.codigo_universal_id) : '',
       descripcion: r.descripcion,
       precio_venta: r.precio_venta,
+      stock_minimo: r.stock_minimo == null ? '' : String(r.stock_minimo),
     },
   })
 
@@ -372,7 +377,12 @@ export default function Productos() {
                       {completa && <div role="cell" className="corta" title={r.categoria?.nombre}>{r.categoria?.nombre}</div>}
                       <div role="cell" data-etiqueta="Precio" className="col-numero">{sinPrecio(r) ? <span className="chip sin-precio" title="No se puede vender hasta que el administrador le asigne un precio">Sin precio</span> : Number(r.precio_venta).toLocaleString('es-CO')}</div>
                       {(completa || modo === 'tarjetas') && <div role="cell" data-etiqueta="IVA" className="col-numero">{Number(r.iva_venta_porcentaje) === 0 ? <span className="chip">Sin IVA</span> : `${Number(r.iva_venta_porcentaje)} %`}</div>}
-                      <div role="cell" data-etiqueta="Existencia" className={r.existencia === 0 ? 'agotado col-numero' : 'col-numero'}>{r.existencia}</div>
+                      <div role="cell" data-etiqueta="Existencia" className={r.existencia === 0 ? 'agotado col-numero celda-existencia' : 'col-numero celda-existencia'}>
+                        {r.bajo_minimo && (
+                          <span className="chip bajo-minimo" title={`Mínimo ${r.minimo_efectivo ?? ''}${r.minimo_por_universal ? ' (del universal, sobre la suma)' : r.minimo_origen === 'general' ? ' (general)' : ''}`}>Bajo mínimo</span>
+                        )}
+                        {r.existencia}
+                      </div>
                       {puedeGestionar && (
                         <div role="cell" className="acciones-fila">
                           {r.activo !== false && (
@@ -449,13 +459,23 @@ function FormularioReferencia({ id, inicial, onListo, onCerrar }: { id: number |
 
   const guardar = useMutation({
     mutationFn: async () => {
-      const datos = { ...f, codigo_fabricante: f.codigo_fabricante.trim() || null, calidad: f.calidad || null, codigo_universal_id: admiteUniversal && f.codigo_universal_id ? Number(f.codigo_universal_id) : null }
+      const conUniversal = admiteUniversal && f.codigo_universal_id !== ''
+      const datos = {
+        ...f,
+        codigo_fabricante: f.codigo_fabricante.trim() || null,
+        calidad: f.calidad || null,
+        codigo_universal_id: conUniversal ? Number(f.codigo_universal_id) : null,
+        // RF-22: con universal, el mínimo es del universal; la referencia no lleva uno propio.
+        stock_minimo: conUniversal || f.stock_minimo.trim() === '' ? null : Number(f.stock_minimo),
+      }
       return id ? api.put(`/referencias/${id}`, datos) : api.post('/referencias', datos)
     },
     onSuccess: onListo,
   })
 
   const errorPrecioVenta = f.precio_venta === '' ? null : Number(f.precio_venta) > 0 ? null : 'El precio de venta debe ser mayor que 0.'
+  const universalElegido = admiteUniversal && f.codigo_universal_id !== ''
+  const errorMinimo = errorStockMinimo(f.stock_minimo)
   const campo = (k: keyof Formulario) => ({ value: f[k], onChange: (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value }) })
 
   return (
@@ -498,10 +518,22 @@ function FormularioReferencia({ id, inicial, onListo, onCerrar }: { id: number |
         <p id="precio-venta-ayuda" className={errorPrecioVenta ? 'ayuda error' : 'ayuda'}>
           {errorPrecioVenta ?? 'Mayor que 0. Una referencia sin precio no se puede vender.'}
         </p>
+        {universalElegido ? (
+          <p className="ayuda">Stock mínimo: se define en el código universal y se evalúa sobre la suma de sus referencias.</p>
+        ) : (
+          <>
+            <label>Stock mínimo (opcional)
+              <input type="number" min="0" max="9999" step="1" inputMode="numeric" aria-invalid={errorMinimo !== null} aria-describedby="stock-minimo-ayuda" {...campo('stock_minimo')} />
+            </label>
+            <p id="stock-minimo-ayuda" className={errorMinimo ? 'ayuda error' : 'ayuda'}>
+              {errorMinimo ?? 'Vacío = usa el general; 0 = este producto no maneja stock mínimo.'}
+            </p>
+          </>
+        )}
         {guardar.isError && <div className="aviso error">{mensajeError(guardar.error)}</div>}
         <div className="acciones">
           <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
-          <button className="primario" disabled={guardar.isPending || errorPrecioVenta !== null}>Guardar</button>
+          <button className="primario" disabled={guardar.isPending || errorPrecioVenta !== null || (!universalElegido && errorMinimo !== null)}>Guardar</button>
         </div>
       </form>
     </div>
