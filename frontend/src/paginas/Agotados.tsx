@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { useAuth } from '../auth/AuthProvider'
 import { api } from '../api/cliente'
 import type { FilaBajoMinimo, Pagina, Referencia } from '../api/tipos'
 import { useCategorias, useProveedores } from '../hooks/useCatalogos'
@@ -25,10 +24,8 @@ const VISTAS: { valor: Vista; texto: string }[] = [
  */
 export default function Agotados() {
   const [params, setParams] = useSearchParams()
-  const { usuario } = useAuth()
-  // S-28: el stock mínimo es de reposición; mostrador solo ve Agotados (el backend le responde 403).
-  const veMinimos = usuario?.rol !== 'mostrador'
-  const vista: Vista = veMinimos && params.get('vista') === 'bajo-minimo' ? 'bajo-minimo' : 'agotados'
+  // S-28: la pantalla es de logística y admin (ruta protegida); las dos pestañas para ambos.
+  const vista: Vista = params.get('vista') === 'bajo-minimo' ? 'bajo-minimo' : 'agotados'
   const proveedores = useProveedores()
   const categorias = useCategorias()
   // Los filtros se comparten entre las dos pestañas.
@@ -88,13 +85,13 @@ export default function Agotados() {
           : <Medida etiqueta="Faltante (página)" valor={bajo.resultado ? faltanteTotal.toLocaleString('es-CO') : '—'} tono="verde" icono="caja" />}
       </Resumen>
       <section className="tarjeta-pagina">
-        {veMinimos && <ControlSegmentado
+        <ControlSegmentado
           id="vista-agotados"
           etiqueta="Informe"
           opciones={VISTAS}
           valor={vista}
           onCambio={(v) => setParams(v === 'agotados' ? {} : { vista: v }, { replace: true })}
-        />}
+        />
         <div className="formulario en-linea filtros-informe">
           <label>Proveedor
             <SelectorProveedor

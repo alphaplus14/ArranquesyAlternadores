@@ -216,22 +216,21 @@ it('RF-22: el general exige el campo valor (null para quitarlo)', function () {
     $this->putJson('/api/configuracion/stock-minimo', [])->assertUnprocessable()->assertJsonValidationErrors('valor');
 });
 
-it('RF-22 / S-28: Bajo mínimo es de admin y logística; mostrador recibe 403 (Agotados sigue para los tres)', function () {
+it('RF-08 / RF-22 / S-28 (a): agotados y bajo mínimo son de logística y admin; mostrador recibe 403', function () {
+    $agotados = '/api/reportes/agotados?proveedor_id='.referencia('SEN-TEMP-01')->proveedor_id;
+
     foreach ([Rol::Admin, Rol::Logistica] as $rol) {
         actuarComo($rol);
+        $this->getJson($agotados)->assertOk();
         $this->getJson('/api/reportes/bajo-minimo')->assertOk();
     }
 
     actuarComo(Rol::Mostrador);
+    $this->getJson($agotados)->assertForbidden();
     $this->getJson('/api/reportes/bajo-minimo')->assertForbidden();
-
-    foreach ([Rol::Admin, Rol::Logistica, Rol::Mostrador] as $rol) {
-        actuarComo($rol);
-        $this->getJson('/api/reportes/agotados?proveedor_id='.referencia('SEN-TEMP-01')->proveedor_id)->assertOk();
-    }
 });
 
-it('RF-22 / S-28: el listado de productos no envía el stock mínimo a mostrador', function () {
+it('RF-22 / S-28 (b): el listado de productos no envía el stock mínimo a mostrador; a logística y admin sí', function () {
     minimoGeneral(5);
     $campos = ['stock_minimo', 'minimo_efectivo', 'minimo_origen', 'minimo_por_universal', 'bajo_minimo'];
 
@@ -241,9 +240,17 @@ it('RF-22 / S-28: el listado de productos no envía el stock mínimo a mostrador
     $universal = collect($this->getJson('/api/referencias?por_pagina=100')->json('data'))->firstWhere('codigo_universal', '!=', null);
     expect($universal['codigo_universal'])->not->toHaveKey('stock_minimo');
 
-    actuarComo(Rol::Logistica);
-    $fila = $this->getJson('/api/referencias?por_pagina=100')->assertOk()->json('data.0');
-    expect(array_keys($fila))->toContain(...$campos);
+    // Mostrador conserva la existencia, la búsqueda y el filtro por proveedor.
+    $prov = referencia('SEN-TEMP-01')->proveedor_id;
+    $this->getJson("/api/referencias?q=SEN&proveedor_id={$prov}")->assertOk()
+        ->assertJsonPath('data.0.codigo_referencia', 'SEN-TEMP-01')
+        ->assertJsonPath('data.0.existencia', 0);
+
+    foreach ([Rol::Logistica, Rol::Admin] as $rol) {
+        actuarComo($rol);
+        $fila = $this->getJson('/api/referencias?por_pagina=100')->assertOk()->json('data.0');
+        expect(array_keys($fila))->toContain(...$campos);
+    }
 });
 
 it('RF-08 / RF-22: Agotados acepta el filtro de categoría', function () {

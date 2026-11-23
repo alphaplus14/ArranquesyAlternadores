@@ -29,6 +29,9 @@ it('RF-08: una referencia que se agota por venta aparece en el reporte', functio
     $ventaId = $this->postJson('/api/ventas')->json('id');
     $this->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => unidadDe('ARR-12V-9D')->codigo_barras, 'metodo_captura' => 'escaneado']);
 
+    // S-28: el reporte es de logística y admin.
+    actuarComo(Rol::Logistica);
+
     $codigos = collect($this->getJson("/api/reportes/agotados?proveedor_id={$arranque->proveedor_id}")->json('data'))
         ->pluck('codigo_referencia');
 
@@ -36,7 +39,7 @@ it('RF-08: una referencia que se agota por venta aparece en el reporte', functio
 });
 
 it('RF-08: el proveedor es obligatorio', function () {
-    actuarComo(Rol::Mostrador);
+    actuarComo(Rol::Logistica);
 
     $this->getJson('/api/reportes/agotados')->assertUnprocessable();
 });

@@ -42,15 +42,18 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/codigos-universales', [CodigoUniversalController::class, 'index']);
         Route::get('/codigos-universales/{codigoUniversal}', [CodigoUniversalController::class, 'show']); // RF-02
         Route::get('/buscar', BusquedaController::class)->middleware('medir:500')->name('buscar'); // RF-12
-        Route::get('/reportes/agotados', [ReporteController::class, 'agotados']); // RF-08
         Route::get('/clientes', [ClienteController::class, 'index']); // RF-13
     });
 
     // RF-20: logística crea la referencia que no existe al escanear un ingreso.
     Route::post('/referencias', [ReferenciaController::class, 'store'])->middleware('rol:admin,logistica');
     // S-26: logística también edita, desactiva y reactiva referencias. No hay DELETE (tienen historial).
-    // RF-22 / S-28: el stock mínimo es información de reposición: mostrador no lo ve (403).
-    Route::get('/reportes/bajo-minimo', [ReporteController::class, 'bajoMinimo'])->middleware(['rol:admin,logistica', 'medir:500']);
+    // RF-08 / RF-22 / S-28: agotados y stock mínimo son trabajo de reposición de logística y
+    // administración; mostrador recibe 403 (ve la existencia en el listado de productos).
+    Route::middleware('rol:admin,logistica')->group(function () {
+        Route::get('/reportes/agotados', [ReporteController::class, 'agotados']); // RF-08
+        Route::get('/reportes/bajo-minimo', [ReporteController::class, 'bajoMinimo'])->middleware('medir:500'); // RF-22
+    });
 
     Route::middleware('rol:admin,logistica')->group(function () {
         Route::match(['put', 'patch'], '/referencias/{referencia}', [ReferenciaController::class, 'update']);

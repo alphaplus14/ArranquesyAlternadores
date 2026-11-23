@@ -37,7 +37,6 @@ export default function App() {
         {/* "/" lleva a la pantalla de inicio del rol (rutas.ts). */}
         <Route path="/" element={<Navigate to={usuario ? rutaInicio(usuario.rol) : '/login'} replace />} />
         <Route path="/productos" element={<Productos />} />
-        <Route path="/agotados" element={<Agotados />} />
         <Route element={<ConRol roles={['mostrador']} />}>
           <Route path="/mostrador/venta" element={<Venta />} />
         </Route>
@@ -48,6 +47,8 @@ export default function App() {
         </Route>
         <Route element={<ConRol roles={['logistica', 'admin']} />}>
           <Route path={RUTA_AJUSTES} element={<Ajustes />} />
+          {/* RF-08 / RF-22 / S-28: agotados y bajo mínimo, sin mostrador. */}
+          <Route path="/agotados" element={<Agotados />} />
         </Route>
         <Route element={<ConRol roles={['admin']} />}>
           <Route path="/admin/referencias" element={<Navigate to="/productos" replace />} />
