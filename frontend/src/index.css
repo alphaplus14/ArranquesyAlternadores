@@ -62,25 +62,67 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   border: 0; background: transparent; border-radius: 10px; color: var(--texto); cursor: pointer;
 }
 .icono-boton:hover { background: var(--suave-fondo); }
-.cuenta { position: relative; }
-.cuenta-panel {
-  position: absolute; right: 0; top: calc(100% + 8px); z-index: 40;
-  min-width: 15rem; padding: 6px;
-  background: var(--panel); border-radius: var(--radio); box-shadow: var(--sombra-barra);
-  border: 1px solid var(--borde);
+/* Menú de usuario: avatar con iniciales; en escritorio, nombre, rol y chevron. */
+.menu-usuario { position: relative; }
+.menu-usuario-boton {
+  display: flex; align-items: center; gap: 10px;
+  min-height: 44px; min-width: 44px; padding: 4px 8px 4px 4px;
+  border: 1px solid transparent; border-radius: 999px; background: transparent;
+  color: var(--texto); font: inherit; cursor: pointer; text-align: left;
 }
-.cuenta-sesion {
-  display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
-  padding: 10px 12px 12px; border-bottom: 1px solid var(--borde); margin-bottom: 6px;
+.menu-usuario-boton:hover { background: var(--suave-fondo); }
+.menu-usuario-boton:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+.menu-usuario-boton.abierto { background: var(--suave-fondo); border-color: var(--borde); }
+.avatar {
+  flex: none; width: 36px; height: 36px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--primario); color: #fff; font-weight: 700; font-size: 0.85rem; letter-spacing: 0.02em;
+  box-shadow: 0 0 0 2px var(--panel), 0 0 0 3px var(--acento);
 }
-.cuenta-sesion span:not(.chip) { color: var(--suave); font-size: 0.85rem; }
-.cuenta-opcion {
-  width: 100%; display: flex; align-items: center; gap: 10px;
-  padding: 9px 12px; border: 0; border-radius: 8px; background: transparent;
+.avatar.grande { width: 48px; height: 48px; font-size: 1.05rem; }
+.menu-usuario-texto { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; max-width: 180px; }
+.menu-usuario-nombre { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-usuario-rol { font-size: 0.75rem; color: var(--suave); }
+.menu-usuario-chevron { display: grid; color: var(--suave); transition: transform 150ms ease-out; }
+.menu-usuario-boton.abierto .menu-usuario-chevron { transform: rotate(180deg); }
+.menu-usuario-panel {
+  position: absolute; right: 0; top: calc(100% + 8px); z-index: 35;
+  width: 280px; padding: 6px; box-sizing: border-box;
+  background: var(--panel); border: 1px solid var(--borde); border-radius: var(--radio);
+  box-shadow: 0 10px 28px rgba(14, 26, 51, 0.16), 0 1px 3px rgba(14, 26, 51, 0.08);
+  animation: menu-usuario-entrada 140ms ease-out;
+}
+@keyframes menu-usuario-entrada { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.menu-usuario-cabecera { display: flex; align-items: center; gap: 12px; padding: 10px 10px 12px; }
+.menu-usuario-datos { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; }
+.menu-usuario-datos strong { max-width: 100%; overflow-wrap: anywhere; }
+.menu-usuario-arroba { color: var(--suave); font-size: 0.85rem; overflow-wrap: anywhere; }
+.menu-usuario-separador { height: 1px; background: var(--borde); margin: 4px 6px; }
+.menu-usuario-item {
+  width: 100%; min-height: 44px; display: flex; align-items: center; gap: 10px;
+  padding: 0 12px; border: 0; border-radius: 8px; background: transparent;
   color: var(--texto); font: inherit; font-weight: 500; cursor: pointer; text-align: left;
 }
-.cuenta-opcion:hover { background: var(--suave-fondo); }
-.cuenta-salir { color: var(--peligro); }
+/* Hover y foco: fondo y barra lateral (no solo color). */
+.menu-usuario-item:hover, .menu-usuario-item:focus-visible, .menu-usuario-item:focus {
+  background: var(--suave-fondo); box-shadow: inset 3px 0 0 var(--primario); outline: none;
+}
+/* Salir: color normal en reposo; rojo solo en hover y foco. */
+.menu-usuario-item.salir:hover, .menu-usuario-item.salir:focus-visible, .menu-usuario-item.salir:focus {
+  color: var(--peligro); background: var(--error-fondo); box-shadow: inset 3px 0 0 var(--peligro);
+}
+@media (max-width: 767px) {
+  .menu-usuario-texto, .menu-usuario-chevron { display: none; }
+  .menu-usuario-boton { padding: 4px; }
+}
+@media (max-width: 479px) {
+  /* El panel ocupa el ancho de la pantalla menos 16 px por lado, bajo la barra. */
+  .menu-usuario-panel { position: fixed; left: 16px; right: 16px; top: calc(4rem + 8px); width: auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .menu-usuario-panel { animation: none; }
+  .menu-usuario-chevron { transition: none; }
+}
 .ayuda { margin: 0; color: var(--suave); font-size: 0.85rem; }
 
 .cuerpo { display: flex; align-items: flex-start; gap: 20px; padding: 20px; }
