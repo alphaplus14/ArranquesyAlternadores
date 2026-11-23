@@ -116,8 +116,10 @@ class InventarioService
 
     /**
      * RF-07: la unidad vuelve al inventario por un reverso. La unidad debe venir bloqueada.
+     * RF-12: $metodo es el de la devolución por código (logística); null cuando el reverso se hace
+     * desde la venta (mostrador), sin escanear.
      */
-    public function devolver(Unidad $unidad, Reverso $reverso, int $usuarioId): void
+    public function devolver(Unidad $unidad, Reverso $reverso, int $usuarioId, ?MetodoCaptura $metodo = null): void
     {
         $this->exigirTransaccion();
 
@@ -135,7 +137,7 @@ class InventarioService
 
         Referencia::whereKey($unidad->referencia_id)->increment('existencia');
 
-        $this->registrarMovimiento(TipoMovimiento::Reverso, $unidad, $usuarioId, null, 'reverso', $reverso->id);
+        $this->registrarMovimiento(TipoMovimiento::Reverso, $unidad, $usuarioId, $metodo, 'reverso', $reverso->id);
     }
 
     /**

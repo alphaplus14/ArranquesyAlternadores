@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\MetodoCaptura;
 use App\Enums\TipoReverso;
 use App\Exceptions\ReglaInventarioException;
 use App\Models\Reverso;
@@ -18,14 +19,22 @@ use Illuminate\Support\Facades\DB;
  * es un reverso (anulación de ese ítem), no un DELETE.
  *
  * Sin venta_item_id se reversan todos los ítems de la venta que no estén ya reversados.
+ * RF-12: $metodo solo llega cuando la devolución se registra por el código de la unidad
+ * (logística, DevolucionService); se guarda en el movimiento.
  */
 class ReversoService
 {
     public function __construct(private readonly InventarioService $inventario) {}
 
-    public function reversar(Venta $venta, TipoReverso $tipo, string $motivo, ?int $ventaItemId, User $usuario): Reverso
-    {
-        return DB::transaction(function () use ($venta, $tipo, $motivo, $ventaItemId, $usuario) {
+    public function reversar(
+        Venta $venta,
+        TipoReverso $tipo,
+        string $motivo,
+        ?int $ventaItemId,
+        User $usuario,
+        ?MetodoCaptura $metodo = null,
+    ): Reverso {
+        return DB::transaction(function () use ($venta, $tipo, $motivo, $ventaItemId, $usuario, $metodo) {
             $venta = Venta::query()->lockForUpdate()->findOrFail($venta->id);
 
             // Una devolución supone que el cliente ya se llevó la mercancía.
@@ -68,7 +77,7 @@ class ReversoService
                 ->get();
 
             foreach ($unidades as $unidad) {
-                $this->inventario->devolver($unidad, $reverso, $usuario->id);
+                $this->inventario->devolver($unidad, $reverso, $usuario->id, $metodo);
             }
 
             return $reverso->load('items');

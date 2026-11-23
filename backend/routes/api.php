@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\CategoriaController;
 use App\Http\Controllers\Api\ClienteController;
 use App\Http\Controllers\Api\CodigoUniversalController;
 use App\Http\Controllers\Api\CuentaController;
+use App\Http\Controllers\Api\DevolucionController;
 use App\Http\Controllers\Api\EtiquetaController;
 use App\Http\Controllers\Api\IngresoController;
 use App\Http\Controllers\Api\ProveedorController;
@@ -98,13 +99,16 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/etiquetas', [EtiquetaController::class, 'generar']);
     });
 
-    // RF-21 (S-27): salidas y reintegros de inventario. Logística y admin; mostrador 403.
-    // Sin DELETE: los ajustes son inmutables.
+    // RF-21 (S-27): salidas y reintegros de inventario, y devoluciones de clientes por código de
+    // unidad (RF-07). Logística y admin; mostrador 403. Sin DELETE: los ajustes son inmutables.
     Route::middleware('rol:admin,logistica')->group(function () {
         Route::get('/ajustes', [AjusteController::class, 'index']);
         Route::get('/ajustes/unidad', [AjusteController::class, 'unidad'])->middleware('medir:500')->name('ajustes.unidad');
         Route::post('/ajustes/salidas', [AjusteController::class, 'salidas'])->name('ajustes.salidas');
         Route::post('/ajustes/reintegros', [AjusteController::class, 'reintegros'])->name('ajustes.reintegros');
+
+        Route::get('/devoluciones/consulta', [DevolucionController::class, 'consulta'])->middleware('medir:500')->name('devoluciones.consulta');
+        Route::post('/devoluciones', [DevolucionController::class, 'store']);
     });
 
     // Módulo de mostrador: venta = descargue (RF-06, RF-12) y reversos (RF-07).
