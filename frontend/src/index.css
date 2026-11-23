@@ -257,9 +257,15 @@ input:not([type='checkbox']):not([type='radio']):focus-visible, select:focus-vis
 .acciones { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: flex-end; }
 .acciones-fila { display: flex; gap: 6px; align-items: center; justify-content: flex-end; }
 
-.busca { position: relative; display: flex; align-items: center; }
-.busca svg { position: absolute; left: 10px; color: var(--suave); pointer-events: none; }
-.busca input { padding-left: 34px; min-width: 240px; }
+/* .busca es un <label>: la regla global lo pone en columna; aquí va en fila y la lupa se centra
+   en vertical para cualquier alto del campo (36 o 44 px). */
+.busca { position: relative; display: flex; flex-direction: row; align-items: center; }
+.busca svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--suave); pointer-events: none; }
+.busca input { padding-left: 34px; min-width: 280px; }
+@media (max-width: 639px) {
+  .busca { width: 100%; }
+  .busca input { width: 100%; min-width: 0; box-sizing: border-box; }
+}
 
 button, .boton {
   font: inherit; padding: 8px 14px; border-radius: 8px;

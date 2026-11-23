@@ -100,7 +100,7 @@ function ListaProveedores({ filas, cargando }: { filas: Proveedor[]; cargando: b
         <button type="button" className="primario boton-alta" onClick={() => { setAviso(null); setDialogo({}) }}>Nuevo proveedor</button>
         <label className="busca">
           <Icono nombre="buscar" />
-          <input placeholder="Buscar por nombre, NIT o asesor" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} aria-label="Buscar proveedor por nombre, NIT o asesor" />
+          <input placeholder="Nombre, NIT o asesor" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} aria-label="Buscar proveedor" title="Busca por nombre, NIT o asesor" />
         </label>
       </div>
       {aviso && <div className="aviso ok catalogo-aviso" role="status">{aviso}</div>}
