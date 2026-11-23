@@ -33,6 +33,12 @@ final class RangoFechas
             ->setTimezone(config('app.timezone'));
     }
 
+    /** Hoy en la zona del local ('Y-m-d'); de noche no salta al día siguiente como en UTC. */
+    public static function hoy(): string
+    {
+        return Carbon::now(self::zonaLocal())->toDateString();
+    }
+
     private static function zonaLocal(): string
     {
         return config('app.zona_local', 'America/Bogota');

@@ -15,18 +15,19 @@ use App\Services\VentaService;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 /**
  * Supuesto S-04: mide p50/p95 del escaneo (objetivo 300 ms), de la búsqueda y del informe Bajo
- * mínimo (RF-22) (objetivo 500 ms)
+ * mínimo (RF-22) y de la cartera de clientes (RF-15, objetivo 500 ms)
  * pasando por todo el stack HTTP de Laravel (rutas, middleware, validación, BD), sin la red.
  * Crea sus datos dentro de una transacción que se revierte al final: no deja rastro.
  */
 class BenchmarkInventario extends Command
 {
-    protected $signature = 'inventario:benchmark {--n=200 : Escaneos y búsquedas a medir} {--referencias=2000 : Referencias de relleno}';
+    protected $signature = 'inventario:benchmark {--n=200 : Escaneos y búsquedas a medir} {--referencias=2000 : Referencias de relleno} {--clientes=500 : Clientes con cartera} {--ventas-por-cliente=10 : Ventas a crédito cerradas por cliente}';
 
     protected $description = 'Mide tiempos de escaneo y búsqueda contra los objetivos provisionales';
 
@@ -86,10 +87,25 @@ class BenchmarkInventario extends Command
                 $bajoMinimo[] = $this->medir($kernel, $usuario, Request::create('/api/reportes/bajo-minimo', 'GET', $filtro), 200);
             }
 
+            // RF-15: clientes con ventas a crédito cerradas (2 ítems cada una), vencimientos repartidos
+            // en los cinco rangos y abonos en la mitad de los clientes.
+            $this->sembrarCartera($usuario, $codigos, (int) $this->option('clientes'), (int) $this->option('ventas-por-cliente'));
+            $cartera = [];
+            for ($i = 0; $i < $n; $i++) {
+                $filtro = match ($i % 4) {
+                    0 => ['solo_con_saldo' => 1],
+                    1 => ['solo_vencidos' => 1],
+                    2 => ['busqueda' => 'Cliente bench 1'],
+                    default => ['solo_con_saldo' => 1, 'page' => 3],
+                };
+                $cartera[] = $this->medir($kernel, $usuario, Request::create('/api/cartera', 'GET', $filtro), 200);
+            }
+
             $this->table(['endpoint', 'n', 'p50 ms', 'p95 ms', 'máx ms', 'objetivo p95'], [
                 ['POST /ventas/{id}/escanear', count($escaneos), $this->pct($escaneos, 50), $this->pct($escaneos, 95), max($escaneos), 300],
                 ['GET /buscar', count($busquedas), $this->pct($busquedas, 50), $this->pct($busquedas, 95), max($busquedas), 500],
                 ['GET /reportes/bajo-minimo', count($bajoMinimo), $this->pct($bajoMinimo, 50), $this->pct($bajoMinimo, 95), max($bajoMinimo), 500],
+                ['GET /cartera', count($cartera), $this->pct($cartera, 50), $this->pct($cartera, 95), max($cartera), 500],
             ]);
             $this->line('Sin latencia de red: en red local sumar el RTT (normalmente < 5 ms).');
         } finally {
@@ -97,6 +113,64 @@ class BenchmarkInventario extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * RF-15: siembra la cartera en bloque (sin pasar por los servicios, que harían miles de
+     * consultas): los ítems reutilizan las unidades del benchmark porque solo importa el precio.
+     *
+     * @param  Collection<int, string>  $codigos
+     */
+    private function sembrarCartera(User $usuario, $codigos, int $clientes, int $ventasPorCliente): void
+    {
+        $this->info("Sembrando {$clientes} clientes con {$ventasPorCliente} ventas a crédito cada uno…");
+        $ahora = now();
+        $unidadIds = Unidad::whereIn('codigo_barras', $codigos)->pluck('id')->all();
+
+        $filas = [];
+        for ($c = 1; $c <= $clientes; $c++) {
+            $filas[] = ['nombre' => "Cliente bench {$c}", 'documento' => 'BENCH'.str_pad((string) $c, 6, '0', STR_PAD_LEFT),
+                'plazo_dias' => 30, 'activo' => true, 'created_at' => $ahora, 'updated_at' => $ahora];
+        }
+        foreach (array_chunk($filas, 500) as $lote) {
+            DB::table('clientes')->insert($lote);
+        }
+        $clienteIds = DB::table('clientes')->where('documento', 'like', 'BENCH%')->pluck('id')->all();
+
+        $ventas = [];
+        foreach ($clienteIds as $i => $clienteId) {
+            for ($v = 0; $v < $ventasPorCliente; $v++) {
+                $cierre = $ahora->copy()->subDays(($i * 7 + $v * 13) % 180);
+                $ventas[] = ['usuario_id' => $usuario->id, 'estado' => 'cerrada', 'forma_pago' => 'credito', 'cliente_id' => $clienteId,
+                    'cerrada_at' => $cierre, 'vence_el' => $cierre->copy()->addDays(30)->toDateString(), 'created_at' => $cierre, 'updated_at' => $cierre];
+            }
+        }
+        foreach (array_chunk($ventas, 1000) as $lote) {
+            DB::table('ventas')->insert($lote);
+        }
+
+        $items = [];
+        $ventaIds = DB::table('ventas')->whereIn('cliente_id', $clienteIds)->pluck('id');
+        foreach ($ventaIds as $k => $ventaId) {
+            foreach ([0, 1] as $j) {
+                $items[] = ['venta_id' => $ventaId, 'unidad_id' => $unidadIds[($k * 2 + $j) % count($unidadIds)], 'precio_unitario' => 50000 + ($k % 7) * 10000,
+                    'iva_porcentaje' => 19, 'metodo_captura' => 'escaneado', 'usuario_id' => $usuario->id, 'created_at' => $ahora];
+            }
+        }
+        foreach (array_chunk($items, 1000) as $lote) {
+            DB::table('venta_items')->insert($lote);
+        }
+
+        $abonos = [];
+        foreach ($clienteIds as $i => $clienteId) {
+            if ($i % 2 === 0) {
+                $abonos[] = ['cliente_id' => $clienteId, 'fecha' => $ahora->toDateString(), 'valor' => 150000, 'medio' => 'efectivo',
+                    'usuario_id' => $usuario->id, 'created_at' => $ahora];
+            }
+        }
+        foreach (array_chunk($abonos, 1000) as $lote) {
+            DB::table('abonos_clientes')->insert($lote);
+        }
     }
 
     private function medir(Kernel $kernel, User $usuario, Request $request, int $esperado): float

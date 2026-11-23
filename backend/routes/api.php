@@ -1,9 +1,11 @@
 <?php
 
+use App\Http\Controllers\Api\AbonoController;
 use App\Http\Controllers\Api\AjusteController;
 use App\Http\Controllers\Api\AuditoriaController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BusquedaController;
+use App\Http\Controllers\Api\CarteraController;
 use App\Http\Controllers\Api\CategoriaController;
 use App\Http\Controllers\Api\ClienteController;
 use App\Http\Controllers\Api\CodigoUniversalController;
@@ -121,6 +123,14 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/devoluciones/consulta', [DevolucionController::class, 'consulta'])->middleware('medir:500')->name('devoluciones.consulta');
         Route::post('/devoluciones', [DevolucionController::class, 'store']);
     });
+
+    // RF-15 / RF-18 (S-30): cartera de clientes. Admin y mostrador; logística 403. Los abonos no
+    // tienen rutas para editar ni borrar; anularlos es solo del admin.
+    Route::middleware('rol:admin,mostrador')->group(function () {
+        Route::get('/cartera', [CarteraController::class, 'index'])->middleware('medir:500')->name('cartera');
+        Route::post('/clientes/{cliente}/abonos', [AbonoController::class, 'store']);
+    });
+    Route::post('/abonos/{abono}/anulaciones', [AbonoController::class, 'anular'])->middleware('rol:admin');
 
     // Módulo de mostrador: venta = descargue (RF-06, RF-12) y reversos (RF-07).
     Route::middleware('rol:mostrador')->group(function () {
