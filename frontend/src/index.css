@@ -1058,3 +1058,46 @@ input[aria-invalid='true']:not([type='checkbox']):not([type='radio']):focus-visi
   border-color: var(--peligro);
   box-shadow: 0 0 0 3px rgba(216, 8, 8, 0.16);
 }
+
+/* RF-15 / RF-18 (S-30): cartera de clientes. */
+.antiguedad { margin: 12px 0; display: flex; flex-direction: column; gap: 8px; }
+.antiguedad-titulo { font-size: 0.85rem; color: var(--suave); font-weight: 600; }
+.antiguedad-barra { display: flex; height: 12px; border-radius: 999px; overflow: hidden; background: var(--suave-fondo); }
+.antiguedad-barra .tramo { min-width: 4px; }
+.antiguedad-rangos { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.antiguedad-rangos li { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--borde); border-radius: 8px; min-width: 0; }
+.antiguedad-rangos li strong { font-size: 0.95rem; overflow-wrap: anywhere; }
+.antiguedad-rangos li:not(.con-valor) strong { color: var(--suave); font-weight: 500; }
+.rango-nombre { font-size: 0.78rem; color: var(--suave); display: inline-flex; }
+.antiguedad-rangos li { position: relative; padding-left: 22px; }
+.antiguedad-rangos .punto { position: absolute; left: 9px; top: 12px; width: 8px; height: 8px; border-radius: 50%; }
+.tramo.al_dia, .punto.al_dia { background: #2E9E5B; }
+.tramo.d1_30, .punto.d1_30 { background: #E0B400; }
+.tramo.d31_60, .punto.d31_60 { background: #E07B00; }
+.tramo.d61_90, .punto.d61_90 { background: #D64545; }
+.tramo.mas_90, .punto.mas_90 { background: #8E1B1B; }
+.filtros-cartera { align-items: center; }
+.filtros-cartera .check { min-height: 44px; font-size: 0.9rem; color: var(--texto); gap: 8px; }
+.filtros-cartera .campo-corte { flex-direction: row; align-items: center; gap: 8px; }
+.filtros-cartera .campo-corte input { min-height: 44px; }
+.chip.saldo-favor { background: var(--ok-fondo); color: var(--ok); font-weight: 600; }
+.chip.estado-venta { font-weight: 600; white-space: nowrap; }
+.chip.estado-venta.al_dia { background: var(--ok-fondo); color: var(--ok); }
+.chip.estado-venta.por_vencer { background: var(--aviso-fondo); color: var(--aviso); }
+.chip.estado-venta.vencida { background: var(--error-fondo); color: var(--peligro); }
+.chip.anulado { background: var(--error-fondo); color: var(--peligro); font-weight: 600; }
+small.bloque { display: block; font-size: 0.8rem; }
+.movimiento-anulado .texto-movimiento, .valor-tachado { text-decoration: line-through; color: var(--suave); }
+.fila-saldo-inicial td { background: var(--suave-fondo); }
+.migas { font-size: 0.85rem; margin-bottom: 2px; }
+a.boton { display: inline-flex; align-items: center; justify-content: center; }
+.tabla-cartera .acciones-fila { justify-content: flex-end; }
+.datos-abono { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.confirmar-exceso { margin-top: 8px; color: var(--texto); font-weight: 600; gap: 8px; min-height: 44px; }
+@media (max-width: 639px) {
+  .antiguedad-rangos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .filtros-cartera .busca, .filtros-cartera .campo-corte { width: 100%; }
+  .filtros-cartera .campo-corte input { flex: 1; }
+  .tabla-cartera td.celda-accion .acciones-fila > * { flex: 1; }
+  .datos-abono { grid-template-columns: 1fr; }
+}

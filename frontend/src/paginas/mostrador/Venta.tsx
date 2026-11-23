@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useSearchParams } from 'react-router-dom'
 import { api, mensajeError } from '../../api/cliente'
 import { NOMBRE_CALIDAD, type Calidad, type Cliente, type MetodoCaptura, type Pagina, type Referencia, type Venta as TVenta, type VentaItem } from '../../api/tipos'
 import ChipCalidad from '../../componentes/ChipCalidad'
@@ -36,7 +37,10 @@ function errorPrecio(texto: string): string | null {
  */
 export default function Venta() {
   const qc = useQueryClient()
-  const [ventaId, setVentaId] = useState<number | null>(null)
+  // RF-18: ?venta=ID abre esa venta (enlace desde la cartera del cliente).
+  const [params] = useSearchParams()
+  const pedida = Number(params.get('venta')) || null
+  const [ventaId, setVentaId] = useState<number | null>(pedida)
   const [aviso, setAviso] = useState<Aviso | null>(null)
   const [respaldo, setRespaldo] = useState(false)
   const [reverso, setReverso] = useState<ReversoPendiente | null>(null)

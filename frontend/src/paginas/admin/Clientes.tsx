@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeError } from '../../api/cliente'
@@ -145,6 +146,7 @@ export default function Clientes() {
                   </button>
                 </td>
                 <td className="celda-accion">
+                  <Link className="enlace-accion" to={`/cartera/${c.id}`}>Ver cartera</Link>{' '}
                   <button
                     type="button"
                     className="enlace"

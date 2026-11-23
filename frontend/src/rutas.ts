@@ -15,6 +15,9 @@ const inicio: Record<Rol, string> = {
 /** RF-21: salidas, reintegros y devoluciones de clientes (logística y admin). */
 export const RUTA_AJUSTES = '/logistica/ajustes'
 
+/** RF-15 / RF-18 (S-30): cartera de clientes (mostrador y admin). */
+export const RUTA_CARTERA = '/cartera'
+
 export function rutaInicio(rol: Rol): string {
   return inicio[rol]
 }

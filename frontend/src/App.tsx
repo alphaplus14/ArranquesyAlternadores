@@ -1,11 +1,13 @@
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom'
 import type { Rol } from './api/tipos'
 import { useAuth } from './auth/AuthProvider'
-import { RUTA_AJUSTES, rutaInicio } from './rutas'
+import { RUTA_AJUSTES, RUTA_CARTERA, rutaInicio } from './rutas'
 import Layout from './componentes/Layout'
 import Login from './paginas/Login'
 import Agotados from './paginas/Agotados'
 import Venta from './paginas/mostrador/Venta'
+import Cartera from './paginas/cartera/Cartera'
+import CarteraCliente from './paginas/cartera/CarteraCliente'
 import Ingresos from './paginas/logistica/Ingresos'
 import IngresoDetalle from './paginas/logistica/IngresoDetalle'
 import Etiquetas from './paginas/logistica/Etiquetas'
@@ -39,6 +41,11 @@ export default function App() {
         <Route path="/productos" element={<Productos />} />
         <Route element={<ConRol roles={['mostrador']} />}>
           <Route path="/mostrador/venta" element={<Venta />} />
+        </Route>
+        {/* RF-15 / RF-18 (S-30): mostrador y admin; logística va a su inicio. */}
+        <Route element={<ConRol roles={['mostrador', 'admin']} />}>
+          <Route path={RUTA_CARTERA} element={<Cartera />} />
+          <Route path={`${RUTA_CARTERA}/:clienteId`} element={<CarteraCliente />} />
         </Route>
         <Route element={<ConRol roles={['logistica']} />}>
           <Route path="/logistica/ingresos" element={<Ingresos />} />

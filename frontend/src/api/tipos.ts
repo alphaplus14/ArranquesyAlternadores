@@ -268,6 +268,106 @@ export interface FilaBajoMinimo {
   referencias: Array<{ id: number; codigo_referencia: string; calidad: Calidad | null; proveedor: Opcion; existencia: number }> | null
 }
 
+/* RF-15 / RF-18 (S-30): cartera de clientes. Montos en pesos como texto con 2 decimales. */
+export type MedioPago = 'efectivo' | 'transferencia' | 'consignacion' | 'otro'
+export const NOMBRE_MEDIO: Record<MedioPago, string> = { efectivo: 'Efectivo', transferencia: 'Transferencia', consignacion: 'Consignación', otro: 'Otro' }
+
+export type RangoAntiguedad = 'al_dia' | 'd1_30' | 'd31_60' | 'd61_90' | 'mas_90'
+export const RANGOS: { clave: RangoAntiguedad; texto: string }[] = [
+  { clave: 'al_dia', texto: 'Al día' },
+  { clave: 'd1_30', texto: '1-30' },
+  { clave: 'd31_60', texto: '31-60' },
+  { clave: 'd61_90', texto: '61-90' },
+  { clave: 'mas_90', texto: '+90' },
+]
+
+export interface ResumenCartera {
+  cliente: { id: number; nombre: string; documento: string | null; telefono: string | null; plazo_dias: number; activo: boolean } | null
+  ventas: string
+  abonado: string
+  saldo: string
+  saldo_a_favor: boolean
+  vencido: string
+  proximo_vencimiento: string | null
+  vencida_desde: string | null
+  antiguedad: Record<RangoAntiguedad, string>
+  corte?: string
+}
+
+export interface ListaCartera extends Pagina<ResumenCartera> {
+  totales: {
+    cartera_total: string
+    saldo_a_favor: string
+    vencido_total: string
+    clientes_con_saldo: number
+    clientes_vencidos: number
+    antiguedad: Record<RangoAntiguedad, string>
+  }
+  corte: string
+}
+
+export interface Abono {
+  id: number
+  cliente_id: number
+  fecha: string
+  valor: string
+  medio: MedioPago
+  referencia: string | null
+  nota: string | null
+  created_at: string
+  usuario?: { id: number; name: string }
+  anulado: boolean | null
+  anulacion?: { id: number; motivo: string; created_at: string; usuario: { id: number; name: string } | null } | null
+}
+
+export interface VentaCartera {
+  id: number
+  cerrada_at: string
+  vence_el: string | null
+  total: string
+  aplicado: string
+  pendiente: string
+  estado: 'al_dia' | 'por_vencer' | 'vencida'
+  estado_texto: string
+  dias_vencida: number
+  rango: RangoAntiguedad | null
+}
+
+export interface DetalleCartera {
+  resumen: ResumenCartera
+  ventas: VentaCartera[]
+  abonos: Abono[]
+}
+
+export interface MovimientoCuenta {
+  tipo: 'venta' | 'reverso' | 'abono' | 'anulacion_abono'
+  dia: string
+  momento: string
+  descripcion: string
+  venta_id?: number
+  reverso_id?: number
+  abono_id?: number
+  medio?: MedioPago
+  referencia?: string | null
+  nota?: string | null
+  motivo?: string
+  usuario?: string | null
+  anulado?: boolean
+  anulacion?: { motivo: string; usuario: string | null; fecha: string } | null
+  cargo: string
+  abono: string
+  saldo: string
+}
+
+export interface EstadoCuenta {
+  cliente: { id: number; nombre: string; documento: string | null }
+  desde: string | null
+  hasta: string | null
+  saldo_inicial: string
+  movimientos: MovimientoCuenta[]
+  saldo_final: string
+}
+
 export interface Auditoria {
   id: number
   tabla: string

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
-import { RUTA_AJUSTES, rutaInicio } from '../rutas'
+import { RUTA_AJUSTES, RUTA_CARTERA, rutaInicio } from '../rutas'
 import logo from '../assets/logo-la8va.jpg'
 import Icono, { type IconoNombre } from './Icono'
 import MiCuenta from './MiCuenta'
@@ -26,7 +26,15 @@ export default function Layout() {
 
   // Orden: Mostrador, Productos, Logística, Administración, Consulta. Qué ve cada rol no cambia.
   const grupos: { etiqueta: string; items: ItemMenu[] }[] = [
-    tieneRol('mostrador') ? { etiqueta: 'Mostrador', items: [{ to: '/mostrador/venta', texto: 'Venta', icono: 'venta' }] } : null,
+    tieneRol('mostrador')
+      ? {
+          etiqueta: 'Mostrador',
+          items: [
+            { to: '/mostrador/venta', texto: 'Venta', icono: 'venta' },
+            { to: RUTA_CARTERA, texto: 'Cartera', icono: 'billetera' }, // RF-15 / S-30
+          ],
+        }
+      : null,
     { etiqueta: 'Productos', items: [{ to: '/productos', texto: 'Listado', icono: 'caja', fin: true }] },
     tieneRol('logistica')
       ? {
