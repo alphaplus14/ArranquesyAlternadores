@@ -23,6 +23,8 @@ import ChipCalidad from '../../componentes/ChipCalidad'
 import Paginacion from '../../componentes/Paginacion'
 import { atraparTab } from '../../componentes/foco'
 import { pesos } from '../../componentes/numeros'
+import FiltroPeriodo, { type ValorPeriodo } from '../../componentes/FiltroPeriodo'
+import { PERIODO_POR_DEFECTO, errorRango, esPeriodo, hoyEnBogota, rangoDe } from '../../utilidades/periodos'
 
 /*
  * RF-21 (S-27): logística y admin sacan unidades del inventario (salidas), registran devoluciones
@@ -389,17 +391,40 @@ function Devoluciones({ onRetirar }: { onRetirar: (d: Devolucion, metodo: Metodo
 function Historial() {
   const [tipo, setTipo] = useState<'' | TipoAjuste>('')
   const [motivo, setMotivo] = useState<'' | MotivoAjuste>('')
-  const [desde, setDesde] = useState('')
-  const [hasta, setHasta] = useState('')
+  const [params, setParams] = useSearchParams()
   const [reintegrando, setReintegrando] = useState<AjusteInventario | null>(null)
   const [aviso, setAviso] = useState<Aviso>(null)
 
-  const filtros = { tipo, motivo, desde, hasta }
+  // El período vive en la URL (?periodo=…; desde y hasta solo si es personalizado) para que
+  // recargar o compartir el enlace conserve el filtro.
+  const crudo = params.get('periodo')
+  const periodo: ValorPeriodo = {
+    periodo: esPeriodo(crudo) ? crudo : PERIODO_POR_DEFECTO,
+    desde: params.get('desde') ?? '',
+    hasta: params.get('hasta') ?? '',
+  }
+  const rango = rangoDe(periodo.periodo, hoyEnBogota(), periodo)
+  const errorFechas = errorRango(rango)
+
+  const cambiarPeriodo = (v: ValorPeriodo) => setParams((actual) => {
+    const siguiente = new URLSearchParams(actual)
+    siguiente.set('periodo', v.periodo)
+    for (const campo of ['desde', 'hasta'] as const) {
+      if (v.periodo === 'personalizado' && v[campo]) siguiente.set(campo, v[campo])
+      else siguiente.delete(campo)
+    }
+    return siguiente
+  }, { replace: true })
+
+  // Cambiar cualquier filtro vuelve a la página 1 (useListaPaginada). Con un rango imposible no se consulta.
+  const filtros = { tipo, motivo, ...rango }
   const { filas, resultado, irA, cargando } = useListaPaginada<AjusteInventario>({
     clave: ['ajustes', filtros],
     filtros,
+    enabled: errorFechas === null,
     traer: async (page) => (await api.get<Pagina<AjusteInventario>>('/ajustes', {
-      params: { tipo: tipo || undefined, motivo: motivo || undefined, desde: desde || undefined, hasta: hasta || undefined, page },
+      // "todo" no envía fechas; el backend las toma como días de Bogotá, hasta inclusivo.
+      params: { tipo: tipo || undefined, motivo: motivo || undefined, desde: rango.desde ?? undefined, hasta: rango.hasta ?? undefined, page },
     })).data,
   })
 
@@ -421,12 +446,13 @@ function Historial() {
             {motivos.map((m) => <option key={m} value={m}>{NOMBRE_MOTIVO[m]}</option>)}
           </select>
         </label>
-        <label>Desde<input type="date" value={desde} max={hasta || undefined} onChange={(e) => setDesde(e.target.value)} /></label>
-        <label>Hasta<input type="date" value={hasta} min={desde || undefined} onChange={(e) => setHasta(e.target.value)} /></label>
+        <FiltroPeriodo id="historial-periodo" valor={periodo} onCambio={cambiarPeriodo} />
       </div>
       {aviso && <div className={`aviso ${aviso.tipo}`} role="status">{aviso.texto}</div>}
 
-      {filas.length === 0 ? (
+      {errorFechas ? (
+        <p className="vacio">Corrija el rango de fechas para ver el historial.</p>
+      ) : filas.length === 0 ? (
         <p className="vacio">{cargando ? 'Cargando…' : 'No hay ajustes con esos filtros.'}</p>
       ) : (
         <table className={cargando ? 'tabla-apilable actualizando' : 'tabla-apilable'}>
@@ -468,7 +494,7 @@ function Historial() {
           </tbody>
         </table>
       )}
-      <Paginacion pagina={resultado} onCambiar={irA} />
+      {!errorFechas && <Paginacion pagina={resultado} onCambiar={irA} />}
 
       {reintegrando && (
         <DialogoReintegro
