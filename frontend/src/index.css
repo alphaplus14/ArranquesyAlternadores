@@ -34,9 +34,18 @@ p { margin: 0; }
 small, .suave { color: var(--suave); }
 a { color: var(--primario); }
 a:hover { color: var(--primario-hover); }
-button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+/* Foco de teclado: botones, enlaces y casillas con el contorno amarillo; los campos de texto,
+   select y textarea con borde primario y un halo suave de 3 px (no se recorta contra el borde de
+   una tarjeta como el contorno con offset). */
+button:focus-visible, a:focus-visible,
+input[type='checkbox']:focus-visible, input[type='radio']:focus-visible {
   outline: 2px solid var(--acento);
   outline-offset: 2px;
+}
+input:not([type='checkbox']):not([type='radio']):focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: none;
+  border-color: var(--primario);
+  box-shadow: 0 0 0 3px rgba(0, 24, 112, 0.18);
 }
 .mono { font-family: var(--fuente); }
 .corta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -274,7 +283,13 @@ textarea { min-height: 80px; width: 100%; }
 label { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; color: var(--suave); }
 label.check { flex-direction: row; align-items: center; }
 .formulario { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
-.formulario.en-linea { flex-direction: row; flex-wrap: wrap; align-items: flex-end; }
+.formulario.en-linea { flex-direction: row; flex-wrap: wrap; align-items: center; }
+/* Con etiqueta encima del campo, los botones se alinean con la base del campo. */
+.formulario.en-linea:has(> label) { align-items: flex-end; }
+.formulario.en-linea > input, .formulario.en-linea > select, .formulario.en-linea > button,
+.edicion-fila input, .edicion-fila button {
+  min-height: 44px; box-sizing: border-box; border-radius: 8px; font-size: 1rem; line-height: 1.2;
+}
 
 .escaner {
   width: 100%; font-size: 1.25rem; padding: 12px 14px; margin-bottom: 8px;
@@ -576,9 +591,11 @@ button.pestana.activa .pestana-cuenta { background: #E4EBFA; color: var(--primar
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
-  padding: 16px 18px 0;
+  /* Espacio para el halo de foco: .catalogo tiene overflow hidden y no se quita. */
+  padding: 16px 18px 6px;
 }
 .catalogo-barra .formulario { margin: 0; flex: 1; min-width: 260px; }
+.catalogo-barra .busca input, .catalogo-barra .boton-alta { min-height: 44px; box-sizing: border-box; font-size: 1rem; }
 .catalogo-aviso { margin: 12px 18px 0; }
 .tabla-marcos-scroll { max-height: calc(100vh - 22rem); overflow: auto; padding: 0 12px 8px; }
 .tabla-marcos {
@@ -628,7 +645,7 @@ button.pestana.activa .pestana-cuenta { background: #E4EBFA; color: var(--primar
   font-weight: 500;
   padding: 28px 16px;
 }
-.edicion-fila { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.edicion-fila { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 4px 0; }
 .edicion-fila input { flex: 1; min-width: 160px; }
 button.accion {
   padding: 6px 12px;
@@ -1022,4 +1039,8 @@ small.asesor { display: block; color: var(--suave); font-size: 0.8rem; }
   .tabla-proveedores td[data-etiqueta]::before { content: attr(data-etiqueta); flex: none; color: var(--suave); font-size: 0.8rem; text-align: left; }
   .tabla-proveedores td.col-accion button { width: 100%; min-height: 44px; }
   .catalogo-barra .boton-alta { width: 100%; }
+}
+input[aria-invalid='true']:not([type='checkbox']):not([type='radio']):focus-visible, select[aria-invalid='true']:focus-visible, textarea[aria-invalid='true']:focus-visible {
+  border-color: var(--peligro);
+  box-shadow: 0 0 0 3px rgba(216, 8, 8, 0.16);
 }
