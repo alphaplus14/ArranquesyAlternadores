@@ -16,13 +16,13 @@ it('S-24 (a): logística y admin crean un proveedor; mostrador recibe 403', func
     actuarComo(Rol::Logistica);
     $this->postJson('/api/proveedores', ['nombre' => 'Eléctricos Ochoa', 'nit' => ' 900.123.456-7 ', 'plazo_dias' => 45])
         ->assertCreated()
-        ->assertExactJson(['id' => Proveedor::where('nombre', 'Eléctricos Ochoa')->value('id'), 'nombre' => 'Eléctricos Ochoa', 'nit' => '900.123.456-7', 'plazo_dias' => 45]);
+        ->assertExactJson(['id' => Proveedor::where('nombre', 'Eléctricos Ochoa')->value('id'), 'nombre' => 'Eléctricos Ochoa', 'nit' => '900.123.456-7', 'asesor' => null, 'plazo_dias' => 45]);
 
     actuarComo(Rol::Admin);
-    $this->postJson('/api/proveedores', ['nombre' => 'Baterías del Sur'])->assertCreated();
+    $this->postJson('/api/proveedores', ['nombre' => 'Baterías del Sur', 'nit' => '811.222.333-4'])->assertCreated();
 
     actuarComo(Rol::Mostrador);
-    $this->postJson('/api/proveedores', ['nombre' => 'No debe existir'])->assertForbidden();
+    $this->postJson('/api/proveedores', ['nombre' => 'No debe existir', 'nit' => '811.000.000-1'])->assertForbidden();
     expect(Proveedor::where('nombre', 'No debe existir')->exists())->toBeFalse();
 });
 
@@ -57,13 +57,13 @@ it('S-24 (d): un NIT repetido en otra forma responde 422 con proveedor_existente
         ->assertJsonPath('proveedor_existente', 'Repuestos Ochoa');
 })->with(['9001234567', '900 123 456 7', '900-123-456-7']);
 
-it('S-24 (e): plazo fuera de 0 a 365 responde 422; sin NIT ni plazo se crea', function (mixed $plazo) {
+it('S-24 (e): plazo fuera de 0 a 365 responde 422; sin plazo se crea (S-29: el NIT sí es obligatorio)', function (mixed $plazo) {
     actuarComo(Rol::Logistica);
 
-    $this->postJson('/api/proveedores', ['nombre' => 'Con plazo raro', 'plazo_dias' => $plazo])
+    $this->postJson('/api/proveedores', ['nombre' => 'Con plazo raro', 'nit' => '811.333.444-5', 'plazo_dias' => $plazo])
         ->assertUnprocessable()->assertJsonValidationErrors('plazo_dias');
-    $this->postJson('/api/proveedores', ['nombre' => 'Solo nombre'])
-        ->assertCreated()->assertJsonPath('nit', null)->assertJsonPath('plazo_dias', null);
+    $this->postJson('/api/proveedores', ['nombre' => 'Sin plazo', 'nit' => '811.333.444-5'])
+        ->assertCreated()->assertJsonPath('asesor', null)->assertJsonPath('plazo_dias', null);
 })->with([-1, 366, 2.5]);
 
 it('S-24 (f): logística y admin crean una categoría; mostrador recibe 403', function () {

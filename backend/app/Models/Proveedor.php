@@ -14,7 +14,8 @@ class Proveedor extends Model
 
     protected $table = 'proveedores';
 
-    protected $fillable = ['nombre', 'nit', 'plazo_dias'];
+    /** S-29: asesor = nombre del asesor comercial (opcional). */
+    protected $fillable = ['nombre', 'nit', 'asesor', 'plazo_dias'];
 
     protected function casts(): array
     {
