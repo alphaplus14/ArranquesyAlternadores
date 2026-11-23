@@ -1,8 +1,10 @@
 import { useMemo, useState, type KeyboardEvent } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeError } from '../../api/cliente'
-import type { Categoria, Opcion } from '../../api/tipos'
+import type { Categoria, Proveedor } from '../../api/tipos'
 import Icono from '../../componentes/Icono'
+import DialogoProveedor from '../../componentes/DialogoProveedor'
+import { filtrarProveedores } from '../../componentes/filtroProveedores'
 import { useCategorias, useProveedores } from '../../hooks/useCatalogos'
 
 type Clave = 'proveedores' | 'categorias'
@@ -12,13 +14,16 @@ const PESTANAS: { clave: Clave; titulo: string; singular: string; alta: string; 
   { clave: 'categorias', titulo: 'Categorías', singular: 'categoría', alta: 'Nueva categoría', ruta: 'categorias' },
 ]
 
-/** Catálogos editables. RF-11: cada cambio queda auditado. S-23: la empresa no maneja marcas. */
+/**
+ * Catálogos editables (solo admin). RF-11: cada cambio queda auditado. S-23: la empresa no maneja
+ * marcas. S-29: los proveedores se crean y editan con todos sus campos en un diálogo.
+ */
 export default function Catalogos() {
   const proveedores = useProveedores()
   const categorias = useCategorias()
   const [activa, setActiva] = useState<Clave>('proveedores')
 
-  const datos: Record<Clave, { filas: Array<Opcion | Categoria>; cargando: boolean }> = {
+  const datos: Record<Clave, { filas: Array<Proveedor | Categoria>; cargando: boolean }> = {
     proveedores: { filas: proveedores.data ?? [], cargando: proveedores.isLoading },
     categorias: { filas: categorias.data ?? [], cargando: categorias.isLoading },
   }
@@ -59,23 +64,87 @@ export default function Catalogos() {
             </button>
           ))}
         </div>
-        <Catalogo
-          key={pestana.clave}
-          titulo={pestana.titulo}
-          singular={pestana.singular}
-          alta={pestana.alta}
-          ruta={pestana.ruta}
-          clave={pestana.clave}
-          filas={datos[pestana.clave].filas}
-          cargando={datos[pestana.clave].cargando}
-          esCategoria={pestana.clave === 'categorias'}
-        />
+        {pestana.clave === 'proveedores' ? (
+          <ListaProveedores filas={proveedores.data ?? []} cargando={proveedores.isLoading} />
+        ) : (
+          <Catalogo
+            key={pestana.clave}
+            titulo={pestana.titulo}
+            singular={pestana.singular}
+            alta={pestana.alta}
+            ruta={pestana.ruta}
+            clave={pestana.clave}
+            filas={datos[pestana.clave].filas}
+            cargando={datos[pestana.clave].cargando}
+            esCategoria
+          />
+        )}
       </section>
     </div>
   )
 }
 
-function admiteUniversal(fila: Opcion | Categoria): boolean {
+/**
+ * S-29: proveedores con NIT y asesor. "Nuevo proveedor" y "Editar" abren el mismo diálogo. El
+ * buscador filtra en el navegador por nombre, NIT (sin puntos ni guiones) y asesor.
+ */
+function ListaProveedores({ filas, cargando }: { filas: Proveedor[]; cargando: boolean }) {
+  const [busqueda, setBusqueda] = useState('')
+  const [dialogo, setDialogo] = useState<{ proveedor?: Proveedor } | null>(null)
+  const [aviso, setAviso] = useState<string | null>(null)
+  const visibles = useMemo(() => filtrarProveedores(filas, busqueda), [filas, busqueda])
+
+  return (
+    <div role="tabpanel" id="panel-catalogo" aria-labelledby="pestana-proveedores">
+      <div className="catalogo-barra">
+        <button type="button" className="primario boton-alta" onClick={() => { setAviso(null); setDialogo({}) }}>Nuevo proveedor</button>
+        <label className="busca">
+          <Icono nombre="buscar" />
+          <input placeholder="Buscar por nombre, NIT o asesor" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} aria-label="Buscar proveedor por nombre, NIT o asesor" />
+        </label>
+      </div>
+      {aviso && <div className="aviso ok catalogo-aviso" role="status">{aviso}</div>}
+      <div className="tabla-marcos-scroll">
+        <table className="tabla-marcos tabla-proveedores">
+          <thead>
+            <tr><th>Nombre</th><th>NIT</th><th>Asesor</th><th className="col-accion">Acciones</th></tr>
+          </thead>
+          <tbody>
+            {cargando && <tr className="tabla-marcos-vacia"><td colSpan={4}>Cargando proveedores…</td></tr>}
+            {!cargando && visibles.length === 0 && (
+              <tr className="tabla-marcos-vacia">
+                <td colSpan={4}>{filas.length === 0 ? 'Todavía no hay proveedores.' : `Ningún resultado para «${busqueda.trim()}».`}</td>
+              </tr>
+            )}
+            {visibles.map((p) => (
+              <tr key={p.id}>
+                <td data-etiqueta="Nombre"><strong>{p.nombre}</strong></td>
+                <td data-etiqueta="NIT">{p.nit ? <span className="mono">{p.nit}</span> : <span className="chip sin-nit">Sin NIT</span>}</td>
+                <td data-etiqueta="Asesor">{p.asesor ?? <span className="suave">—</span>}</td>
+                <td className="col-accion">
+                  <button type="button" className="accion" aria-label={`Editar ${p.nombre}`} onClick={() => { setAviso(null); setDialogo({ proveedor: p }) }}>Editar</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {dialogo && (
+        <DialogoProveedor
+          key={dialogo.proveedor?.id ?? 'nuevo'}
+          proveedor={dialogo.proveedor}
+          onGuardado={(p) => { setDialogo(null); setAviso(dialogo.proveedor ? `Proveedor ${p.nombre} actualizado.` : `Proveedor ${p.nombre} creado.`) }}
+          // Si ya existe, se abre su edición en lugar de crear otro.
+          onUsar={(id) => { const existente = filas.find((f) => f.id === id); setDialogo(existente ? { proveedor: existente } : null) }}
+          textoUsar="Editar ese proveedor"
+          onCerrar={() => setDialogo(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+function admiteUniversal(fila: Proveedor | Categoria): boolean {
   return 'admite_codigo_universal' in fila && fila.admite_codigo_universal
 }
 
@@ -85,7 +154,7 @@ function Catalogo({ titulo, singular, alta, ruta, clave, filas, cargando, esCate
   alta: string
   ruta: string
   clave: string
-  filas: Array<Opcion | Categoria>
+  filas: Array<Proveedor | Categoria>
   cargando: boolean
   esCategoria: boolean
 }) {
@@ -112,7 +181,7 @@ function Catalogo({ titulo, singular, alta, ruta, clave, filas, cargando, esCate
       <div className="catalogo-barra">
         <form className="formulario en-linea" onSubmit={(e) => { e.preventDefault(); crear.mutate() }}>
           <input required placeholder={alta} value={nombre} onChange={(e) => setNombre(e.target.value)} aria-label={alta} />
-          <button className="primario" disabled={crear.isPending}>Agregar</button>
+          <button className="primario boton-alta" disabled={crear.isPending}>Agregar</button>
         </form>
         <label className="busca">
           <Icono nombre="buscar" />

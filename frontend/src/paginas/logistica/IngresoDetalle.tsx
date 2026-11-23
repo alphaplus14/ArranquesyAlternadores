@@ -290,7 +290,7 @@ export default function IngresoDetalle() {
     <div className="pila">
       <div className="pagina-encabezado">
         <h1>{i.tipo === 'factura' ? 'Factura' : 'Remisión'} {i.numero_documento}</h1>
-        <p>{i.proveedor?.nombre} · {i.fecha.slice(0, 10)}</p>
+        <p>{i.proveedor?.nombre} · {i.fecha.slice(0, 10)}{i.proveedor?.asesor && <small className="asesor">Asesor: {i.proveedor.asesor}</small>}</p>
       </div>
       <Resumen
         clave="ingreso-detalle-resumen"

@@ -9,7 +9,7 @@ import DialogoProveedor from './DialogoProveedor'
 const MAXIMO = 50
 const ALTO_LISTA = 300
 
-interface Opcion { valor: string; nombre: string; nit?: string | null }
+interface Opcion { valor: string; nombre: string; nit?: string | null; asesor?: string | null }
 /** Valor de la opción «+ Crear proveedor "…"» (S-24). */
 const CREAR = '__crear__'
 type Via = 'enter' | 'clic' | 'tab'
@@ -72,7 +72,7 @@ export default function SelectorProveedor({
   const ofrecerCrear = puedeCrear && escrito !== '' && !coincideExacto
   const encontrados: Opcion[] = useMemo(() => [
     ...(opcionTodos && !texto ? [{ valor: '', nombre: opcionTodos }] : []),
-    ...filtrados.slice(0, MAXIMO).map((p) => ({ valor: String(p.id), nombre: p.nombre, nit: p.nit })),
+    ...filtrados.slice(0, MAXIMO).map((p) => ({ valor: String(p.id), nombre: p.nombre, nit: p.nit, asesor: p.asesor })),
   ], [filtrados, opcionTodos, texto])
   const opciones: Opcion[] = ofrecerCrear ? [...encontrados, { valor: CREAR, nombre: escrito }] : encontrados
   const hayMas = filtrados.length > MAXIMO
@@ -253,7 +253,7 @@ export default function SelectorProveedor({
               >
                 {o.valor === CREAR
                   ? <span>+ Crear proveedor «{o.nombre}»</span>
-                  : <><span>{o.nombre}</span>{o.nit && <small>NIT {o.nit}</small>}</>}
+                  : <><span>{o.nombre}</span>{(o.nit || o.asesor) && <small>{[o.nit && `NIT ${o.nit}`, o.asesor && `Asesor: ${o.asesor}`].filter(Boolean).join(' · ')}</small>}</>}
               </li>
             ))}
           </ul>
@@ -265,7 +265,7 @@ export default function SelectorProveedor({
       {creando !== null && (
         <DialogoProveedor
           texto={creando}
-          onCreado={(nuevo) => {
+          onGuardado={(nuevo) => {
             editando.current = false
             setTexto(null)
             setCreando(null)

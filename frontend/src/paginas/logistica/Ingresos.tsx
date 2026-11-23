@@ -22,7 +22,7 @@ interface FilaIngreso {
   fecha: string
   estado: string
   unidades: string | null
-  proveedor: { nombre: string }
+  proveedor: { nombre: string; asesor?: string | null }
   usuario: { name: string }
 }
 
@@ -95,7 +95,7 @@ export default function Ingresos() {
                 <td><Link to={`/logistica/ingresos/${i.id}`}>{i.id}</Link></td>
                 <td>{TIPO[i.tipo] ?? i.tipo}</td>
                 <td>{i.numero_documento}</td>
-                <td>{i.proveedor.nombre}</td>
+                <td>{i.proveedor.nombre}{i.proveedor.asesor && <small className="asesor">Asesor: {i.proveedor.asesor}</small>}</td>
                 <td>{i.fecha.slice(0, 10)}</td>
                 <td>{i.forma_pago === 'credito' ? <span className="chip credito">Crédito{i.vence_el ? ` · vence ${i.vence_el.slice(0, 10)}` : ''}</span> : 'Contado'}</td>
                 <td>{i.unidades ?? 0}</td>

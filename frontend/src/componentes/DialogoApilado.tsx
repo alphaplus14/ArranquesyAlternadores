@@ -9,8 +9,10 @@ import { useBloquearScroll } from '../hooks/useBloquearScroll'
  * Ninguna tecla sale de aquí: Esc cierra solo este diálogo y Tab queda atrapado dentro, así el de
  * abajo conserva lo escrito. A menos de 640 px ocupa la pantalla con los botones visibles.
  */
-export default function DialogoApilado({ titulo, onCerrar, onEnviar, pie, children }: {
+export default function DialogoApilado({ titulo, nota, onCerrar, onEnviar, pie, children }: {
   titulo: string
+  /** Texto bajo el título (p. ej. la nota de campos obligatorios, como en Nuevo ingreso). */
+  nota?: ReactNode
   onCerrar: () => void
   onEnviar: () => void
   pie: ReactNode
@@ -45,7 +47,7 @@ export default function DialogoApilado({ titulo, onCerrar, onEnviar, pie, childr
         onSubmit={(e: FormEvent) => { e.preventDefault(); e.stopPropagation(); onEnviar() }}
       >
         <header className="modal-cabeza">
-          <div className="modal-cabeza-texto"><h2 id={tituloId}>{titulo}</h2></div>
+          <div className="modal-cabeza-texto"><h2 id={tituloId}>{titulo}</h2>{nota}</div>
           <button type="button" className="icono-boton modal-cerrar" aria-label="Cerrar" onClick={onCerrar}>
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6L6 18" /></svg>
           </button>

@@ -30,6 +30,8 @@ export interface Opcion {
 /** RF-16: plazo_dias solo prellena el vencimiento de las compras a crédito. */
 export interface Proveedor extends Opcion {
   nit?: string | null
+  /** S-29: nombre del asesor comercial (opcional). */
+  asesor?: string | null
   plazo_dias?: number | null
 }
 

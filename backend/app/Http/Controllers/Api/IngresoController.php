@@ -29,7 +29,7 @@ class IngresoController extends Controller
     public function index(Request $request): JsonResponse
     {
         $pagina = Ingreso::query()
-            ->with(['proveedor:id,nombre', 'usuario:id,name', 'confirmadoPor:id,name'])
+            ->with(['proveedor:id,nombre,asesor', 'usuario:id,name', 'confirmadoPor:id,name']) // S-29: asesor bajo el nombre
             ->withSum('items as unidades', 'cantidad')
             ->when($request->query('proveedor_id'), fn ($q, $v) => $q->where('proveedor_id', $v))
             ->when($request->query('estado'), fn ($q, $v) => $q->where('estado', $v))
@@ -117,7 +117,7 @@ class IngresoController extends Controller
     private function cargar(Ingreso $ingreso): Ingreso
     {
         return $ingreso->load([
-            'proveedor:id,nombre,plazo_dias',
+            'proveedor:id,nombre,nit,asesor,plazo_dias', // S-29: asesor en el encabezado
             'usuario:id,name',
             'confirmadoPor:id,name',
             'items' => fn ($q) => $q->orderBy('id'),

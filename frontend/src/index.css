@@ -1006,3 +1006,20 @@ tr.fila-con-error td { background: var(--error-fondo); }
   .tabla-auditoria td[data-etiqueta]::before { content: attr(data-etiqueta); flex: none; color: var(--suave); font-size: 0.8rem; text-align: left; }
   .tabla-auditoria .valor-auditoria:not(:empty) { max-width: none; }
 }
+
+/* S-29: proveedores en Catálogos y asesor bajo el nombre del proveedor. */
+.chip.sin-nit { background: var(--aviso-fondo); color: var(--aviso); font-weight: 600; }
+small.asesor { display: block; color: var(--suave); font-size: 0.8rem; }
+.pagina-encabezado small.asesor { display: inline; margin-left: 8px; }
+.tabla-proveedores td { overflow-wrap: anywhere; }
+.dialogo-apilado .modal-cabeza-texto .nota-obligatorio { margin: 2px 0 0; }
+@media (max-width: 639px) {
+  .tabla-proveedores thead { display: none; }
+  .tabla-proveedores, .tabla-proveedores tbody, .tabla-proveedores tr, .tabla-proveedores td { display: block; width: 100%; box-sizing: border-box; }
+  .tabla-proveedores tr { border: 1px solid var(--borde); border-radius: 10px; padding: 8px 12px; margin: 0 0 10px; }
+  .tabla-proveedores td { border: 0; padding: 4px 0; text-align: right; }
+  .tabla-proveedores td[data-etiqueta] { display: flex; justify-content: space-between; gap: 12px; }
+  .tabla-proveedores td[data-etiqueta]::before { content: attr(data-etiqueta); flex: none; color: var(--suave); font-size: 0.8rem; text-align: left; }
+  .tabla-proveedores td.col-accion button { width: 100%; min-height: 44px; }
+  .catalogo-barra .boton-alta { width: 100%; }
+}
