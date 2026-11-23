@@ -4,10 +4,12 @@ namespace App\Services;
 
 use App\Enums\EstadoVenta;
 use App\Enums\FormaPago;
+use App\Models\AbonoCliente;
 use App\Models\Cliente;
 use App\Support\RangoFechas;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -80,6 +82,207 @@ class CarteraService
         $fila = DB::query()->fromSub($this->porCliente($corte, null, $cliente->id), 'c')->first();
 
         return $this->filaCliente($fila) + ['corte' => $corte];
+    }
+
+    /**
+     * RF-18: detalle del cliente. Ventas a crédito cerradas con su total neto, vencimiento, abono
+     * aplicado (FIFO), pendiente, estado y rango; los abonos (también los anulados) y el resumen.
+     *
+     * @return array<string, mixed>
+     */
+    public function detalle(Cliente $cliente, ?string $corte = null): array
+    {
+        $corte = $corte ?: RangoFechas::hoy();
+
+        $ventas = DB::query()->fromSub($this->ventasFifo($corte, $cliente->id), 'f')
+            ->orderBy('f.cerrada_at')
+            ->orderBy('f.id')
+            ->get()
+            ->map(function ($v) {
+                $neto = (float) $v->neto;
+                $pendiente = (float) $v->pendiente;
+                $dias = (int) $v->dias;
+
+                return [
+                    'id' => (int) $v->id,
+                    'cerrada_at' => $v->cerrada_at,
+                    'vence_el' => $v->vence_el,
+                    'total' => self::pesos($neto),
+                    'aplicado' => self::pesos($neto - $pendiente),
+                    'pendiente' => self::pesos($pendiente),
+                    ...self::estadoVenta($pendiente, $dias),
+                ];
+            });
+
+        $abonos = AbonoCliente::query()
+            ->where('cliente_id', $cliente->id)
+            ->with('usuario:id,name', 'anulacion.usuario:id,name')
+            ->orderByDesc('fecha')
+            ->orderByDesc('id')
+            ->get();
+
+        return [
+            'resumen' => $this->resumenDe($cliente, $corte),
+            'ventas' => $ventas->values()->all(),
+            'abonos' => $abonos,
+        ];
+    }
+
+    /**
+     * RF-18: estado de cuenta del cliente. Ventas a crédito (al cerrarse, por el valor de todos sus
+     * ítems), cada reverso de esas ventas (uno hecho con la venta abierta se fecha al cierre, para
+     * no quedar antes de la venta; no se adivina por la hora, que tiene resolución de segundos),
+     * abonos y anulaciones de abono, en orden de fecha, con saldo acumulado. Con desde/hasta, arranca con el saldo
+     * anterior a "desde". Las fechas son días de Bogotá; el abono usa su fecha.
+     *
+     * @return array<string, mixed>
+     */
+    public function estadoCuenta(Cliente $cliente, ?string $desde = null, ?string $hasta = null): array
+    {
+        $zona = config('app.zona_local', 'America/Bogota');
+        $local = fn ($momento) => Carbon::parse($momento, config('app.timezone'))->setTimezone($zona);
+        $movimientos = collect();
+
+        // Ventas a crédito cerradas, por el valor de todos sus ítems; los reversos van aparte.
+        $ventas = DB::table('ventas as v')
+            ->join('venta_items as vi', 'vi.venta_id', '=', 'v.id')
+            ->where('v.cliente_id', $cliente->id)
+            ->where('v.forma_pago', FormaPago::Credito->value)
+            ->where('v.estado', EstadoVenta::Cerrada->value)
+            ->groupBy('v.id', 'v.cerrada_at', 'v.vence_el', 'v.factura_contapyme')
+            ->selectRaw('v.id, v.cerrada_at, v.vence_el, v.factura_contapyme,
+                SUM(COALESCE(vi.precio_unitario, 0)) AS valor')
+            ->get();
+
+        foreach ($ventas as $v) {
+            $momento = $local($v->cerrada_at);
+            $movimientos->push([
+                'tipo' => 'venta', 'dia' => $momento->toDateString(), 'momento' => $momento->toIso8601String(), 'orden' => 1,
+                'descripcion' => "Venta a crédito #{$v->id}".($v->factura_contapyme ? " · factura {$v->factura_contapyme}" : ''),
+                'venta_id' => (int) $v->id, 'vence_el' => $v->vence_el,
+                'cargo' => (float) $v->valor, 'abono' => 0.0,
+            ]);
+        }
+
+        // Reversos de esas ventas; nunca antes del cierre de la venta.
+        $reversos = DB::table('reversos as r')
+            ->join('ventas as v', 'v.id', '=', 'r.venta_id')
+            ->join('reverso_items as ri', 'ri.reverso_id', '=', 'r.id')
+            ->join('venta_items as vi', 'vi.id', '=', 'ri.venta_item_id')
+            ->leftJoin('users as u', 'u.id', '=', 'r.usuario_id')
+            ->where('v.cliente_id', $cliente->id)
+            ->where('v.forma_pago', FormaPago::Credito->value)
+            ->where('v.estado', EstadoVenta::Cerrada->value)
+            ->groupBy('r.id', 'r.venta_id', 'r.tipo', 'r.motivo', 'r.created_at', 'v.cerrada_at', 'u.name')
+            ->selectRaw('r.id, r.venta_id, r.tipo, r.motivo, GREATEST(r.created_at, v.cerrada_at) AS momento, u.name AS usuario, SUM(COALESCE(vi.precio_unitario, 0)) AS valor')
+            ->get();
+
+        foreach ($reversos as $r) {
+            $momento = $local($r->momento);
+            $movimientos->push([
+                'tipo' => 'reverso', 'dia' => $momento->toDateString(), 'momento' => $momento->toIso8601String(), 'orden' => 2,
+                'descripcion' => ($r->tipo === 'devolucion' ? 'Devolución' : 'Anulación')." de la venta #{$r->venta_id}",
+                'venta_id' => (int) $r->venta_id, 'reverso_id' => (int) $r->id, 'motivo' => $r->motivo, 'usuario' => $r->usuario,
+                'cargo' => 0.0, 'abono' => (float) $r->valor,
+            ]);
+        }
+
+        // Abonos (también los anulados) y, aparte, sus anulaciones.
+        $abonos = AbonoCliente::query()->where('cliente_id', $cliente->id)
+            ->with('usuario:id,name', 'anulacion.usuario:id,name')
+            ->get();
+
+        foreach ($abonos as $a) {
+            $movimientos->push([
+                'tipo' => 'abono', 'dia' => $a->fecha->toDateString(), 'momento' => $local($a->created_at)->toIso8601String(), 'orden' => 3,
+                'descripcion' => 'Abono · '.$a->medio->value.($a->referencia ? " · {$a->referencia}" : ''),
+                'abono_id' => $a->id, 'medio' => $a->medio->value, 'referencia' => $a->referencia, 'nota' => $a->nota,
+                'usuario' => $a->usuario?->name,
+                'anulado' => $a->anulacion !== null,
+                'anulacion' => $a->anulacion ? [
+                    'motivo' => $a->anulacion->motivo,
+                    'usuario' => $a->anulacion->usuario?->name,
+                    'fecha' => $local($a->anulacion->created_at)->toIso8601String(),
+                ] : null,
+                'cargo' => 0.0, 'abono' => (float) $a->valor,
+            ]);
+
+            if ($a->anulacion) {
+                $momento = $local($a->anulacion->created_at);
+                $movimientos->push([
+                    'tipo' => 'anulacion_abono', 'dia' => $momento->toDateString(), 'momento' => $momento->toIso8601String(), 'orden' => 4,
+                    'descripcion' => "Anulación del abono del {$a->fecha->toDateString()}",
+                    'abono_id' => $a->id, 'motivo' => $a->anulacion->motivo, 'usuario' => $a->anulacion->usuario?->name,
+                    'cargo' => (float) $a->valor, 'abono' => 0.0,
+                ]);
+            }
+        }
+
+        $ordenados = $movimientos
+            ->sort(fn ($x, $y) => [$x['dia'], $x['momento'], $x['orden']] <=> [$y['dia'], $y['momento'], $y['orden']])
+            ->values();
+
+        $saldoInicial = 0.0;
+        $saldo = 0.0;
+        $visibles = [];
+        foreach ($ordenados as $m) {
+            $saldo += $m['cargo'] - $m['abono'];
+            if ($desde && $m['dia'] < $desde) {
+                $saldoInicial = $saldo;
+
+                continue;
+            }
+            if ($hasta && $m['dia'] > $hasta) {
+                continue;
+            }
+            $visibles[] = [
+                ...collect($m)->except('orden')->all(),
+                'cargo' => self::pesos($m['cargo']),
+                'abono' => self::pesos($m['abono']),
+                'saldo' => self::pesos($saldo),
+            ];
+        }
+        $saldoFinal = $visibles ? end($visibles)['saldo'] : self::pesos($saldoInicial);
+
+        return [
+            'cliente' => ['id' => $cliente->id, 'nombre' => $cliente->nombre, 'documento' => $cliente->documento],
+            'desde' => $desde,
+            'hasta' => $hasta,
+            'saldo_inicial' => self::pesos($saldoInicial),
+            'movimientos' => $visibles,
+            'saldo_final' => $saldoFinal,
+        ];
+    }
+
+    /**
+     * Estado de una venta para la pantalla: sin pendiente "al día"; por vencer "vence en N días"
+     * (o "vence hoy"); vencida "vencida hace N días". El rango es el de S-13.
+     *
+     * @return array{estado: string, estado_texto: string, dias_vencida: int, rango: string|null}
+     */
+    protected static function estadoVenta(float $pendiente, int $dias): array
+    {
+        if ($pendiente <= 0) {
+            return ['estado' => 'al_dia', 'estado_texto' => 'al día', 'dias_vencida' => 0, 'rango' => null];
+        }
+
+        $rango = match (true) {
+            $dias <= 0 => 'al_dia',
+            $dias <= 30 => 'd1_30',
+            $dias <= 60 => 'd31_60',
+            $dias <= 90 => 'd61_90',
+            default => 'mas_90',
+        };
+
+        if ($dias > 0) {
+            return ['estado' => 'vencida', 'estado_texto' => $dias === 1 ? 'vencida hace 1 día' : "vencida hace {$dias} días", 'dias_vencida' => $dias, 'rango' => $rango];
+        }
+
+        $faltan = -$dias;
+
+        return ['estado' => 'por_vencer', 'estado_texto' => match ($faltan) {
+            0 => 'vence hoy', 1 => 'vence en 1 día', default => "vence en {$faltan} días"
+        }, 'dias_vencida' => 0, 'rango' => $rango];
     }
 
     /** Saldo de un cliente a hoy (S-30: la única fuente). */

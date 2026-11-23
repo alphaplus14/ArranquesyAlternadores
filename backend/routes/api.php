@@ -129,6 +129,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('rol:admin,mostrador')->group(function () {
         Route::get('/cartera', [CarteraController::class, 'index'])->middleware('medir:500')->name('cartera');
         Route::post('/clientes/{cliente}/abonos', [AbonoController::class, 'store']);
+        Route::get('/clientes/{cliente}/cartera', [CarteraController::class, 'show']); // RF-18
+        Route::get('/clientes/{cliente}/estado-cuenta', [CarteraController::class, 'estadoCuenta']); // RF-18
     });
     Route::post('/abonos/{abono}/anulaciones', [AbonoController::class, 'anular'])->middleware('rol:admin');
 

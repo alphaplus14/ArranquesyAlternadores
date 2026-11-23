@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\Rol;
+use App\Models\Cliente;
 use App\Models\Ingreso;
 use App\Models\Referencia;
 use App\Models\Unidad;
@@ -8,6 +9,7 @@ use App\Models\User;
 use App\Services\IngresoService;
 use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /*
@@ -92,4 +94,47 @@ function venderComoMostrador(string $codigoReferencia, bool $cerrar = true, arra
     }
 
     return [$ventaId, $codigo];
+}
+
+/* RF-15 / RF-18: ayudas de cartera (ventas a crédito y abonos). */
+
+/**
+ * Venta a crédito con un ítem por precio (cada uno, una unidad disponible distinta), como mostrador.
+ * Devuelve [ventaId, ids de los ítems]. Deja la sesión que había.
+ *
+ * @param  list<int>  $precios
+ */
+function ventaCredito(Cliente $cliente, array $precios, bool $cerrar = true): array
+{
+    $anterior = auth()->user();
+    actuarComo(Rol::Mostrador);
+
+    $ventaId = test()->postJson('/api/ventas', ['forma_pago' => 'credito', 'cliente_id' => $cliente->id])->assertCreated()->json('id');
+    $items = [];
+    $unidades = Unidad::where('estado', 'disponible')->orderBy('id')->limit(count($precios))->pluck('codigo_barras');
+    foreach ($precios as $i => $precio) {
+        $itemId = test()->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => $unidades[$i], 'metodo_captura' => 'escaneado'])->assertCreated()->json('venta_item_id');
+        test()->patchJson("/api/ventas/{$ventaId}/items/{$itemId}", ['precio_unitario' => $precio])->assertOk();
+        $items[] = $itemId;
+    }
+    if ($cerrar) {
+        test()->postJson("/api/ventas/{$ventaId}/cerrar")->assertOk();
+    }
+
+    if ($anterior) {
+        test()->actingAs($anterior);
+    }
+
+    return [$ventaId, $items];
+}
+
+/** Mueve el cierre y el vencimiento de una venta (sin pasar por el modelo: es preparación del test). */
+function fecharVenta(int $ventaId, string $cerrada, string $vence): void
+{
+    DB::table('ventas')->where('id', $ventaId)->update(['cerrada_at' => $cerrada.' 15:00:00', 'vence_el' => $vence]);
+}
+
+function abonar(Cliente $cliente, mixed $valor, array $extra = [])
+{
+    return test()->postJson("/api/clientes/{$cliente->id}/abonos", ['fecha' => now('America/Bogota')->toDateString(), 'valor' => $valor, 'medio' => 'efectivo', ...$extra]);
 }

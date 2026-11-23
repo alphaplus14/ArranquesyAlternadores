@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\AbonoResource;
+use App\Models\Cliente;
 use App\Services\CarteraService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -38,5 +40,25 @@ class CarteraController extends Controller
             'totales' => $resultado['totales'],
             'corte' => $resultado['corte'],
         ]);
+    }
+
+    /** RF-18: ventas a crédito del cliente (FIFO por venta), abonos, saldo y antigüedad. */
+    public function show(Request $request, Cliente $cliente): JsonResponse
+    {
+        $datos = $request->validate(['corte' => ['nullable', 'date_format:Y-m-d']]);
+        $detalle = $this->cartera->detalle($cliente, $datos['corte'] ?? null);
+
+        return response()->json([...$detalle, 'abonos' => AbonoResource::collection($detalle['abonos'])]);
+    }
+
+    /** RF-18: estado de cuenta en orden de fecha con saldo acumulado. */
+    public function estadoCuenta(Request $request, Cliente $cliente): JsonResponse
+    {
+        $datos = $request->validate([
+            'desde' => ['nullable', 'date_format:Y-m-d'],
+            'hasta' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:desde'],
+        ]);
+
+        return response()->json($this->cartera->estadoCuenta($cliente, $datos['desde'] ?? null, $datos['hasta'] ?? null));
     }
 }
