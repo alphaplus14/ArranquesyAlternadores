@@ -216,12 +216,34 @@ it('RF-22: el general exige el campo valor (null para quitarlo)', function () {
     $this->putJson('/api/configuracion/stock-minimo', [])->assertUnprocessable()->assertJsonValidationErrors('valor');
 });
 
-it('RF-22: Bajo mínimo tiene los mismos roles que Agotados', function () {
-    foreach ([Rol::Admin, Rol::Logistica, Rol::Mostrador] as $rol) {
+it('RF-22 / S-28: Bajo mínimo es de admin y logística; mostrador recibe 403 (Agotados sigue para los tres)', function () {
+    foreach ([Rol::Admin, Rol::Logistica] as $rol) {
         actuarComo($rol);
         $this->getJson('/api/reportes/bajo-minimo')->assertOk();
+    }
+
+    actuarComo(Rol::Mostrador);
+    $this->getJson('/api/reportes/bajo-minimo')->assertForbidden();
+
+    foreach ([Rol::Admin, Rol::Logistica, Rol::Mostrador] as $rol) {
+        actuarComo($rol);
         $this->getJson('/api/reportes/agotados?proveedor_id='.referencia('SEN-TEMP-01')->proveedor_id)->assertOk();
     }
+});
+
+it('RF-22 / S-28: el listado de productos no envía el stock mínimo a mostrador', function () {
+    minimoGeneral(5);
+    $campos = ['stock_minimo', 'minimo_efectivo', 'minimo_origen', 'minimo_por_universal', 'bajo_minimo'];
+
+    actuarComo(Rol::Mostrador);
+    $fila = $this->getJson('/api/referencias?por_pagina=100')->assertOk()->json('data.0');
+    expect(array_intersect($campos, array_keys($fila)))->toBe([]);
+    $universal = collect($this->getJson('/api/referencias?por_pagina=100')->json('data'))->firstWhere('codigo_universal', '!=', null);
+    expect($universal['codigo_universal'])->not->toHaveKey('stock_minimo');
+
+    actuarComo(Rol::Logistica);
+    $fila = $this->getJson('/api/referencias?por_pagina=100')->assertOk()->json('data.0');
+    expect(array_keys($fila))->toContain(...$campos);
 });
 
 it('RF-08 / RF-22: Agotados acepta el filtro de categoría', function () {

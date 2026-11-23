@@ -51,7 +51,8 @@ export default function Layout() {
           ],
         }
       : null,
-    { etiqueta: 'Consulta', items: [{ to: '/agotados', texto: 'Agotados y mínimos', icono: 'agotados' }] },
+    // S-28: el stock mínimo es de reposición; mostrador solo ve Agotados.
+    { etiqueta: 'Consulta', items: [{ to: '/agotados', texto: usuario?.rol === 'mostrador' ? 'Agotados' : 'Agotados y mínimos', icono: 'agotados' }] },
   ].filter((g): g is { etiqueta: string; items: ItemMenu[] } => g !== null)
 
   return (

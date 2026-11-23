@@ -100,8 +100,10 @@ async function traerReferencias(termino: string, proveedorId: string, inactivas:
  */
 export default function Productos() {
   const qc = useQueryClient()
-  const { tieneRol } = useAuth()
+  const { tieneRol, usuario } = useAuth()
   const esAdmin = tieneRol('admin')
+  /** S-28: rol exacto (tieneRol también es verdadero para el admin). */
+  const esMostrador = usuario?.rol === 'mostrador'
   // S-26: admin y logística crean, editan y desactivan referencias; mostrador solo consulta.
   const puedeGestionar = tieneRol('logistica') // el admin pasa siempre
   const [verInactivas, setVerInactivas] = useState(false)
@@ -378,7 +380,8 @@ export default function Productos() {
                       <div role="cell" data-etiqueta="Precio" className="col-numero">{sinPrecio(r) ? <span className="chip sin-precio" title="No se puede vender hasta que el administrador le asigne un precio">Sin precio</span> : Number(r.precio_venta).toLocaleString('es-CO')}</div>
                       {(completa || modo === 'tarjetas') && <div role="cell" data-etiqueta="IVA" className="col-numero">{Number(r.iva_venta_porcentaje) === 0 ? <span className="chip">Sin IVA</span> : `${Number(r.iva_venta_porcentaje)} %`}</div>}
                       <div role="cell" data-etiqueta="Existencia" className={r.existencia === 0 ? 'agotado col-numero celda-existencia' : 'col-numero celda-existencia'}>
-                        {r.bajo_minimo && (
+                        {/* S-28: el backend no lo envía a mostrador; tampoco se pinta. */}
+                        {r.bajo_minimo && !esMostrador && (
                           <span className="chip bajo-minimo" title={`Mínimo ${r.minimo_efectivo ?? ''}${r.minimo_por_universal ? ' (del universal, sobre la suma)' : r.minimo_origen === 'general' ? ' (general)' : ''}`}>Bajo mínimo</span>
                         )}
                         {r.existencia}
