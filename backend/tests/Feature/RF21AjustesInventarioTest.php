@@ -262,3 +262,22 @@ it('RF-21 (i): el historial filtra por tipo, motivo y fecha', function () {
     $this->getJson('/api/ajustes?desde=2026-11-22&hasta=2026-11-20')->assertUnprocessable();
     $this->getJson('/api/ajustes?motivo=inventado')->assertUnprocessable();
 });
+
+it('RF-21 (i): desde y hasta son días de Bogotá; hasta incluye el día completo', function () {
+    actuarComo(Rol::Logistica);
+
+    // 20-nov 21:30 en Bogotá = 21-nov 02:30 en UTC (zona de la app).
+    Carbon::setTestNow(Carbon::parse('2026-11-20 21:30:00', 'America/Bogota')->utc());
+    retirarPorApi([unidadDe('RN-4410')->codigo_barras], 'garantia')->assertCreated();
+    // 20-nov 23:59:59 en Bogotá: último segundo del día.
+    Carbon::setTestNow(Carbon::parse('2026-11-20 23:59:59', 'America/Bogota')->utc());
+    retirarPorApi([unidadDe('AC-77812')->codigo_barras], 'dano')->assertCreated();
+    // 21-nov 00:00:00 en Bogotá: ya es otro día.
+    Carbon::setTestNow(Carbon::parse('2026-11-21 00:00:00', 'America/Bogota')->utc());
+    retirarPorApi([unidadDe('DE-IM204-A')->codigo_barras], 'perdida')->assertCreated();
+    Carbon::setTestNow();
+
+    $this->getJson('/api/ajustes?desde=2026-11-20&hasta=2026-11-20')->assertOk()->assertJsonCount(2, 'data');
+    $this->getJson('/api/ajustes?hasta=2026-11-20')->assertOk()->assertJsonCount(2, 'data');
+    $this->getJson('/api/ajustes?desde=2026-11-21')->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.motivo', 'perdida');
+});

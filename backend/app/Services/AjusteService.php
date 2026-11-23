@@ -10,8 +10,8 @@ use App\Models\AjusteInventario;
 use App\Models\AjusteItem;
 use App\Models\Unidad;
 use App\Models\User;
+use App\Support\RangoFechas;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -85,8 +85,9 @@ class AjusteService
             ->withCount('items')
             ->when($filtros['tipo'] ?? null, fn ($q, $v) => $q->where('tipo', $v))
             ->when($filtros['motivo'] ?? null, fn ($q, $v) => $q->where('motivo', $v))
-            ->when($filtros['desde'] ?? null, fn ($q, $v) => $q->where('created_at', '>=', Carbon::parse($v)->startOfDay()))
-            ->when($filtros['hasta'] ?? null, fn ($q, $v) => $q->where('created_at', '<', Carbon::parse($v)->addDay()->startOfDay()))
+            // Días locales (Bogotá) convertidos a UTC; "hasta" es inclusivo del día completo.
+            ->when($filtros['desde'] ?? null, fn ($q, $v) => $q->where('created_at', '>=', RangoFechas::inicio($v)))
+            ->when($filtros['hasta'] ?? null, fn ($q, $v) => $q->where('created_at', '<', RangoFechas::finExclusivo($v)))
             ->when($filtros['usuario_id'] ?? null, fn ($q, $v) => $q->where('usuario_id', $v))
             ->orderByDesc('created_at')
             ->orderByDesc('id')

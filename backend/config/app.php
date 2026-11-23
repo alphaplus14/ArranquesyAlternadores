@@ -68,6 +68,13 @@ return [
     'timezone' => 'UTC',
 
     /*
+     * Zona horaria del local (RF-21, RF-18): los filtros por día ("desde", "hasta") se interpretan
+     * en esta zona y se convierten a la de la app (UTC) antes de comparar los timestamps.
+     * Ver App\Support\RangoFechas.
+     */
+    'zona_local' => env('APP_ZONA_LOCAL', 'America/Bogota'),
+
+    /*
     |--------------------------------------------------------------------------
     | Application Locale Configuration
     |--------------------------------------------------------------------------
