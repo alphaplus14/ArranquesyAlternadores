@@ -34,6 +34,8 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route element={usuario ? <Layout /> : <Navigate to="/login" replace />}>
+        {/* "/" lleva a la pantalla de inicio del rol (rutas.ts). */}
+        <Route path="/" element={<Navigate to={usuario ? rutaInicio(usuario.rol) : '/login'} replace />} />
         <Route path="/productos" element={<Productos />} />
         <Route path="/agotados" element={<Agotados />} />
         <Route element={<ConRol roles={['mostrador']} />}>

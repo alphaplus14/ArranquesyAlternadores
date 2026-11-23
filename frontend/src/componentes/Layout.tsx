@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
-import { RUTA_AJUSTES } from '../rutas'
+import { RUTA_AJUSTES, rutaInicio } from '../rutas'
 import logo from '../assets/logo-la8va.jpg'
 import Icono, { type IconoNombre } from './Icono'
 import MiCuenta from './MiCuenta'
@@ -24,9 +24,10 @@ export default function Layout() {
     if (window.innerWidth < 960) setAbierto(false)
   }, [ubicacion.pathname])
 
+  // Orden: Mostrador, Productos, Logística, Administración, Consulta. Qué ve cada rol no cambia.
   const grupos: { etiqueta: string; items: ItemMenu[] }[] = [
-    { etiqueta: 'Productos', items: [{ to: '/productos', texto: 'Listado', icono: 'caja', fin: true }] },
     tieneRol('mostrador') ? { etiqueta: 'Mostrador', items: [{ to: '/mostrador/venta', texto: 'Venta', icono: 'venta' }] } : null,
+    { etiqueta: 'Productos', items: [{ to: '/productos', texto: 'Listado', icono: 'caja', fin: true }] },
     tieneRol('logistica')
       ? {
           etiqueta: 'Logística',
@@ -59,7 +60,9 @@ export default function Layout() {
         <button type="button" className="icono-boton" aria-label="Abrir o cerrar el menú" aria-expanded={abierto} onClick={() => setAbierto((v) => !v)}>
           <Icono nombre="menu" />
         </button>
-        <img className="logo-empresa" src={logo} alt="Arranques y Alternadores La 8va" />
+        <Link to={usuario ? rutaInicio(usuario.rol) : '/login'} className="logo-enlace" aria-label="Ir al inicio">
+          <img className="logo-empresa" src={logo} alt="Arranques y Alternadores La 8va" />
+        </Link>
         <span className="barra-espacio" />
         {usuario && (
           <MenuUsuario
