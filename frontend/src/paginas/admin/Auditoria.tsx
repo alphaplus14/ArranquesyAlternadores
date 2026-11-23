@@ -60,23 +60,30 @@ export default function Auditoria() {
         <input aria-label="Id del registro" placeholder="Id del registro" disabled={!tabla} value={registroId} onChange={(e) => filtrar({ registro_id: e.target.value })} />
       </div>
       </div>
-      <table>
-        <thead><tr><th>Fecha</th><th>Usuario</th><th>Tabla</th><th>Registro</th><th>Campo</th><th>Antes</th><th>Después</th></tr></thead>
-        <tbody>
-          {filas.map((a) => (
-            <tr key={a.id}>
-              <td>{new Date(a.created_at).toLocaleString()}</td>
-              <td>{a.usuario?.name ?? 'sistema'}</td>
-              <td>{a.tabla}</td>
-              <td>{a.registro_id}</td>
-              <td>{a.campo}</td>
-              <td className="antes">{a.valor_anterior}</td>
-              <td className="despues">{a.valor_nuevo}</td>
-            </tr>
-          ))}
-          {resultado && filas.length === 0 && <tr><td colSpan={7} className="vacio">Sin ediciones registradas.</td></tr>}
-        </tbody>
-      </table>
+      {/* Scroll horizontal propio: la página nunca se desborda. En < 768 px, cada fila es una tarjeta. */}
+      <div className="tabla-auditoria-scroll">
+        <table className="tabla-auditoria">
+          <colgroup>
+            <col className="col-fecha" /><col className="col-usuario" /><col className="col-tabla" />
+            <col className="col-registro" /><col className="col-campo" /><col /><col />
+          </colgroup>
+          <thead><tr><th>Fecha</th><th>Usuario</th><th>Tabla</th><th>Registro</th><th>Campo</th><th>Antes</th><th>Después</th></tr></thead>
+          <tbody>
+            {filas.map((a) => (
+              <tr key={a.id}>
+                <td data-etiqueta="Fecha">{new Date(a.created_at).toLocaleString()}</td>
+                <td data-etiqueta="Usuario">{a.usuario?.name ?? 'sistema'}</td>
+                <td data-etiqueta="Tabla">{a.tabla}</td>
+                <td data-etiqueta="Registro">{a.registro_id}</td>
+                <td data-etiqueta="Campo">{a.campo}</td>
+                <td data-etiqueta="Antes" className="antes valor-auditoria">{a.valor_anterior}</td>
+                <td data-etiqueta="Después" className="despues valor-auditoria">{a.valor_nuevo}</td>
+              </tr>
+            ))}
+            {resultado && filas.length === 0 && <tr><td colSpan={7} className="vacio">Sin ediciones registradas.</td></tr>}
+          </tbody>
+        </table>
+      </div>
       <Paginacion pagina={resultado} onCambiar={irA} />
     </section>
     </div>

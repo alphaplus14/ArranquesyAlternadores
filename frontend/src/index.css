@@ -983,3 +983,26 @@ tr.fila-con-error td { background: var(--error-fondo); }
   .tabla-apilable td[data-etiqueta] > span, .desglose-minimo { text-align: right; overflow-wrap: anywhere; }
   .tabla-bajo-minimo .col-numero { text-align: right; }
 }
+
+/* Auditoría: siete columnas visibles en 1366 px; scroll horizontal propio si no caben. */
+.tabla-auditoria-scroll { overflow-x: auto; max-width: 100%; margin-top: 12px; }
+.tabla-auditoria { table-layout: fixed; width: 100%; min-width: 760px; margin-top: 0; }
+.tabla-auditoria .col-fecha { width: 150px; }
+.tabla-auditoria .col-usuario { width: 110px; }
+.tabla-auditoria .col-tabla { width: 130px; }
+.tabla-auditoria .col-registro { width: 76px; }
+.tabla-auditoria .col-campo { width: 150px; }
+.tabla-auditoria td { overflow-wrap: anywhere; }
+/* Antes y Después se reparten el resto, con salto de línea y alto acotado para textos largos. */
+.tabla-auditoria .valor-auditoria { word-break: break-word; overflow-wrap: anywhere; white-space: pre-wrap; }
+.tabla-auditoria .valor-auditoria:not(:empty) { max-width: 360px; }
+@media (max-width: 767px) {
+  .tabla-auditoria { min-width: 0; table-layout: auto; }
+  .tabla-auditoria colgroup, .tabla-auditoria thead { display: none; }
+  .tabla-auditoria, .tabla-auditoria tbody, .tabla-auditoria tr, .tabla-auditoria td { display: block; width: 100%; box-sizing: border-box; }
+  .tabla-auditoria tr { border: 1px solid var(--borde); border-radius: 10px; padding: 8px 12px; margin-bottom: 10px; }
+  .tabla-auditoria td { border: 0; padding: 4px 0; }
+  .tabla-auditoria td[data-etiqueta] { display: flex; justify-content: space-between; gap: 12px; text-align: right; }
+  .tabla-auditoria td[data-etiqueta]::before { content: attr(data-etiqueta); flex: none; color: var(--suave); font-size: 0.8rem; text-align: left; }
+  .tabla-auditoria .valor-auditoria:not(:empty) { max-width: none; }
+}
