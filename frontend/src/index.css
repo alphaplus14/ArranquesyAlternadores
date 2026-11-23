@@ -881,3 +881,42 @@ button.busca-limpiar:hover { background: var(--suave-fondo); color: var(--texto)
   .controles-listado .primario { flex: 1; min-height: 44px; }
 }
 
+
+/* RF-21: ajustes de inventario (salidas, devoluciones de clientes, historial). */
+.ajustes-seccion { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+.ajustes-seccion > label { margin-top: 4px; }
+.ajustes-motivo { display: grid; grid-template-columns: minmax(200px, 280px) minmax(0, 1fr); gap: 12px; }
+.ajustes-motivo select, .ajustes-motivo textarea, .filtros-ajustes select, .filtros-ajustes input { min-height: 44px; }
+.ajustes-motivo textarea { min-height: 44px; resize: vertical; }
+.boton-44 { min-height: 44px; }
+.acciones-izquierda { justify-content: flex-start; }
+.barra-lote { position: sticky; bottom: 0; z-index: 2; background: var(--panel); padding: 10px 0 4px; border-top: 1px solid var(--borde); }
+.confirmacion p { margin: 0 0 8px; }
+.tarjeta-devolucion { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--borde); border-radius: var(--radio); }
+.datos-devolucion { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+.unidades-ajuste { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.unidades-ajuste li { overflow-wrap: anywhere; }
+.nota-ajuste { overflow-wrap: anywhere; white-space: pre-line; }
+.chip.salida, .chip.estado-retirada { background: var(--error-fondo); color: var(--peligro); font-weight: 600; }
+.chip.reintegro, .chip.estado-disponible { background: var(--ok-fondo); color: var(--ok); font-weight: 600; }
+.tabla-apilable.actualizando { opacity: 0.72; }
+.tabla-apilable td.celda-accion { text-align: right; white-space: nowrap; }
+tr.fila-con-error td { background: var(--error-fondo); }
+.ajustes .mono { overflow-wrap: anywhere; }
+
+/* A 639 px o menos cada fila es una tarjeta: etiqueta a la izquierda, valor a la derecha. */
+@media (max-width: 639px) {
+  .ajustes-motivo { grid-template-columns: 1fr; }
+  .filtros-ajustes label { flex: 1 1 140px; }
+  .tabla-apilable thead { display: none; }
+  .tabla-apilable, .tabla-apilable tbody, .tabla-apilable tr, .tabla-apilable td { display: block; width: 100%; box-sizing: border-box; }
+  .tabla-apilable tr { border: 1px solid var(--borde); border-radius: 10px; padding: 8px 12px; margin-bottom: 10px; }
+  .tabla-apilable td { border: 0; padding: 4px 0; }
+  .tabla-apilable td[data-etiqueta] { display: flex; justify-content: space-between; gap: 12px; text-align: right; }
+  .tabla-apilable td[data-etiqueta]::before { content: attr(data-etiqueta); flex: none; color: var(--suave); font-size: 0.8rem; text-align: left; }
+  .tabla-apilable td[data-etiqueta] > * { min-width: 0; }
+  .tabla-apilable td.celda-accion:empty { display: none; }
+  .tabla-apilable td.celda-accion { text-align: left; padding-top: 8px; }
+  .tabla-apilable td.celda-accion button, .barra-lote button { width: 100%; }
+  .unidades-ajuste { text-align: right; }
+}

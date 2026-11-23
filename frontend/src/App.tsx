@@ -1,7 +1,7 @@
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom'
 import type { Rol } from './api/tipos'
 import { useAuth } from './auth/AuthProvider'
-import { rutaInicio } from './rutas'
+import { RUTA_AJUSTES, rutaInicio } from './rutas'
 import Layout from './componentes/Layout'
 import Login from './paginas/Login'
 import Agotados from './paginas/Agotados'
@@ -9,6 +9,7 @@ import Venta from './paginas/mostrador/Venta'
 import Ingresos from './paginas/logistica/Ingresos'
 import IngresoDetalle from './paginas/logistica/IngresoDetalle'
 import Etiquetas from './paginas/logistica/Etiquetas'
+import Ajustes from './paginas/logistica/Ajustes'
 import Productos from './paginas/Productos'
 import Universales from './paginas/admin/Universales'
 import UniversalDetalle from './paginas/admin/UniversalDetalle'
@@ -41,6 +42,9 @@ export default function App() {
           <Route path="/logistica/ingresos" element={<Ingresos />} />
           <Route path="/logistica/ingresos/:id" element={<IngresoDetalle />} />
           <Route path="/logistica/etiquetas" element={<Etiquetas />} />
+        </Route>
+        <Route element={<ConRol roles={['logistica', 'admin']} />}>
+          <Route path={RUTA_AJUSTES} element={<Ajustes />} />
         </Route>
         <Route element={<ConRol roles={['admin']} />}>
           <Route path="/admin/referencias" element={<Navigate to="/productos" replace />} />

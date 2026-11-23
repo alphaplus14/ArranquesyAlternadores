@@ -23,6 +23,7 @@ export type IconoNombre =
   | 'chevron'
   | 'prohibido'
   | 'reactivar'
+  | 'inventario'
 
 /** Trazos propios. No hay fuente de iconos ni librería de UI. */
 export default function Icono({ nombre }: { nombre: IconoNombre }) {
@@ -55,5 +56,6 @@ const trazos: Record<IconoNombre, ReactNode> = {
   clave: <g><circle cx="7.5" cy="15.5" r="3.5" /><path d="M10.6 13.4L21 3M16 8l2 2M19 5l2 2" /></g>,
   chevron: <path d="M6 9l6 6 6-6" />,
   prohibido: <g><circle cx="12" cy="12" r="9" /><path d="M5.6 5.6l12.8 12.8" /></g>,
+  inventario: <path d="M9 3.5h6v3H9zM9 5H6a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-3M8.5 12h7M8.5 16h4.5" />,
   reactivar: <path d="M4 12a8 8 0 0 1 13.7-5.6L20 8.7M20 4v4.7h-4.7M20 12a8 8 0 0 1-13.7 5.6L4 15.3M4 20v-4.7h4.7" />,
 }

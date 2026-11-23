@@ -173,7 +173,8 @@ export default function Productos() {
         lectorRef.current.value = filtro
         lectorRef.current.select()
       }
-      const vendida = data.unidad?.estado === 'vendida'
+      // RF-21: una unidad vendida o retirada no está en inventario; se avisa con su estado.
+      const fuera = data.unidad?.estado === 'vendida' ? 'Unidad vendida' : data.unidad?.estado === 'retirada' ? 'Unidad retirada del inventario' : null
       const leido = data.unidad?.codigo_barras ?? codigo
       // S-23: sin marca; el proveedor y la calidad distinguen la referencia.
       const calidad = referencia.calidad ? NOMBRE_CALIDAD[referencia.calidad] : null
@@ -182,14 +183,14 @@ export default function Productos() {
         codigo: leido,
         metodo,
         titulo: referencia.codigo_referencia,
-        detalle: vendida ? 'Unidad vendida' : `${origen ? `${origen} · ` : ''}existencia ${referencia.existencia}`,
+        detalle: fuera ?? `${origen ? `${origen} · ` : ''}existencia ${referencia.existencia}`,
       })
       // El código leído no se repite si es el mismo de la referencia (p. ej. el de la caja).
       const que = leido === referencia.codigo_referencia ? leido : `${leido} → ${referencia.codigo_referencia}`
       const partes = [que, referencia.descripcion, referencia.proveedor?.nombre, calidad, `existencia ${referencia.existencia}`]
       setAviso({
-        tipo: vendida ? 'atencion' : 'ok',
-        texto: `${vendida ? 'Unidad vendida · ' : ''}${metodo === 'escaneado' ? 'Escaneado' : 'Digitado'} · ${partes.filter(Boolean).join(' · ')}${ids.length > 1 ? ` · y ${ids.length - 1} más con otro proveedor` : ''}`,
+        tipo: fuera ? 'atencion' : 'ok',
+        texto: `${fuera ? `${fuera} · ` : ''}${metodo === 'escaneado' ? 'Escaneado' : 'Digitado'} · ${partes.filter(Boolean).join(' · ')}${ids.length > 1 ? ` · y ${ids.length - 1} más con otro proveedor` : ''}`,
       })
     },
     onError: (e) => {

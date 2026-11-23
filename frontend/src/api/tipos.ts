@@ -37,10 +37,13 @@ export interface Categoria extends Opcion {
   admite_codigo_universal: boolean
 }
 
+export type EstadoUnidad = 'disponible' | 'vendida' | 'retirada'
+
 export interface Unidad {
   id: number
   codigo_barras: string
-  estado: 'disponible' | 'vendida'
+  /** RF-21: `retirada` = salió del inventario por una baja (no se vende). */
+  estado: EstadoUnidad
   referencia_id: number
   referencia?: Referencia
 }
@@ -177,6 +180,66 @@ export interface Venta {
   vence_el: string | null
   items: VentaItem[]
   reversos: Reverso[]
+}
+
+/** RF-21 (S-27): baja (salida) o reintegro de unidades. */
+export type TipoAjuste = 'baja' | 'reintegro'
+export type MotivoBaja = 'garantia' | 'devolucion_proveedor' | 'dano' | 'perdida' | 'otro'
+export type MotivoReintegro = 'error_de_registro' | 'otro'
+export type MotivoAjuste = MotivoBaja | MotivoReintegro
+
+export const NOMBRE_MOTIVO: Record<MotivoAjuste, string> = {
+  garantia: 'Garantía',
+  devolucion_proveedor: 'Devolución a proveedor',
+  dano: 'Daño',
+  perdida: 'Pérdida',
+  error_de_registro: 'Error de registro',
+  otro: 'Otro',
+}
+
+/** Referencia resumida de una unidad en ajustes y devoluciones. */
+export interface ReferenciaUnidad {
+  id: number
+  codigo_referencia: string
+  descripcion: string
+  calidad: Calidad | null
+  proveedor: Opcion
+}
+
+export interface AjusteInventario {
+  id: number
+  tipo: TipoAjuste
+  motivo: MotivoAjuste
+  nota: string | null
+  created_at: string
+  usuario: { id: number; name: string }
+  cantidad: number
+  unidades: Array<{
+    id: number
+    codigo_barras: string
+    estado: EstadoUnidad
+    metodo_captura: MetodoCaptura
+    /** true si sigue retirada y esta es su última baja. */
+    reintegrable: boolean
+    referencia: ReferenciaUnidad
+  }>
+}
+
+/** RF-07 / S-27: la venta de una unidad, para registrar la devolución de un cliente. */
+export interface Devolucion {
+  venta_item_id: number
+  precio_unitario: string | null
+  iva_porcentaje: string | null
+  unidad: { id: number; codigo_barras: string; estado: EstadoUnidad }
+  referencia: ReferenciaUnidad
+  venta: {
+    id: number
+    forma_pago: FormaPago
+    created_at: string
+    cerrada_at: string | null
+    cliente: { id: number; nombre: string; documento: string | null } | null
+  }
+  reverso: { id: number; tipo: 'devolucion' | 'anulacion'; motivo: string; created_at: string } | null
 }
 
 export interface Auditoria {

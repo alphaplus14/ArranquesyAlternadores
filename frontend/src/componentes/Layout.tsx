@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
+import { RUTA_AJUSTES } from '../rutas'
 import logo from '../assets/logo-la8va.jpg'
 import Icono, { type IconoNombre } from './Icono'
 import MiCuenta from './MiCuenta'
@@ -49,6 +50,7 @@ export default function Layout() {
           items: [
             { to: '/logistica/ingresos', texto: 'Ingresos', icono: 'ingreso', fin: true },
             { to: '/logistica/etiquetas', texto: 'Etiquetas', icono: 'etiqueta' },
+            { to: RUTA_AJUSTES, texto: 'Ajustes', icono: 'inventario' }, // RF-21
           ],
         }
       : null,
