@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 
-/** Historial inmutable. origen: ingreso, venta o reverso (morph map en AppServiceProvider). */
+/** Historial inmutable. origen: ingreso, venta, reverso o ajuste (morph map en AppServiceProvider). */
 class MovimientoInventario extends Model
 {
     use Inmutable;

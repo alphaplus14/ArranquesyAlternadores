@@ -4,8 +4,10 @@ namespace App\Services;
 
 use App\Enums\EstadoUnidad;
 use App\Enums\MetodoCaptura;
+use App\Enums\TipoAjuste;
 use App\Enums\TipoMovimiento;
 use App\Exceptions\ReglaInventarioException;
+use App\Models\AjusteInventario;
 use App\Models\Ingreso;
 use App\Models\IngresoItem;
 use App\Models\MovimientoInventario;
@@ -95,6 +97,11 @@ class InventarioService
     {
         $this->exigirTransaccion();
 
+        // RF-21: una unidad retirada no se vende; mensaje propio para que mostrador sepa por qué.
+        if ($unidad->estaRetirada()) {
+            throw new ReglaInventarioException("Unidad retirada del inventario: {$unidad->codigo_barras}.", 422);
+        }
+
         if (! $unidad->estaDisponible()) {
             throw new ReglaInventarioException("La unidad {$unidad->codigo_barras} no está disponible.");
         }
@@ -118,12 +125,74 @@ class InventarioService
             throw new ReglaInventarioException("La unidad {$unidad->codigo_barras} ya está en inventario.");
         }
 
+        // RF-21: solo vuelve lo vendido; una retirada se devuelve con un reintegro.
+        if ($unidad->estaRetirada()) {
+            throw new ReglaInventarioException("La unidad {$unidad->codigo_barras} está retirada del inventario.", 422);
+        }
+
         $unidad->estado = EstadoUnidad::Disponible;
         $unidad->save();
 
         Referencia::whereKey($unidad->referencia_id)->increment('existencia');
 
         $this->registrarMovimiento(TipoMovimiento::Reverso, $unidad, $usuarioId, null, 'reverso', $reverso->id);
+    }
+
+    /**
+     * RF-21 (S-27): baja. La unidad disponible sale del inventario (garantía, devolución a
+     * proveedor, daño, pérdida…). La unidad debe venir bloqueada con lockForUpdate(); el
+     * decremento bloquea la fila de la referencia en la misma transacción.
+     */
+    public function retirar(Unidad $unidad, AjusteInventario $ajuste, int $usuarioId, MetodoCaptura $metodo): void
+    {
+        $this->exigirTransaccion();
+        $this->exigirEstadoPara(TipoAjuste::Baja, $unidad);
+
+        $unidad->estado = EstadoUnidad::Retirada;
+        $unidad->save();
+
+        Referencia::whereKey($unidad->referencia_id)->decrement('existencia');
+
+        $this->registrarMovimiento(TipoMovimiento::Baja, $unidad, $usuarioId, $metodo, 'ajuste', $ajuste->id);
+    }
+
+    /**
+     * RF-21 (S-27): reintegro. Una unidad retirada por error vuelve a estar disponible. La unidad
+     * debe venir bloqueada.
+     */
+    public function reintegrar(Unidad $unidad, AjusteInventario $ajuste, int $usuarioId, MetodoCaptura $metodo): void
+    {
+        $this->exigirTransaccion();
+        $this->exigirEstadoPara(TipoAjuste::Reintegro, $unidad);
+
+        $unidad->estado = EstadoUnidad::Disponible;
+        $unidad->save();
+
+        Referencia::whereKey($unidad->referencia_id)->increment('existencia');
+
+        $this->registrarMovimiento(TipoMovimiento::Reintegro, $unidad, $usuarioId, $metodo, 'ajuste', $ajuste->id);
+    }
+
+    /**
+     * RF-21: una baja exige una unidad disponible; un reintegro, una retirada. Lo usan también la
+     * consulta previa de la pantalla (AjusteService::verificar), para que el mensaje sea el mismo.
+     * `codigo` va en el cuerpo del 422 para que la pantalla marque la unidad que falló.
+     */
+    public function exigirEstadoPara(TipoAjuste $tipo, Unidad $unidad): void
+    {
+        $codigo = $unidad->codigo_barras;
+
+        $mensaje = match (true) {
+            $tipo === TipoAjuste::Baja && $unidad->estado === EstadoUnidad::Vendida => "La unidad {$codigo} está vendida; no se puede retirar.",
+            $tipo === TipoAjuste::Baja && $unidad->estado === EstadoUnidad::Retirada => "La unidad {$codigo} ya está retirada del inventario.",
+            $tipo === TipoAjuste::Reintegro && $unidad->estado === EstadoUnidad::Disponible => "La unidad {$codigo} ya está en inventario; no hay nada que reintegrar.",
+            $tipo === TipoAjuste::Reintegro && $unidad->estado === EstadoUnidad::Vendida => "La unidad {$codigo} está vendida; no se puede reintegrar.",
+            default => null,
+        };
+
+        if ($mensaje !== null) {
+            throw new ReglaInventarioException($mensaje, 422, ['codigo' => $codigo]);
+        }
     }
 
     private function registrarMovimiento(

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AjusteController;
 use App\Http\Controllers\Api\AuditoriaController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BusquedaController;
@@ -95,6 +96,15 @@ Route::middleware('auth:sanctum')->group(function () {
 
         Route::get('/etiquetas/tamanos', [EtiquetaController::class, 'tamanos']);
         Route::post('/etiquetas', [EtiquetaController::class, 'generar']);
+    });
+
+    // RF-21 (S-27): salidas y reintegros de inventario. Logística y admin; mostrador 403.
+    // Sin DELETE: los ajustes son inmutables.
+    Route::middleware('rol:admin,logistica')->group(function () {
+        Route::get('/ajustes', [AjusteController::class, 'index']);
+        Route::get('/ajustes/unidad', [AjusteController::class, 'unidad'])->middleware('medir:500')->name('ajustes.unidad');
+        Route::post('/ajustes/salidas', [AjusteController::class, 'salidas'])->name('ajustes.salidas');
+        Route::post('/ajustes/reintegros', [AjusteController::class, 'reintegros'])->name('ajustes.reintegros');
     });
 
     // Módulo de mostrador: venta = descargue (RF-06, RF-12) y reversos (RF-07).

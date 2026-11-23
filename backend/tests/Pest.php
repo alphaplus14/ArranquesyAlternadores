@@ -69,3 +69,27 @@ function ingresar(Referencia $referencia, int $cantidad, ?User $usuario = null):
 
     return $servicio->confirmar($ingreso, $usuario);
 }
+
+/**
+ * RF-06: vende la primera unidad disponible de la referencia como mostrador (contado o, con
+ * $venta, a crédito) y vuelve a la sesión anterior. Devuelve [ventaId, código de la unidad].
+ */
+function venderComoMostrador(string $codigoReferencia, bool $cerrar = true, array $venta = []): array
+{
+    $anterior = auth()->user();
+    actuarComo(Rol::Mostrador);
+
+    $codigo = unidadDe($codigoReferencia)->codigo_barras;
+    $ventaId = test()->postJson('/api/ventas', $venta)->assertCreated()->json('id');
+    test()->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => $codigo, 'metodo_captura' => 'escaneado'])->assertCreated();
+
+    if ($cerrar) {
+        test()->postJson("/api/ventas/{$ventaId}/cerrar")->assertOk();
+    }
+
+    if ($anterior) {
+        test()->actingAs($anterior);
+    }
+
+    return [$ventaId, $codigo];
+}

@@ -38,4 +38,10 @@ class Unidad extends Model
     {
         return $this->estado === EstadoUnidad::Disponible;
     }
+
+    /** RF-21: salió del inventario por una baja; no se vende ni se descuenta. */
+    public function estaRetirada(): bool
+    {
+        return $this->estado === EstadoUnidad::Retirada;
+    }
 }
