@@ -721,7 +721,7 @@ function DialogoReferencia({ codigo, proveedor, onCreada, onCerrar }: {
         <label>Precio de venta
           <input type="number" min="0.01" step="0.01" required aria-invalid={errorPrecio !== null} {...campo('precio_venta')} />
         </label>
-        <p className={errorPrecio ? 'ayuda error' : 'ayuda'}>{errorPrecio ?? 'Mayor que 0. Si no lo conoce, consúltelo con el administrador antes de crearla.'}</p>
+        <p className={errorPrecio ? 'ayuda error' : 'ayuda'}>{errorPrecio ?? 'Con IVA incluido. Mayor que 0. Si no lo conoce, consúltelo con el administrador antes de crearla.'}</p>
         {crear.isError && <div className="aviso error">{mensajeError(crear.error)}</div>}
         <div className="acciones">
           <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>

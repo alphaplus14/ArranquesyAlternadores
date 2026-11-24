@@ -205,6 +205,19 @@ export interface Venta {
   vence_el: string | null
   items: VentaItem[]
   reversos: Reverso[]
+  /** S-33 / S-15: precios con IVA incluido; total de los ítems vigentes y su desglose. */
+  totales?: TotalesVenta
+}
+
+/** S-33: total = suma de ítems vigentes (con IVA); base e IVA incluido extraídos por ítem. */
+export interface TotalesVenta {
+  total: string
+  base: string
+  iva_incluido: string
+  /** Porcentajes de IVA distintos de los ítems vigentes (uno solo = se muestra en la línea de IVA). */
+  iva_porcentajes: number[]
+  /** Ítems antiguos sin IVA registrado: no se desglosan. */
+  items_sin_iva: number
 }
 
 /** RF-21 (S-27): baja (salida) o reintegro de unidades. */

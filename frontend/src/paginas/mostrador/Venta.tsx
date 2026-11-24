@@ -9,8 +9,9 @@ import DialogoElegirReferencia from '../../componentes/mostrador/DialogoElegirRe
 import Medida from '../../componentes/Medida'
 import Resumen from '../../componentes/Resumen'
 import { useScanner } from '../../hooks/useScanner'
+import { rotuloIvaIncluido } from '../../utilidades/cartera'
 import { useDebounce } from '../../hooks/useDebounce'
-import { formatoNumero, leerNumero } from '../../componentes/numeros'
+import { formatoNumero, leerNumero, pesos } from '../../componentes/numeros'
 
 interface Aviso { tipo: 'ok' | 'error'; texto: string }
 interface ReversoPendiente { item?: VentaItem; tipo: 'devolucion' | 'anulacion' }
@@ -70,7 +71,7 @@ export default function Venta() {
 
   const recientes = useQuery({
     queryKey: ['ventas', 'cerradas'],
-    queryFn: async () => (await api.get<Pagina<{ id: number; created_at: string; items_count: number; forma_pago: TVenta['forma_pago']; cliente: { id: number; nombre: string } | null }>>('/ventas', { params: { estado: 'cerrada' } })).data,
+    queryFn: async () => (await api.get<Pagina<{ id: number; created_at: string; items_count: number; total: string | number; forma_pago: TVenta['forma_pago']; cliente: { id: number; nombre: string } | null }>>('/ventas', { params: { estado: 'cerrada' } })).data,
   })
 
   // Sin cuerpo = contado, igual que antes del crédito (RF-14).
@@ -222,7 +223,7 @@ export default function Venta() {
         {v && (
           <table className="tabla-apilable tabla-venta">
             <thead>
-              <tr><th>Código</th><th>Referencia</th><th>Proveedor</th><th>Precio</th><th>Captura</th><th>Usuario</th><th>Hora</th><th></th></tr>
+              <tr><th>Código</th><th>Referencia</th><th>Proveedor</th><th title="Precio con IVA incluido">Precio (IVA incl.)</th><th>Captura</th><th>Usuario</th><th>Hora</th><th></th></tr>
             </thead>
             <tbody>
               {v.items.map((i) => (
@@ -271,6 +272,18 @@ export default function Venta() {
           </table>
         )}
 
+        {v?.totales && v.items.length > 0 && (
+          <div className="totales-venta" aria-label="Totales de la venta">
+            <p className="ayuda">Precios con IVA incluido</p>
+            <dl>
+              <div><dt>Base (sin IVA)</dt><dd>{pesos(v.totales.base)}</dd></div>
+              <div><dt>{rotuloIvaIncluido(v.totales.iva_porcentajes)}</dt><dd>{pesos(v.totales.iva_incluido)}</dd></div>
+              <div className="linea-total"><dt>Total</dt><dd>{pesos(v.totales.total)}</dd></div>
+            </dl>
+            {v.totales.items_sin_iva > 0 && <p className="ayuda">{v.totales.items_sin_iva} ítem(s) antiguos sin IVA registrado: no se desglosan.</p>}
+          </div>
+        )}
+
         {v && v.reversos.length > 0 && (
           <>
             <h3>Reversos</h3>
@@ -291,7 +304,7 @@ export default function Venta() {
           {recientes.data?.data.map((r) => (
             <li key={r.id}>
               <button className="enlace" onClick={() => setVentaId(r.id)}>#{r.id}</button>
-              {r.forma_pago === 'credito' && <> <span className="chip credito">Crédito</span> {r.cliente?.nombre}</>} · {r.items_count} ítems · {new Date(r.created_at).toLocaleString()}
+              {r.forma_pago === 'credito' && <> <span className="chip credito">Crédito</span> {r.cliente?.nombre}</>} · {r.items_count} ítems · <span title="Total con IVA incluido">{pesos(r.total)}</span> · {new Date(r.created_at).toLocaleString()}
             </li>
           ))}
         </ul>
@@ -580,7 +593,7 @@ function CeldaPrecio({ ventaId, item, onGuardado, onTerminar }: {
         onBlur={() => confirmar(true)}
       />
       <small id={`precio-${item.id}-ayuda`} className={error || guardar.isError ? 'ayuda error' : 'ayuda'}>
-        {guardar.isError ? mensajeError(guardar.error) : error ?? 'Enter guarda · Esc cancela'}
+        {guardar.isError ? mensajeError(guardar.error) : error ?? 'Con IVA incluido · Enter guarda · Esc cancela'}
       </small>
     </div>
   )

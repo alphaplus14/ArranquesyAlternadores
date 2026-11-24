@@ -14,6 +14,7 @@ use App\Services\ReversoService;
 use App\Services\VentaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 /**
@@ -27,12 +28,20 @@ class VentaController extends Controller
         private readonly ReversoService $reversos,
     ) {}
 
-    /** Ventas recientes; por defecto, las abiertas del usuario para retomarlas. */
+    /**
+     * Ventas recientes; por defecto, las abiertas del usuario para retomarlas.
+     * S-33: total con IVA incluido = suma de los ítems vigentes, en una subconsulta (sin N+1).
+     */
     public function index(Request $request): JsonResponse
     {
         $pagina = Venta::query()
             ->with('usuario:id,name', 'cliente:id,nombre')
             ->withCount('items')
+            ->addSelect(['total' => DB::table('venta_items as vi')
+                ->leftJoin('reverso_items as ri', 'ri.venta_item_id', '=', 'vi.id')
+                ->whereColumn('vi.venta_id', 'ventas.id')
+                ->whereNull('ri.id')
+                ->selectRaw('COALESCE(SUM(vi.precio_unitario), 0)')])
             ->when($request->query('estado'), fn ($q, $v) => $q->where('estado', $v))
             ->when(! $request->boolean('todas'), fn ($q) => $q->where('usuario_id', $request->user()->id))
             ->orderByDesc('id')

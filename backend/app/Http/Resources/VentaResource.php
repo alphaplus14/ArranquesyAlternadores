@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\Venta;
+use App\Support\TotalesVenta;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -37,6 +38,13 @@ class VentaResource extends JsonResource
                 'unidad' => new UnidadResource($item->unidad),
                 'reverso_id' => $item->reversoItem?->reverso_id,
             ])),
+            // S-33 / S-15: precios con IVA incluido. Total = suma de los ítems vigentes; base e IVA
+            // incluido se extraen (TotalesVenta, único lugar del cálculo). Usa los ítems ya cargados.
+            'totales' => $this->whenLoaded('items', fn () => TotalesVenta::desglosar($this->items->map(fn ($item) => [
+                'precio' => $item->precio_unitario,
+                'iva' => $item->iva_porcentaje,
+                'vigente' => $item->reversoItem === null,
+            ]))->aArreglo()),
             'reversos' => $this->whenLoaded('reversos', fn () => $this->reversos->map(fn ($r) => [
                 'id' => $r->id,
                 'tipo' => $r->tipo,

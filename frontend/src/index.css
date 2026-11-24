@@ -1121,6 +1121,17 @@ input[aria-invalid='true']:not([type='checkbox']):not([type='radio']):focus-visi
 .opcion-factura small { color: var(--suave); }
 .desglose-dirigido, .aplicado-a { color: var(--suave); }
 .dialogo-apilado select { min-height: 44px; } /* táctil: igual que los campos de texto del diálogo */
+/* S-33: totales de la venta, con IVA incluido. */
+.totales-venta { margin: 12px 0 4px; margin-left: auto; max-width: 360px; }
+.totales-venta .ayuda { margin: 0 0 6px; text-align: right; }
+.totales-venta dl { margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.totales-venta dl > div { display: flex; justify-content: space-between; gap: 16px; }
+.totales-venta dt { color: var(--suave); }
+.totales-venta dd { margin: 0; font-variant-numeric: tabular-nums; }
+.totales-venta .linea-total { border-top: 1px solid var(--borde); padding-top: 6px; margin-top: 2px; }
+.totales-venta .linea-total dt { color: var(--texto); font-weight: 600; align-self: center; }
+.totales-venta .linea-total dd { font-size: 1.5rem; font-weight: 700; }
+@media (max-width: 639px) { .totales-venta { max-width: none; } }
 .chip.saldo-favor { background: var(--ok-fondo); color: var(--ok); font-weight: 600; }
 .chip.estado-venta { font-weight: 600; white-space: nowrap; }
 .chip.estado-venta.al_dia { background: var(--ok-fondo); color: var(--ok); }

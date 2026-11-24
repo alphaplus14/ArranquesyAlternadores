@@ -226,14 +226,14 @@ export default function CarteraCliente() {
             ) : (
             <table className={cargandoVentas ? 'tabla-apilable tabla-cartera-ventas actualizando' : 'tabla-apilable tabla-cartera-ventas'}>
               <caption className="solo-lector">Ventas a crédito, de la más antigua a la más reciente; los abonos se aplican en ese orden</caption>
-              <thead><tr><th>Venta</th><th>Factura</th><th>Cierre</th><th className="col-numero">Total neto</th><th>Vence</th><th className="col-numero">Aplicado</th><th className="col-numero">Pendiente</th><th>Estado</th><th><span className="solo-lector">Acciones</span></th></tr></thead>
+              <thead><tr><th>Venta</th><th>Factura</th><th>Cierre</th><th className="col-numero" title="Total neto de reversos, con IVA incluido">Total (IVA incl.)</th><th>Vence</th><th className="col-numero">Aplicado</th><th className="col-numero">Pendiente</th><th>Estado</th><th><span className="solo-lector">Acciones</span></th></tr></thead>
               <tbody>
                 {ventas.map((v) => (
                   <tr key={v.id}>
                     <td data-etiqueta="Venta"><Link to={`/mostrador/venta?venta=${v.id}`}>#{v.id}</Link></td>
                     <td data-etiqueta="Factura">{v.factura_contapyme || '—'}</td>
                     <td data-etiqueta="Cierre">{fechaHora(v.cerrada_at.replace(' ', 'T') + 'Z')}</td>
-                    <td data-etiqueta="Total neto" className="col-numero">{pesos(v.total)}</td>
+                    <td data-etiqueta="Total" title="Total neto de reversos, con IVA incluido" className="col-numero">{pesos(v.total)}</td>
                     <td data-etiqueta="Vence">{v.vence_el ? fechaCorta(v.vence_el) : '—'}</td>
                     <td data-etiqueta="Aplicado" className="col-numero">
                       {pesos(v.aplicado)}
@@ -266,7 +266,7 @@ export default function CarteraCliente() {
             {errorFechas ? <p className="vacio">Corrija el rango de fechas.</p> : cuenta.isError ? <div className="aviso error">{mensajeError(cuenta.error)}</div> : !cuenta.data ? <p className="vacio">Cargando…</p> : (
               <table className={cuenta.isFetching ? 'tabla-apilable tabla-cuenta actualizando' : 'tabla-apilable tabla-cuenta'}>
                 <caption className="solo-lector">Estado de cuenta en orden de fecha con saldo acumulado</caption>
-                <thead><tr><th>Fecha</th><th>Movimiento</th><th className="col-numero">Cargo</th><th className="col-numero">Abono</th><th className="col-numero">Saldo</th><th><span className="solo-lector">Acciones</span></th></tr></thead>
+                <thead><tr><th>Fecha</th><th>Movimiento</th><th className="col-numero" title="Ventas por su total con IVA incluido">Cargo (IVA incl.)</th><th className="col-numero">Abono</th><th className="col-numero">Saldo</th><th><span className="solo-lector">Acciones</span></th></tr></thead>
                 <tbody>
                   {(rango.desde !== null) && (
                     <tr className="fila-saldo-inicial">
