@@ -53,16 +53,18 @@ class AjusteService
 
     /**
      * Consulta previa de la pantalla al escanear un código para el lote. No escribe: la regla se
-     * vuelve a validar, con la unidad bloqueada, al registrar el ajuste.
+     * vuelve a validar, con las unidades bloqueadas, al registrar el ajuste.
      *
      * S-34 (solo salidas): si el código no es una etiqueta, se resuelve la referencia por el código del
-     * proveedor o del fabricante y se asigna una unidad disponible que no esté en $excluir (las ya
-     * elegidas en el lote). $referenciaId resuelve un código que está en varias referencias. La unidad
-     * devuelta lleva origen_codigo.
+     * proveedor o del fabricante. S-38: se asignan $cantidad unidades disponibles DISTINTAS que no estén
+     * en $excluir (las ya elegidas en el lote); si hay menos, 422 y ninguna. Con una etiqueta la
+     * cantidad es siempre 1. $referenciaId resuelve un código que está en varias referencias. Cada
+     * unidad devuelta lleva origen_codigo.
      *
      * @param  list<int>  $excluir
+     * @return Collection<int, Unidad>
      */
-    public function verificar(TipoAjuste $tipo, string $codigo, ?int $referenciaId = null, array $excluir = []): Unidad
+    public function verificar(TipoAjuste $tipo, string $codigo, ?int $referenciaId = null, array $excluir = [], int $cantidad = 1): Collection
     {
         $codigo = trim($codigo);
         $relaciones = ['referencia:id,codigo_referencia,descripcion,calidad,activo,proveedor_id', 'referencia.proveedor:id,nombre'];
@@ -73,11 +75,14 @@ class AjusteService
             ->first(['id', 'referencia_id', 'codigo_barras', 'estado']);
 
         if ($unidad) {
+            if ($cantidad > 1) {
+                throw new ReglaInventarioException("Cada etiqueta es una unidad: {$codigo} se agrega de a una (cantidad 1).", 422, ['codigo' => $codigo]);
+            }
             $this->inventario->exigirEstadoPara($tipo, $unidad);
             $this->exigirReferenciaActiva($tipo, $unidad);
             $unidad->setAttribute('origen_codigo', OrigenCodigo::Etiqueta->value);
 
-            return $unidad;
+            return collect([$unidad]);
         }
 
         if ($tipo !== TipoAjuste::Baja) {
@@ -85,12 +90,13 @@ class AjusteService
         }
 
         $referencia = $this->resolver->referencia($codigo, $referenciaId, bloquear: false, accion: 'se retira', noExiste: fn () => $this->noExiste($codigo));
-        $asignada = $this->resolver->unidadDisponible($referencia, $excluir, bloquear: false);
+        $ids = $this->resolver->unidadesDisponibles($referencia, $cantidad, $excluir)->pluck('id');
 
-        $unidad = Unidad::query()->whereKey($asignada->id)->with($relaciones)->first(['id', 'referencia_id', 'codigo_barras', 'estado']);
-        $unidad->setAttribute('origen_codigo', OrigenCodigo::Referencia->value);
-
-        return $unidad;
+        return Unidad::query()->whereKey($ids)->with($relaciones)->orderBy('id')
+            ->get(['id', 'referencia_id', 'codigo_barras', 'estado'])
+            // Mismo orden en que las eligió el criterio (sin etiqueta primero).
+            ->sortBy(fn (Unidad $u) => $ids->search($u->id))->values()
+            ->each(fn (Unidad $u) => $u->setAttribute('origen_codigo', OrigenCodigo::Referencia->value));
     }
 
     /**

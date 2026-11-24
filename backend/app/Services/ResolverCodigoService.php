@@ -119,6 +119,45 @@ class ResolverCodigoService
         return $unidad ?? throw $this->sinUnidades($referencia);
     }
 
+    /**
+     * S-38: $cantidad unidades DISTINTAS disponibles con el mismo criterio (primero sin etiqueta
+     * impresa por id, luego las etiquetadas por id), sin las de $excluir. Si hay menos que
+     * $cantidad, 422 y no se asigna ninguna. Con $bloquear, FOR UPDATE SKIP LOCKED como unidadDisponible.
+     *
+     * @param  list<int>  $excluir
+     * @return Collection<int, Unidad>
+     */
+    public function unidadesDisponibles(Referencia $referencia, int $cantidad, array $excluir = [], bool $bloquear = false): Collection
+    {
+        $disponibles = fn () => Unidad::query()
+            ->where('referencia_id', $referencia->id)
+            ->where('estado', EstadoUnidad::Disponible->value)
+            ->when($excluir !== [], fn ($q) => $q->whereNotIn('id', $excluir))
+            ->orderBy('id')
+            ->when($bloquear, fn ($q) => $q->lock('for update skip locked'));
+
+        $sinEtiqueta = $disponibles()->forceIndex('unidades_ref_estado_etiqueta_index')->whereNull('etiqueta_impresa_at')->limit($cantidad)->get();
+        $faltan = $cantidad - $sinEtiqueta->count();
+        $unidades = $faltan > 0
+            ? $sinEtiqueta->concat($disponibles()->whereNotNull('etiqueta_impresa_at')->limit($faltan)->get())
+            : $sinEtiqueta;
+
+        if ($unidades->isEmpty()) {
+            throw $this->sinUnidades($referencia);
+        }
+
+        if ($unidades->count() < $cantidad) {
+            $n = $unidades->count();
+            throw new ReglaInventarioException(
+                "Solo hay {$n} ".($n === 1 ? 'unidad disponible' : 'unidades disponibles')." de {$referencia->codigo_referencia} ({$referencia->proveedor?->nombre}); pidió {$cantidad}. No se agregó ninguna.",
+                422,
+                ['disponibles' => $n],
+            );
+        }
+
+        return $unidades->values();
+    }
+
     public function sinUnidades(Referencia $referencia): ReglaInventarioException
     {
         return new ReglaInventarioException(

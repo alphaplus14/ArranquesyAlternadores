@@ -62,13 +62,13 @@ it('S-34 (a): una salida por código de proveedor asigna la unidad sin etiqueta 
 
     actuarComo(Rol::Logistica);
     $this->getJson('/api/ajustes/unidad?tipo=baja&codigo=sal-1')->assertOk()
-        ->assertJsonPath('id', $u2->id)
-        ->assertJsonPath('codigo_barras', $u2->codigo_barras)
-        ->assertJsonPath('origen_codigo', 'referencia')
-        ->assertJsonPath('referencia.codigo_referencia', 'SAL-1');
+        ->assertJsonPath('unidades.0.id', $u2->id)
+        ->assertJsonPath('unidades.0.codigo_barras', $u2->codigo_barras)
+        ->assertJsonPath('unidades.0.origen_codigo', 'referencia')
+        ->assertJsonPath('unidades.0.referencia.codigo_referencia', 'SAL-1');
 
     // Una etiqueta del local sigue igual, con origen etiqueta.
-    $this->getJson("/api/ajustes/unidad?tipo=baja&codigo={$u1->codigo_barras}")->assertOk()->assertJsonPath('origen_codigo', 'etiqueta');
+    $this->getJson("/api/ajustes/unidad?tipo=baja&codigo={$u1->codigo_barras}")->assertOk()->assertJsonPath('unidades.0.origen_codigo', 'etiqueta');
 
     $ajusteId = salida([['codigo' => 'SAL-1', 'metodo_captura' => 'digitado', 'origen_codigo' => 'referencia', 'unidad_codigo' => $u2->codigo_barras]])
         ->assertCreated()
@@ -89,8 +89,8 @@ it('S-34 (b): un lote que repite el código toma unidades distintas; con una sol
     [$u1, $u2] = unidadesS34($ref)->all();
 
     actuarComo(Rol::Logistica);
-    $this->getJson('/api/ajustes/unidad?tipo=baja&codigo=SAL-2')->assertOk()->assertJsonPath('id', $u1->id);
-    $this->getJson("/api/ajustes/unidad?tipo=baja&codigo=SAL-2&excluir[]={$u1->id}")->assertOk()->assertJsonPath('id', $u2->id);
+    $this->getJson('/api/ajustes/unidad?tipo=baja&codigo=SAL-2')->assertOk()->assertJsonPath('unidades.0.id', $u1->id);
+    $this->getJson("/api/ajustes/unidad?tipo=baja&codigo=SAL-2&excluir[]={$u1->id}")->assertOk()->assertJsonPath('unidades.0.id', $u2->id);
 
     // Sin unidad_codigo el registro también asigna unidades distintas.
     salida([
@@ -122,7 +122,7 @@ it('S-34 (c): un código en dos referencias pide elegir; con referencia_id resue
         ->and($r->json('referencias.1'))->toMatchArray(['proveedor' => 'Prov B', 'existencia' => 1]);
 
     $this->getJson("/api/ajustes/unidad?tipo=baja&codigo=DUP-S&referencia_id={$b->id}")->assertOk()
-        ->assertJsonPath('referencia_id', $b->id);
+        ->assertJsonPath('unidades.0.referencia_id', $b->id);
 });
 
 it('S-34 (d): referencia sin unidades, desactivada o inexistente: error claro', function () {
@@ -148,7 +148,7 @@ it('S-34 (e): el lote falla completo si la unidad asignada se vendió entre la v
     [$u1, $u2] = unidadesS34($ref)->all();
 
     actuarComo(Rol::Logistica);
-    $asignada = $this->getJson('/api/ajustes/unidad?tipo=baja&codigo=ATO-1')->assertOk()->json('codigo_barras');
+    $asignada = $this->getJson('/api/ajustes/unidad?tipo=baja&codigo=ATO-1')->assertOk()->json('unidades.0.codigo_barras');
     expect($asignada)->toBe($u1->codigo_barras);
 
     // Otro usuario la vende en medio.

@@ -104,9 +104,9 @@ it('RF-21 (b): la consulta previa de la pantalla rechaza con el mismo mensaje', 
     $libre = unidadDe('AC-77812');
 
     $this->getJson("/api/ajustes/unidad?tipo=baja&codigo={$libre->codigo_barras}")->assertOk()
-        ->assertJsonPath('codigo_barras', $libre->codigo_barras)
-        ->assertJsonPath('referencia.codigo_referencia', 'AC-77812')
-        ->assertJsonPath('referencia.proveedor.nombre', 'Autopartes Central');
+        ->assertJsonPath('unidades.0.codigo_barras', $libre->codigo_barras)
+        ->assertJsonPath('unidades.0.referencia.codigo_referencia', 'AC-77812')
+        ->assertJsonPath('unidades.0.referencia.proveedor.nombre', 'Autopartes Central');
 
     $this->getJson("/api/ajustes/unidad?tipo=baja&codigo={$vendida}")->assertUnprocessable()
         ->assertJsonPath('message', "La unidad {$vendida} está vendida; no se puede retirar.");

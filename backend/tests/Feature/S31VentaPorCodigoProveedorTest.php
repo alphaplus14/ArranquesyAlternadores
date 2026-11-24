@@ -196,8 +196,8 @@ it('S-31 (j) / S-34: salidas y devoluciones ya no rechazan el código de una ref
     actuarComo(Rol::Logistica);
     // S-34: la salida asigna una unidad de la referencia.
     $this->getJson('/api/ajustes/unidad?tipo=baja&codigo=AJ-REF')->assertOk()
-        ->assertJsonPath('origen_codigo', 'referencia')
-        ->assertJsonPath('referencia_id', $ref->id);
+        ->assertJsonPath('unidades.0.origen_codigo', 'referencia')
+        ->assertJsonPath('unidades.0.referencia_id', $ref->id);
     // S-34: la devolución pide elegir la venta (no hay ventas cerradas de esta referencia).
     $this->getJson('/api/devoluciones/consulta?codigo=AJ-REF')->assertUnprocessable()
         ->assertJsonPath('message', 'No hay ventas cerradas sin devolver de la referencia AJ-REF.');

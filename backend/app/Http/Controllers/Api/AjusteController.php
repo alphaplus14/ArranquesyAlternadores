@@ -39,9 +39,10 @@ class AjusteController extends Controller
     /**
      * Consulta previa al agregar un código al lote: misma regla y mismo mensaje que al registrar.
      * S-34 (salidas): acepta el código del proveedor o del fabricante; referencia_id resuelve la
-     * ambigüedad y excluir[] son las unidades ya elegidas en el lote.
+     * ambigüedad y excluir[] son las unidades ya elegidas en el lote. S-38: cantidad N asigna N
+     * unidades distintas; responde {unidades: [...]}.
      */
-    public function unidad(Request $request): UnidadResource
+    public function unidad(Request $request): JsonResponse
     {
         $datos = $request->validate([
             'codigo' => ['required', 'string', 'max:32'],
@@ -49,14 +50,19 @@ class AjusteController extends Controller
             'referencia_id' => ['nullable', 'integer'],
             'excluir' => ['nullable', 'array', 'max:'.AjusteService::MAX_UNIDADES],
             'excluir.*' => ['integer'],
+            // S-38: cuántas unidades asignar con un código de proveedor (con una etiqueta, 1).
+            'cantidad' => ['nullable', 'integer', 'min:1', 'max:'.AjusteService::MAX_UNIDADES],
         ]);
 
-        return new UnidadResource($this->ajustes->verificar(
+        $unidades = $this->ajustes->verificar(
             TipoAjuste::from($datos['tipo']),
             $datos['codigo'],
             isset($datos['referencia_id']) ? (int) $datos['referencia_id'] : null,
             array_map('intval', $datos['excluir'] ?? []),
-        ));
+            (int) ($datos['cantidad'] ?? 1),
+        );
+
+        return response()->json(['unidades' => UnidadResource::collection($unidades)]);
     }
 
     public function salidas(AjusteRequest $request): JsonResponse
