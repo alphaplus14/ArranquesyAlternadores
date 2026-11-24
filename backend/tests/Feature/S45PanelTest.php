@@ -13,7 +13,6 @@ use App\Models\User;
 use App\Models\Venta;
 use App\Services\ReversoService;
 use App\Services\VentaService;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /*
@@ -240,7 +239,8 @@ it('S-45 (8): control da las bajas con su valor, los reversos, el % digitado y l
         ->and($r->json('capturas'))->toBe(['total' => 4, 'digitadas' => 1, 'porcentaje_digitado' => 25])
         ->and(collect($r->json('ventas_por_usuario'))->map(fn ($u) => [$u['usuario']['id'], $u['ventas'], $u['unidades'], $u['total']])->all())
         ->toBe([[$m1->id, 1, 3, '357000.00'], [$m2->id, 1, 1, '119000.00']])
-        ->and($r->json('ventas_abiertas_viejas'))->toBe(1)
+        // S-46: la abierta vieja quedó sin ítems vigentes (se anuló su único ítem): no avisa.
+        ->and($r->json('ventas_abiertas_viejas'))->toBe(0)
         ->and($r->json('dias_sin_ventas'))->toBe(29);
 });
 

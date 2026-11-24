@@ -3,12 +3,12 @@
 namespace App\Http\Controllers\Api;
 
 use App\Enums\EstadoVenta;
-use App\Enums\MetodoCaptura;
 use App\Enums\Rol;
 use App\Enums\TipoReverso;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\AbrirVentaRequest;
 use App\Http\Requests\CambiarPrecioItemRequest;
+use App\Http\Requests\EscanearVentaRequest;
 use App\Http\Resources\VentaItemResource;
 use App\Http\Resources\VentaResource;
 use App\Models\Venta;
@@ -18,6 +18,7 @@ use App\Services\VentaService;
 use App\Support\TotalesVenta;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
@@ -60,17 +61,25 @@ class VentaController extends Controller
         return response()->json($pagina);
     }
 
-    /** RF-14: de contado o a crédito. */
+    /**
+     * RF-14: de contado o a crédito. S-46: la venta nace con su primer escaneo, en una transacción;
+     * si la lectura falla (incluido "hay que elegir referencia") no queda ninguna venta. Responde
+     * igual que escanear.
+     */
     public function store(AbrirVentaRequest $request): JsonResponse
     {
-        $venta = $this->ventas->abrir(
+        $items = $this->ventas->abrirYEscanear(
             $request->user(),
             $request->formaPago(),
             $request->validated('cliente_id'),
             $request->validated('factura_contapyme'),
+            $request->codigo(),
+            $request->metodo(),
+            $request->referenciaId(),
+            $request->cantidad(),
         );
 
-        return (new VentaResource($this->cargar($venta)))->response()->setStatusCode(201);
+        return $this->respuestaEscaneo($request, $items);
     }
 
     public function show(Venta $venta): VentaResource
@@ -78,34 +87,32 @@ class VentaController extends Controller
         return new VentaResource($this->cargar($venta));
     }
 
-    public function escanear(Request $request, Venta $venta): JsonResponse
+    public function escanear(EscanearVentaRequest $request, Venta $venta): JsonResponse
     {
-        $datos = $request->validate([
-            'codigo_barras' => ['required', 'string', 'max:32'],
-            'metodo_captura' => ['required', Rule::enum(MetodoCaptura::class)],
-            // S-31: para resolver un código de proveedor que está en varias referencias.
-            'referencia_id' => ['nullable', 'integer'],
-            // S-40: unidades por lectura con el código del proveedor (con una etiqueta, 1).
-            'cantidad' => ['nullable', 'integer', 'min:1', 'max:'.VentaService::MAX_CANTIDAD],
-        ], [
-            'cantidad.min' => 'La cantidad debe estar entre 1 y '.VentaService::MAX_CANTIDAD.'.',
-            'cantidad.max' => 'La cantidad debe estar entre 1 y '.VentaService::MAX_CANTIDAD.'.',
-            'cantidad.integer' => 'La cantidad debe ser un número entero.',
-        ]);
-
         $items = $this->ventas->escanearVarias(
             $venta,
-            $datos['codigo_barras'],
-            MetodoCaptura::from($datos['metodo_captura']),
+            $request->codigo(),
+            $request->metodo(),
             $request->user(),
-            isset($datos['referencia_id']) ? (int) $datos['referencia_id'] : null,
-            (int) ($datos['cantidad'] ?? 1),
+            $request->referenciaId(),
+            $request->cantidad(),
         );
+
+        return $this->respuestaEscaneo($request, $items);
+    }
+
+    /**
+     * RF-06: una sola petición por escaneo. Se devuelve el ítem con la misma forma que en
+     * GET /ventas/{id} para que el frontend lo agregue a la venta en caché sin pedirla otra vez.
+     * Todas las unidades son de la misma referencia: se carga una vez y se comparte (sin N+1).
+     * S-46: la usan escanear y POST /ventas (primer escaneo).
+     *
+     * @param  Collection<int, VentaItem>  $items
+     */
+    private function respuestaEscaneo(Request $request, Collection $items): JsonResponse
+    {
         $item = $items->last();
 
-        // RF-06: una sola petición por escaneo. Se devuelve el ítem con la misma forma que en
-        // GET /ventas/{id} para que el frontend lo agregue a la venta en caché sin pedirla otra vez.
-        // Todas las unidades son de la misma referencia: se carga una vez y se comparte (sin N+1).
         $item->unidad->load(
             'referencia:id,codigo_referencia,calidad,descripcion,precio_venta,existencia,proveedor_id',
             'referencia.proveedor:id,nombre',

@@ -20,7 +20,7 @@ function grupoS42(bool $credito = true): array
     $ref = refS38($codigo, 3, 80000);
     $mostrador = actuarComo(Rol::Mostrador);
     $cliente = Cliente::factory()->create();
-    $ventaId = test()->postJson('/api/ventas', $credito ? ['forma_pago' => 'credito', 'cliente_id' => $cliente->id] : [])->assertCreated()->json('id');
+    $ventaId = abrirVenta($credito ? ['forma_pago' => 'credito', 'cliente_id' => $cliente->id] : []);
     $ids = collect(test()->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => $codigo, 'metodo_captura' => 'escaneado', 'cantidad' => 3])
         ->assertCreated()->json('items'))->pluck('id')->all();
 

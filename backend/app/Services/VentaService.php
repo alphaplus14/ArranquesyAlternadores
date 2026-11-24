@@ -6,7 +6,6 @@ use App\Enums\EstadoVenta;
 use App\Enums\FormaPago;
 use App\Enums\MetodoCaptura;
 use App\Enums\OrigenCodigo;
-use App\Enums\Rol;
 use App\Exceptions\ReglaInventarioException;
 use App\Models\Auditoria;
 use App\Models\Cliente;
@@ -14,6 +13,8 @@ use App\Models\Unidad;
 use App\Models\User;
 use App\Models\Venta;
 use App\Models\VentaItem;
+use App\Support\RangoFechas;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -23,6 +24,8 @@ use Illuminate\Support\Facades\DB;
  * RF-12: cada ítem registra si el código fue escaneado o digitado.
  * RF-14: de contado o a crédito. El crédito exige un cliente activo; cada ítem guarda el precio
  * y el IVA con que se vendió (S-10, S-15) y, al cerrar, la venta queda con su vencimiento (S-11).
+ * S-46: la venta nace con su primer ítem (abrirYEscanear); ningún camino HTTP crea una venta vacía.
+ * Las abiertas sin ítems vigentes que queden se descartan solas (descartarVacias), sin borrarse.
  */
 class VentaService
 {
@@ -31,6 +34,10 @@ class VentaService
         private readonly ResolverCodigoService $resolver,
     ) {}
 
+    /**
+     * Crea la venta SIN ítems. S-46: no se usa desde HTTP (POST /ventas va por abrirYEscanear); queda
+     * para abrirYEscanear, las pruebas y el benchmark.
+     */
     public function abrir(
         User $usuario,
         FormaPago $formaPago = FormaPago::Contado,
@@ -48,6 +55,93 @@ class VentaService
             'cliente_id' => $clienteId,
             'factura_contapyme' => $facturaContapyme,
         ])->refresh();
+    }
+
+    /**
+     * S-46: abre la venta y hace su primer escaneo en UNA transacción. Antes descarta las ventas
+     * vacías de días anteriores del mismo usuario. Si el escaneo falla (código inexistente, sin
+     * precio, sin unidades, hay que elegir referencia…) se deshace todo: no queda ninguna venta.
+     *
+     * @return Collection<int, VentaItem>
+     */
+    public function abrirYEscanear(
+        User $usuario,
+        FormaPago $formaPago,
+        ?int $clienteId,
+        ?string $facturaContapyme,
+        string $codigo,
+        MetodoCaptura $metodo,
+        ?int $referenciaId = null,
+        int $cantidad = 1,
+    ): Collection {
+        return DB::transaction(function () use ($usuario, $formaPago, $clienteId, $facturaContapyme, $codigo, $metodo, $referenciaId, $cantidad) {
+            $this->descartarVacias($usuario);
+            $venta = $this->abrir($usuario, $formaPago, $clienteId, $facturaContapyme);
+
+            return $this->escanearVarias($venta, $codigo, $metodo, $usuario, $referenciaId, $cantidad);
+        });
+    }
+
+    /**
+     * S-46: ventas abiertas sin ítems vigentes (nunca tuvieron, o se les reversaron todos), del usuario
+     * o de todos; de días anteriores (día de Bogotá) salvo $incluirHoy.
+     *
+     * @return Builder<Venta>
+     */
+    public function consultaVacias(?User $usuario = null, bool $incluirHoy = false): Builder
+    {
+        return Venta::query()
+            ->where('estado', EstadoVenta::Abierta->value)
+            ->when($usuario, fn ($q) => $q->where('usuario_id', $usuario->id))
+            ->when(! $incluirHoy, fn ($q) => $q->where('created_at', '<', RangoFechas::inicio(RangoFechas::hoy())))
+            ->whereDoesntHave('items', fn ($q) => $q->whereDoesntHave('reversoItem'));
+    }
+
+    /**
+     * S-46: pasa a `descartada` las ventas abiertas sin ítems vigentes. No borra nada: la venta y sus
+     * filas (ítems reversados, reversos) siguen en la base. descartada_por NULL = descarte automático;
+     * la auditoría (RF-11) queda con usuario NULL (sistema). Cada venta se bloquea (en orden de id,
+     * igual que escanear y cerrar: primero la venta) y se vuelve a comprobar que siga vacía: si un
+     * escaneo entró antes, la venta tiene un ítem y no se toca; si entra después, ve la venta
+     * descartada y se rechaza. Nunca queda una descartada con ítems vigentes. Devuelve cuántas.
+     */
+    public function descartarVacias(?User $usuario = null, bool $incluirHoy = false): int
+    {
+        $ids = $this->consultaVacias($usuario, $incluirHoy)->orderBy('id')->pluck('id');
+        if ($ids->isEmpty()) {
+            return 0;
+        }
+
+        return DB::transaction(function () use ($ids) {
+            $descartadas = 0;
+            $ahora = now();
+
+            foreach ($ids as $id) {
+                $venta = Venta::query()->lockForUpdate()->find($id);
+                $vigentes = VentaItem::query()->where('venta_id', $id)->whereDoesntHave('reversoItem')->exists();
+                if (! $venta?->estaAbierta() || $vigentes) {
+                    continue;
+                }
+
+                $venta->estado = EstadoVenta::Descartada;
+                $venta->descartada_at = $ahora;
+                $venta->descartada_por = null;
+                $venta->save();
+
+                Auditoria::create([
+                    'tabla' => $venta->getTable(),
+                    'registro_id' => $venta->id,
+                    'campo' => 'estado',
+                    'valor_anterior' => EstadoVenta::Abierta->value,
+                    'valor_nuevo' => EstadoVenta::Descartada->value,
+                    'usuario_id' => null,
+                    'created_at' => $ahora,
+                ]);
+                $descartadas++;
+            }
+
+            return $descartadas;
+        });
     }
 
     /**
@@ -86,7 +180,7 @@ class VentaService
             $venta = Venta::query()->lockForUpdate()->findOrFail($venta->id);
 
             if (! $venta->estaAbierta()) {
-                throw new ReglaInventarioException('La venta está cerrada.');
+                throw new ReglaInventarioException($venta->motivoNoAbierta());
             }
 
             // lockForUpdate: si dos mostradores escanean la misma unidad, el segundo espera
@@ -171,6 +265,10 @@ class VentaService
             // El lock de la venta serializa este cambio con el cierre y con los reversos.
             $venta = Venta::query()->lockForUpdate()->findOrFail($venta->id);
 
+            if ($venta->estaDescartada()) {
+                throw new ReglaInventarioException($venta->motivoNoAbierta(), 422);
+            }
+
             if (! $venta->esCredito()) {
                 throw new ReglaInventarioException('Solo en una venta a crédito se puede cambiar el precio.', 422);
             }
@@ -230,6 +328,9 @@ class VentaService
         return DB::transaction(function () use ($venta, $itemIds, $precio, $usuario) {
             $venta = Venta::query()->lockForUpdate()->findOrFail($venta->id);
 
+            if ($venta->estaDescartada()) {
+                throw new ReglaInventarioException($venta->motivoNoAbierta(), 422);
+            }
             if (! $venta->esCredito()) {
                 throw new ReglaInventarioException('Solo en una venta a crédito se puede cambiar el precio.', 422);
             }
@@ -280,7 +381,7 @@ class VentaService
             $venta = Venta::query()->lockForUpdate()->findOrFail($venta->id);
 
             if (! $venta->estaAbierta()) {
-                throw new ReglaInventarioException('La venta ya está cerrada.');
+                throw new ReglaInventarioException($venta->motivoNoAbierta('La venta ya está cerrada.'));
             }
 
             $venta->estado = EstadoVenta::Cerrada;

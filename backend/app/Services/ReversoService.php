@@ -39,6 +39,11 @@ class ReversoService
         return DB::transaction(function () use ($venta, $tipo, $motivo, $ventaItemId, $usuario, $metodo) {
             $venta = Venta::query()->lockForUpdate()->findOrFail($venta->id);
 
+            // S-46: una venta descartada no tiene ítems vigentes ni admite movimientos nuevos.
+            if ($venta->estaDescartada()) {
+                throw new ReglaInventarioException($venta->motivoNoAbierta(), 422);
+            }
+
             // Una devolución supone que el cliente ya se llevó la mercancía.
             if ($tipo === TipoReverso::Devolucion && $venta->estaAbierta()) {
                 throw new ReglaInventarioException('Una venta abierta no admite devolución: anule el ítem.', 422);

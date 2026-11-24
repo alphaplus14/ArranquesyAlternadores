@@ -89,7 +89,7 @@ it('S-33: una venta antigua con IVA NULL no se desglosa y el total es la suma de
 
 it('S-33 (merge cesar + legri): el escaneo devuelve el ítem y los totales de la venta, para actualizarla sin pedirla otra vez', function () {
     actuarComo(Rol::Mostrador);
-    $ventaId = $this->postJson('/api/ventas')->assertCreated()->json('id');
+    $ventaId = abrirVenta();
     $unidad = unidadDe('RN-4410');
     $precio = number_format((float) $unidad->referencia->precio_venta, 2, '.', '');
 

@@ -26,7 +26,7 @@ it('RF-08: los agotados de un proveedor solo listan sus referencias con existenc
 it('RF-08: una referencia que se agota por venta aparece en el reporte', function () {
     actuarComo(Rol::Mostrador);
     $arranque = referencia('ARR-12V-9D');
-    $ventaId = $this->postJson('/api/ventas')->json('id');
+    $ventaId = abrirVenta();
     $this->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => unidadDe('ARR-12V-9D')->codigo_barras, 'metodo_captura' => 'escaneado']);
 
     // S-28: el reporte es de logística y admin.

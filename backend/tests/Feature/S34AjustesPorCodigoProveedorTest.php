@@ -41,7 +41,7 @@ function venderS34(array $codigos, bool $cerrar = true, ?Cliente $cliente = null
 {
     $anterior = auth()->user();
     actuarComo(Rol::Mostrador);
-    $ventaId = test()->postJson('/api/ventas', $cliente ? ['forma_pago' => 'credito', 'cliente_id' => $cliente->id] : [])->assertCreated()->json('id');
+    $ventaId = abrirVenta($cliente ? ['forma_pago' => 'credito', 'cliente_id' => $cliente->id] : []);
     foreach ($codigos as $c) {
         test()->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => $c, 'metodo_captura' => 'escaneado'])->assertCreated();
     }

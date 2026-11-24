@@ -182,7 +182,7 @@ it('RF-21 (e) / criterio 4: una unidad retirada no se vende ni se escanea en mos
     retirarPorApi([$codigo])->assertCreated();
 
     actuarComo(Rol::Mostrador);
-    $ventaId = $this->postJson('/api/ventas')->json('id');
+    $ventaId = abrirVenta();
 
     $this->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => $codigo, 'metodo_captura' => 'escaneado'])
         ->assertUnprocessable()

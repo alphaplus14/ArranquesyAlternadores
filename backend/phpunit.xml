@@ -17,6 +17,9 @@
         <testsuite name="Busqueda">
             <directory>tests/Busqueda</directory>
         </testsuite>
+        <testsuite name="Migraciones">
+            <directory>tests/Migraciones</directory>
+        </testsuite>
     </testsuites>
     <source>
         <include>

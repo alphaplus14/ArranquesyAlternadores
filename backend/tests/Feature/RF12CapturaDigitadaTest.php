@@ -9,7 +9,7 @@ beforeEach(fn () => sembrarDemo());
 it('RF-12: una venta con código digitado descuenta la misma unidad que el escaneo y queda marcada como digitada', function () {
     actuarComo(Rol::Mostrador);
     $unidad = unidadDe('RN-4410');
-    $ventaId = $this->postJson('/api/ventas')->json('id');
+    $ventaId = abrirVenta();
 
     $this->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => $unidad->codigo_barras, 'metodo_captura' => 'digitado'])
         ->assertCreated()
@@ -23,7 +23,7 @@ it('RF-12: una venta con código digitado descuenta la misma unidad que el escan
 
 it('RF-12: el escaneo queda marcado como escaneado', function () {
     actuarComo(Rol::Mostrador);
-    $ventaId = $this->postJson('/api/ventas')->json('id');
+    $ventaId = abrirVenta();
 
     $this->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => unidadDe('RN-4410')->codigo_barras, 'metodo_captura' => 'escaneado'])
         ->assertJsonPath('metodo_captura', 'escaneado');
@@ -31,7 +31,7 @@ it('RF-12: el escaneo queda marcado como escaneado', function () {
 
 it('RF-12: metodo_captura es obligatorio y solo admite escaneado o digitado', function () {
     actuarComo(Rol::Mostrador);
-    $ventaId = $this->postJson('/api/ventas')->json('id');
+    $ventaId = abrirVenta();
 
     $this->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => unidadDe('RN-4410')->codigo_barras])
         ->assertJsonValidationErrors('metodo_captura');
@@ -65,7 +65,7 @@ it('RF-12: buscar por código de barras devuelve la unidad exacta', function () 
 
 it('RF-12: las unidades vendidas no aparecen para elegir', function () {
     actuarComo(Rol::Mostrador);
-    $ventaId = $this->postJson('/api/ventas')->json('id');
+    $ventaId = abrirVenta();
     $this->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => unidadDe('ARR-12V-9D')->codigo_barras, 'metodo_captura' => 'digitado']);
 
     $this->getJson('/api/buscar?q=ARR-12V')->assertJsonCount(0, 'referencias.0.unidades_disponibles');

@@ -26,6 +26,7 @@ class VentaResource extends JsonResource
             'usuario' => $this->whenLoaded('usuario', fn () => ['id' => $this->usuario->id, 'name' => $this->usuario->name]),
             'created_at' => $this->created_at,
             'cerrada_at' => $this->cerrada_at,
+            'descartada_at' => $this->descartada_at, // S-46: solo en ventas descartadas por el sistema
             'vence_el' => $this->vence_el?->toDateString(),
             'items' => VentaItemResource::collection($this->whenLoaded('items')),
             // S-33 / S-15: precios con IVA incluido. Total = suma de los ítems vigentes; base e IVA

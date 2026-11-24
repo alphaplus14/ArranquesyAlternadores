@@ -16,7 +16,7 @@ beforeEach(fn () => sembrarDemo());
 
 function abrirS40(array $datos = []): int
 {
-    return test()->postJson('/api/ventas', $datos)->assertCreated()->json('id');
+    return abrirVenta($datos);
 }
 
 function escanearS40(int $ventaId, string $codigo, array $extra = [])

@@ -16,7 +16,7 @@ function itemVendido(string $codigoReferencia = 'RN-4410', bool $credito = true)
 {
     $test = test();
     $datos = $credito ? ['forma_pago' => 'credito', 'cliente_id' => Cliente::factory()->create()->id] : [];
-    $ventaId = $test->postJson('/api/ventas', $datos)->assertCreated()->json('id');
+    $ventaId = abrirVenta($datos);
 
     $test->postJson("/api/ventas/{$ventaId}/escanear", [
         'codigo_barras' => unidadDe($codigoReferencia)->codigo_barras,

@@ -26,10 +26,7 @@ function referenciaConUnidades(string $codigo, int $unidades, array $atributos =
     return $ref->refresh();
 }
 
-function abrirVenta(): int
-{
-    return test()->postJson('/api/ventas')->assertCreated()->json('id');
-}
+// S-46: abrirVenta() vive en tests/Pest.php (abre la venta vacía con el servicio).
 
 function escanearEn(int $ventaId, string $codigo, array $extra = [])
 {

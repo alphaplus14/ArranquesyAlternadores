@@ -5,7 +5,6 @@ use App\Models\AjusteInventario;
 use App\Models\AjusteItem;
 use App\Models\Ingreso;
 use App\Models\MovimientoInventario;
-use App\Models\Referencia;
 use App\Models\Unidad;
 use Illuminate\Support\Facades\DB;
 
@@ -83,7 +82,7 @@ it('S-39 (e): las unidades dadas de alta se venden por etiqueta o por código de
     $nuevas = collect(entrada(['referencia_id' => $ref->id, 'cantidad' => 2])->assertCreated()->json('unidades'))->pluck('codigo_barras');
 
     actuarComo(Rol::Mostrador);
-    $ventaId = $this->postJson('/api/ventas')->assertCreated()->json('id');
+    $ventaId = abrirVenta();
     // Por código del proveedor: la de alta (sin etiqueta impresa) va antes que la etiquetada vieja.
     $this->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => 'ALTA-V', 'metodo_captura' => 'escaneado'])->assertCreated()
         ->assertJsonPath('unidad.codigo_barras', $nuevas[0]);

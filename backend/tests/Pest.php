@@ -34,6 +34,11 @@ pest()->extend(TestCase::class)
     ->use(DatabaseTruncation::class)
     ->in('Busqueda');
 
+// S-46: bajar y subir una migración hace DDL (commit implícito en MySQL): fuera de una transacción.
+pest()->extend(TestCase::class)
+    ->use(DatabaseTruncation::class)
+    ->in('Migraciones');
+
 /** Crea un usuario del rol indicado y deja la sesión iniciada con él. */
 function actuarComo(Rol $rol): User
 {
@@ -41,6 +46,26 @@ function actuarComo(Rol $rol): User
     test()->actingAs($usuario);
 
     return $usuario;
+}
+
+/**
+ * S-46: abre una venta VACÍA con el servicio para el usuario en sesión (POST /ventas ya no crea
+ * ventas vacías: exige el primer escaneo). Sirve a las pruebas que escanean después. Devuelve el id.
+ */
+function abrirVenta(array $datos = []): int
+{
+    return app(VentaService::class)->abrir(
+        auth()->user(),
+        FormaPago::from($datos['forma_pago'] ?? FormaPago::Contado->value),
+        $datos['cliente_id'] ?? null,
+        $datos['factura_contapyme'] ?? null,
+    )->id;
+}
+
+/** S-46: payload del primer escaneo de POST /ventas: la primera unidad disponible de la referencia. */
+function escaneoInicial(string $codigoReferencia, string $metodo = 'escaneado'): array
+{
+    return ['codigo_barras' => unidadDe($codigoReferencia)->codigo_barras, 'metodo_captura' => $metodo];
 }
 
 /** Petición desde la SPA (dominio stateful): pasa por el AuthenticateSession de Sanctum. */
@@ -91,7 +116,7 @@ function venderComoMostrador(string $codigoReferencia, bool $cerrar = true, arra
     actuarComo(Rol::Mostrador);
 
     $codigo = unidadDe($codigoReferencia)->codigo_barras;
-    $ventaId = test()->postJson('/api/ventas', $venta)->assertCreated()->json('id');
+    $ventaId = abrirVenta($venta);
     test()->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => $codigo, 'metodo_captura' => 'escaneado'])->assertCreated();
 
     if ($cerrar) {
@@ -118,7 +143,7 @@ function ventaCredito(Cliente $cliente, array $precios, bool $cerrar = true): ar
     $anterior = auth()->user();
     actuarComo(Rol::Mostrador);
 
-    $ventaId = test()->postJson('/api/ventas', ['forma_pago' => 'credito', 'cliente_id' => $cliente->id])->assertCreated()->json('id');
+    $ventaId = abrirVenta(['forma_pago' => 'credito', 'cliente_id' => $cliente->id]);
     $items = [];
     $unidades = Unidad::where('estado', 'disponible')->orderBy('id')->limit(count($precios))->pluck('codigo_barras');
     foreach ($precios as $i => $precio) {
@@ -211,7 +236,7 @@ function venderS38(array $codigos, ?Cliente $cliente = null, bool $cerrar = true
 {
     $anterior = auth()->user();
     actuarComo(Rol::Mostrador);
-    $ventaId = test()->postJson('/api/ventas', $cliente ? ['forma_pago' => 'credito', 'cliente_id' => $cliente->id] : [])->assertCreated()->json('id');
+    $ventaId = abrirVenta($cliente ? ['forma_pago' => 'credito', 'cliente_id' => $cliente->id] : []);
     $items = [];
     foreach ($codigos as $i => $c) {
         $items[] = $itemId = test()->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => $c, 'metodo_captura' => 'escaneado'])->assertCreated()->json('venta_item_id');

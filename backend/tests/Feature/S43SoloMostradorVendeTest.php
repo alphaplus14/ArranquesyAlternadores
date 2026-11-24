@@ -19,7 +19,7 @@ function ventaDeMostradorS43(): array
     $codigo = 'S43-'.random_int(1000, 9999);
     refS38($codigo, 2, 50000);
     $mostrador = actuarComo(Rol::Mostrador);
-    $ventaId = test()->postJson('/api/ventas', ['forma_pago' => 'credito', 'cliente_id' => Cliente::factory()->create()->id])->assertCreated()->json('id');
+    $ventaId = abrirVenta(['forma_pago' => 'credito', 'cliente_id' => Cliente::factory()->create()->id]);
     $ids = collect(test()->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => $codigo, 'metodo_captura' => 'escaneado', 'cantidad' => 2])
         ->assertCreated()->json('items'))->pluck('id')->all();
 

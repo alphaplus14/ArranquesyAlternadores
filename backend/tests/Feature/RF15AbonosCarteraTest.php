@@ -77,7 +77,7 @@ it('RF-15 (d) / S-09: una venta a crédito abierta no cuenta; al cerrarla sí', 
 it('RF-15 (e): una venta de contado no cuenta en la cartera', function () {
     $cliente = Cliente::factory()->create();
     actuarComo(Rol::Mostrador);
-    $ventaId = $this->postJson('/api/ventas')->json('id');
+    $ventaId = abrirVenta();
     $this->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => unidadDe('RN-4410')->codigo_barras, 'metodo_captura' => 'escaneado'])->assertCreated();
     $this->postJson("/api/ventas/{$ventaId}/cerrar")->assertOk();
 

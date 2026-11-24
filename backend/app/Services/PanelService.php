@@ -436,9 +436,13 @@ class PanelService
             ->get();
 
         // Estado actual (no depende del período ni de los filtros).
+        // S-46: solo las abiertas CON ítems vigentes (las vacías se descartan solas y no avisan).
         $abiertasViejas = DB::table('ventas')
             ->where('estado', EstadoVenta::Abierta->value)
             ->where('created_at', '<', RangoFechas::inicio(RangoFechas::hoy()))
+            ->whereExists(fn ($q) => $q->selectRaw('1')->from('venta_items as vi')
+                ->leftJoin('reverso_items as ri', 'ri.venta_item_id', '=', 'vi.id')
+                ->whereColumn('vi.venta_id', 'ventas.id')->whereNull('ri.id'))
             ->count();
         $cambiosPrecio = DB::table('auditoria')
             ->where('tabla', 'venta_items')->where('campo', 'precio_unitario')

@@ -80,7 +80,7 @@ it('S-32 (c): dirigido mayor al pendiente, a una venta de otro cliente, abierta 
     [$abierta] = ventaCredito($cliente, [10], false);
 
     actuarComo(Rol::Mostrador);
-    $contado = $this->postJson('/api/ventas')->assertCreated()->json('id');
+    $contado = abrirVenta();
     $this->postJson("/api/ventas/{$contado}/cerrar")->assertOk();
 
     abonar($cliente, 51, ['venta_id' => $nueva])->assertUnprocessable()

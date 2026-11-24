@@ -193,7 +193,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // S-43: solo el mostrador vende (abrir, escanear, cerrar, precios); el admin recibe 403.
         Route::middleware('solo_rol:mostrador')->group(function () {
-            Route::post('/ventas', [VentaController::class, 'store']);
+            // S-46: la venta nace con su primer escaneo (exige el payload de la lectura).
+            Route::post('/ventas', [VentaController::class, 'store'])->middleware('medir:300')->name('ventas.abrir');
             Route::post('/ventas/{venta}/escanear', [VentaController::class, 'escanear'])->middleware('medir:300')->name('ventas.escanear');
             Route::post('/ventas/{venta}/cerrar', [VentaController::class, 'cerrar']);
             // RF-14 / S-18: solo el precio de un ítem de una venta a crédito abierta.
