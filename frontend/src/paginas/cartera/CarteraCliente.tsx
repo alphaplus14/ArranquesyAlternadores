@@ -16,6 +16,7 @@ import DialogoAnularAbono from '../../componentes/cartera/DialogoAnularAbono'
 import { pesos } from '../../componentes/numeros'
 import { fechaCorta } from '../../componentes/fechas'
 import { nombreVenta, textoSaldo } from '../../utilidades/cartera'
+import { formatearFechaHora } from '../../utilidades/fechas'
 import { errorRango, esPeriodo, hoyEnBogota, rangoDe } from '../../utilidades/periodos'
 
 type Seccion = 'ventas' | 'cuenta'
@@ -33,8 +34,8 @@ const SECCIONES: { valor: Seccion; texto: string }[] = [
   { valor: 'cuenta', texto: 'Estado de cuenta' },
 ]
 
-/** Fecha y hora local (es-CO) de un instante ISO. */
-const fechaHora = (iso: string) => new Date(iso).toLocaleString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+/** Fecha y hora en Colombia de un instante (S-38: utilidades/fechas). */
+const fechaHora = formatearFechaHora
 
 /** Chip de estado de una venta: el texto dice el estado, el color solo lo refuerza. */
 function ChipEstado({ v }: { v: VentaCartera }) {
@@ -232,7 +233,7 @@ export default function CarteraCliente() {
                   <tr key={v.id}>
                     <td data-etiqueta="Venta"><Link to={`/mostrador/venta?venta=${v.id}`}>#{v.id}</Link></td>
                     <td data-etiqueta="Factura">{v.factura_contapyme || '—'}</td>
-                    <td data-etiqueta="Cierre">{fechaHora(v.cerrada_at.replace(' ', 'T') + 'Z')}</td>
+                    <td data-etiqueta="Cierre">{fechaHora(v.cerrada_at)}</td>
                     <td data-etiqueta="Total" title="Total neto de reversos, con IVA incluido" className="col-numero">{pesos(v.total)}</td>
                     <td data-etiqueta="Vence">{v.vence_el ? fechaCorta(v.vence_el) : '—'}</td>
                     <td data-etiqueta="Aplicado" className="col-numero">

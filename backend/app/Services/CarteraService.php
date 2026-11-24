@@ -134,7 +134,8 @@ class CarteraService
                 return [
                     'id' => (int) $v->id,
                     'factura_contapyme' => $v->factura_contapyme,
-                    'cerrada_at' => $v->cerrada_at,
+                    // Instante con zona (ISO 8601, UTC): la pantalla lo muestra en hora de Bogotá.
+                    'cerrada_at' => $v->cerrada_at ? Carbon::parse($v->cerrada_at, config('app.timezone'))->utc()->toIso8601ZuluString() : null,
                     'vence_el' => $v->vence_el,
                     'total' => self::pesos($neto),
                     'aplicado' => self::pesos($neto - $pendiente),

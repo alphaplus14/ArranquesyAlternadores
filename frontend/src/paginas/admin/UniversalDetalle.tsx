@@ -10,6 +10,7 @@ import ChipCalidad from '../../componentes/ChipCalidad'
 import Icono from '../../componentes/Icono'
 import Medida from '../../componentes/Medida'
 import Resumen from '../../componentes/Resumen'
+import { formatearFechaHora } from '../../utilidades/fechas'
 
 /**
  * RF-02 / S-23: el total del universal es la suma de sus referencias y siempre se muestra el
@@ -67,7 +68,7 @@ export default function UniversalDetalle() {
                   <td>{r.proveedor.nombre}</td>
                   <td>{r.calidad ? <ChipCalidad calidad={r.calidad} /> : '—'}</td>
                   <td className={r.existencia === 0 ? 'agotado' : ''}>{r.existencia}</td>
-                  <td>{new Date(r.updated_at).toLocaleString()}</td>
+                  <td>{formatearFechaHora(r.updated_at)}</td>
                   <td className="col-accion">
                     <Link
                       className="icono-accion"

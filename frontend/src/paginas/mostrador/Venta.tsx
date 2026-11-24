@@ -14,6 +14,7 @@ import Paginacion from '../../componentes/Paginacion'
 import Resumen from '../../componentes/Resumen'
 import { useScanner } from '../../hooks/useScanner'
 import { useAngosta } from '../../hooks/useAngosta'
+import { formatearFecha, formatearFechaHora, formatearHora } from '../../utilidades/fechas'
 import { rotuloIvaIncluido } from '../../utilidades/cartera'
 import { useDebounce } from '../../hooks/useDebounce'
 import { useListaPaginada } from '../../hooks/useListaPaginada'
@@ -25,11 +26,8 @@ interface DatosCredito { cliente_id: number; factura_contapyme: string | null }
 /** El mostrador elige de a 15: el diálogo no carga el padrón entero. */
 const CLIENTES_POR_PAGINA = 15
 
-/** vence_el llega como aaaa-mm-dd: se arma la fecha local para que no se corra un día por la zona horaria. */
-function fechaCorta(iso: string) {
-  const [a, m, d] = iso.split('-').map(Number)
-  return new Date(a, m - 1, d).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' })
-}
+/** vence_el llega como aaaa-mm-dd: es un día del calendario, no se convierte de zona (S-38). */
+const fechaCorta = formatearFecha
 
 /** Validación en vivo. El backend vuelve a exigir precio > 0 (S-18). */
 function errorPrecio(texto: string): string | null {
@@ -291,7 +289,7 @@ export default function Venta() {
                   </td>
                   <td data-etiqueta="Captura"><span className={`chip ${i.metodo_captura}`}>{i.metodo_captura}</span></td>
                   <td data-etiqueta="Usuario">{i.usuario.name}</td>
-                  <td data-etiqueta="Hora">{new Date(i.created_at).toLocaleTimeString()}</td>
+                  <td data-etiqueta="Hora">{formatearHora(i.created_at)}</td>
                   <td className="celda-accion">
                     {i.reverso_id ? <em>reversado</em> : (
                       <button className="enlace" onClick={() => setReverso({ item: i, tipo: abierta ? 'anulacion' : 'devolucion' })}>
@@ -324,7 +322,7 @@ export default function Venta() {
             <ul className="reversos">
               {v.reversos.map((r) => (
                 <li key={r.id}>
-                  <strong>{r.tipo}</strong> de {r.venta_item_ids.length} ítem(s) · {r.usuario.name} · {new Date(r.created_at).toLocaleString()} — “{r.motivo}”
+                  <strong>{r.tipo}</strong> de {r.venta_item_ids.length} ítem(s) · {r.usuario.name} · {formatearFechaHora(r.created_at)} — “{r.motivo}”
                 </li>
               ))}
             </ul>
@@ -338,7 +336,7 @@ export default function Venta() {
           {recientes.data?.data.map((r) => (
             <li key={r.id}>
               <button className="enlace" onClick={() => setVentaId(r.id)}>#{r.id}</button>
-              {r.forma_pago === 'credito' && <> <span className="chip credito">Crédito</span> {r.cliente?.nombre}</>} · {r.items_count} ítems · <span title="Total con IVA incluido">{pesos(r.total)}</span> · {new Date(r.created_at).toLocaleString()}
+              {r.forma_pago === 'credito' && <> <span className="chip credito">Crédito</span> {r.cliente?.nombre}</>} · {r.items_count} ítems · <span title="Total con IVA incluido">{pesos(r.total)}</span> · {formatearFechaHora(r.created_at)}
             </li>
           ))}
         </ul>

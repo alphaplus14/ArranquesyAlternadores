@@ -7,6 +7,7 @@ import { useAvisoTexto } from '../../componentes/Avisos'
 import Dialogo, { DialogoSeccion } from '../../componentes/Dialogo'
 import type { FormaPago, Ingreso, Pagina, TipoIngreso } from '../../api/tipos'
 import { sumarDias } from '../../componentes/fechas'
+import { hoyEnBogota } from '../../utilidades/periodos'
 import ControlSegmentado, { type OpcionSegmento } from '../../componentes/ControlSegmentado'
 import SelectorProveedor from '../../componentes/SelectorProveedor'
 import { useListaPaginada } from '../../hooks/useListaPaginada'
@@ -143,7 +144,7 @@ function DialogoNuevoIngreso({ onCerrar }: { onCerrar: () => void }) {
     tipo: 'factura' as TipoIngreso,
     proveedor_id: '',
     numero_documento: '',
-    fecha: new Date().toLocaleDateString('en-CA'),
+    fecha: hoyEnBogota(), // S-38: el día en Colombia, no el del navegador
     forma_pago: 'contado' as FormaPago,
   })
   const campoNumero = useRef<HTMLInputElement>(null)

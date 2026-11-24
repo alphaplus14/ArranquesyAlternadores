@@ -8,6 +8,7 @@ import Icono from '../../componentes/Icono'
 import Medida from '../../componentes/Medida'
 import Resumen from '../../componentes/Resumen'
 import Paginacion from '../../componentes/Paginacion'
+import { formatearFechaHora } from '../../utilidades/fechas'
 
 const TABLAS_AUDITORIA = [
   { valor: 'referencias', etiqueta: 'Referencias', detalle: 'Catálogo de productos' },
@@ -96,7 +97,7 @@ export default function Auditoria() {
           <tbody>
             {filas.map((a) => (
               <tr key={a.id}>
-                <td data-etiqueta="Fecha">{new Date(a.created_at).toLocaleString()}</td>
+                <td data-etiqueta="Fecha">{formatearFechaHora(a.created_at)}</td>
                 <td data-etiqueta="Usuario">{a.usuario?.name ?? 'sistema'}</td>
                 <td data-etiqueta="Tabla">{a.tabla}</td>
                 <td data-etiqueta="Registro">{a.registro_id}</td>
