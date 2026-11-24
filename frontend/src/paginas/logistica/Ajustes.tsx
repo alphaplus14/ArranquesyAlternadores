@@ -27,6 +27,7 @@ import { useScanner } from '../../hooks/useScanner'
 import { useListaPaginada } from '../../hooks/useListaPaginada'
 import { useDebounce } from '../../hooks/useDebounce'
 import ControlSegmentado from '../../componentes/ControlSegmentado'
+import { useAuth } from '../../auth/AuthProvider'
 import ChipCalidad from '../../componentes/ChipCalidad'
 import CampoCantidad from '../../componentes/CampoCantidad'
 import ImprimirEtiquetas from '../../componentes/ImprimirEtiquetas'
@@ -83,6 +84,9 @@ function codigoRechazado(error: unknown): string | null {
 }
 
 export default function Ajustes() {
+  // S-44: logística opera; el admin solo consulta el historial (el backend le responde 403 al resto).
+  const { usuario } = useAuth()
+  const soloConsulta = usuario?.rol === 'admin'
   const [params, setParams] = useSearchParams()
   const pestana = (PESTANAS.find((p) => p.valor === params.get('p'))?.valor ?? 'salidas') as Pestana
   // El lote vive aquí para que "Retirar esta unidad" (devoluciones) lo encuentre en Salidas.
@@ -100,6 +104,20 @@ export default function Ajustes() {
     cambiar('salidas')
   }
 
+  if (soloConsulta) {
+    return (
+      <div className="pila ajustes">
+        <div className="pagina-encabezado">
+          <h1>Historial de ajustes</h1>
+          <p>Solo consulta: las salidas, entradas y devoluciones las registra logística.</p>
+        </div>
+        <section className="panel">
+          <Historial puedeReintegrar={false} />
+        </section>
+      </div>
+    )
+  }
+
   return (
     <div className="pila ajustes">
       <div className="pagina-encabezado">
@@ -111,7 +129,7 @@ export default function Ajustes() {
         {pestana === 'salidas' && <Salidas lote={lote} setLote={setLote} />}
         {pestana === 'entradas' && <Entradas />}
         {pestana === 'devoluciones' && <Devoluciones onRetirar={retirarDevuelta} />}
-        {pestana === 'historial' && <Historial />}
+        {pestana === 'historial' && <Historial puedeReintegrar />}
       </section>
     </div>
   )
@@ -972,7 +990,8 @@ function Devoluciones({ onRetirar }: { onRetirar: (unidades: { id: number; codig
 
 /* ─────────────────────────────── Historial ─────────────────────────────── */
 
-function Historial() {
+/** S-44: `puedeReintegrar` es falso para el admin (reintegrar es una operación de logística). */
+function Historial({ puedeReintegrar }: { puedeReintegrar: boolean }) {
   const [tipo, setTipo] = useState<'' | TipoAjuste>('')
   const [motivo, setMotivo] = useState<'' | MotivoAjuste>('')
   const [params, setParams] = useSearchParams()
@@ -1081,7 +1100,7 @@ function Historial() {
                     )}
                   </td>
                   <td className="celda-accion">
-                    {reintegrables.length > 0 && (
+                    {puedeReintegrar && reintegrables.length > 0 && (
                       <button type="button" className="secundario boton-44" onClick={() => setReintegrando(a)}>
                         Reintegrar{reintegrables.length < a.unidades.length ? ` (${reintegrables.length})` : ''}
                       </button>

@@ -105,18 +105,20 @@ it('S-39 (e) / criterio 4: la entrada sube la existencia y saca la referencia de
     expect($codigos())->not->toContain('ALTA-M');
 });
 
-it('S-39 (f): mostrador 403 en entradas y en la búsqueda de referencia; logística y admin pasan', function () {
+it('S-39 (f) / S-44: mostrador y admin 403 en entradas y en la búsqueda de referencia; logística pasa', function () {
     $ref = refS38('ALTA-R', 0);
 
     actuarComo(Rol::Mostrador);
     entrada(['referencia_id' => $ref->id])->assertForbidden();
     $this->getJson('/api/ajustes/referencia?codigo=ALTA-R')->assertForbidden();
 
-    foreach ([Rol::Logistica, Rol::Admin] as $rol) {
-        actuarComo($rol);
-        $this->getJson('/api/ajustes/referencia?codigo=ALTA-R')->assertOk()->assertJsonPath('referencias.0.id', $ref->id);
-        entrada(['referencia_id' => $ref->id])->assertCreated();
-    }
+    actuarComo(Rol::Admin);
+    entrada(['referencia_id' => $ref->id])->assertForbidden();
+    $this->getJson('/api/ajustes/referencia?codigo=ALTA-R')->assertForbidden();
+
+    actuarComo(Rol::Logistica);
+    $this->getJson('/api/ajustes/referencia?codigo=ALTA-R')->assertOk()->assertJsonPath('referencias.0.id', $ref->id);
+    entrada(['referencia_id' => $ref->id])->assertCreated();
 });
 
 it('S-39: la búsqueda de referencia resuelve el código exacto (varias = elegir), busca por texto (máx. 10) y dice si tiene precio', function () {
@@ -137,7 +139,7 @@ it('S-39: la búsqueda de referencia resuelve el código exacto (varias = elegir
 
 it('S-39 (g): el ajuste de alta es inmutable y no tiene PUT ni DELETE', function () {
     $ref = refS38('ALTA-G', 0);
-    actuarComo(Rol::Admin);
+    actuarComo(Rol::Logistica);
     $id = entrada(['referencia_id' => $ref->id, 'cantidad' => 2])->json('id');
 
     foreach (['putJson', 'patchJson', 'deleteJson'] as $verbo) {
@@ -152,8 +154,12 @@ it('S-39 (h): el historial filtra por tipo alta y por motivo; compras y cartera 
     $compras = $this->getJson('/api/reportes/compras')->json('totales');
     $cartera = $this->getJson('/api/cartera?solo_con_saldo=0')->json('totales');
 
+    // S-44: las entradas las registra logística; el admin consulta el historial.
+    $admin = auth()->user();
+    actuarComo(Rol::Logistica);
     entrada(['referencia_id' => $ref->id, 'cantidad' => 3, 'motivo' => 'sin_factura', 'nota' => 'Caja sin documento'])->assertCreated();
     entrada(['referencia_id' => $ref->id, 'cantidad' => 1])->assertCreated();
+    $this->actingAs($admin);
 
     $this->getJson('/api/ajustes?tipo=alta')->assertOk()->assertJsonCount(2, 'data');
     $this->getJson('/api/ajustes?tipo=alta&motivo=sin_factura')->assertOk()

@@ -51,7 +51,8 @@ export default function Layout() {
           items: [
             { to: '/logistica/ingresos', texto: 'Ingresos', icono: 'ingreso', fin: true },
             { to: '/logistica/etiquetas', texto: 'Etiquetas', icono: 'etiqueta' },
-            { to: RUTA_AJUSTES, texto: 'Ajustes', icono: 'inventario' }, // RF-21
+            // RF-21. S-44: el admin solo consulta el historial.
+            { to: RUTA_AJUSTES, texto: usuario?.rol === 'admin' ? 'Historial de ajustes' : 'Ajustes', icono: 'inventario' },
           ],
         }
       : null,

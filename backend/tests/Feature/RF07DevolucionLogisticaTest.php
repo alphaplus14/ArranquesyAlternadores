@@ -58,7 +58,7 @@ it('RF-07 / S-27 (f): logística registra la devolución de una venta a crédito
 });
 
 it('RF-07 / S-27 (f): una venta de contado cerrada también se devuelve; el cliente es Mostrador (null)', function () {
-    actuarComo(Rol::Admin);
+    actuarComo(Rol::Logistica);
     [$ventaId, $codigo] = venderComoMostrador('AC-77812');
 
     devolverPorApi($codigo)->assertCreated()
@@ -118,7 +118,7 @@ it('RF-07: la devolución de logística no cambia la ruta de reversos de mostrad
     $this->postJson("/api/ventas/{$ventaId}/reversos", ['tipo' => 'devolucion', 'motivo' => 'Prueba'])->assertForbidden();
 });
 
-it('RF-07 / S-27 (g) / criterio 8: mostrador recibe 403 en devoluciones; logística y admin pasan', function () {
+it('RF-07 / S-27 (g) / criterio 8 / S-44: mostrador y admin reciben 403 en devoluciones; logística pasa', function () {
     actuarComo(Rol::Logistica);
     [, $codigo] = venderComoMostrador('RN-4410');
 
@@ -127,9 +127,12 @@ it('RF-07 / S-27 (g) / criterio 8: mostrador recibe 403 en devoluciones; logíst
     devolverPorApi($codigo)->assertForbidden();
     expect(Reverso::count())->toBe(0);
 
+    actuarComo(Rol::Admin);
+    $this->getJson("/api/devoluciones/consulta?codigo={$codigo}")->assertForbidden();
+    devolverPorApi($codigo)->assertForbidden();
+    expect(Reverso::count())->toBe(0);
+
     actuarComo(Rol::Logistica);
     $this->getJson("/api/devoluciones/consulta?codigo={$codigo}")->assertOk();
-
-    actuarComo(Rol::Admin);
     devolverPorApi($codigo)->assertCreated();
 });

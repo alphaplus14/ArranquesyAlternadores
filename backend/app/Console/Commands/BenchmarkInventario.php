@@ -41,6 +41,8 @@ class BenchmarkInventario extends Command
             Auth::login($usuario);
             // S-43: solo el mostrador vende; los escaneos se miden con un mostrador y el resto con el admin.
             $vendedor = User::create(['name' => 'bench-mostrador', 'usuario' => 'bench-m-'.uniqid(), 'password' => 'x', 'rol' => Rol::Mostrador, 'activo' => true]);
+            // S-44: las búsquedas de Ajustes son de logística (el admin solo consulta el historial).
+            $bodega = User::create(['name' => 'bench-logistica', 'usuario' => 'bench-l-'.uniqid(), 'password' => 'x', 'rol' => Rol::Logistica, 'activo' => true]);
             $proveedor = Proveedor::create(['nombre' => 'Proveedor benchmark']);
             $categoria = Categoria::firstOrCreate(['nombre' => 'Categoría benchmark']);
 
@@ -105,7 +107,7 @@ class BenchmarkInventario extends Command
             $referenciasAjuste = [];
             for ($i = 0; $i < $n; $i++) {
                 $params = $i % 2 ? ['q' => sprintf('BX%04d', random_int(1, 1999))] : ['codigo' => sprintf('BX%06d', random_int(1, 1999))];
-                $referenciasAjuste[] = $this->medir($kernel, $usuario, Request::create('/api/ajustes/referencia', 'GET', $params), 200);
+                $referenciasAjuste[] = $this->medir($kernel, $bodega, Request::create('/api/ajustes/referencia', 'GET', $params), 200);
             }
 
             // RF-22: mínimo general 3 para todo el catálogo de relleno (existencia 0: todas alertan)

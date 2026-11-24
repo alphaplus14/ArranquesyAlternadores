@@ -205,7 +205,7 @@ it('RF-21 / RF-08: una referencia sin disponibles por bajas aparece en agotados'
     expect($agotados)->toContain('RN-4410');
 });
 
-it('RF-21 (g) / criterio 8: mostrador recibe 403 en ajustes; logística y admin pasan', function () {
+it('RF-21 (g) / criterio 8 / S-44: mostrador 403 en ajustes; el admin solo consulta el historial; logística opera', function () {
     actuarComo(Rol::Mostrador);
     $codigo = unidadDe('RN-4410')->codigo_barras;
 
@@ -215,10 +215,12 @@ it('RF-21 (g) / criterio 8: mostrador recibe 403 en ajustes; logística y admin 
     $this->postJson('/api/ajustes/reintegros', ['motivo' => 'error_de_registro', 'codigos' => loteAjuste([$codigo])])->assertForbidden();
     expect(referencia('RN-4410')->existencia)->toBe(2);
 
-    actuarComo(Rol::Logistica);
-    $this->getJson('/api/ajustes')->assertOk();
-
     actuarComo(Rol::Admin);
+    $this->getJson('/api/ajustes')->assertOk();
+    retirarPorApi([$codigo])->assertForbidden();
+    expect(referencia('RN-4410')->existencia)->toBe(2);
+
+    actuarComo(Rol::Logistica);
     $this->getJson('/api/ajustes')->assertOk();
     retirarPorApi([$codigo])->assertCreated();
 });

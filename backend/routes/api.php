@@ -137,18 +137,23 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     // RF-21 (S-27): salidas y reintegros de inventario, y devoluciones de clientes por código de
-    // unidad (RF-07). Logística y admin; mostrador 403. Sin DELETE: los ajustes son inmutables.
+    // unidad (RF-07). Mostrador 403. Sin DELETE: los ajustes son inmutables.
+    // S-44: el historial lo consultan logística y admin; operar (y sus búsquedas auxiliares) es solo
+    // de logística: el admin recibe 403. Para que el admin vuelva a operar, `solo_rol:logistica` → `rol:logistica`.
     Route::middleware('rol:admin,logistica')->group(function () {
         Route::get('/ajustes', [AjusteController::class, 'index']);
-        Route::get('/ajustes/unidad', [AjusteController::class, 'unidad'])->middleware('medir:500')->name('ajustes.unidad');
-        Route::post('/ajustes/salidas', [AjusteController::class, 'salidas'])->name('ajustes.salidas');
-        Route::post('/ajustes/reintegros', [AjusteController::class, 'reintegros'])->name('ajustes.reintegros');
-        // S-39: entradas por ajuste de inventario físico y búsqueda de la referencia (sin DELETE ni PUT).
-        Route::post('/ajustes/entradas', [AjusteController::class, 'entradas'])->name('ajustes.entradas');
-        Route::get('/ajustes/referencia', [AjusteController::class, 'referencia'])->middleware('medir:500')->name('ajustes.referencia');
 
-        Route::get('/devoluciones/consulta', [DevolucionController::class, 'consulta'])->middleware('medir:500')->name('devoluciones.consulta');
-        Route::post('/devoluciones', [DevolucionController::class, 'store']);
+        Route::middleware('solo_rol:logistica')->group(function () {
+            Route::get('/ajustes/unidad', [AjusteController::class, 'unidad'])->middleware('medir:500')->name('ajustes.unidad');
+            Route::post('/ajustes/salidas', [AjusteController::class, 'salidas'])->name('ajustes.salidas');
+            Route::post('/ajustes/reintegros', [AjusteController::class, 'reintegros'])->name('ajustes.reintegros');
+            // S-39: entradas por ajuste de inventario físico y búsqueda de la referencia (sin DELETE ni PUT).
+            Route::post('/ajustes/entradas', [AjusteController::class, 'entradas'])->name('ajustes.entradas');
+            Route::get('/ajustes/referencia', [AjusteController::class, 'referencia'])->middleware('medir:500')->name('ajustes.referencia');
+
+            Route::get('/devoluciones/consulta', [DevolucionController::class, 'consulta'])->middleware('medir:500')->name('devoluciones.consulta');
+            Route::post('/devoluciones', [DevolucionController::class, 'store']);
+        });
     });
 
     // RF-15 / RF-18 (S-30): cartera de clientes. Admin y mostrador; logística 403. Los abonos no
