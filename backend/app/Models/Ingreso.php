@@ -17,6 +17,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * confirmó y el total (RF-16). diferencia_aceptada y diferencia_motivo se conservan para RF-19.
  * RF-16: forma de pago y vencimiento digitado. RF-11: cada edición queda en la auditoría.
  * Confirmado, el ingreso ya no se edita ni se borra (sus unidades y movimientos dependen de él).
+ * RF-19: única excepción, el factura_id de una remisión confirmada, y solo mientras la factura
+ * que se liga o se desliga está en borrador (lo hace IngresoService, auditado).
  */
 class Ingreso extends Model
 {
@@ -52,7 +54,7 @@ class Ingreso extends Model
         // Solo se permite el paso de borrador a confirmado; después, nada (ni total, forma de pago
         // ni vencimiento).
         static::updating(function (Ingreso $ingreso) {
-            if ($ingreso->getOriginal('estado') === EstadoIngreso::Confirmado) {
+            if ($ingreso->getOriginal('estado') === EstadoIngreso::Confirmado && ! $ingreso->esCambioDeVinculo()) {
                 throw RegistroInmutableException::para($ingreso, 'editar un ingreso confirmado');
             }
         });
@@ -83,6 +85,34 @@ class Ingreso extends Model
     public function items(): HasMany
     {
         return $this->hasMany(IngresoItem::class);
+    }
+
+    /** RF-19: la factura que cubre esta remisión. */
+    public function factura(): BelongsTo
+    {
+        return $this->belongsTo(Ingreso::class, 'factura_id');
+    }
+
+    /** RF-19: las remisiones que cubre esta factura. */
+    public function remisiones(): HasMany
+    {
+        return $this->hasMany(Ingreso::class, 'factura_id');
+    }
+
+    /**
+     * RF-19: en una remisión confirmada solo cambia factura_id, y la factura de antes y la de
+     * después (la que exista) siguen en borrador. Se leen de la base, no de relaciones en memoria.
+     */
+    private function esCambioDeVinculo(): bool
+    {
+        if ($this->tipo !== TipoIngreso::Remision
+            || array_diff(array_keys($this->getDirty()), ['factura_id', 'updated_at']) !== []) {
+            return false;
+        }
+
+        $facturas = array_filter([$this->getOriginal('factura_id'), $this->factura_id]);
+
+        return Ingreso::query()->whereKey($facturas)->where('estado', '!=', EstadoIngreso::Borrador)->doesntExist();
     }
 
     /**

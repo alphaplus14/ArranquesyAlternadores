@@ -84,3 +84,18 @@ it('S-33: una venta antigua con IVA NULL no se desglosa y el total es la suma de
         ->assertJsonPath('totales.items_sin_iva', 2)
         ->assertJsonPath('totales.iva_porcentajes', []);
 });
+
+it('S-33 (merge cesar + legri): el escaneo devuelve el ítem y los totales de la venta, para actualizarla sin pedirla otra vez', function () {
+    actuarComo(Rol::Mostrador);
+    $ventaId = $this->postJson('/api/ventas')->assertCreated()->json('id');
+    $unidad = unidadDe('RN-4410');
+    $precio = number_format((float) $unidad->referencia->precio_venta, 2, '.', '');
+
+    $r = $this->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => $unidad->codigo_barras, 'metodo_captura' => 'escaneado'])
+        ->assertCreated()
+        ->assertJsonPath('item.unidad.codigo_barras', $unidad->codigo_barras)
+        ->assertJsonPath('item.origen_codigo', 'etiqueta')
+        ->assertJsonPath('totales.total', $precio);
+
+    expect($r->json('totales'))->toBe($this->getJson("/api/ventas/{$ventaId}")->json('totales'));
+});

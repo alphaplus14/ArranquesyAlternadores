@@ -39,15 +39,11 @@ class ReferenciaController extends Controller
         $pagina = Referencia::query()
             ->with(self::relaciones())
             ->unless($conInactivas, fn ($query) => $query->activas())
-            // Prefijo sobre el código (usa el índice), código de barras exacto (S-25) o texto completo sobre la descripción.
-            ->when($q !== '', fn ($query) => $query->where(fn ($w) => $w
-                ->where('codigo_referencia', 'like', addcslashes($q, '%_\\').'%')
-                ->orWhere('codigo_fabricante', $q)
-                ->orWhereFullText('descripcion', $q)))
             ->when($request->query('categoria_id'), fn ($query, $v) => $query->where('categoria_id', $v))
             ->when($request->query('proveedor_id'), fn ($query, $v) => $query->where('proveedor_id', $v))
             ->when($request->query('codigo_universal_id'), fn ($query, $v) => $query->where('codigo_universal_id', $v))
-            ->orderBy('codigo_referencia')
+            // Con q: prefijo del código o todas las palabras de la descripción, por relevancia (RF-12).
+            ->when($q !== '', fn ($query) => $query->buscarTexto($q), fn ($query) => $query->orderBy('codigo_referencia'))
             ->paginate(min((int) $request->query('por_pagina', 25), 100));
 
         return ReferenciaResource::collection($pagina);

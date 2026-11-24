@@ -119,6 +119,8 @@ export interface IngresoItem {
   neto: string | null
   base: string | null
   iva: string | null
+  /** RF-19: unidades de la línea que ya entraron con las remisiones ligadas (no se crean otra vez). */
+  cantidad_cubierta: number
 }
 
 export type TipoIngreso = 'remision' | 'factura'
@@ -154,6 +156,27 @@ export interface Ingreso {
     lineas_sin_iva: number
     total: string
   } | null
+  /** RF-19: en una remisión, la factura que la cubre; en una factura, sus remisiones ligadas. */
+  factura: { id: number; numero_documento: string; estado: Ingreso['estado'] } | null
+  remisiones: RemisionLigada[]
+  diferencia_aceptada: boolean
+  diferencia_motivo: string | null
+}
+
+export interface RemisionLigada {
+  id: number
+  numero_documento: string
+  fecha: string
+  total: string | null
+  unidades: number
+}
+
+/** RF-19: respuesta 422 al confirmar una factura que cubre menos de lo recibido por sus remisiones. */
+export interface DiferenciaRemision {
+  referencia_id: number
+  codigo_referencia: string
+  recibido: number
+  facturado: number
 }
 
 export interface VentaItem {
@@ -433,6 +456,20 @@ export interface EstadoCuenta {
   saldo_final: string
 }
 
+/** RF-06: respuesta de POST /ventas/{id}/escanear. `item` tiene la misma forma que en GET /ventas/{id}. */
+export interface RespuestaEscaneo {
+  venta_id: number
+  item: VentaItem
+  venta_item_id: number
+  metodo_captura: MetodoCaptura
+  unidad: { id: number; codigo_barras: string; estado: Unidad['estado'] }
+  referencia: { id: number; codigo_referencia: string; descripcion: string; calidad: Calidad | null; proveedor: string; existencia: number }
+  /** S-31: 'referencia' si se escaneó el código del proveedor y el sistema eligió la unidad. */
+  origen_codigo?: OrigenCodigo
+  /** S-33: totales de la venta después del escaneo (precios con IVA incluido). */
+  totales?: TotalesVenta
+}
+
 export interface Auditoria {
   id: number
   tabla: string
@@ -451,6 +488,162 @@ export interface Pagina<T> {
   last_page?: number
   total?: number
   meta?: { current_page: number; last_page: number; total: number }
+}
+
+/** RF-17: medios de un pago a proveedor (config/cartera.php). Los abonos de clientes usan MedioPago (S-30). */
+export type MedioDinero = 'efectivo' | 'transferencia' | 'tarjeta' | 'cheque' | 'otro'
+
+export const NOMBRE_MEDIO_DINERO: Record<MedioDinero, string> = {
+  efectivo: 'Efectivo',
+  transferencia: 'Transferencia',
+  tarjeta: 'Tarjeta',
+  cheque: 'Cheque',
+  otro: 'Otro',
+}
+
+/** Abono de un cliente (RF-15) o pago a un proveedor (RF-17). No se edita ni se borra: se anula. */
+export interface MovimientoDinero {
+  id: number
+  cliente_id?: number
+  proveedor_id?: number
+  fecha: string
+  valor: string
+  medio: MedioDinero
+  referencia: string | null
+  nota: string | null
+  usuario: { id: number; name: string } | null
+  created_at: string
+  anulacion: { motivo: string; usuario: { id: number; name: string } | null; created_at: string } | null
+}
+
+export const NOMBRE_RANGO: Record<RangoAntiguedad, string> = {
+  al_dia: 'Al día',
+  d1_30: '1-30',
+  d31_60: '31-60',
+  d61_90: '61-90',
+  mas_90: 'Más de 90',
+}
+
+/** Saldo con antigüedad a una fecha de corte (FIFO: lo abonado cubre primero lo más antiguo). */
+export interface ResumenSaldo {
+  cargos: string
+  abonos: string
+  saldo: string
+  a_favor: string
+  vencido: string
+  rangos: Record<RangoAntiguedad, string>
+}
+
+export interface DocumentoPendiente {
+  id: number
+  fecha: string
+  vence_el: string | null
+  valor: string
+  pendiente: string
+  dias_vencido: number
+  rango: RangoAntiguedad
+}
+
+export interface SaldoCliente extends ResumenSaldo {
+  cliente: Cliente
+  corte: string
+  documentos: DocumentoPendiente[]
+  abonos_recientes: MovimientoDinero[]
+}
+
+export interface SaldoProveedor extends ResumenSaldo {
+  proveedor: Proveedor
+  corte: string
+  documentos: DocumentoPendiente[]
+  pagos_recientes: MovimientoDinero[]
+}
+
+/** RF-18: informe paginado en el servidor; los totales cubren todas las filas, no solo la página. */
+export interface PaginaInforme<T, Totales = Record<string, string>> extends Pagina<T> {
+  totales: Totales
+  desde?: string
+  hasta?: string
+  corte?: string
+}
+
+export interface FilaCompra {
+  id: number
+  tipo: TipoIngreso
+  numero_documento: string
+  proveedor: Opcion
+  fecha: string
+  forma_pago: FormaPago
+  subtotal: string
+  descuento: string
+  base_gravada: string
+  base_sin_iva: string
+  iva: string
+  total: string
+}
+
+export interface FilaVentaCredito {
+  id: number
+  cliente: Opcion
+  fecha: string
+  vence_el: string | null
+  factura_contapyme: string | null
+  items: number
+  base: string
+  iva: string
+  total: string
+}
+
+export interface FilaCartera extends ResumenSaldo {
+  cliente?: { id: number; nombre: string; documento: string | null; plazo_dias: number }
+  proveedor?: { id: number; nombre: string; nit: string | null; plazo_dias: number | null }
+}
+
+export type TotalesCartera = Omit<ResumenSaldo, 'rangos'> & { rangos: Record<RangoAntiguedad, string> }
+
+export type TipoMovimientoCuenta =
+  | 'venta' | 'reverso' | 'abono' | 'anulacion_abono'
+  | 'factura' | 'remision' | 'remision_cubierta' | 'pago' | 'anulacion_pago'
+
+export interface FilaEstadoCuenta {
+  fecha: string
+  tipo: TipoMovimientoCuenta
+  detalle: string
+  cargo: string
+  abono: string
+  saldo: string
+  venta_id?: number
+  ingreso_id?: number
+  abono_id?: number
+  pago_id?: number
+  vence_el?: string | null
+}
+
+export interface EstadoCuentaInforme extends PaginaInforme<FilaEstadoCuenta, { cargo: string; abono: string; saldo_final: string }> {
+  saldo_anterior: string
+  desde: string
+  hasta: string
+}
+
+export interface FilaRemisionPendiente {
+  id: number
+  numero_documento: string
+  proveedor: Opcion
+  fecha: string
+  forma_pago: FormaPago
+  total: string | null
+  dias: number
+  factura_borrador: { id: number; numero_documento: string } | null
+}
+
+export interface FilaDiferenciaRemision {
+  id: number
+  numero_documento: string
+  proveedor: Opcion
+  confirmado_at: string
+  confirmado_por: { id: number; name: string } | null
+  motivo: string | null
+  remisiones: Array<{ id: number; numero_documento: string }>
+  detalle: DiferenciaRemision[]
 }
 
 export function infoPagina<T>(p: Pagina<T>) {

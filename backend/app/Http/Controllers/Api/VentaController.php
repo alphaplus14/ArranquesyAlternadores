@@ -7,11 +7,13 @@ use App\Enums\TipoReverso;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\AbrirVentaRequest;
 use App\Http\Requests\CambiarPrecioItemRequest;
+use App\Http\Resources\VentaItemResource;
 use App\Http\Resources\VentaResource;
 use App\Models\Venta;
 use App\Models\VentaItem;
 use App\Services\ReversoService;
 use App\Services\VentaService;
+use App\Support\TotalesVenta;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -85,13 +87,28 @@ class VentaController extends Controller
             isset($datos['referencia_id']) ? (int) $datos['referencia_id'] : null,
         );
 
-        // Respuesta mínima para que el escaneo sea rápido; el frontend refresca la venta aparte.
-        $item->unidad->load('referencia:id,codigo_referencia,calidad,descripcion,existencia,proveedor_id,codigo_universal_id', 'referencia.proveedor:id,nombre');
+        // RF-06: una sola petición por escaneo. Se devuelve el ítem con la misma forma que en
+        // GET /ventas/{id} para que el frontend lo agregue a la venta en caché sin pedirla otra vez.
+        $item->unidad->load(
+            'referencia:id,codigo_referencia,calidad,descripcion,precio_venta,existencia,proveedor_id',
+            'referencia.proveedor:id,nombre',
+        );
+        $item->setRelation('usuario', $request->user())->setRelation('reversoItem', null);
 
         return response()->json([
+            'venta_id' => $item->venta_id,
+            'item' => new VentaItemResource($item),
             'venta_item_id' => $item->id,
             'metodo_captura' => $item->metodo_captura,
             'origen_codigo' => $item->origen_codigo, // S-31: etiqueta | referencia
+            // S-33: totales de la venta con el ítem nuevo, para que la pantalla los actualice sin
+            // volver a pedir la venta (una consulta liviana: precio, IVA y si está reversado).
+            'totales' => TotalesVenta::desglosar(DB::table('venta_items as vi')
+                ->leftJoin('reverso_items as ri', 'ri.venta_item_id', '=', 'vi.id')
+                ->where('vi.venta_id', $item->venta_id)
+                ->get(['vi.precio_unitario', 'vi.iva_porcentaje', 'ri.id as reverso'])
+                ->map(fn ($f) => ['precio' => $f->precio_unitario, 'iva' => $f->iva_porcentaje, 'vigente' => $f->reverso === null]))
+                ->aArreglo(),
             'unidad' => [
                 'id' => $item->unidad->id,
                 'codigo_barras' => $item->unidad->codigo_barras,

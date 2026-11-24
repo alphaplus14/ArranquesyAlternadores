@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
 import { api, erroresCampo, mensajeError } from '../../api/cliente'
+import { useAvisoTexto } from '../../componentes/Avisos'
+import Dialogo, { DialogoSeccion } from '../../componentes/Dialogo'
 import type { FormaPago, Ingreso, Pagina, TipoIngreso } from '../../api/tipos'
 import { sumarDias } from '../../componentes/fechas'
 import ControlSegmentado, { type OpcionSegmento } from '../../componentes/ControlSegmentado'
@@ -12,6 +14,7 @@ import { useProveedores } from '../../hooks/useCatalogos'
 import Medida from '../../componentes/Medida'
 import Resumen from '../../componentes/Resumen'
 import Paginacion from '../../componentes/Paginacion'
+import Icono from '../../componentes/Icono'
 
 interface FilaIngreso {
   id: number
@@ -79,13 +82,18 @@ export default function Ingresos() {
           </>
         )}
       >
-        <Medida etiqueta="Documentos" valor={info ? info.total.toLocaleString('es-CO') : '—'} tono="azul" icono="ingreso" />
+        <Medida etiqueta="Documentos" valor={info ? info.total.toLocaleString('es-CO') : '—'} tono="rojo" icono="ingreso" />
         <Medida etiqueta="Página" valor={info ? `${info.actual} / ${info.ultima}` : '—'} tono="amarillo" icono="catalogo" />
         <Medida etiqueta="En esta página" valor={resultado ? filas.length : '—'} tono="verde" icono="caja" />
         <Medida etiqueta="Borradores aquí" valor={resultado ? borradores : '—'} tono="rojo" icono="auditoria" />
       </Resumen>
       <section className="tarjeta-pagina">
-        <div className="fila-titulo"><h2>Documentos</h2></div>
+        <div className="fila-titulo">
+          <div className="fila-titulo-inicio titulo-con-medida rojo">
+            <span className="medida-icono rojo" aria-hidden><Icono nombre="ingreso" /></span>
+            <h2>Documentos</h2>
+          </div>
+        </div>
         <div className="tabla-desplazable">
         <table>
           <thead><tr><th>#</th><th>Tipo</th><th>Documento</th><th>Proveedor</th><th>Fecha</th><th>Pago</th><th>Unidades</th><th>Estado</th><th>Usuario</th></tr></thead>
@@ -160,39 +168,28 @@ function DialogoNuevoIngreso({ onCerrar }: { onCerrar: () => void }) {
   })
   const existente = crear.isError ? ingresoExistente(crear.error) : null
   const errores = crear.isError ? erroresCampo(crear.error) : {}
-
-  // Esc cierra; el fondo no se desplaza mientras la modal está abierta.
-  useEffect(() => {
-    const alPulsar = (e: KeyboardEvent) => { if (e.key === 'Escape') onCerrar() }
-    document.addEventListener('keydown', alPulsar)
-    const desbordeAnterior = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.removeEventListener('keydown', alPulsar)
-      document.body.style.overflow = desbordeAnterior
-    }
-  }, [onCerrar])
+  useAvisoTexto(
+    crear.isError ? mensajeError(crear.error) : null,
+    'error',
+    existente ? { to: `/logistica/ingresos/${existente}`, texto: `Ver el ingreso #${existente}` } : null,
+  )
 
   return (
-    <div className="modal modal-ingreso">
-      <form
-        className="modal-caja cuenta-modal ingreso-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="nuevo-ingreso-titulo"
-        onSubmit={(e) => { e.preventDefault(); crear.mutate() }}
-      >
-        <header className="modal-cabeza">
-          <div className="modal-cabeza-texto">
-            <h2 id="nuevo-ingreso-titulo">Nuevo ingreso</h2>
-            <p className="nota-obligatorio">Los campos con <span className="obligatorio">*</span> son obligatorios.</p>
-          </div>
-          <button type="button" className="icono-boton modal-cerrar" aria-label="Cerrar" onClick={onCerrar}>
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6L6 18" /></svg>
-          </button>
-        </header>
-
-        <section className="modal-seccion ingreso-modal-cuerpo">
+    <Dialogo
+      titulo="Nuevo ingreso"
+      descripcion={<p className="nota-obligatorio">Los campos con <span className="obligatorio">*</span> son obligatorios.</p>}
+      variante="ingreso"
+      onCerrar={onCerrar}
+      pendiente={crear.isPending}
+      onEnviar={() => crear.mutate()}
+      pie={(
+        <>
+          <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
+          <button type="submit" className="primario" disabled={!completo || crear.isPending}>{crear.isPending ? 'Creando…' : 'Crear y escanear'}</button>
+        </>
+      )}
+    >
+        <DialogoSeccion modo="cuerpo">
           <div className="ingreso-campos">
             <ControlSegmentado id="nuevo-ingreso-tipo" etiqueta="Tipo" opciones={TIPOS} valor={form.tipo} onCambio={(tipo) => setForm({ ...form, tipo })} />
             <ControlSegmentado id="nuevo-ingreso-pago" etiqueta="Pago" opciones={PAGOS} valor={form.forma_pago} onCambio={(forma_pago) => setForm({ ...form, forma_pago })} />
@@ -232,19 +229,7 @@ function DialogoNuevoIngreso({ onCerrar }: { onCerrar: () => void }) {
               </label>
             )}
           </div>
-          {crear.isError && (
-            <div className="aviso error" role="alert">
-              {mensajeError(crear.error)}
-              {existente && <> <Link to={`/logistica/ingresos/${existente}`}>Ver el ingreso #{existente}</Link></>}
-            </div>
-          )}
-        </section>
-
-        <footer className="modal-pie">
-          <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
-          <button type="submit" className="primario" disabled={!completo || crear.isPending}>{crear.isPending ? 'Creando…' : 'Crear y escanear'}</button>
-        </footer>
-      </form>
-    </div>
+        </DialogoSeccion>
+    </Dialogo>
   )
 }

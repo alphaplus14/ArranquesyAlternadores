@@ -12,6 +12,7 @@ use App\Models\Referencia;
 use App\Models\User;
 use App\Support\TotalesIngreso;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -21,6 +22,7 @@ use Illuminate\Support\Facades\DB;
  * RF-20: los ítems se agregan escaneando el código de referencia del proveedor del ingreso.
  * RF-16: forma de pago y vencimiento digitado; al confirmar se guarda el total (RF-09, ajuste).
  * RF-03: al confirmar se crean las unidades con su código de barras.
+ * RF-19: una factura se liga a remisiones del mismo proveedor para no duplicar inventario ni deuda.
  */
 class IngresoService
 {
@@ -192,10 +194,133 @@ class IngresoService
         $this->enBorrador($ingreso, fn () => $item->delete());
     }
 
-    /** RF-05: confirma el ingreso, crea las unidades y suma existencia. Queda quién confirmó. */
-    public function confirmar(Ingreso $ingreso, User $usuario): Ingreso
+    /**
+     * RF-19: remisiones confirmadas del mismo proveedor que todavía no tienen factura, por fecha.
+     *
+     * @return Collection<int, Ingreso>
+     */
+    public function remisionesDisponibles(Ingreso $factura): Collection
     {
-        return DB::transaction(function () use ($ingreso, $usuario) {
+        $this->exigirFactura($factura);
+
+        return Ingreso::query()
+            ->where('proveedor_id', $factura->proveedor_id)
+            ->where('tipo', TipoIngreso::Remision)
+            ->where('estado', EstadoIngreso::Confirmado)
+            ->whereNull('factura_id')
+            ->withSum('items as unidades', 'cantidad')
+            ->orderBy('fecha')->orderBy('id')
+            ->get();
+    }
+
+    /**
+     * RF-19: liga remisiones a una factura en borrador. Solo remisiones confirmadas, del mismo
+     * proveedor y sin otra factura. Cada vínculo queda en la auditoría (Ingreso es Auditable).
+     *
+     * @param  list<int>  $remisionIds
+     */
+    public function ligarRemisiones(Ingreso $factura, array $remisionIds): Ingreso
+    {
+        return $this->enBorrador($factura, function (Ingreso $bloqueada) use ($remisionIds) {
+            $this->exigirFactura($bloqueada);
+
+            $remisiones = Ingreso::query()->whereKey($remisionIds)->orderBy('id')->lockForUpdate()->get();
+            if ($remisiones->count() !== count(array_unique($remisionIds))) {
+                throw new ReglaInventarioException('Alguna remisión no existe.', 422);
+            }
+
+            foreach ($remisiones as $remision) {
+                $problema = match (true) {
+                    $remision->tipo !== TipoIngreso::Remision => 'no es una remisión',
+                    (int) $remision->proveedor_id !== (int) $bloqueada->proveedor_id => 'es de otro proveedor',
+                    $remision->esBorrador() => 'todavía no está confirmada',
+                    $remision->factura_id !== null && (int) $remision->factura_id !== $bloqueada->id => 'ya está ligada a otra factura',
+                    default => null,
+                };
+
+                if ($problema) {
+                    throw new ReglaInventarioException("La remisión {$remision->numero_documento} {$problema}.", 422);
+                }
+            }
+
+            foreach ($remisiones->whereNull('factura_id') as $remision) {
+                $remision->factura_id = $bloqueada->id;
+                $remision->save();
+            }
+
+            return $bloqueada;
+        });
+    }
+
+    /** RF-19: mientras la factura es borrador, una remisión ligada se puede desligar. */
+    public function desligarRemision(Ingreso $factura, Ingreso $remision): Ingreso
+    {
+        return $this->enBorrador($factura, function (Ingreso $bloqueada) use ($remision) {
+            $remision = Ingreso::query()->lockForUpdate()->findOrFail($remision->id);
+
+            if ((int) $remision->factura_id !== $bloqueada->id) {
+                throw new ReglaInventarioException("La remisión {$remision->numero_documento} no está ligada a esta factura.", 422);
+            }
+
+            $remision->factura_id = null;
+            $remision->save();
+
+            return $bloqueada;
+        });
+    }
+
+    /**
+     * RF-19: copia a la factura las líneas de sus remisiones ligadas, sumadas por referencia.
+     * Si la factura ya tiene esa referencia, solo ajusta la cantidad; si no, crea la línea con
+     * el costo, el descuento y el IVA de la línea más reciente de las remisiones. Repetirlo no
+     * duplica nada. Después logística corrige según la factura.
+     */
+    public function prellenar(Ingreso $factura): Ingreso
+    {
+        return $this->enBorrador($factura, function (Ingreso $bloqueada) {
+            $this->exigirFactura($bloqueada);
+
+            $lineas = IngresoItem::query()
+                ->whereIn('ingreso_id', $bloqueada->remisiones()->select('id'))
+                ->orderBy('id')
+                ->get()
+                ->groupBy('referencia_id');
+
+            if ($lineas->isEmpty()) {
+                throw new ReglaInventarioException('La factura no tiene remisiones ligadas para prellenar.', 422);
+            }
+
+            $existentes = $bloqueada->items()->orderBy('id')->get()->keyBy('referencia_id');
+
+            foreach ($lineas as $referenciaId => $deRemisiones) {
+                $cantidad = $deRemisiones->sum('cantidad');
+                $modelo = $deRemisiones->last();
+
+                if ($linea = $existentes->get($referenciaId)) {
+                    $linea->update(['cantidad' => $cantidad]);
+                } else {
+                    $bloqueada->items()->create([
+                        'referencia_id' => $referenciaId,
+                        'cantidad' => $cantidad,
+                        'costo_unitario' => $modelo->costo_unitario,
+                        'descuento_porcentaje' => $modelo->descuento_porcentaje,
+                        'iva_porcentaje' => $modelo->iva_porcentaje,
+                    ]);
+                }
+            }
+
+            return $bloqueada;
+        });
+    }
+
+    /**
+     * RF-05: confirma el ingreso, crea las unidades y suma existencia. Queda quién confirmó.
+     * RF-19: en una factura con remisiones ligadas, solo entran las unidades no cubiertas; si se
+     * facturó menos de lo recibido, la diferencia se acepta explícitamente con un motivo.
+     */
+    public function confirmar(Ingreso $ingreso, User $usuario, bool $aceptarDiferencia = false, ?string $motivo = null): Ingreso
+    {
+        return DB::transaction(function () use ($ingreso, $usuario, $aceptarDiferencia, $motivo) {
             $ingreso = Ingreso::query()->lockForUpdate()->findOrFail($ingreso->id);
             $this->exigirBorrador($ingreso);
 
@@ -226,7 +351,11 @@ class IngresoService
                 throw new ReglaInventarioException('Un ingreso a crédito no puede confirmarse con total $0.', 422);
             }
 
-            $codigos = $this->codigos->reservar($items->sum('cantidad'));
+            if ($ingreso->tipo === TipoIngreso::Factura) {
+                $this->cubrirConRemisiones($ingreso, $items, $aceptarDiferencia, $motivo);
+            }
+
+            $codigos = $this->codigos->reservar($items->sum(fn (IngresoItem $i) => InventarioService::unidadesNuevas($i)));
             $this->inventario->darEntrada($ingreso, $items, $codigos, $usuario->id);
 
             $ingreso->estado = EstadoIngreso::Confirmado;
@@ -240,6 +369,82 @@ class IngresoService
 
             return $ingreso;
         });
+    }
+
+    /**
+     * RF-19: por referencia, cantidad_cubierta = lo recibido por las remisiones ligadas, hasta lo
+     * facturado, repartido entre las líneas de la factura en orden. Si queda algo recibido sin
+     * facturar (menos cantidad, o una referencia que no aparece), exige aceptar la diferencia.
+     *
+     * @param  Collection<int, IngresoItem>  $items  líneas de la factura, por id
+     */
+    private function cubrirConRemisiones(Ingreso $factura, Collection $items, bool $aceptar, ?string $motivo): void
+    {
+        $recibido = IngresoItem::query()
+            ->whereIn('ingreso_id', $factura->remisiones()->select('id'))
+            ->groupBy('referencia_id')
+            ->select('referencia_id', DB::raw('SUM(cantidad) as cantidad'))
+            ->pluck('cantidad', 'referencia_id')
+            ->map(fn ($c) => (int) $c)
+            ->all();
+
+        if ($recibido === []) {
+            return;
+        }
+
+        $porCubrir = $recibido;
+        foreach ($items as $item) {
+            $cubierta = min($item->cantidad, $porCubrir[$item->referencia_id] ?? 0);
+            if ($cubierta === 0) {
+                continue;
+            }
+
+            $porCubrir[$item->referencia_id] -= $cubierta;
+            // Dato calculado al confirmar, no una edición: no pasa por la auditoría.
+            IngresoItem::query()->whereKey($item->id)->update(['cantidad_cubierta' => $cubierta]);
+            $item->setAttribute('cantidad_cubierta', $cubierta)->syncOriginalAttribute('cantidad_cubierta');
+        }
+
+        $faltantes = array_filter($porCubrir);
+        if ($faltantes === []) {
+            return;
+        }
+
+        $codigos = Referencia::query()->whereKey(array_keys($faltantes))->pluck('codigo_referencia', 'id');
+        $diferencias = collect($faltantes)->map(fn ($sinFacturar, $referenciaId) => [
+            'referencia_id' => $referenciaId,
+            'codigo_referencia' => $codigos[$referenciaId] ?? null,
+            'recibido' => $recibido[$referenciaId],
+            'facturado' => $recibido[$referenciaId] - $sinFacturar,
+        ])->values()->all();
+
+        if (! $aceptar) {
+            $detalle = collect($diferencias)->map(fn ($d) => "{$d['codigo_referencia']}: recibido {$d['recibido']}, facturado {$d['facturado']}")->implode('; ');
+
+            throw new ReglaInventarioException(
+                "La factura cubre menos de lo recibido por las remisiones ({$detalle}). Para confirmar, acepte la diferencia con un motivo.",
+                422,
+                ['motivo' => 'diferencia_remision', 'diferencias' => $diferencias],
+            );
+        }
+
+        if (trim((string) $motivo) === '') {
+            throw new ReglaInventarioException(
+                'Escriba el motivo para aceptar la diferencia con las remisiones.',
+                422,
+                ['errors' => ['motivo' => ['Escriba por qué se acepta la diferencia.']]],
+            );
+        }
+
+        $factura->diferencia_aceptada = true;
+        $factura->diferencia_motivo = trim($motivo);
+    }
+
+    private function exigirFactura(Ingreso $ingreso): void
+    {
+        if ($ingreso->tipo !== TipoIngreso::Factura) {
+            throw new ReglaInventarioException('Solo una factura se liga a remisiones.', 422);
+        }
     }
 
     /**

@@ -25,6 +25,7 @@ class IngresoItem extends Model
     {
         return [
             'cantidad' => 'integer',
+            'cantidad_cubierta' => 'integer', // RF-19: se fija al confirmar una factura ligada
             'costo_unitario' => 'decimal:2',
             'descuento_porcentaje' => 'decimal:2',
             'iva_porcentaje' => 'decimal:2',

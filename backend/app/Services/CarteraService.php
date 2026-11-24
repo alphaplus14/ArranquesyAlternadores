@@ -2,11 +2,15 @@
 
 namespace App\Services;
 
+use App\Enums\EstadoIngreso;
 use App\Enums\EstadoVenta;
 use App\Enums\FormaPago;
 use App\Models\AbonoCliente;
 use App\Models\Cliente;
+use App\Models\Proveedor;
+use App\Support\Antiguedad;
 use App\Support\RangoFechas;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
@@ -14,7 +18,8 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
- * RF-15 / RF-18 (S-09, S-11, S-12, S-13, S-30): única fuente del saldo de los clientes. Todo se
+ * RF-15 / RF-18 (S-09, S-11, S-13, S-30, S-32): única fuente del saldo de los clientes. RF-17: también
+ * los saldos de proveedores (métodos al final, de la rama de Frank). Todo se
  * calcula en SQL con agregados y funciones de ventana (MySQL 8), sin traer las ventas a memoria.
  *
  * A una fecha de corte (día de Bogotá; por defecto hoy):
@@ -578,4 +583,127 @@ class CarteraService
     {
         return number_format((float) $valor, 2, '.', '');
     }
+
+    /**
+     * RF-18 (informe "Cartera de clientes"): una fila por cliente con movimiento a crédito, con el
+     * MISMO cálculo de la cartera (asignacion(), S-32): cargos (ventas netas), abonos, saldo, saldo a
+     * favor, vencido y rangos. Así el informe y la pantalla de Cartera nunca dan cifras distintas.
+     *
+     * @return Collection<int, array<string, mixed>>
+     */
+    public function resumenClientes(string $corte): Collection
+    {
+        return DB::query()->fromSub($this->porCliente($corte), 'c')->get()->map(function ($f) {
+            $saldo = (float) $f->saldo;
+
+            return [
+                'cliente' => ['id' => (int) $f->id, 'nombre' => $f->nombre, 'documento' => $f->documento, 'plazo_dias' => (int) $f->plazo_dias],
+                'cargos' => self::pesos($f->ventas),
+                'abonos' => self::pesos($f->abonado),
+                'saldo' => self::pesos($saldo),
+                'a_favor' => self::pesos($saldo < 0 ? -$saldo : 0),
+                'vencido' => self::pesos($f->vencido),
+                'rangos' => array_combine(self::RANGOS, array_map(fn ($r) => self::pesos($f->{$r}), self::RANGOS)),
+            ];
+        });
+    }
+
+    /* ───────────── RF-17 / RF-18: proveedores (de la rama de Frank, sin cambios) ─────────────
+     * Saldo del proveedor = ingresos a crédito confirmados hasta el corte, por su total fijado al
+     * confirmar, menos los pagos no anulados hasta el corte. Una remisión cubierta por una factura
+     * confirmada no cuenta: cuenta la factura (RF-19). Los pagos se aplican FIFO (Antiguedad).
+     */
+
+   public function saldoProveedor(Proveedor $proveedor, ?CarbonInterface $corte = null): Antiguedad
+    {
+        $corte ??= Carbon::today();
+
+        return Antiguedad::calcular(
+            $this->comprasCredito([$proveedor->id], $corte)->get($proveedor->id, collect()),
+            $this->pagado([$proveedor->id], $corte)[$proveedor->id] ?? '0',
+            $corte,
+        );
+    }
+
+    /**
+     * Ingresos que generan deuda hasta el corte, agrupados por proveedor.
+     *
+     * @param  list<int>|null  $proveedorIds  null = todos
+     * @return Collection<int, Collection<int, array{id:int, fecha:string, vence_el:?string, valor:string, tipo:string, numero_documento:string}>>
+     */
+    public function comprasCredito(?array $proveedorIds, CarbonInterface $corte): Collection
+    {
+        return $this->ingresosQueCuentan($proveedorIds, $corte)
+            ->where('ingresos.forma_pago', FormaPago::Credito->value)
+            ->get(['ingresos.id', 'ingresos.proveedor_id', 'ingresos.tipo', 'ingresos.numero_documento', 'ingresos.fecha', 'ingresos.vence_el', 'ingresos.total'])
+            ->groupBy('proveedor_id')
+            ->map(fn (Collection $ingresos) => $ingresos->map(fn ($i) => [
+                'id' => (int) $i->id,
+                'fecha' => $i->fecha,
+                'vence_el' => $i->vence_el,
+                'valor' => (string) $i->total,
+                'tipo' => $i->tipo,
+                'numero_documento' => $i->numero_documento,
+            ])->values());
+    }
+
+    /**
+     * RF-18 / RF-19: ingresos confirmados hasta el corte que cuentan como compra, de contado o a
+     * crédito. Una remisión cubierta por una factura confirmada hasta el corte queda fuera; si la
+     * factura sigue en borrador (o se confirmó después del corte), la remisión cuenta.
+     *
+     * @param  list<int>|null  $proveedorIds  null = todos
+     */
+    public function ingresosQueCuentan(?array $proveedorIds, CarbonInterface $corte): Builder
+    {
+        $hasta = Carbon::instance($corte)->endOfDay();
+
+        return DB::table('ingresos')
+            ->leftJoin('ingresos as facturas', 'facturas.id', '=', 'ingresos.factura_id')
+            ->where('ingresos.estado', EstadoIngreso::Confirmado->value)
+            ->where('ingresos.confirmado_at', '<=', $hasta)
+            ->whereNotNull('ingresos.total')
+            ->when($proveedorIds !== null, fn ($q) => $q->whereIn('ingresos.proveedor_id', $proveedorIds))
+            ->where(fn ($q) => $q
+                ->whereNull('ingresos.factura_id')
+                ->orWhere('facturas.estado', '!=', EstadoIngreso::Confirmado->value)
+                ->orWhere('facturas.confirmado_at', '>', $hasta));
+    }
+
+    /**
+     * Pagos hasta el corte que no estaban anulados en el corte, sumados por proveedor.
+     *
+     * @param  list<int>|null  $proveedorIds  null = todos
+     * @return array<int, string>
+     */
+    public function pagado(?array $proveedorIds, CarbonInterface $corte): array
+    {
+        return $this->movimientosVigentes('pagos_proveedores', 'pago_anulaciones', 'pago_id', 'proveedor_id', $proveedorIds, $corte);
+    }
+
+    /**
+     * Suma por titular de los abonos o pagos con fecha hasta el corte, sin los anulados hasta el
+     * corte (uno anulado después todavía contaba ese día).
+     *
+     * @param  list<int>|null  $titularIds
+     * @return array<int, string>
+     */
+    private function movimientosVigentes(string $tabla, string $anulaciones, string $llave, string $titular, ?array $titularIds, CarbonInterface $corte): array
+    {
+        $hasta = Carbon::instance($corte)->endOfDay();
+
+        return DB::table($tabla)
+            ->leftJoin($anulaciones, fn ($j) => $j
+                ->on("{$anulaciones}.{$llave}", '=', "{$tabla}.id")
+                ->where("{$anulaciones}.created_at", '<=', $hasta))
+            ->whereNull("{$anulaciones}.id")
+            ->where("{$tabla}.fecha", '<=', $hasta->toDateString())
+            ->when($titularIds !== null, fn ($q) => $q->whereIn("{$tabla}.{$titular}", $titularIds))
+            ->groupBy("{$tabla}.{$titular}")
+            ->select("{$tabla}.{$titular} as titular", DB::raw("SUM({$tabla}.valor) as valor"))
+            ->pluck('valor', 'titular')
+            ->map(fn ($v) => (string) $v)
+            ->all();
+    }
+
 }

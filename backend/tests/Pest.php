@@ -1,12 +1,16 @@
 <?php
 
+use App\Enums\FormaPago;
+use App\Enums\MetodoCaptura;
 use App\Enums\Rol;
 use App\Models\Cliente;
 use App\Models\Ingreso;
 use App\Models\Referencia;
 use App\Models\Unidad;
 use App\Models\User;
+use App\Models\Venta;
 use App\Services\IngresoService;
+use App\Services\VentaService;
 use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -24,6 +28,11 @@ pest()->extend(TestCase::class)
 pest()->extend(TestCase::class)
     ->use(DatabaseTruncation::class)
     ->in('Concurrencia');
+
+// RF-12: el índice FULLTEXT de InnoDB no ve filas sin confirmar dentro de una transacción.
+pest()->extend(TestCase::class)
+    ->use(DatabaseTruncation::class)
+    ->in('Busqueda');
 
 /** Crea un usuario del rol indicado y deja la sesión iniciada con él. */
 function actuarComo(Rol $rol): User
@@ -137,4 +146,42 @@ function fecharVenta(int $ventaId, string $cerrada, string $vence): void
 function abonar(Cliente $cliente, mixed $valor, array $extra = [])
 {
     return test()->postJson("/api/clientes/{$cliente->id}/abonos", ['fecha' => now('America/Bogota')->toDateString(), 'valor' => $valor, 'medio' => 'efectivo', ...$extra]);
+}
+
+/** RF-14: venta a crédito cerrada con las unidades de RN-4410 indicadas, cada una al precio dado. */
+function ventaCreditoCerrada(Cliente $cliente, int $unidades, int $precio): Venta
+{
+    referencia('RN-4410')->update(['precio_venta' => $precio]);
+    $mostrador = User::factory()->rol(Rol::Mostrador)->create();
+    $servicio = app(VentaService::class);
+
+    $venta = $servicio->abrir($mostrador, FormaPago::Credito, $cliente->id);
+    for ($i = 0; $i < $unidades; $i++) {
+        $servicio->escanear($venta, unidadDe('RN-4410')->codigo_barras, MetodoCaptura::Escaneado, $mostrador);
+    }
+
+    return $servicio->cerrar($venta);
+}
+
+/** RF-16: ingreso de una línea sin IVA (total = cantidad × costo); confirmado salvo que se pida borrador. */
+function compra(Referencia $referencia, int $cantidad, int $costo, array $encabezado = [], bool $confirmar = true): Ingreso
+{
+    $usuario = User::factory()->rol(Rol::Logistica)->create();
+    $servicio = app(IngresoService::class);
+
+    $ingreso = $servicio->crearBorrador([
+        'proveedor_id' => $referencia->proveedor_id,
+        'numero_documento' => 'DOC-'.random_int(10000, 99999),
+        'fecha' => now()->toDateString(),
+        ...$encabezado,
+    ], $usuario);
+    $servicio->agregarItem($ingreso, ['referencia_id' => $referencia->id, 'cantidad' => $cantidad, 'costo_unitario' => $costo, 'iva_porcentaje' => 0]);
+
+    return $confirmar ? $servicio->confirmar($ingreso, $usuario) : $ingreso;
+}
+
+/** RF-16: encabezado de un ingreso a crédito. */
+function aCredito(string $vence = '2026-12-31'): array
+{
+    return ['forma_pago' => 'credito', 'vence_el' => $vence];
 }

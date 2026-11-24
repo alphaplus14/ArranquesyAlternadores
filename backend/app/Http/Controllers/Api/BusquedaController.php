@@ -2,59 +2,24 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Enums\EstadoUnidad;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\ReferenciaResource;
 use App\Http\Resources\UnidadResource;
-use App\Models\CodigoUniversal;
-use App\Models\Referencia;
-use App\Models\Unidad;
+use App\Services\BusquedaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
  * RF-12: respaldo cuando el escáner no lee. Busca por código de barras (exacto), por código de
- * referencia o por código universal (prefijo, con índice), y por código del fabricante (exacto, S-25) y devuelve las unidades disponibles
- * para elegir. Sin LIKE con comodín inicial: la velocidad es requisito.
+ * referencia o universal (prefijo) y por descripción (FULLTEXT). El orden lo define BusquedaService.
  */
 class BusquedaController extends Controller
 {
-    private const MAX_REFERENCIAS = 20;
-
-    private const MAX_UNIDADES_POR_REFERENCIA = 20;
-
-    public function __invoke(Request $request): JsonResponse
+    public function __invoke(Request $request, BusquedaService $busqueda): JsonResponse
     {
         $q = trim((string) $request->validate(['q' => ['required', 'string', 'min:2', 'max:120']])['q']);
 
-        $unidad = Unidad::query()
-            ->where('codigo_barras', $q)
-            ->whereHas('referencia', fn ($r) => $r->activas()) // S-26
-            ->with('referencia.proveedor:id,nombre', 'referencia.codigoUniversal:id,codigo')
-            ->first();
-
-        $prefijo = addcslashes($q, '%_\\').'%';
-        $universales = CodigoUniversal::where('codigo', 'like', $prefijo)->limit(self::MAX_REFERENCIAS)->pluck('id');
-
-        $referencias = Referencia::query()
-            ->activas() // S-26: una inactiva no se encuentra
-            ->where(fn ($w) => $w
-                ->where('codigo_referencia', 'like', $prefijo)
-                ->orWhere('codigo_fabricante', $q) // S-25: código de barras exacto, en todos los proveedores
-                ->when($universales->isNotEmpty(), fn ($w) => $w->orWhereIn('codigo_universal_id', $universales)))
-            ->with([
-                'proveedor:id,nombre',
-                'codigoUniversal:id,codigo',
-                // Laravel limita por referencia con funciones de ventana (MySQL 8).
-                'unidades' => fn ($u) => $u
-                    ->where('estado', EstadoUnidad::Disponible)
-                    ->orderBy('id')
-                    ->limit(self::MAX_UNIDADES_POR_REFERENCIA)
-                    ->select('id', 'referencia_id', 'codigo_barras', 'estado'),
-            ])
-            ->orderBy('codigo_referencia')
-            ->limit(self::MAX_REFERENCIAS)
-            ->get();
+        ['unidad' => $unidad, 'referencias' => $referencias] = $busqueda->buscar($q);
 
         return response()->json([
             'unidad' => $unidad ? new UnidadResource($unidad) : null,

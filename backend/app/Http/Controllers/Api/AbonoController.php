@@ -9,6 +9,7 @@ use App\Models\AbonoCliente;
 use App\Models\Cliente;
 use App\Services\AbonoService;
 use App\Services\CarteraService;
+use App\Support\RangoFechas;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -27,7 +28,8 @@ class AbonoController extends Controller
     public function store(Request $request, Cliente $cliente): JsonResponse
     {
         $datos = $request->validate([
-            'fecha' => ['required', 'date_format:Y-m-d'],
+            // S-36 (antes S-25 de Frank): hoy por defecto; puede ser anterior, nunca futura.
+            'fecha' => ['nullable', 'date_format:Y-m-d'],
             'valor' => ['required', 'numeric', 'gt:0', 'max:999999999999'],
             'medio' => ['required', Rule::enum(MedioPago::class)],
             'referencia' => ['nullable', 'string', 'max:60'],
@@ -40,7 +42,7 @@ class AbonoController extends Controller
 
         $abono = $this->abonos->registrar(
             $cliente,
-            $datos['fecha'],
+            $datos['fecha'] ?? RangoFechas::hoy(),
             $datos['valor'],
             MedioPago::from($datos['medio']),
             $datos['referencia'] ?? null,

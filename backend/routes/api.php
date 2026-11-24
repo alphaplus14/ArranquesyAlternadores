@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\CuentaController;
 use App\Http\Controllers\Api\DevolucionController;
 use App\Http\Controllers\Api\EtiquetaController;
 use App\Http\Controllers\Api\IngresoController;
+use App\Http\Controllers\Api\PagoController;
 use App\Http\Controllers\Api\ProveedorController;
 use App\Http\Controllers\Api\ReferenciaController;
 use App\Http\Controllers\Api\ReporteController;
@@ -23,7 +24,7 @@ use Illuminate\Support\Facades\Route;
 
 /*
  * Regla 12: todo endpoint protegido por rol (middleware "rol"; el admin pasa siempre).
- * No hay rutas DELETE para ventas, venta_items, reversos, movimientos ni auditoría (RF-07, RF-11).
+ * No hay rutas DELETE para ventas, venta_items, reversos, movimientos, abonos, pagos ni auditoría (RF-07, RF-11, RF-15, RF-17).
  */
 
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login')->name('login');
@@ -89,6 +90,23 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/configuracion/stock-minimo', [ConfiguracionController::class, 'fijarStockMinimo']);
 
         Route::match(['put', 'patch'], '/clientes/{cliente}', [ClienteController::class, 'update']); // RF-13
+
+        // RF-17 / S-14: pagos a proveedores, solo admin.
+        Route::get('/proveedores/{proveedor}/saldo', [PagoController::class, 'saldo']);
+        Route::post('/proveedores/{proveedor}/pagos', [PagoController::class, 'store']);
+        Route::post('/pagos/{pago}/anulaciones', [PagoController::class, 'anular']);
+
+        // RF-18 / S-14: informes en pantalla, solo admin. El estado de cuenta del cliente está en la
+        // cartera (S-30: admin y mostrador) y usa el mismo cálculo.
+        Route::middleware('medir:500')->group(function () {
+            Route::get('/reportes/compras', [ReporteController::class, 'compras']);
+            Route::get('/reportes/ventas-credito', [ReporteController::class, 'ventasCredito']);
+            Route::get('/reportes/cartera-clientes', [ReporteController::class, 'carteraClientes']);
+            Route::get('/reportes/cuentas-por-pagar', [ReporteController::class, 'cuentasPorPagar']);
+            Route::get('/reportes/remisiones-pendientes', [ReporteController::class, 'remisionesPendientes']);
+            Route::get('/reportes/diferencias-remision', [ReporteController::class, 'diferenciasRemision']);
+            Route::get('/proveedores/{proveedor}/estado-cuenta', [ReporteController::class, 'estadoCuentaProveedor']);
+        });
     });
 
     // Módulo de logística: ingreso de remisiones y facturas a mano (RF-05, RF-04, RF-09, RF-10) y etiquetas (RF-03).
@@ -100,6 +118,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/ingresos/{ingreso}/unidades', [IngresoController::class, 'unidades']);
         Route::post('/ingresos/{ingreso}/confirmar', [IngresoController::class, 'confirmar']);
         Route::post('/ingresos/{ingreso}/escanear', [IngresoController::class, 'escanear'])->middleware('medir:500')->name('ingresos.escanear'); // RF-20
+
+        // RF-19: vínculo remisión–factura, solo con la factura en borrador.
+        Route::get('/ingresos/{ingreso}/remisiones-disponibles', [IngresoController::class, 'remisionesDisponibles']);
+        Route::post('/ingresos/{ingreso}/remisiones', [IngresoController::class, 'ligarRemisiones']);
+        Route::delete('/ingresos/{ingreso}/remisiones/{remision}', [IngresoController::class, 'desligarRemision']);
+        Route::post('/ingresos/{ingreso}/prellenar', [IngresoController::class, 'prellenar']);
 
         Route::scopeBindings()->group(function () {
             Route::post('/ingresos/{ingreso}/items', [IngresoController::class, 'agregarItem']);

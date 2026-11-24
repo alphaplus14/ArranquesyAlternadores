@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeError } from '../../api/cliente'
+import { useAvisoTexto } from '../../componentes/Avisos'
 import type { Pagina } from '../../api/tipos'
 import { useListaPaginada } from '../../hooks/useListaPaginada'
 import { useCategorias } from '../../hooks/useCatalogos'
@@ -31,6 +32,7 @@ export default function Universales() {
     mutationFn: async () => api.post('/codigos-universales', { ...nuevo, stock_minimo: aValorMinimo(nuevo.stock_minimo) }),
     onSuccess: () => { setNuevo({ codigo: '', categoria_id: '', descripcion: '', stock_minimo: '' }); qc.invalidateQueries({ queryKey: ['universales'] }) },
   })
+  useAvisoTexto(crear.isError ? mensajeError(crear.error) : null)
 
   return (
     <div className="pila">
@@ -74,7 +76,6 @@ export default function Universales() {
         />
         <button className="primario" disabled={crear.isPending || errorStockMinimo(nuevo.stock_minimo) !== null}>Crear</button>
       </form>
-      {crear.isError && <div className="aviso error">{mensajeError(crear.error)}</div>}
       </section>
 
       <section className="tarjeta-pagina">

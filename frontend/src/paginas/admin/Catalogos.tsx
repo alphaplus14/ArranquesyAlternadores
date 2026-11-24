@@ -1,11 +1,16 @@
 import { useMemo, useState, type KeyboardEvent } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeError } from '../../api/cliente'
-import type { Categoria, Proveedor } from '../../api/tipos'
+import { useAvisoTexto } from '../../componentes/Avisos'
+import type { Categoria, Opcion, Pagina, Proveedor } from '../../api/tipos'
 import Icono from '../../componentes/Icono'
+import Paginacion from '../../componentes/Paginacion'
 import DialogoProveedor from '../../componentes/DialogoProveedor'
 import { filtrarProveedores } from '../../componentes/filtroProveedores'
 import { useCategorias, useProveedores } from '../../hooks/useCatalogos'
+
+/** Proveedores y categorías se muestran de a 15. Los selectores siguen usando la lista completa. */
+const CATALOGO_POR_PAGINA = 15
 
 type Clave = 'proveedores' | 'categorias'
 
@@ -77,6 +82,7 @@ export default function Catalogos() {
             filas={datos[pestana.clave].filas}
             cargando={datos[pestana.clave].cargando}
             esCategoria
+            porPagina={CATALOGO_POR_PAGINA}
           />
         )}
       </section>
@@ -148,7 +154,7 @@ function admiteUniversal(fila: Proveedor | Categoria): boolean {
   return 'admite_codigo_universal' in fila && fila.admite_codigo_universal
 }
 
-function Catalogo({ titulo, singular, alta, ruta, clave, filas, cargando, esCategoria }: {
+function Catalogo({ titulo, singular, alta, ruta, clave, filas, cargando, esCategoria, porPagina }: {
   titulo: string
   singular: string
   alta: string
@@ -157,22 +163,32 @@ function Catalogo({ titulo, singular, alta, ruta, clave, filas, cargando, esCate
   filas: Array<Proveedor | Categoria>
   cargando: boolean
   esCategoria: boolean
+  porPagina?: number
 }) {
   const qc = useQueryClient()
   const [nombre, setNombre] = useState('')
   const [busqueda, setBusqueda] = useState('')
+  const [pagina, setPagina] = useState(1)
   const [edicion, setEdicion] = useState<{ id: number; nombre: string } | null>(null)
 
   const refrescar = () => qc.invalidateQueries({ queryKey: [clave] })
   const crear = useMutation({ mutationFn: () => api.post(`/${ruta}`, { nombre }), onSuccess: () => { setNombre(''); refrescar() } })
   const renombrar = useMutation({ mutationFn: (e: { id: number; nombre: string }) => api.patch(`/${ruta}/${e.id}`, { nombre: e.nombre }), onSuccess: () => { setEdicion(null); refrescar() } })
   const error = crear.error ?? renombrar.error
+  useAvisoTexto(error ? mensajeError(error) : null)
 
   const visibles = useMemo(() => {
     const q = busqueda.trim().toLocaleLowerCase()
     if (!q) return filas
     return filas.filter((f) => f.nombre.toLocaleLowerCase().includes(q))
   }, [filas, busqueda])
+
+  const ultima = porPagina ? Math.max(1, Math.ceil(visibles.length / porPagina)) : 1
+  const actual = Math.min(pagina, ultima)
+  const enPantalla = porPagina ? visibles.slice((actual - 1) * porPagina, actual * porPagina) : visibles
+  const paginaLista: Pagina<Opcion | Categoria> | undefined = porPagina && ultima > 1
+    ? { data: enPantalla, current_page: actual, last_page: ultima, total: visibles.length }
+    : undefined
 
   const columnas = esCategoria ? 3 : 2
 
@@ -188,12 +204,11 @@ function Catalogo({ titulo, singular, alta, ruta, clave, filas, cargando, esCate
           <input
             placeholder={`Buscar ${singular}`}
             value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
+            onChange={(e) => { setBusqueda(e.target.value); setPagina(1) }}
             aria-label={`Buscar ${singular}`}
           />
         </label>
       </div>
-      {error && <div className="aviso error catalogo-aviso">{mensajeError(error)}</div>}
       <div className="tabla-marcos-scroll">
         <table className="tabla-marcos">
           <thead>
@@ -209,14 +224,14 @@ function Catalogo({ titulo, singular, alta, ruta, clave, filas, cargando, esCate
                 <td colSpan={columnas}>Cargando {titulo.toLocaleLowerCase()}…</td>
               </tr>
             )}
-            {!cargando && visibles.length === 0 && (
+            {!cargando && enPantalla.length === 0 && (
               <tr className="tabla-marcos-vacia">
                 <td colSpan={columnas}>
                   {filas.length === 0 ? `Todavía no hay ${titulo.toLocaleLowerCase()}.` : `Ningún resultado para «${busqueda.trim()}».`}
                 </td>
               </tr>
             )}
-            {visibles.map((f) => (
+            {enPantalla.map((f) => (
               <tr key={f.id}>
                 {edicion?.id === f.id ? (
                   <td colSpan={columnas}>
@@ -237,7 +252,15 @@ function Catalogo({ titulo, singular, alta, ruta, clave, filas, cargando, esCate
                       </td>
                     )}
                     <td className="col-accion">
-                      <button type="button" className="accion" onClick={() => setEdicion({ id: f.id, nombre: f.nombre })}>Renombrar</button>
+                      <button
+                        type="button"
+                        className="icono-accion"
+                        title="Renombrar"
+                        aria-label={`Renombrar ${f.nombre}`}
+                        onClick={() => setEdicion({ id: f.id, nombre: f.nombre })}
+                      >
+                        <Icono nombre="editar" />
+                      </button>
                     </td>
                   </>
                 )}
@@ -246,6 +269,7 @@ function Catalogo({ titulo, singular, alta, ruta, clave, filas, cargando, esCate
           </tbody>
         </table>
       </div>
+      {paginaLista && <Paginacion pagina={paginaLista} onCambiar={setPagina} />}
     </div>
   )
 }

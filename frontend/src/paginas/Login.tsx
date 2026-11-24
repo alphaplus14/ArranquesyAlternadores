@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { Navigate } from 'react-router-dom'
 import { AxiosError } from 'axios'
 import { mensajeError } from '../api/cliente'
+import { useAviso } from '../componentes/Avisos'
 import { useAuth } from '../auth/AuthProvider'
 import { errorUsuario, normalizarUsuario } from '../auth/nombreUsuario'
 import Icono from '../componentes/Icono'
@@ -9,9 +10,6 @@ import logo from '../assets/logo-la8va.jpg'
 import { rutaInicio } from '../rutas'
 
 type Campo = 'usuario' | 'password'
-
-/** Aviso del servidor: el texto viene del backend; `credenciales` es el 422 de login fallido. */
-interface Aviso { mensaje: string; tipo: 'credenciales' | 'bloqueo' | 'otro' }
 
 /**
  * Inicio de sesión con nombre de usuario. Valida mientras se escribe, sin pedir nada al servidor:
@@ -22,10 +20,11 @@ interface Aviso { mensaje: string; tipo: 'credenciales' | 'bloqueo' | 'otro' }
  */
 export default function Login() {
   const { usuario: sesion, entrar } = useAuth()
+  const avisos = useAviso()
+  const tipoAviso = useRef<'credenciales' | 'bloqueo' | 'otro' | null>(null)
   const [usuario, setUsuario] = useState('')
   const [password, setPassword] = useState('')
   const [tocado, setTocado] = useState<Record<Campo, boolean>>({ usuario: false, password: false })
-  const [aviso, setAviso] = useState<Aviso | null>(null)
   const [enviando, setEnviando] = useState(false)
   const [verClave, setVerClave] = useState(false)
   const [bloqMayus, setBloqMayus] = useState(false)
@@ -38,10 +37,10 @@ export default function Login() {
     const t = window.setTimeout(() => {
       setEspera((s) => s - 1)
       // Terminado el bloqueo, su aviso ya no aplica.
-      if (espera === 1) setAviso((a) => (a?.tipo === 'bloqueo' ? null : a))
+      if (espera === 1 && tipoAviso.current === 'bloqueo') { tipoAviso.current = null; avisos.limpiar() }
     }, 1000)
     return () => window.clearTimeout(t)
-  }, [espera])
+  }, [espera, avisos])
 
   if (sesion) return <Navigate to={rutaInicio(sesion.rol)} replace />
 
@@ -66,23 +65,27 @@ export default function Login() {
     setTocado({ usuario: true, password: true })
     if (invalido || enviando || espera > 0) return
     setEnviando(true)
-    setAviso(null)
+    tipoAviso.current = null
+    avisos.limpiar()
     try {
       await entrar(usuario, password)
     } catch (err) {
       const estado = err instanceof AxiosError ? err.response?.status : undefined
       if (estado === 422) {
         // Se conserva el usuario; la contraseña se vacía (sin marcarla como error) y recibe el foco.
-        setAviso({ mensaje: mensajeError(err), tipo: 'credenciales' })
+        tipoAviso.current = 'credenciales'
+        avisos.mostrar('error', `${mensajeError(err)} Si no puede entrar, consulte al administrador.`)
         setPassword('')
         setTocado((t) => ({ ...t, password: false }))
         requestAnimationFrame(() => campoClave.current?.focus())
       } else if (estado === 429) {
         const datos = (err as AxiosError<{ message?: string; retry_after?: number }>).response?.data
-        setAviso({ mensaje: datos?.message ?? mensajeError(err), tipo: 'bloqueo' })
+        tipoAviso.current = 'bloqueo'
+        avisos.mostrar('error', mensajeError(err))
         if (typeof datos?.retry_after === 'number' && datos.retry_after > 0) setEspera(Math.ceil(datos.retry_after))
       } else {
-        setAviso({ mensaje: mensajeError(err), tipo: 'otro' })
+        tipoAviso.current = 'otro'
+        avisos.mostrar('error', mensajeError(err))
       }
     } finally {
       setEnviando(false)
@@ -111,7 +114,8 @@ export default function Login() {
             onChange={(e) => {
               setUsuario(normalizarUsuario(e.target.value))
               tocar('usuario')
-              setAviso(null)
+              tipoAviso.current = null
+              avisos.limpiar()
             }}
             {...atributos('usuario')}
           />
@@ -130,7 +134,8 @@ export default function Login() {
               onChange={(e) => {
                 setPassword(e.target.value)
                 tocar('password')
-                setAviso(null)
+                tipoAviso.current = null
+                avisos.limpiar()
               }}
               onKeyDown={revisarMayus}
               onKeyUp={revisarMayus}
@@ -151,12 +156,6 @@ export default function Login() {
         {mostrar('password') && <p id="password-error" className="ayuda error">{mostrar('password')}</p>}
         {bloqMayus && <p className="ayuda atencion" role="status">Bloq Mayús está activado.</p>}
 
-        {aviso && (
-          <div className="aviso error" role="alert" aria-live="assertive">
-            {aviso.mensaje}
-            {aviso.tipo === 'credenciales' && <p className="ayuda">Si no puede entrar, consulte al administrador.</p>}
-          </div>
-        )}
         <button className="primario" disabled={enviando || espera > 0}>
           {enviando ? 'Entrando…' : espera > 0 ? `Reintentar en ${espera} s` : 'Entrar'}
         </button>

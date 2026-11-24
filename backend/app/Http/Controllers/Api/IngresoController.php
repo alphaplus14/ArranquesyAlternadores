@@ -21,6 +21,7 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
  * RF-09 / RF-10: descuento y líneas sin IVA. RF-03: al confirmar se crean las unidades.
  * RF-04: la factura de compra se ingresa a mano, igual que la remisión. RF-20: ítems por escaneo.
  * RF-16: forma de pago, vencimiento digitado y total fijado al confirmar.
+ * RF-19: ligar remisiones a una factura en borrador, prellenarla y aceptar diferencias.
  */
 class IngresoController extends Controller
 {
@@ -95,11 +96,57 @@ class IngresoController extends Controller
         return new IngresoResource($this->cargar($ingreso));
     }
 
+    /** RF-19: aceptar_diferencia y motivo solo hacen falta si la factura cubre menos de lo recibido. */
     public function confirmar(Request $request, Ingreso $ingreso): IngresoResource
     {
-        $ingreso = $this->servicio->confirmar($ingreso, $request->user());
+        $datos = $request->validate([
+            'aceptar_diferencia' => ['sometimes', 'boolean'],
+            'motivo' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $ingreso = $this->servicio->confirmar(
+            $ingreso,
+            $request->user(),
+            (bool) ($datos['aceptar_diferencia'] ?? false),
+            $datos['motivo'] ?? null,
+        );
 
         return new IngresoResource($this->cargar($ingreso));
+    }
+
+    /** RF-19: remisiones confirmadas del proveedor de la factura que aún no tienen factura. */
+    public function remisionesDisponibles(Ingreso $ingreso): JsonResponse
+    {
+        $remisiones = $this->servicio->remisionesDisponibles($ingreso)->map(fn (Ingreso $r) => [
+            'id' => $r->id,
+            'numero_documento' => $r->numero_documento,
+            'fecha' => $r->fecha->toDateString(),
+            'forma_pago' => $r->forma_pago,
+            'total' => $r->total,
+            'unidades' => (int) $r->unidades,
+        ]);
+
+        return response()->json(['data' => $remisiones]);
+    }
+
+    public function ligarRemisiones(Request $request, Ingreso $ingreso): IngresoResource
+    {
+        $datos = $request->validate([
+            'remision_ids' => ['required', 'array', 'min:1'],
+            'remision_ids.*' => ['integer', 'distinct'],
+        ]);
+
+        return new IngresoResource($this->cargar($this->servicio->ligarRemisiones($ingreso, $datos['remision_ids'])));
+    }
+
+    public function desligarRemision(Ingreso $ingreso, Ingreso $remision): IngresoResource
+    {
+        return new IngresoResource($this->cargar($this->servicio->desligarRemision($ingreso, $remision)));
+    }
+
+    public function prellenar(Ingreso $ingreso): IngresoResource
+    {
+        return new IngresoResource($this->cargar($this->servicio->prellenar($ingreso)));
     }
 
     /** RF-03: unidades creadas por el ingreso, para imprimir sus etiquetas. */
@@ -122,6 +169,8 @@ class IngresoController extends Controller
             'confirmadoPor:id,name',
             'items' => fn ($q) => $q->orderBy('id'),
             'items.referencia:id,codigo_referencia,descripcion',
+            'factura:id,numero_documento,estado', // RF-19
+            'remisiones' => fn ($q) => $q->orderBy('fecha')->orderBy('id')->withSum('items as unidades', 'cantidad'),
         ]);
     }
 }

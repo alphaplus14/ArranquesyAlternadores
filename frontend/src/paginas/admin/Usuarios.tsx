@@ -1,14 +1,22 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeError } from '../../api/cliente'
+import { useAvisoTexto } from '../../componentes/Avisos'
 import type { Pagina, Rol, Usuario } from '../../api/tipos'
 import { useAuth } from '../../auth/AuthProvider'
 import { normalizarUsuario } from '../../auth/nombreUsuario'
 import { useListaPaginada } from '../../hooks/useListaPaginada'
+import { useAviso } from '../../componentes/Avisos'
+import Confirmar from '../../componentes/Confirmar'
+import Dialogo, { DialogoSeccion } from '../../componentes/Dialogo'
 import Icono from '../../componentes/Icono'
 import Medida from '../../componentes/Medida'
 import Resumen from '../../componentes/Resumen'
 import Paginacion from '../../componentes/Paginacion'
+
+type Confirmacion =
+  | { tipo: 'rol'; id: number; nombre: string; desde: Rol; hacia: Rol }
+  | { tipo: 'activo'; id: number; nombre: string; activo: boolean }
 
 const ROLES: Rol[] = ['admin', 'logistica', 'mostrador']
 /** Un empleado cambia entre estos roles; un admin nuevo se crea como cuenta nueva. */
@@ -21,6 +29,7 @@ export default function Usuarios() {
   const { usuario: yo } = useAuth()
   const [nuevo, setNuevo] = useState({ name: '', usuario: '', password: '', rol: 'mostrador' as Rol })
   const [cambiandoClave, setCambiandoClave] = useState<Usuario | null>(null)
+  const [confirmacion, setConfirmacion] = useState<Confirmacion | null>(null)
 
   const { filas, resultado, info, irA } = useListaPaginada<Usuario>({
     clave: ['usuarios'],
@@ -30,9 +39,39 @@ export default function Usuarios() {
 
   const crear = useMutation({ mutationFn: () => api.post('/usuarios', nuevo), onSuccess: () => { setNuevo({ name: '', usuario: '', password: '', rol: 'mostrador' }); refrescar() } })
   const cambiar = useMutation({ mutationFn: ({ id, ...datos }: Partial<Usuario> & { id: number }) => api.patch(`/usuarios/${id}`, datos), onSuccess: refrescar })
-  const error = crear.error ?? cambiar.error
+  const error = confirmacion ? crear.error : (crear.error ?? cambiar.error)
+  useAvisoTexto(error ? mensajeError(error) : null)
+
+  const pedirConfirmacion = (c: Confirmacion) => { cambiar.reset(); setConfirmacion(c) }
+  const aplicarConfirmacion = () => {
+    if (!confirmacion) return
+    const datos = confirmacion.tipo === 'rol'
+      ? { id: confirmacion.id, rol: confirmacion.hacia }
+      : { id: confirmacion.id, activo: !confirmacion.activo }
+    cambiar.mutate(datos, { onSuccess: () => setConfirmacion(null) })
+  }
 
   const activos = filas.filter((u) => u.activo !== false).length
+  const aviso = confirmacion?.tipo === 'rol'
+    ? {
+        titulo: 'Cambiar rol',
+        texto: `¿Cambiar el rol de ${confirmacion.nombre} de ${ROL[confirmacion.desde]} a ${ROL[confirmacion.hacia]}?`,
+        accion: 'Sí, cambiar',
+        peligro: false,
+      }
+    : confirmacion?.activo
+      ? {
+          titulo: 'Desactivar usuario',
+          texto: `¿Desactivar a ${confirmacion.nombre}? No podrá iniciar sesión hasta que lo active de nuevo.`,
+          accion: 'Sí, desactivar',
+          peligro: true,
+        }
+      : {
+          titulo: 'Activar usuario',
+          texto: `¿Activar a ${confirmacion?.nombre}?`,
+          accion: 'Sí, activar',
+          peligro: false,
+        }
 
   return (
     <div className="pila">
@@ -67,7 +106,6 @@ export default function Usuarios() {
         </select>
         <button className="primario" disabled={crear.isPending}>Crear usuario</button>
       </form>
-      {error && <div className="aviso error">{mensajeError(error)}</div>}
       </section>
 
       <section className="tarjeta-pagina">
@@ -88,7 +126,10 @@ export default function Usuarios() {
               <td>{u.name}</td>
               <td>{u.usuario}</td>
               <td>
-                <select aria-label={`Rol de ${u.name}`} value={u.rol} onChange={(e) => cambiar.mutate({ id: u.id, rol: e.target.value as Rol })}>
+                <select aria-label={`Rol de ${u.name}`} value={u.rol} onChange={(e) => {
+                  const rol = e.target.value as Rol
+                  if (rol !== u.rol) pedirConfirmacion({ tipo: 'rol', id: u.id, nombre: u.name, desde: u.rol, hacia: rol })
+                }}>
                   {ROLES_EMPLEADO.map((r) => <option key={r} value={r}>{ROL[r]}</option>)}
                 </select>
               </td>
@@ -98,7 +139,7 @@ export default function Usuarios() {
                   className={`icono-accion ${u.activo ? 'peligro' : 'ok'}`}
                   title={u.activo ? 'Desactivar' : 'Activar'}
                   aria-label={u.activo ? `Desactivar a ${u.name}` : `Activar a ${u.name}`}
-                  onClick={() => cambiar.mutate({ id: u.id, activo: !u.activo })}
+                  onClick={() => pedirConfirmacion({ tipo: 'activo', id: u.id, nombre: u.name, activo: u.activo !== false })}
                 >
                   <Icono nombre={u.activo ? 'desactivar' : 'activar'} />
                 </button>
@@ -122,27 +163,64 @@ export default function Usuarios() {
       </section>
 
       {cambiandoClave && <CambiarClave usuario={cambiandoClave} onCerrar={() => setCambiandoClave(null)} />}
+      {confirmacion && (
+        <Confirmar
+          id="confirmar-usuario"
+          titulo={aviso.titulo}
+          texto={aviso.texto}
+          accion={aviso.accion}
+          peligro={aviso.peligro}
+          pendiente={cambiar.isPending}
+          error={cambiar.isError ? mensajeError(cambiar.error) : null}
+          onConfirmar={aplicarConfirmacion}
+          onCancelar={() => { if (!cambiar.isPending) { cambiar.reset(); setConfirmacion(null) } }}
+        />
+      )}
     </div>
   )
 }
 
 function CambiarClave({ usuario, onCerrar }: { usuario: Usuario; onCerrar: () => void }) {
+  const avisos = useAviso()
   const [f, setF] = useState({ password: '', password_confirmation: '' })
-  const guardar = useMutation({ mutationFn: () => api.patch(`/usuarios/${usuario.id}`, f), onSuccess: onCerrar })
+  const [seguro, setSeguro] = useState(false)
+  const guardar = useMutation({
+    mutationFn: () => api.patch(`/usuarios/${usuario.id}`, f),
+    onSuccess: onCerrar,
+    onError: (e) => { if (!seguro) avisos.mostrar('error', mensajeError(e)) },
+  })
 
   return (
-    <div className="modal">
-      <form className="modal-caja" onSubmit={(e) => { e.preventDefault(); guardar.mutate() }}>
-        <h2>Contraseña de {usuario.name}</h2>
-        <label>Contraseña nueva<input type="password" required minLength={8} autoComplete="new-password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} /></label>
-        <label>Repita la contraseña<input type="password" required autoComplete="new-password" value={f.password_confirmation} onChange={(e) => setF({ ...f, password_confirmation: e.target.value })} /></label>
-        <p className="ayuda">Al guardar, se cierran todas las sesiones abiertas de {usuario.name}.</p>
-        {guardar.isError && <div className="aviso error">{mensajeError(guardar.error)}</div>}
-        <div className="acciones">
-          <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
-          <button className="primario" disabled={guardar.isPending}>Guardar</button>
-        </div>
-      </form>
-    </div>
+    <>
+      <Dialogo
+        titulo={`Contraseña de ${usuario.name}`}
+        descripcion={`Al guardar, se cierran todas las sesiones abiertas de ${usuario.name}.`}
+        onCerrar={onCerrar}
+        onEnviar={() => { guardar.reset(); setSeguro(true) }}
+        pie={(
+          <>
+            <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
+            <button type="submit" className="primario" disabled={guardar.isPending}>Guardar</button>
+          </>
+        )}
+      >
+        <DialogoSeccion>
+          <label>Contraseña nueva<input type="password" required minLength={8} autoComplete="new-password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} /></label>
+          <label>Repita la contraseña<input type="password" required autoComplete="new-password" value={f.password_confirmation} onChange={(e) => setF({ ...f, password_confirmation: e.target.value })} /></label>
+        </DialogoSeccion>
+      </Dialogo>
+      {seguro && (
+        <Confirmar
+          id="confirmar-clave"
+          titulo="Cambiar contraseña"
+          texto={`¿Cambiar la contraseña de ${usuario.name}? Se cerrarán todas sus sesiones abiertas.`}
+          accion="Sí, cambiar"
+          pendiente={guardar.isPending}
+          error={guardar.isError ? mensajeError(guardar.error) : null}
+          onConfirmar={() => guardar.mutate()}
+          onCancelar={() => { if (!guardar.isPending) setSeguro(false) }}
+        />
+      )}
+    </>
   )
 }
