@@ -326,6 +326,10 @@ export interface ListaCartera extends Pagina<ResumenCartera> {
 export interface Abono {
   id: number
   cliente_id: number
+  /** S-32: null = general (a las ventas más antiguas); con número, dirigido a esa venta. */
+  venta_id: number | null
+  /** S-32: "General" o "Venta #11 · FE-1042". */
+  aplicado_a: string
   fecha: string
   valor: string
   medio: MedioPago
@@ -345,6 +349,10 @@ export interface VentaCartera {
   vence_el: string | null
   total: string
   aplicado: string
+  /** S-32: parte de lo aplicado que vino de abonos dirigidos a esta venta. */
+  aplicado_dirigido: string
+  /** S-32: parte de lo aplicado que vino del pool general (FIFO). */
+  aplicado_general: string
   pendiente: string
   estado: 'al_dia' | 'por_vencer' | 'vencida'
   estado_texto: string
@@ -377,6 +385,8 @@ export interface MovimientoCuenta {
   usuario?: string | null
   anulado?: boolean
   anulacion?: { motivo: string; usuario: string | null; fecha: string } | null
+  /** S-32 (abonos): "General" o "Venta #11 · FE-1042". */
+  aplicado_a?: string
   cargo: string
   abono: string
   saldo: string

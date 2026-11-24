@@ -15,7 +15,7 @@ import DialogoAbono from '../../componentes/cartera/DialogoAbono'
 import DialogoAnularAbono from '../../componentes/cartera/DialogoAnularAbono'
 import { pesos } from '../../componentes/numeros'
 import { fechaCorta } from '../../componentes/fechas'
-import { textoSaldo } from '../../utilidades/cartera'
+import { nombreVenta, textoSaldo } from '../../utilidades/cartera'
 import { errorRango, esPeriodo, hoyEnBogota, rangoDe } from '../../utilidades/periodos'
 
 type Seccion = 'ventas' | 'cuenta'
@@ -55,7 +55,10 @@ export default function CarteraCliente() {
   const esAdmin = usuario?.rol === 'admin'
   const [seccion, setSeccion] = useState<Seccion>('ventas')
   const [periodo, setPeriodo] = useState<ValorPeriodo>({ periodo: 'todo', desde: '', hasta: '' })
-  const [abonando, setAbonando] = useState(false)
+  /** S-32: abierto con o sin una venta elegida ("Abonar" desde la fila). */
+  const [abonando, setAbonando] = useState<{ venta?: VentaCartera } | null>(null)
+  /** Botón que abrió la modal de abono: recupera el foco al cerrarla. */
+  const disparadorAbono = useRef<HTMLButtonElement | null>(null)
   const [anulando, setAnulando] = useState<MovimientoCuenta | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
   const botonAbono = useRef<HTMLButtonElement>(null)
@@ -134,6 +137,16 @@ export default function CarteraCliente() {
     placeholderData: (previo) => previo,
   })
 
+  // Al cerrar la modal de abono el foco vuelve al botón que la abrió (el de la fila o el del encabezado).
+  // Si ese botón ya no existe (la venta quedó saldada), vuelve a "Registrar abono".
+  const cerrarAbono = () => {
+    setAbonando(null)
+    setTimeout(() => {
+      const b = disparadorAbono.current
+      ;(b && b.isConnected ? b : botonAbono.current)?.focus()
+    }, 0)
+  }
+
   const refrescar = () => {
     qc.invalidateQueries({ queryKey: ['cartera-cliente', id] })
     qc.invalidateQueries({ queryKey: ['cartera'] })
@@ -157,7 +170,7 @@ export default function CarteraCliente() {
           <h1>{c.nombre}{!c.activo && <span className="chip inactiva"> Inactivo</span>}</h1>
           <p>{[c.documento && `Doc. ${c.documento}`, c.telefono && `Tel. ${c.telefono}`, `Plazo ${c.plazo_dias} días`].filter(Boolean).join(' · ')}</p>
         </div>
-        <button ref={botonAbono} type="button" className="primario" disabled={!c.activo} title={c.activo ? undefined : 'Cliente inactivo'} onClick={() => { setAviso(null); setAbonando(true) }}>
+        <button ref={botonAbono} type="button" className="primario" disabled={!c.activo} title={c.activo ? undefined : 'Cliente inactivo'} onClick={(e) => { disparadorAbono.current = e.currentTarget; setAviso(null); setAbonando({}) }}>
           Registrar abono
         </button>
       </div>
@@ -213,7 +226,7 @@ export default function CarteraCliente() {
             ) : (
             <table className={cargandoVentas ? 'tabla-apilable tabla-cartera-ventas actualizando' : 'tabla-apilable tabla-cartera-ventas'}>
               <caption className="solo-lector">Ventas a crédito, de la más antigua a la más reciente; los abonos se aplican en ese orden</caption>
-              <thead><tr><th>Venta</th><th>Factura</th><th>Cierre</th><th className="col-numero">Total neto</th><th>Vence</th><th className="col-numero">Aplicado</th><th className="col-numero">Pendiente</th><th>Estado</th></tr></thead>
+              <thead><tr><th>Venta</th><th>Factura</th><th>Cierre</th><th className="col-numero">Total neto</th><th>Vence</th><th className="col-numero">Aplicado</th><th className="col-numero">Pendiente</th><th>Estado</th><th><span className="solo-lector">Acciones</span></th></tr></thead>
               <tbody>
                 {ventas.map((v) => (
                   <tr key={v.id}>
@@ -222,9 +235,22 @@ export default function CarteraCliente() {
                     <td data-etiqueta="Cierre">{fechaHora(v.cerrada_at.replace(' ', 'T') + 'Z')}</td>
                     <td data-etiqueta="Total neto" className="col-numero">{pesos(v.total)}</td>
                     <td data-etiqueta="Vence">{v.vence_el ? fechaCorta(v.vence_el) : '—'}</td>
-                    <td data-etiqueta="Aplicado" className="col-numero">{pesos(v.aplicado)}</td>
+                    <td data-etiqueta="Aplicado" className="col-numero">
+                      {pesos(v.aplicado)}
+                      {Number(v.aplicado_dirigido) > 0 && <small className="bloque desglose-dirigido">{pesos(v.aplicado_dirigido)} dirigido</small>}
+                    </td>
                     <td data-etiqueta="Pendiente" className="col-numero"><strong>{pesos(v.pendiente)}</strong></td>
                     <td data-etiqueta="Estado"><ChipEstado v={v} /></td>
+                    <td className="celda-accion">
+                      {Number(v.pendiente) > 0 && c.activo && (
+                        <button
+                          type="button"
+                          className="secundario boton-44"
+                          aria-label={`Abonar a la venta ${nombreVenta(v)}`}
+                          onClick={(e) => { disparadorAbono.current = e.currentTarget; setAviso(null); setAbonando({ venta: v }) }}
+                        >Abonar</button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -263,6 +289,7 @@ export default function CarteraCliente() {
                           {m.anulado && <span className="chip anulado"> Anulado</span>}
                           {m.motivo && <small className="bloque">Motivo: {m.motivo}{m.usuario ? ` · ${m.usuario}` : ''}</small>}
                           {m.anulacion && <small className="bloque">Anulado por {m.anulacion.usuario ?? '—'} el {fechaHora(m.anulacion.fecha)}: {m.anulacion.motivo}</small>}
+                          {m.tipo === 'abono' && m.aplicado_a && <small className="bloque aplicado-a">Aplicado a: {m.aplicado_a === 'General' ? 'General (las más antiguas)' : m.aplicado_a}</small>}
                           {m.tipo === 'abono' && !m.anulacion && m.usuario && <small className="bloque">Registró {m.usuario}</small>}
                         </span>
                       </td>
@@ -287,14 +314,15 @@ export default function CarteraCliente() {
         <DialogoAbono
           cliente={c}
           saldo={resumen.saldo}
-          onCerrar={() => { setAbonando(false); setTimeout(() => botonAbono.current?.focus(), 0) }}
+          ventaInicial={abonando.venta}
+          onCerrar={cerrarAbono}
           onGuardado={(abono, nuevo) => {
             // Saldo y antigüedad nuevos al instante; las listas se refrescan en segundo plano.
             qc.setQueryData<DetalleCartera>(['cartera-cliente', id], (d) => (d ? { ...d, resumen: nuevo, abonos: [abono, ...d.abonos] } : d))
             refrescar()
-            setAviso(`Abono de ${pesos(abono.valor)} registrado. Saldo: ${textoSaldo(nuevo.saldo)}.`)
-            setAbonando(false)
-            setTimeout(() => botonAbono.current?.focus(), 0)
+            const destino = abono.aplicado_a === 'General' ? 'a las ventas más antiguas' : `a la venta ${abono.aplicado_a.replace(/^Venta /, '')}`
+            setAviso(`Abono de ${pesos(abono.valor)} registrado ${destino}. Saldo: ${textoSaldo(nuevo.saldo)}.`)
+            cerrarAbono()
           }}
         />
       )}

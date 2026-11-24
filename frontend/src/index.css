@@ -1106,6 +1106,21 @@ input[aria-invalid='true']:not([type='checkbox']):not([type='radio']):focus-visi
 .vacio-con-accion { display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .vacio-con-accion p { margin: 0; }
 .coincidencia-venta { color: var(--primario); font-weight: 600; }
+/* S-32: aplicar el abono a una factura. */
+.campo-aplicar { display: flex; flex-direction: column; gap: 6px; }
+.selector-factura { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.selector-factura legend { padding: 0; margin-bottom: 6px; }
+.selector-factura .busca input { min-width: 0; width: 100%; min-height: 44px; box-sizing: border-box; padding-left: 34px; }
+.opciones-factura { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 15rem; overflow-y: auto; }
+.opcion-factura {
+  width: 100%; min-height: 44px; display: flex; flex-direction: column; align-items: stretch; gap: 2px;
+  text-align: left; padding: 8px 12px; border-radius: 10px;
+}
+.opcion-factura.elegida { border: 2px solid var(--primario); background: var(--suave-fondo); }
+.opcion-factura-linea { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.opcion-factura small { color: var(--suave); }
+.desglose-dirigido, .aplicado-a { color: var(--suave); }
+.dialogo-apilado select { min-height: 44px; } /* táctil: igual que los campos de texto del diálogo */
 .chip.saldo-favor { background: var(--ok-fondo); color: var(--ok); font-weight: 600; }
 .chip.estado-venta { font-weight: 600; white-space: nowrap; }
 .chip.estado-venta.al_dia { background: var(--ok-fondo); color: var(--ok); }
