@@ -185,3 +185,46 @@ function aCredito(string $vence = '2026-12-31'): array
 {
     return ['forma_pago' => 'credito', 'vence_el' => $vence];
 }
+
+/* S-38: ayudas de devoluciones y salidas con cantidad. */
+
+function refS38(string $codigo, int $unidades, int $precio = 80000): Referencia
+{
+    $ref = Referencia::factory()->create(['codigo_referencia' => $codigo, 'precio_venta' => $precio]);
+    if ($unidades > 0) {
+        ingresar($ref, $unidades);
+    }
+
+    return $ref->refresh();
+}
+
+function codigosS38(Referencia $ref): array
+{
+    return Unidad::where('referencia_id', $ref->id)->orderBy('id')->pluck('codigo_barras')->all();
+}
+
+/**
+ * Venta (a crédito si hay cliente) con esas etiquetas; $precios cambia el precio de cada ítem mientras
+ * está abierta (S-18). Deja la sesión que había. Devuelve [ventaId, ids de ítems].
+ */
+function venderS38(array $codigos, ?Cliente $cliente = null, bool $cerrar = true, array $precios = []): array
+{
+    $anterior = auth()->user();
+    actuarComo(Rol::Mostrador);
+    $ventaId = test()->postJson('/api/ventas', $cliente ? ['forma_pago' => 'credito', 'cliente_id' => $cliente->id] : [])->assertCreated()->json('id');
+    $items = [];
+    foreach ($codigos as $i => $c) {
+        $items[] = $itemId = test()->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => $c, 'metodo_captura' => 'escaneado'])->assertCreated()->json('venta_item_id');
+        if (isset($precios[$i])) {
+            test()->patchJson("/api/ventas/{$ventaId}/items/{$itemId}", ['precio_unitario' => $precios[$i]])->assertOk();
+        }
+    }
+    if ($cerrar) {
+        test()->postJson("/api/ventas/{$ventaId}/cerrar")->assertOk();
+    }
+    if ($anterior) {
+        test()->actingAs($anterior);
+    }
+
+    return [$ventaId, $items];
+}

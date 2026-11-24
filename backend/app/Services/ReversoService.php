@@ -19,6 +19,8 @@ use Illuminate\Support\Facades\DB;
  * es un reverso (anulación de ese ítem), no un DELETE.
  *
  * Sin venta_item_id se reversan todos los ítems de la venta que no estén ya reversados.
+ * S-38: con una LISTA de ítems se reversan esos (todos deben ser de la venta y estar sin reverso),
+ * en un solo reverso: así una devolución de varias unidades es un solo movimiento.
  * RF-12: $metodo solo llega cuando la devolución se registra por el código de la unidad
  * (logística, DevolucionService); se guarda en el movimiento.
  */
@@ -30,7 +32,7 @@ class ReversoService
         Venta $venta,
         TipoReverso $tipo,
         string $motivo,
-        ?int $ventaItemId,
+        int|array|null $ventaItemId,
         User $usuario,
         ?MetodoCaptura $metodo = null,
     ): Reverso {
@@ -42,17 +44,23 @@ class ReversoService
                 throw new ReglaInventarioException('Una venta abierta no admite devolución: anule el ítem.', 422);
             }
 
+            $ids = $ventaItemId === null ? null : array_values(array_unique(array_map('intval', (array) $ventaItemId)));
+
             $items = VentaItem::query()
                 ->where('venta_id', $venta->id)
-                ->when($ventaItemId, fn ($q) => $q->whereKey($ventaItemId))
+                ->when($ids !== null, fn ($q) => $q->whereKey($ids))
                 ->whereDoesntHave('reversoItem')
                 ->orderBy('id')
                 ->lockForUpdate()
                 ->get();
 
-            if ($items->isEmpty()) {
+            if ($items->isEmpty() || ($ids !== null && $items->count() !== count($ids))) {
                 throw new ReglaInventarioException(
-                    $ventaItemId ? 'El ítem no pertenece a la venta o ya fue reversado.' : 'La venta no tiene ítems por reversar.',
+                    match (true) {
+                        $ids === null => 'La venta no tiene ítems por reversar.',
+                        count($ids) === 1 => 'El ítem no pertenece a la venta o ya fue reversado.',
+                        default => 'Algún ítem no pertenece a la venta o ya fue reversado: no se reversó ninguno.',
+                    },
                     422,
                 );
             }

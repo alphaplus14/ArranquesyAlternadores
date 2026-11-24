@@ -4,12 +4,18 @@ namespace App\Services;
 
 use App\Enums\EstadoUnidad;
 use App\Enums\EstadoVenta;
+use App\Enums\FormaPago;
 use App\Enums\MetodoCaptura;
 use App\Enums\TipoReverso;
 use App\Exceptions\ReglaInventarioException;
+use App\Models\Cliente;
 use App\Models\Unidad;
 use App\Models\User;
+use App\Models\Venta;
 use App\Models\VentaItem;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 /**
  * RF-07 / S-27: logística (y admin) registra la devolución de un cliente. Es el mismo reverso tipo
@@ -28,6 +34,7 @@ class DevolucionService
     public function __construct(
         private readonly ReversoService $reversos,
         private readonly ResolverCodigoService $resolver,
+        private readonly CarteraService $cartera,
     ) {}
 
     /**
@@ -44,16 +51,97 @@ class DevolucionService
         return $unidad ? $this->itemDeUnidad($unidad) : $this->candidatas($codigo, $ventaId);
     }
 
-    /** Con $ventaItemId (elegido de la lista de candidatas); sin él, el código debe ser una etiqueta. */
-    public function registrar(string $codigo, string $motivo, MetodoCaptura $metodo, User $usuario, ?int $ventaItemId = null): VentaItem
+    /** S-38: motivo por defecto de una devolución registrada por logística o admin. */
+    public const MOTIVO_POR_DEFECTO = 'Devolución del cliente';
+
+    /**
+     * S-38: el motivo es opcional en este flujo (relaja la regla 8 solo aquí; mostrador sigue
+     * exigiéndolo). Siempre se guarda uno: el elegido o "Devolución del cliente", y si hay nota,
+     * "{motivo} — {nota}".
+     */
+    public static function motivo(?string $motivo, ?string $nota): string
     {
-        $codigo = trim($codigo);
-        $item = $ventaItemId !== null ? $this->itemElegido($codigo, $ventaItemId) : $this->itemPorEtiqueta($codigo);
+        $motivo = trim((string) $motivo) ?: self::MOTIVO_POR_DEFECTO;
+        $nota = trim((string) $nota);
 
-        // reversar() bloquea la venta y el ítem y vuelve a validar (venta abierta, ya reversado).
-        $this->reversos->reversar($item->venta, TipoReverso::Devolucion, $motivo, $item->id, $usuario, $metodo);
+        return mb_substr($nota === '' ? $motivo : "{$motivo} — {$nota}", 0, 500);
+    }
 
-        return $this->cargar(VentaItem::query()->whereKey($item->id))->firstOrFail();
+    /**
+     * Registra la devolución. Tres formas:
+     * - $datos['venta_id'] + referencia_id + precio_unitario + cantidad (S-38): un grupo elegido de la
+     *   lista; se reversan los `cantidad` ítems sin reverso de menor id del grupo.
+     * - $datos['venta_item_id'] + codigo (S-34): un ítem elegido de la lista.
+     * - $datos['codigo'] = etiqueta del local: esa unidad (cantidad 1).
+     * Todo va en UN reverso tipo Devolución (ReversoService bloquea la venta y los ítems y revalida).
+     *
+     * @param  array{codigo?: string|null, venta_item_id?: int|null, venta_id?: int|null, referencia_id?: int|null, precio_unitario?: string|int|float|null, cantidad?: int|null, motivo?: string|null, nota?: string|null}  $datos
+     * @return array{items: Collection<int, VentaItem>, saldo_antes: ?string, saldo_despues: ?string}
+     */
+    public function registrar(array $datos, MetodoCaptura $metodo, User $usuario): array
+    {
+        $codigo = trim((string) ($datos['codigo'] ?? ''));
+        $items = match (true) {
+            ($datos['venta_id'] ?? null) !== null => $this->itemsDelGrupo($datos),
+            ($datos['venta_item_id'] ?? null) !== null => collect([$this->itemElegido($codigo, (int) $datos['venta_item_id'])]),
+            default => collect([$this->itemPorEtiqueta($codigo)]),
+        };
+
+        $venta = $items->first()->venta;
+        $cliente = $venta->esCredito() ? $venta->cliente : null;
+        $antes = $cliente ? $this->cartera->saldoDe($cliente) : null;
+
+        $this->reversos->reversar($venta, TipoReverso::Devolucion, self::motivo($datos['motivo'] ?? null, $datos['nota'] ?? null), $items->pluck('id')->all(), $usuario, $metodo);
+
+        return [
+            'items' => $this->cargar(VentaItem::query()->whereKey($items->pluck('id')))->orderBy('id')->get(),
+            'saldo_antes' => $antes,
+            'saldo_despues' => $cliente ? $this->cartera->saldoDe($cliente) : null,
+        ];
+    }
+
+    /**
+     * S-38: los `cantidad` ítems sin reverso de menor id de (venta, referencia, precio). La venta debe
+     * estar cerrada y la cantidad entre 1 y lo disponible del grupo.
+     *
+     * @return Collection<int, VentaItem>
+     */
+    private function itemsDelGrupo(array $datos): Collection
+    {
+        $ventaId = (int) $datos['venta_id'];
+        $venta = Venta::query()->with('cliente:id,nombre,documento')->find($ventaId)
+            ?? throw new ReglaInventarioException("No existe la venta #{$ventaId}.", 404);
+
+        if ($venta->estaAbierta()) {
+            throw new ReglaInventarioException("La venta #{$ventaId} está abierta: anule el ítem en la venta.", 422);
+        }
+
+        $ids = VentaItem::query()
+            ->join('unidades as u', 'u.id', '=', 'venta_items.unidad_id')
+            ->leftJoin('reverso_items as ri', 'ri.venta_item_id', '=', 'venta_items.id')
+            ->where('venta_items.venta_id', $ventaId)
+            ->where('u.referencia_id', (int) ($datos['referencia_id'] ?? 0))
+            ->where('venta_items.precio_unitario', $datos['precio_unitario'] ?? null)
+            ->whereNull('ri.id')
+            ->orderBy('venta_items.id')
+            ->pluck('venta_items.id');
+
+        if ($ids->isEmpty()) {
+            throw new ReglaInventarioException("La venta #{$ventaId} no tiene unidades de esa referencia a ese precio sin devolver.", 422);
+        }
+
+        $cantidad = (int) ($datos['cantidad'] ?? 1);
+        if ($cantidad < 1 || $cantidad > $ids->count()) {
+            throw new ReglaInventarioException(
+                $ids->count() === 1
+                    ? 'La cantidad debe ser 1: solo queda 1 unidad sin devolver en ese grupo.'
+                    : "La cantidad debe estar entre 1 y {$ids->count()} (las unidades sin devolver de ese grupo).",
+                422,
+                ['campo' => 'cantidad', 'disponibles' => $ids->count()],
+            );
+        }
+
+        return $this->cargar(VentaItem::query()->whereKey($ids->take($cantidad)))->orderBy('id')->get();
     }
 
     private function itemPorEtiqueta(string $codigo): VentaItem
@@ -132,9 +220,12 @@ class DevolucionService
     }
 
     /**
-     * S-34: ítems vendidos y sin reverso de las referencias con ese código, en ventas CERRADAS, del
-     * cierre más reciente al más antiguo, hasta 20. Una sola consulta con JOIN (sin N+1); usa el
-     * índice (referencia_id, estado) de unidades: un ítem vigente tiene su unidad vendida.
+     * S-34 / S-38: con un código de proveedor o fabricante, las ventas CERRADAS con unidades de esa
+     * referencia sin reverso, AGRUPADAS por (venta, referencia, precio): cada grupo dice cuántas
+     * siguen sin devolver. Del cierre más reciente al más antiguo, hasta 20 grupos. Una sola consulta
+     * con JOIN y GROUP BY (sin N+1); usa el índice (referencia_id, estado) de unidades: un ítem
+     * vigente tiene su unidad vendida. Las ventas a crédito traen el saldo actual del cliente
+     * (una consulta por cliente distinto, como mucho 20).
      *
      * @return array<string, mixed>
      */
@@ -146,7 +237,7 @@ class DevolucionService
             throw $this->noExiste($codigo);
         }
 
-        $filas = VentaItem::query()
+        $grupos = VentaItem::query()
             ->join('unidades as u', 'u.id', '=', 'venta_items.unidad_id')
             ->join('ventas as v', 'v.id', '=', 'venta_items.venta_id')
             ->leftJoin('reverso_items as ri', 'ri.venta_item_id', '=', 'venta_items.id')
@@ -156,40 +247,56 @@ class DevolucionService
             ->where('v.estado', EstadoVenta::Cerrada->value)
             ->whereNull('ri.id')
             ->when($ventaId, fn ($q, $id) => $q->where('v.id', $id))
+            ->groupBy('v.id', 'v.cerrada_at', 'v.forma_pago', 'c.id', 'c.nombre', 'c.documento', 'u.referencia_id', 'venta_items.precio_unitario')
             ->orderByDesc('v.cerrada_at')
-            ->orderByDesc('venta_items.id')
+            ->orderByDesc('v.id')
+            ->orderBy('u.referencia_id')
+            ->orderByDesc('venta_items.precio_unitario')
             ->limit(self::MAX_CANDIDATAS)
             ->get([
-                'venta_items.id as venta_item_id', 'venta_items.precio_unitario', 'v.id as venta_id', 'v.cerrada_at', 'v.forma_pago',
-                'c.id as cliente_id', 'c.nombre as cliente_nombre', 'c.documento as cliente_documento', 'u.codigo_barras', 'u.referencia_id',
+                'v.id as venta_id', 'v.cerrada_at', 'v.forma_pago', 'c.id as cliente_id', 'c.nombre as cliente_nombre', 'c.documento as cliente_documento',
+                'u.referencia_id', 'venta_items.precio_unitario', DB::raw('COUNT(*) as cantidad_disponible'), DB::raw('MIN(venta_items.id) as primer_item'),
             ]);
 
-        if ($filas->isEmpty() && $ventaId === null) {
+        if ($grupos->isEmpty() && $ventaId === null) {
             $nombres = $referencias->pluck('codigo_referencia')->unique()->implode(', ');
             throw new ReglaInventarioException("No hay ventas cerradas sin devolver de la referencia {$nombres}.", 422);
         }
 
         $porId = $referencias->keyBy('id');
+        $saldos = Cliente::query()
+            ->whereKey($grupos->where('forma_pago', FormaPago::Credito->value)->pluck('cliente_id')->filter()->unique())
+            ->get()
+            ->mapWithKeys(fn (Cliente $c) => [$c->id => $this->cartera->saldoDe($c)]);
 
         return [
             'tipo' => 'elegir_venta',
             'codigo' => $codigo,
-            'ventas' => $filas->map(fn ($f) => [
-                'venta_item_id' => $f->venta_item_id,
-                'venta_id' => $f->venta_id,
-                'cerrada_at' => $f->cerrada_at,
-                'forma_pago' => $f->forma_pago,
-                'cliente' => $f->cliente_id ? ['id' => $f->cliente_id, 'nombre' => $f->cliente_nombre, 'documento' => $f->cliente_documento] : null,
-                'precio_unitario' => $f->precio_unitario,
-                'codigo_barras' => $f->codigo_barras,
+            'ventas' => $grupos->map(fn ($g) => [
+                'venta_id' => (int) $g->venta_id,
+                'cerrada_at' => self::instante($g->cerrada_at),
+                'forma_pago' => $g->forma_pago,
+                'cliente' => $g->cliente_id ? ['id' => (int) $g->cliente_id, 'nombre' => $g->cliente_nombre, 'documento' => $g->cliente_documento] : null,
+                'saldo_actual' => $g->cliente_id ? ($saldos[(int) $g->cliente_id] ?? null) : null,
                 'referencia' => [
-                    'id' => $f->referencia_id,
-                    'codigo_referencia' => $porId[$f->referencia_id]->codigo_referencia,
-                    'descripcion' => $porId[$f->referencia_id]->descripcion,
-                    'proveedor' => $porId[$f->referencia_id]->proveedor?->nombre,
+                    'id' => (int) $g->referencia_id,
+                    'codigo_referencia' => $porId[$g->referencia_id]->codigo_referencia,
+                    'descripcion' => $porId[$g->referencia_id]->descripcion,
+                    'calidad' => $porId[$g->referencia_id]->calidad,
+                    'proveedor' => $porId[$g->referencia_id]->proveedor?->nombre,
                 ],
+                'precio_unitario' => $g->precio_unitario,
+                'cantidad_disponible' => (int) $g->cantidad_disponible,
+                // S-34: compatibilidad con quien todavía elige un solo ítem.
+                'venta_item_id' => (int) $g->primer_item,
             ])->values()->all(),
         ];
+    }
+
+    /** Instante de la base (UTC) como ISO 8601 con zona: el frontend lo muestra en hora de Bogotá. */
+    private static function instante(?string $valor): ?string
+    {
+        return $valor === null ? null : Carbon::parse($valor, config('app.timezone'))->utc()->toIso8601ZuluString();
     }
 
     private function noExiste(string $codigo): ReglaInventarioException

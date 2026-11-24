@@ -95,7 +95,7 @@ it('RF-07 / S-27 (f): una unidad ya devuelta, no vendida, retirada o inexistente
     devolverPorApi($nueva)->assertUnprocessable()->assertJsonPath('message', "La unidad {$nueva} está retirada del inventario; no está vendida.");
 
     devolverPorApi('ZZ9999999')->assertNotFound();
-    devolverPorApi($codigo, '')->assertUnprocessable()->assertJsonValidationErrors('motivo');
+    // S-38: el motivo ya no es obligatorio en este flujo (se guarda "Devolución del cliente"); ver S38DevolucionesCantidadTest.
 });
 
 it('RF-07 / S-27: una unidad devuelta y vendida otra vez se devuelve con su venta más reciente', function () {

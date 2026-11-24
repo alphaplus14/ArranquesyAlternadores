@@ -187,14 +187,18 @@ it('S-34 (f): la consulta de devolución con código de proveedor lista ventas c
     $this->postJson("/api/ventas/{$conReverso}/reversos", ['tipo' => 'devolucion', 'motivo' => 'Ya devuelta', 'venta_item_id' => $itemRev])->assertOk();
 
     actuarComo(Rol::Logistica);
+    // S-38: agrupadas por (venta, referencia, precio): la venta grande es UN grupo de 21 unidades.
     $r = $this->getJson('/api/devoluciones/consulta?codigo=dev-1')->assertOk()
         ->assertJsonPath('tipo', 'elegir_venta')
-        ->assertJsonCount(20, 'ventas');
+        ->assertJsonCount(2, 'ventas')
+        ->assertJsonPath('ventas.0.venta_id', $grande)
+        ->assertJsonPath('ventas.0.cantidad_disponible', 21)
+        ->assertJsonPath('ventas.1.venta_id', $vieja);
     $ventas = collect($r->json('ventas'));
-    expect($ventas->pluck('venta_id')->unique()->all())->toBe([$grande])
-        ->and($ventas->pluck('venta_id'))->not->toContain($abierta)
+    expect($ventas->pluck('venta_id'))->not->toContain($abierta)
         ->and($ventas->pluck('venta_id'))->not->toContain($conReverso)
-        ->and($ventas->first())->toHaveKeys(['venta_item_id', 'venta_id', 'cerrada_at', 'cliente', 'forma_pago', 'precio_unitario', 'codigo_barras']);
+        ->and($ventas->first())->toHaveKeys(['venta_id', 'cerrada_at', 'cliente', 'forma_pago', 'referencia', 'precio_unitario', 'cantidad_disponible'])
+        ->and($ventas->first()['cerrada_at'])->toEndWith('Z');
 
     // Filtrar por n.º de venta: la vieja, a crédito, con su cliente.
     $this->getJson("/api/devoluciones/consulta?codigo=DEV-1&venta={$vieja}")->assertOk()
