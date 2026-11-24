@@ -49,9 +49,9 @@ Cita los RF por número (RF-01, RF-02…) en commits (`feat(RF-06): ...`), en co
 11. **Descuento y sin IVA (RF-09, RF-10, RF-16).** Remisiones y facturas por igual: cada línea tiene su descuento en % y su IVA (19, 5, 0…; 0 = sin IVA, copiado de la referencia y editable en borrador); el descuento del documento se digita en $ o en % y se prorratea entre todas las líneas por su neto antes del IVA (S-21, S-22); el total se calcula solo en `App\Support\TotalesIngreso` (bcmath, redondeo al peso en un único método) y se guarda al confirmar. Todo ingreso es de contado o a crédito; a crédito, el vencimiento se digita tal como lo imprime el documento (el plazo del proveedor solo lo prellena). Confirmado, no cambian total, forma de pago, vencimiento ni descuento.
 12. **Agotados por proveedor (RF-08).** Referencias con existencia 0 de un proveedor.
 13. **Saldos (adenda).** Cliente = ventas a crédito cerradas, netas de reversos, menos abonos no anulados. Proveedor = ingresos a crédito confirmados menos pagos no anulados. Una remisión cubierta por una factura confirmada no se cuenta dos veces.
-14. **Roles.** `admin`, `logistica`, `mostrador`. Todo endpoint protegido por rol con middleware.
+14. **Roles.** `admin`, `logistica`, `mostrador`. Todo endpoint protegido por rol con middleware (`rol:` deja pasar al admin; `solo_rol:` no). Solo el mostrador vende (S-43): el admin consulta ventas y las reversa con motivo. El admin opera Ingresos y Etiquetas como logística, pero en Ajustes solo consulta el historial (S-44). Su inicio es el Panel de gestión (RF-23).
 15. **Velocidad es requisito.** Índice en toda columna de búsqueda/filtro, sin N+1 (eager loading), paginación en servidor.
-16. **Informes.** Solo en pantalla. Sin exportar.
+16. **Informes.** Solo en pantalla. Sin exportar ni imprimir. RF-23 (S-45): panel de gestión del admin (ventas, margen estimado, inventario, cartera, reabastecer, stock estancado, rotación y control), con fórmulas y umbrales en `docs/supuestos.md` y `backend/config/panel.php`; el margen estimado solo se muestra ahí.
 
 ## Reglas técnicas
 

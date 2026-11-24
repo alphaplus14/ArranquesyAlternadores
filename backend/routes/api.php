@@ -24,7 +24,9 @@ use App\Http\Controllers\Api\VentaController;
 use Illuminate\Support\Facades\Route;
 
 /*
- * Regla 12: todo endpoint protegido por rol (middleware "rol"; el admin pasa siempre).
+ * Regla 14: todo endpoint protegido por rol. Middleware "rol": el admin pasa siempre; "solo_rol"
+ * (S-43, S-44): sin el pase del admin (vender es solo del mostrador; operar ajustes y devoluciones,
+ * solo de logística). El admin consulta todo y tiene su panel de gestión (RF-23, S-45).
  * No hay rutas DELETE para ventas, venta_items, reversos, movimientos, abonos, pagos ni auditoría (RF-07, RF-11, RF-15, RF-17).
  */
 
