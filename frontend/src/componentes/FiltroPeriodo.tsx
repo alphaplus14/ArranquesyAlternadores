@@ -13,10 +13,12 @@ export interface ValorPeriodo {
  * quedar en la misma fila de filtros (y apilarse con ellos en pantallas angostas).
  * La pantalla que lo usa calcula el rango con rangoDe() y no consulta si errorRango() da un mensaje.
  */
-export default function FiltroPeriodo({ id, valor, onCambio }: {
+export default function FiltroPeriodo({ id, valor, onCambio, periodos = PERIODOS }: {
   id: string
   valor: ValorPeriodo
   onCambio: (valor: ValorPeriodo) => void
+  /** RF-23: el panel usa su propia lista (PERIODOS_PANEL); las demás pantallas, la de siempre. */
+  periodos?: { valor: Periodo; texto: string }[]
 }) {
   const personalizado = valor.periodo === 'personalizado'
   const error = personalizado ? errorRango(rangoDe('personalizado', '', valor)) : null
@@ -26,7 +28,7 @@ export default function FiltroPeriodo({ id, valor, onCambio }: {
     <>
       <label>Período
         <select value={valor.periodo} onChange={(e) => onCambio({ ...valor, periodo: e.target.value as Periodo })}>
-          {PERIODOS.map((p) => <option key={p.valor} value={p.valor}>{p.texto}</option>)}
+          {periodos.map((p) => <option key={p.valor} value={p.valor}>{p.texto}</option>)}
         </select>
       </label>
       {personalizado && (

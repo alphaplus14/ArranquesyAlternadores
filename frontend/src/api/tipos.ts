@@ -704,3 +704,126 @@ export function infoPagina<T>(p: Pagina<T>) {
     total: p.meta?.total ?? p.total ?? p.data.length,
   }
 }
+
+/* ───────────── RF-23 / S-45: panel de gestión del administrador (solo en pantalla) ───────────── */
+
+export interface PanelGenerado { generado_at: string }
+export interface PanelRango { desde: string; hasta: string; dias_periodo: number }
+
+export interface PanelReferencia {
+  id: number
+  codigo_referencia: string
+  descripcion: string
+  calidad: Calidad | null
+  proveedor: { id: number; nombre: string }
+  categoria: { id: number; nombre: string } | null
+  universal: { id: number; codigo: string } | null
+}
+
+export interface PanelVentas {
+  total: string
+  base: string
+  iva_incluido: string
+  ventas: number
+  unidades: number
+  ticket_promedio: string
+  contado: string
+  credito: string
+  ventas_contado: number
+  ventas_credito: number
+}
+
+export interface PanelMargen {
+  /** null = ninguna unidad vendida con costo conocido. */
+  margen: string | null
+  margen_porcentaje: number | null
+  base_con_costo: string
+  costo: string
+  cobertura_costo: number | null
+  unidades_sin_costo: number
+}
+
+export interface PanelResumen extends PanelGenerado, PanelRango {
+  periodo_anterior: { desde: string; hasta: string }
+  ventas: PanelVentas & { anterior: PanelVentas; variacion_total: number | null }
+  margen: PanelMargen & { anterior: PanelMargen; variacion: number | null }
+  inventario: { unidades: number; valor_costo: string; valor_venta_sin_iva: string; unidades_sin_costo: number }
+  cartera: { por_cobrar: string; vencida: string }
+  cuentas_por_pagar: { por_pagar: string; vencidas: string }
+  compras: { total: string }
+  agotados: number
+  bajo_minimo: number
+}
+
+export interface PanelDia { dia: string; contado: string; credito: string; total: string; unidades: number; ventas: number }
+export interface PanelVentasPorDia extends PanelGenerado, PanelRango {
+  serie: PanelDia[]
+  totales: { contado: string; credito: string; total: string; unidades: number; ventas: number }
+}
+
+export type OrdenMasVendidos = 'unidades' | 'valor' | 'margen'
+export interface PanelMasVendido {
+  referencia: PanelReferencia
+  unidades: number
+  valor: string
+  base: string
+  margen: string | null
+  margen_porcentaje: number | null
+  unidades_sin_costo: number
+  porcentaje_total: number | null
+  clase: 'A' | 'B' | 'C' | null
+}
+export interface PanelMasVendidos extends PanelGenerado, PanelRango { orden: OrdenMasVendidos; total_valor: string; filas: PanelMasVendido[] }
+
+export interface PanelReabastecer extends PanelGenerado, PanelRango {
+  total: number
+  filas: { referencia: PanelReferencia; vendidas: number; existencia: number; cobertura_dias: number; minimo_efectivo: number | null; motivo: 'agotada' | 'bajo_minimo' | 'cobertura_corta' }[]
+}
+
+export interface PanelEstancada {
+  referencia: PanelReferencia
+  existencia: number
+  valor_costo: string
+  unidades_sin_costo: number
+  ultima_venta: string | null
+  en_stock_desde: string
+  dias_sin_vender: number
+  universal_rota: boolean | null
+}
+export interface PanelSinMovimiento extends PanelGenerado, Pagina<PanelEstancada> {
+  dias: number
+  desde_limite: string
+  totales: { referencias: number; unidades: number; valor_costo: string; unidades_sin_costo: number }
+}
+
+export interface PanelAntiguedad extends PanelGenerado {
+  rangos: { rango: string; unidades: number; valor_costo: string; unidades_sin_costo: number; referencias: number }[]
+}
+
+export interface PanelRotacionFila {
+  id: number
+  nombre: string
+  unidades_vendidas: number
+  ventas: string
+  margen: string | null
+  margen_porcentaje: number | null
+  existencia: number
+  valor_costo: string
+  unidades_sin_costo: number
+  /** null = sin rotación en el período. */
+  cobertura_dias: number | null
+  sobrestock: boolean
+  compras: string | null
+}
+export interface PanelRotacion extends PanelGenerado, PanelRango { agrupar: 'categoria' | 'proveedor'; filas: PanelRotacionFila[] }
+
+export interface PanelControl extends PanelGenerado, PanelRango {
+  ajustes: { tipo: 'baja' | 'alta' | 'reintegro'; motivo: string; unidades: number; valor_costo: string; unidades_sin_costo: number }[]
+  reversos: Record<'devolucion' | 'anulacion', { reversos: number; items: number; valor: string }>
+  capturas: { total: number; digitadas: number; porcentaje_digitado: number | null }
+  ventas_por_usuario: { usuario: { id: number; nombre: string }; ventas: number; unidades: number; total: string }[]
+  ventas_abiertas_viejas: number
+  cambios_precio_credito: number
+  dias_sin_ventas: number
+  dias: number
+}

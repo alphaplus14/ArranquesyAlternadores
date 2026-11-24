@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
-import { RUTA_AJUSTES, RUTA_CARTERA, rutaInicio } from '../rutas'
+import { RUTA_AJUSTES, RUTA_CARTERA, RUTA_PANEL, rutaInicio } from '../rutas'
 import logo from '../assets/logo-la8va.jpg'
 import Icono, { type IconoNombre } from './Icono'
 import MiCuenta from './MiCuenta'
@@ -35,6 +35,8 @@ export default function Layout() {
 
   // Orden: Mostrador, Productos, Logística, Administración, Consulta. Qué ve cada rol no cambia.
   const grupos: { etiqueta: string; items: ItemMenu[] }[] = [
+    // RF-23: el panel de gestión es lo primero del admin (y su inicio).
+    usuario?.rol === 'admin' ? { etiqueta: 'Gestión', items: [{ to: RUTA_PANEL, texto: 'Panel', icono: 'panel' }] } : null,
     tieneRol('mostrador')
       ? {
           etiqueta: 'Mostrador',

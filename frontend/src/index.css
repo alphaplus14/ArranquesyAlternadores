@@ -16,6 +16,14 @@
   --aviso-fondo: #FFF6CC;
   --aviso: #6A5200;
   --radio: 12px;
+  /* RF-23: gráficos. Azul y naranja (Okabe-Ito) se distinguen con daltonismo; además las series
+     llevan rayado o trazo distinto y el valor escrito. */
+  --grafico-contado: #0072B2;
+  --grafico-credito: #E69F00;
+  --grafico-barra: #0072B2;
+  --grafico-barra-activa: #004F7C;
+  --grafico-alerta: #D55E00;
+  --grafico-rejilla: #E4EAF4;
   --sombra-barra: 0 1px 4px rgba(14, 26, 51, 0.08), 0 0 2px rgba(14, 26, 51, 0.05);
   --fuente: 'Segoe UI', sans-serif;
   font-family: var(--fuente);

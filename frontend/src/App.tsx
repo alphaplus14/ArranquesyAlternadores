@@ -1,7 +1,8 @@
+import { lazy, Suspense } from 'react'
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom'
 import type { Rol } from './api/tipos'
 import { useAuth } from './auth/AuthProvider'
-import { RUTA_AJUSTES, RUTA_CARTERA, rutaInicio } from './rutas'
+import { RUTA_AJUSTES, RUTA_CARTERA, RUTA_PANEL, rutaInicio } from './rutas'
 import Layout from './componentes/Layout'
 import Login from './paginas/Login'
 import Agotados from './paginas/Agotados'
@@ -20,6 +21,9 @@ import Usuarios from './paginas/admin/Usuarios'
 import Clientes from './paginas/admin/Clientes'
 import Auditoria from './paginas/admin/Auditoria'
 import Configuracion from './paginas/admin/Configuracion'
+
+// RF-23: el panel (con sus gráficos) va en su propio paquete; no engorda la carga de los demás roles.
+const Panel = lazy(() => import('./paginas/admin/Panel'))
 
 /** Protege un grupo de rutas por rol (el backend vuelve a validar cada endpoint). */
 function ConRol({ roles }: { roles: Rol[] }) {
@@ -58,6 +62,7 @@ export default function App() {
           <Route path="/agotados" element={<Agotados />} />
         </Route>
         <Route element={<ConRol roles={['admin']} />}>
+          <Route path={RUTA_PANEL} element={<Suspense fallback={<div className="cargando">Cargando el panel…</div>}><Panel /></Suspense>} />
           <Route path="/admin/referencias" element={<Navigate to="/productos" replace />} />
           <Route path="/admin/universales" element={<Universales />} />
           <Route path="/admin/universales/:id" element={<UniversalDetalle />} />
