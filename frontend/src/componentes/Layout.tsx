@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
+import { useVencimientos } from '../hooks/useVencimientos'
+import './cartera.css'
 import logo from '../assets/logo-la8va.jpg'
 import Icono, { type IconoNombre } from './Icono'
 import MiCuenta from './MiCuenta'
@@ -10,9 +12,11 @@ interface ItemMenu {
   texto: string
   icono: IconoNombre
   fin?: boolean
+  /** RF-22: número que se muestra al lado (vencidas y por vencer). */
+  contador?: number
 }
 
-const rolLegible = { admin: 'Administrador', logistica: 'Logística', mostrador: 'Mostrador' } as const
+const rolLegible = { admin: 'Administrador', logistica: 'Logística', mostrador: 'Mostrador', contable: 'Contable' } as const
 
 export default function Layout() {
   const { usuario, salir, tieneRol } = useAuth()
@@ -40,8 +44,13 @@ export default function Layout() {
     }
   }, [cuentaAbierta])
 
+  const esContable = tieneRol('contable')
+  const operacion = tieneRol('logistica', 'mostrador')
+  const vencimientos = useVencimientos({ enabled: esContable })
+  const avisos = vencimientos.data?.totales.todas.cantidad
+
   const grupos: { etiqueta: string; items: ItemMenu[] }[] = [
-    { etiqueta: 'Productos', items: [{ to: '/productos', texto: 'Listado', icono: 'caja', fin: true }] },
+    operacion ? { etiqueta: 'Productos', items: [{ to: '/productos', texto: 'Listado', icono: 'caja', fin: true }] } : null,
     tieneRol('mostrador') ? { etiqueta: 'Mostrador', items: [{ to: '/mostrador/venta', texto: 'Venta', icono: 'venta' }] } : null,
     tieneRol('logistica')
       ? {
@@ -64,7 +73,18 @@ export default function Layout() {
           ],
         }
       : null,
-    { etiqueta: 'Consulta', items: [{ to: '/agotados', texto: 'Agotados', icono: 'agotados' }] },
+    esContable
+      ? {
+          etiqueta: 'Contable',
+          items: [
+            { to: '/contable/vencimientos', texto: 'Vencimientos', icono: 'agotados', contador: avisos },
+            { to: '/contable/cuentas-por-pagar', texto: 'Cuentas por pagar', icono: 'ingreso' },
+            { to: '/contable/cartera', texto: 'Cartera de clientes', icono: 'persona' },
+            { to: '/contable/informes', texto: 'Informes', icono: 'auditoria' },
+          ],
+        }
+      : null,
+    operacion ? { etiqueta: 'Consulta', items: [{ to: '/agotados', texto: 'Agotados', icono: 'agotados' }] } : null,
   ].filter((g): g is { etiqueta: string; items: ItemMenu[] } => g !== null)
 
   return (
@@ -118,6 +138,9 @@ export default function Layout() {
                   <NavLink key={item.to} to={item.to} end={item.fin}>
                     <Icono nombre={item.icono} />
                     <span>{item.texto}</span>
+                    {!!item.contador && (
+                      <span className="menu-contador" aria-label={`${item.contador} por atender`}>{item.contador}</span>
+                    )}
                   </NavLink>
                 ))}
               </div>

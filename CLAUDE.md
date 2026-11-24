@@ -1,13 +1,13 @@
 # Arranques y Alternadores la 8va
 
-Fuente de verdad: `docs/requerimientos-v1.1.md` y `docs/adenda-v1.2-cartera-y-cuentas-por-pagar.md`. Donde se contradicen, manda la adenda. El cuaderno para personas está en `C:\Users\legri\OneDrive\Desktop\vaules obsidian\ARRANQUES Y ALTERNADORES`.
-Cita los RF por número (RF-01, RF-02…) en commits (`feat(RF-06): ...`), en comentarios de migraciones y en nombres de tests. El v1.1 numera hasta RF-12. La adenda v1.2 numera RF-13 a RF-20 y reemplaza RF-04; usa esos números tal como están en ella y no inventes otros.
+Fuente de verdad: `docs/requerimientos-v1.1.md`, `docs/adenda-v1.2-cartera-y-cuentas-por-pagar.md` y `docs/adenda-v1.3-modulo-contable.md`. Donde se contradicen, manda la adenda más reciente. El cuaderno para personas está en `C:\Users\legri\OneDrive\Desktop\vaules obsidian\ARRANQUES Y ALTERNADORES`.
+Cita los RF por número (RF-01, RF-02…) en commits (`feat(RF-06): ...`), en comentarios de migraciones y en nombres de tests. El v1.1 numera hasta RF-12. La adenda v1.2 numera RF-13 a RF-20 y reemplaza RF-04. La adenda v1.3 numera RF-21 a RF-23 y ajusta RF-17. Usa esos números tal como están y no inventes otros.
 
 ## Alcance (no negociable)
 
 - Inventario, compras, cuentas por pagar, ventas de contado y a crédito, abonos, saldos de clientes y el vínculo entre remisiones y facturas de compra (alcance v1.2, aprobado).
 - Contapyme se queda con la facturación electrónica DIAN y la contabilidad general. No se integra ni se modifica. Este sistema no factura (a lo sumo guarda el número de factura de Contapyme como texto de referencia).
-- Los informes se consultan en pantalla. No se exportan.
+- Los informes se consultan en pantalla y se exportan a Excel (.xlsx) desde el backend (RF-23). No hay otros formatos.
 - Fuera de alcance: órdenes de trabajo, mano de obra de taller, garantías, varias bodegas y contabilidad general.
 - Si algo cae fuera de alcance, o una decisión técnica contradice una regla de negocio: **detenerse y preguntar**.
 - Un pendiente no está resuelto. Si la respuesta depende de uno, decirlo y proponer un supuesto explícito.
@@ -48,10 +48,10 @@ Cita los RF por número (RF-01, RF-02…) en commits (`feat(RF-06): ...`), en co
 10. **Escaneado o digitado (RF-12).** Cada movimiento registra `metodo_captura` (`escaneado` | `digitado`). Si el escáner falla: digitar el código o buscar por referencia/universal y elegir la unidad.
 11. **Descuento y sin IVA (RF-09, RF-10, RF-16).** Remisiones y facturas por igual: cada línea tiene su descuento en % y su IVA (19, 5, 0…; 0 = sin IVA, copiado de la referencia y editable en borrador); el descuento del documento se digita en $ o en % y se prorratea entre todas las líneas por su neto antes del IVA (S-21, S-22); el total se calcula solo en `App\Support\TotalesIngreso` (bcmath, redondeo al peso en un único método) y se guarda al confirmar. Todo ingreso es de contado o a crédito; a crédito, el vencimiento se digita tal como lo imprime el documento (el plazo del proveedor solo lo prellena). Confirmado, no cambian total, forma de pago, vencimiento ni descuento.
 12. **Agotados por proveedor (RF-08).** Referencias con existencia 0 de un proveedor.
-13. **Saldos (adenda).** Cliente = ventas a crédito cerradas, netas de reversos, menos abonos no anulados. Proveedor = ingresos a crédito confirmados menos pagos no anulados. Una remisión cubierta por una factura confirmada no se cuenta dos veces.
-14. **Roles.** `admin`, `logistica`, `mostrador`. Todo endpoint protegido por rol con middleware.
+13. **Saldos (adenda).** Cliente = ventas a crédito cerradas, netas de reversos, menos abonos no anulados. Proveedor = ingresos a crédito confirmados menos pagos no anulados. Una remisión cubierta por una factura confirmada no se cuenta dos veces. Un pago puede ligarse a una factura (RF-17 ajuste): se descuenta primero de ella y el resto se aplica FIFO; la factura queda cancelada cuando su pendiente llega a 0.
+14. **Roles.** `admin`, `logistica`, `mostrador`, `contable` (RF-21: cartera, cuentas por pagar, pagos, informes y vencimientos; nada de operación ni usuarios). Todo endpoint protegido por rol con middleware.
 15. **Velocidad es requisito.** Índice en toda columna de búsqueda/filtro, sin N+1 (eager loading), paginación en servidor.
-16. **Informes.** Solo en pantalla. Sin exportar.
+16. **Informes.** En pantalla y en Excel con `?formato=xlsx` (RF-23, `App\Support\InformeExcel`). Vencimientos (RF-22): lo vencido y lo que vence en `cartera.aviso_dias` días, solo dentro del programa.
 
 ## Reglas técnicas
 

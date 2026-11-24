@@ -1,17 +1,15 @@
-# HANDOFF — RF-04: diferencia contra el QR registrada (backend)
+# HANDOFF — Módulo contable (RF-21, RF-22, RF-23, RF-17 ajuste)
 
-**Objetivo:** al confirmar una factura por QR, registrar la diferencia contra el total del QR, quién la aceptó y por qué.
+**Objetivo:** módulo para la auxiliar contable: cartera, cuentas por pagar, pagos a una factura elegida, avisos de vencimiento y exportación a Excel. Especificación en `docs/adenda-v1.3-modulo-contable.md`; supuestos S-27 a S-29.
 
-**Hecho (backend, sin commit):**
-- Migración `2026_11_21_000100`: `ingresos.confirmado_por`, `diferencia_qr`, `diferencia_aceptada`, `diferencia_motivo`.
-- `POST /api/ingresos/{id}/confirmar` acepta `diferencia_motivo` (máx. 500). Si la diferencia supera la tolerancia: sin `aceptar_diferencia` → 422 `message`; con `aceptar_diferencia` y sin motivo → 422 `errors.diferencia_motivo`.
-- `IngresoResource`: `qr.diferencia_aceptada`, `qr.diferencia_motivo`, `confirmado_por {id,name}`. Confirmado, `qr.diferencia` es la guardada.
-- `GET /api/ingresos?con_diferencia=1`.
-- Ingreso confirmado inmutable (modelo). Ediciones del borrador con `lockForUpdate` (carrera agregar ítem vs confirmar).
-- Tests: 86 en verde (7 nuevos en RF04 + concurrencia `RF05IngresoConcurrenteTest`).
+**Hecho (rama `rf-21-modulo-contable`, sin commit):**
+- Backend: rol `contable`, migración `2026_11_25_000100` (enum de rol + `pagos_proveedores.ingreso_id`), `PagoService` valida el pago a una factura, `Antiguedad` aplica primero lo pagado a cada factura, `VencimientoService` + `GET /vencimientos`, `?formato=xlsx` en todos los informes (`Support\Xlsx` sin dependencias, `Support\InformeExcel`).
+- Frontend: `paginas/contable/` (Vencimientos, Cuentas por pagar, Proveedor, Cartera, Cliente, Informes), contador en el menú, rol en Usuarios.
+- Tests: 328 en verde (17 nuevos en `RF21ModuloContableTest`). `tsc`, eslint y build limpios.
+- BD de desarrollo migrada; usuario `contable` / `cambiar123`.
 
-**Pendiente (frontend):** en `IngresoDetalle.tsx`, pedir el motivo al aceptar la diferencia y mostrar diferencia/motivo/confirmado_por; filtro "con diferencia" en `Ingresos.tsx`; tipos en `api/tipos.ts`.
+**Pendiente:** probarlo en el navegador con datos reales; commits.
 
-**Verificar:** `cd backend && php artisan test`.
+**Verificar:** `cd backend && php artisan test`; entrar como `contable`.
 
-**Siguiente paso:** frontend; luego commits `feat(RF-04): ...` en una rama.
+**Siguiente paso:** revisión visual y commits `feat(RF-21): ...` pequeños.

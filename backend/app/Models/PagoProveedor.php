@@ -16,7 +16,7 @@ class PagoProveedor extends Model
 
     protected $table = 'pagos_proveedores';
 
-    protected $fillable = ['proveedor_id', 'fecha', 'valor', 'medio', 'referencia', 'nota', 'usuario_id'];
+    protected $fillable = ['proveedor_id', 'ingreso_id', 'fecha', 'valor', 'medio', 'referencia', 'nota', 'usuario_id'];
 
     protected function casts(): array
     {
@@ -29,6 +29,12 @@ class PagoProveedor extends Model
     public function proveedor(): BelongsTo
     {
         return $this->belongsTo(Proveedor::class);
+    }
+
+    /** RF-17 (ajuste): el ingreso a crédito al que se aplica el pago; null = FIFO. */
+    public function ingreso(): BelongsTo
+    {
+        return $this->belongsTo(Ingreso::class);
     }
 
     public function usuario(): BelongsTo

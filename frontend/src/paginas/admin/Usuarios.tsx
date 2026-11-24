@@ -18,10 +18,10 @@ type Confirmacion =
   | { tipo: 'rol'; id: number; nombre: string; desde: Rol; hacia: Rol }
   | { tipo: 'activo'; id: number; nombre: string; activo: boolean }
 
-const ROLES: Rol[] = ['admin', 'logistica', 'mostrador']
+const ROLES: Rol[] = ['admin', 'logistica', 'mostrador', 'contable']
 /** Un empleado cambia entre estos roles; un admin nuevo se crea como cuenta nueva. */
-const ROLES_EMPLEADO: Rol[] = ['logistica', 'mostrador']
-const ROL: Record<Rol, string> = { admin: 'Administrador', logistica: 'Logística', mostrador: 'Mostrador' }
+const ROLES_EMPLEADO: Rol[] = ['logistica', 'mostrador', 'contable']
+const ROL: Record<Rol, string> = { admin: 'Administrador', logistica: 'Logística', mostrador: 'Mostrador', contable: 'Contable' }
 
 /** Usuarios: no se borran, se desactivan. Las cuentas admin están protegidas (el backend lo exige). */
 export default function Usuarios() {

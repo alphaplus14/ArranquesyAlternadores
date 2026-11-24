@@ -44,10 +44,12 @@ class CarteraService
      * Ingresos que generan deuda hasta el corte, agrupados por proveedor.
      *
      * @param  list<int>|null  $proveedorIds  null = todos
-     * @return Collection<int, Collection<int, array{id:int, fecha:string, vence_el:?string, valor:string, tipo:string, numero_documento:string}>>
+     * @return Collection<int, Collection<int, array{id:int, fecha:string, vence_el:?string, valor:string, aplicado:string, tipo:string, numero_documento:string}>>
      */
     public function comprasCredito(?array $proveedorIds, CarbonInterface $corte): Collection
     {
+        $aplicado = $this->pagadoPorIngreso($proveedorIds, $corte);
+
         return $this->ingresosQueCuentan($proveedorIds, $corte)
             ->where('ingresos.forma_pago', FormaPago::Credito->value)
             ->get(['ingresos.id', 'ingresos.proveedor_id', 'ingresos.tipo', 'ingresos.numero_documento', 'ingresos.fecha', 'ingresos.vence_el', 'ingresos.total'])
@@ -57,9 +59,21 @@ class CarteraService
                 'fecha' => $i->fecha,
                 'vence_el' => $i->vence_el,
                 'valor' => (string) $i->total,
+                'aplicado' => $aplicado[$i->id] ?? '0',
                 'tipo' => $i->tipo,
                 'numero_documento' => $i->numero_documento,
             ])->values());
+    }
+
+    /**
+     * RF-17 (ajuste): pagos vigentes al corte ligados a un ingreso, sumados por ingreso.
+     *
+     * @param  list<int>|null  $proveedorIds  null = todos
+     * @return array<int, string>
+     */
+    public function pagadoPorIngreso(?array $proveedorIds, CarbonInterface $corte): array
+    {
+        return $this->movimientosVigentes('pagos_proveedores', 'pago_anulaciones', 'pago_id', 'proveedor_id', $proveedorIds, $corte, 'ingreso_id');
     }
 
     /**
@@ -163,9 +177,10 @@ class CarteraService
      * @param  list<int>|null  $titularIds
      * @return array<int, string>
      */
-    private function movimientosVigentes(string $tabla, string $anulaciones, string $llave, string $titular, ?array $titularIds, CarbonInterface $corte): array
+    private function movimientosVigentes(string $tabla, string $anulaciones, string $llave, string $titular, ?array $titularIds, CarbonInterface $corte, ?string $agrupar = null): array
     {
         $hasta = Carbon::instance($corte)->endOfDay();
+        $agrupar ??= $titular;
 
         return DB::table($tabla)
             ->leftJoin($anulaciones, fn ($j) => $j
@@ -174,8 +189,9 @@ class CarteraService
             ->whereNull("{$anulaciones}.id")
             ->where("{$tabla}.fecha", '<=', $hasta->toDateString())
             ->when($titularIds !== null, fn ($q) => $q->whereIn("{$tabla}.{$titular}", $titularIds))
-            ->groupBy("{$tabla}.{$titular}")
-            ->select("{$tabla}.{$titular} as titular", DB::raw("SUM({$tabla}.valor) as valor"))
+            ->whereNotNull("{$tabla}.{$agrupar}")
+            ->groupBy("{$tabla}.{$agrupar}")
+            ->select("{$tabla}.{$agrupar} as titular", DB::raw("SUM({$tabla}.valor) as valor"))
             ->pluck('valor', 'titular')
             ->map(fn ($v) => (string) $v)
             ->all();

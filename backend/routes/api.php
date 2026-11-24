@@ -27,19 +27,23 @@ Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:lo
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
-    Route::get('/me', [AuthController::class, 'me'])->middleware('rol:admin,logistica,mostrador');
+    Route::get('/me', [AuthController::class, 'me'])->middleware('rol:admin,logistica,mostrador,contable');
 
-    // Lectura común a los tres módulos.
+    // Listas de proveedores y clientes: también las usa el módulo contable (RF-21).
+    Route::middleware('rol:admin,logistica,mostrador,contable')->group(function () {
+        Route::get('/proveedores', [ProveedorController::class, 'index']);
+        Route::get('/clientes', [ClienteController::class, 'index']); // RF-13
+    });
+
+    // Lectura común a los tres módulos de operación.
     Route::middleware('rol:admin,logistica,mostrador')->group(function () {
         Route::get('/categorias', [CategoriaController::class, 'index']);
-        Route::get('/proveedores', [ProveedorController::class, 'index']);
         Route::get('/referencias', [ReferenciaController::class, 'index']);
         Route::get('/referencias/{referencia}', [ReferenciaController::class, 'show']);
         Route::get('/codigos-universales', [CodigoUniversalController::class, 'index']);
         Route::get('/codigos-universales/{codigoUniversal}', [CodigoUniversalController::class, 'show']); // RF-02
         Route::get('/buscar', BusquedaController::class)->middleware('medir:500')->name('buscar'); // RF-12
         Route::get('/reportes/agotados', [ReporteController::class, 'agotados']); // RF-08
-        Route::get('/clientes', [ClienteController::class, 'index']); // RF-13
     });
 
     // RF-20: logística crea la referencia que no existe al escanear un ingreso; editar y desactivar son del admin.
@@ -74,13 +78,18 @@ Route::middleware('auth:sanctum')->group(function () {
 
         Route::post('/abonos/{abono}/anulaciones', [AbonoController::class, 'anular']); // RF-15
 
-        // RF-17 / S-14: pagos a proveedores, solo admin.
+        // RF-17 / S-27: anular un pago sigue siendo solo del admin.
+        Route::post('/pagos/{pago}/anulaciones', [PagoController::class, 'anular']);
+    });
+
+    // Módulo contable (RF-21): pagos a proveedores (RF-17), informes (RF-18), vencimientos (RF-22)
+    // y su exportación a Excel (RF-23). El admin también entra.
+    Route::middleware('rol:contable')->group(function () {
         Route::get('/proveedores/{proveedor}/saldo', [PagoController::class, 'saldo']);
         Route::post('/proveedores/{proveedor}/pagos', [PagoController::class, 'store']);
-        Route::post('/pagos/{pago}/anulaciones', [PagoController::class, 'anular']);
 
-        // RF-18 / S-14: informes en pantalla, solo admin.
         Route::middleware('medir:500')->group(function () {
+            Route::get('/vencimientos', [ReporteController::class, 'vencimientos']);
             Route::get('/reportes/compras', [ReporteController::class, 'compras']);
             Route::get('/reportes/ventas-credito', [ReporteController::class, 'ventasCredito']);
             Route::get('/reportes/cartera-clientes', [ReporteController::class, 'carteraClientes']);

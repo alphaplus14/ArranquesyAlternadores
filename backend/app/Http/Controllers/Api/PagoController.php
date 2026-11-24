@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\MovimientoDineroRequest;
+use App\Http\Requests\PagoProveedorRequest;
 use App\Http\Resources\PagoResource;
 use App\Models\PagoProveedor;
 use App\Models\Proveedor;
@@ -14,7 +14,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
 /**
- * RF-17: pagos a proveedores y su saldo. Solo admin (S-14). No hay rutas para editar ni borrar pagos.
+ * RF-17: pagos a proveedores y su saldo. Admin y contable (S-14, RF-21); anular es solo del admin
+ * (S-27). No hay rutas para editar ni borrar pagos.
  */
 class PagoController extends Controller
 {
@@ -23,11 +24,11 @@ class PagoController extends Controller
         private readonly CarteraService $cartera,
     ) {}
 
-    public function store(MovimientoDineroRequest $request, Proveedor $proveedor): JsonResponse
+    public function store(PagoProveedorRequest $request, Proveedor $proveedor): JsonResponse
     {
         $pago = $this->pagos->registrar($proveedor, $request->validated(), $request->user());
 
-        return (new PagoResource($pago->load('usuario:id,name', 'anulacion')))->response()->setStatusCode(201);
+        return (new PagoResource($pago->load('usuario:id,name', 'anulacion', 'ingreso:id,tipo,numero_documento')))->response()->setStatusCode(201);
     }
 
     public function anular(Request $request, PagoProveedor $pago): JsonResponse
@@ -47,7 +48,7 @@ class PagoController extends Controller
 
         $recientes = PagoProveedor::query()
             ->where('proveedor_id', $proveedor->id)
-            ->with('usuario:id,name', 'anulacion.usuario:id,name')
+            ->with('usuario:id,name', 'anulacion.usuario:id,name', 'ingreso:id,tipo,numero_documento')
             ->orderByDesc('fecha')->orderByDesc('id')
             ->limit(10)
             ->get();
