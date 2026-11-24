@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Enums\EstadoUnidad;
 use App\Enums\EstadoVenta;
 use App\Enums\FormaPago;
 use App\Enums\MetodoCaptura;
@@ -10,7 +9,6 @@ use App\Enums\OrigenCodigo;
 use App\Exceptions\ReglaInventarioException;
 use App\Models\Auditoria;
 use App\Models\Cliente;
-use App\Models\Referencia;
 use App\Models\Unidad;
 use App\Models\User;
 use App\Models\Venta;
@@ -26,7 +24,10 @@ use Illuminate\Support\Facades\DB;
  */
 class VentaService
 {
-    public function __construct(private readonly InventarioService $inventario) {}
+    public function __construct(
+        private readonly InventarioService $inventario,
+        private readonly ResolverCodigoService $resolver,
+    ) {}
 
     public function abrir(
         User $usuario,
@@ -52,7 +53,7 @@ class VentaService
      * 1. La etiqueta del local (unidades.codigo_barras): descarga esa unidad. Es el camino rápido y no
      *    cambia: las mismas consultas de siempre.
      * 2. Si no hay unidad con ese código: el código del proveedor o del fabricante (S-25) de una
-     *    referencia ACTIVA. El sistema elige la unidad (ver unidadPorReferencia). Si el código está en
+     *    referencia ACTIVA. El sistema elige la unidad (ResolverCodigoService, compartido con Ajustes). Si el código está en
      *    varias referencias, 422 con tipo "elegir_referencia" y el cliente reenvía con $referenciaId.
      */
     public function escanear(Venta $venta, string $codigoBarras, MetodoCaptura $metodo, User $usuario, ?int $referenciaId = null): VentaItem
@@ -94,7 +95,7 @@ class VentaService
                 $iva = $unidad->ref_iva_venta;
                 unset($unidad->ref_codigo, $unidad->ref_precio_venta, $unidad->ref_iva_venta);
             } else {
-                $referencia = $this->referenciaPorCodigo($codigo, $referenciaId);
+                $referencia = $this->resolver->referencia($codigo, $referenciaId, bloquear: true);
                 $origen = OrigenCodigo::Referencia;
                 $codigoReferencia = $referencia->codigo_referencia;
                 $precio = $referencia->precio_venta;
@@ -110,7 +111,7 @@ class VentaService
                 );
             }
 
-            $unidad ??= $this->unidadPorReferencia($referencia);
+            $unidad ??= $this->resolver->unidadDisponible($referencia);
 
             $item = VentaItem::create([
                 'venta_id' => $venta->id,
@@ -126,94 +127,6 @@ class VentaService
 
             return $item->setRelation('unidad', $unidad);
         });
-    }
-
-    /**
-     * S-31: la referencia activa cuyo código del proveedor o del fabricante es $codigo. Con
-     * $referenciaId, esa (si coincide con el código). Sin él: 0 → 404 como hoy; 2 o más → 422 para
-     * elegir (máx. 8), no se adivina.
-     */
-    private function referenciaPorCodigo(string $codigo, ?int $referenciaId): Referencia
-    {
-        $columnas = ['referencias.id', 'codigo_referencia', 'descripcion', 'proveedor_id', 'calidad', 'existencia', 'precio_venta', 'iva_venta_porcentaje'];
-        $consulta = Referencia::query()->activas()->porCodigoProveedor($codigo)->with('proveedor:id,nombre');
-
-        if ($referenciaId !== null) {
-            return $this->bloquear($consulta->whereKey($referenciaId)->first($columnas)
-                ?? throw new ReglaInventarioException("La referencia elegida no corresponde al código {$codigo}.", 422));
-        }
-
-        $coinciden = $consulta->orderBy('referencias.id')->limit(9)->get($columnas);
-
-        if ($coinciden->isEmpty()) {
-            throw new ReglaInventarioException("No existe una unidad con el código {$codigo}.", 404);
-        }
-
-        if ($coinciden->count() > 1) {
-            throw new ReglaInventarioException(
-                "El código {$codigo} está en varias referencias: elija cuál se vende.",
-                422,
-                [
-                    'tipo' => 'elegir_referencia',
-                    'codigo' => $codigo,
-                    'referencias' => $coinciden->take(8)->map(fn (Referencia $r) => [
-                        'id' => $r->id,
-                        'codigo_referencia' => $r->codigo_referencia,
-                        'descripcion' => $r->descripcion,
-                        'proveedor' => $r->proveedor?->nombre,
-                        'calidad' => $r->calidad,
-                        'existencia' => $r->existencia,
-                    ])->values()->all(),
-                ],
-            );
-        }
-
-        return $this->bloquear($coinciden->first());
-    }
-
-    /**
-     * S-31: bloquea la fila de la referencia (por PK) ANTES de elegir la unidad. El decremento de
-     * existencia la bloquearía igual al final; tomarla primero deja un solo orden de bloqueo
-     * (referencia → unidad) y evita el deadlock entre dos ventas por el mismo código: sin esto, cada
-     * una deja gap locks en el índice de unidades que la otra necesita al marcar la unidad vendida.
-     * Lee de nuevo precio y existencia ya bloqueados.
-     */
-    private function bloquear(Referencia $referencia): Referencia
-    {
-        $bloqueada = Referencia::query()->whereKey($referencia->id)->lockForUpdate()
-            ->first(['id', 'codigo_referencia', 'descripcion', 'proveedor_id', 'calidad', 'existencia', 'precio_venta', 'iva_venta_porcentaje']);
-
-        return $bloqueada->setRelation('proveedor', $referencia->proveedor);
-    }
-
-    /**
-     * S-31: unidad disponible de la referencia. Primero las que no tienen etiqueta impresa y, entre
-     * ellas, la más antigua (menor id); si no hay, la disponible más antigua. Cada consulta lee en
-     * orden de índice ((referencia_id, estado, etiqueta_impresa_at) y (referencia_id, estado), ambos
-     * con el id al final) con LIMIT 1 y FOR UPDATE SKIP LOCKED: bloquea una sola fila y salta las que
-     * otro mostrador tiene tomadas, así dos ventas simultáneas no se esperan ni toman la misma.
-     */
-    private function unidadPorReferencia(Referencia $referencia): Unidad
-    {
-        $disponibles = fn () => Unidad::query()
-            ->where('referencia_id', $referencia->id)
-            ->where('estado', EstadoUnidad::Disponible->value)
-            ->orderBy('id')
-            ->lock('for update skip locked');
-
-        // FORCE INDEX: con el índice (referencia_id, estado) MySQL recorrería también las unidades
-        // etiquetadas filtrándolas una a una, y en REPEATABLE READ las dejaría bloqueadas.
-        $unidad = $disponibles()->forceIndex('unidades_ref_estado_etiqueta_index')->whereNull('etiqueta_impresa_at')->first()
-            ?? $disponibles()->first();
-
-        if (! $unidad) {
-            throw new ReglaInventarioException(
-                "La referencia {$referencia->codigo_referencia} ({$referencia->proveedor?->nombre}) no tiene unidades disponibles.",
-                422,
-            );
-        }
-
-        return $unidad;
     }
 
     /**
