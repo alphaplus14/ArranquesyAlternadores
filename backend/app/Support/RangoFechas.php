@@ -39,6 +39,12 @@ final class RangoFechas
         return Carbon::now(self::zonaLocal())->toDateString();
     }
 
+    /** Día local (aaaa-mm-dd) de un instante guardado en la zona de la app (S-45: ventas por día). */
+    public static function diaLocal(\DateTimeInterface|string $momento): string
+    {
+        return Carbon::parse($momento, config('app.timezone'))->setTimezone(self::zonaLocal())->toDateString();
+    }
+
     private static function zonaLocal(): string
     {
         return config('app.zona_local', 'America/Bogota');

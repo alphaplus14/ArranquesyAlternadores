@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\DevolucionController;
 use App\Http\Controllers\Api\EtiquetaController;
 use App\Http\Controllers\Api\IngresoController;
 use App\Http\Controllers\Api\PagoController;
+use App\Http\Controllers\Api\PanelController;
 use App\Http\Controllers\Api\ProveedorController;
 use App\Http\Controllers\Api\ReferenciaController;
 use App\Http\Controllers\Api\ReporteController;
@@ -88,6 +89,21 @@ Route::middleware('auth:sanctum')->group(function () {
         // RF-22: mínimo general del almacén (auditado).
         Route::get('/configuracion/stock-minimo', [ConfiguracionController::class, 'stockMinimo']);
         Route::put('/configuracion/stock-minimo', [ConfiguracionController::class, 'fijarStockMinimo']);
+        // S-45 e: días sin movimiento del panel (120 por defecto, 30 a 730).
+        Route::get('/configuracion/dias-sin-movimiento', [ConfiguracionController::class, 'diasSinMovimiento']);
+        Route::put('/configuracion/dias-sin-movimiento', [ConfiguracionController::class, 'fijarDiasSinMovimiento']);
+
+        // RF-23 / S-45: panel de gestión, solo admin y solo en pantalla (regla 16). Objetivo p95 < 800 ms.
+        Route::middleware('medir:800')->prefix('panel')->group(function () {
+            Route::get('/resumen', [PanelController::class, 'resumen'])->name('panel.resumen');
+            Route::get('/ventas-por-dia', [PanelController::class, 'ventasPorDia'])->name('panel.ventas-por-dia');
+            Route::get('/mas-vendidos', [PanelController::class, 'masVendidos'])->name('panel.mas-vendidos');
+            Route::get('/reabastecer', [PanelController::class, 'reabastecer'])->name('panel.reabastecer');
+            Route::get('/sin-movimiento', [PanelController::class, 'sinMovimiento'])->name('panel.sin-movimiento');
+            Route::get('/antiguedad-stock', [PanelController::class, 'antiguedadStock'])->name('panel.antiguedad-stock');
+            Route::get('/rotacion', [PanelController::class, 'rotacion'])->name('panel.rotacion');
+            Route::get('/control', [PanelController::class, 'control'])->name('panel.control');
+        });
 
         Route::match(['put', 'patch'], '/clientes/{cliente}', [ClienteController::class, 'update']); // RF-13
 

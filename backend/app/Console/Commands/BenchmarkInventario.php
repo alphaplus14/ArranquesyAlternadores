@@ -138,6 +138,25 @@ class BenchmarkInventario extends Command
                 $cartera[] = $this->medir($kernel, $usuario, Request::create('/api/cartera', 'GET', $filtro), 200);
             }
 
+            // RF-23 / S-45 h: panel del admin sobre este mismo volumen. Sin caché (refrescar=1)
+            // objetivo p95 < 800 ms; con caché < 150 ms. Filtros alternados: todo, proveedor, categoría.
+            $informes = ['resumen', 'ventas-por-dia', 'mas-vendidos', 'reabastecer', 'sin-movimiento', 'antiguedad-stock', 'rotacion', 'control'];
+            $repeticiones = max(5, intdiv($n, 4));
+            $filasPanel = [];
+            foreach ($informes as $informe) {
+                $frio = [];
+                $caliente = [];
+                for ($i = 0; $i < $repeticiones; $i++) {
+                    $filtro = match ($i % 3) {
+                        0 => [], 1 => ['proveedor_id' => $proveedor->id], default => ['categoria_id' => $categoria->id]
+                    };
+                    $frio[] = $this->medir($kernel, $usuario, Request::create("/api/panel/{$informe}", 'GET', ['refrescar' => 1, ...$filtro]), 200);
+                    $caliente[] = $this->medir($kernel, $usuario, Request::create("/api/panel/{$informe}", 'GET', $filtro), 200);
+                }
+                $filasPanel[] = ["GET /panel/{$informe} (sin caché)", count($frio), $this->pct($frio, 50), $this->pct($frio, 95), max($frio), 800];
+                $filasPanel[] = ["GET /panel/{$informe} (con caché)", count($caliente), $this->pct($caliente, 50), $this->pct($caliente, 95), max($caliente), 150];
+            }
+
             $this->table(['endpoint', 'n', 'p50 ms', 'p95 ms', 'máx ms', 'objetivo p95'], [
                 ['POST /ventas/{id}/escanear (etiqueta)', count($escaneos), $this->pct($escaneos, 50), $this->pct($escaneos, 95), max($escaneos), 300],
                 ['POST /ventas/{id}/escanear (código proveedor, S-31)', count($escaneosRef), $this->pct($escaneosRef, 50), $this->pct($escaneosRef, 95), max($escaneosRef), 300],
@@ -146,6 +165,7 @@ class BenchmarkInventario extends Command
                 ['GET /ajustes/referencia (S-39)', count($referenciasAjuste), $this->pct($referenciasAjuste, 50), $this->pct($referenciasAjuste, 95), max($referenciasAjuste), 500],
                 ['GET /reportes/bajo-minimo', count($bajoMinimo), $this->pct($bajoMinimo, 50), $this->pct($bajoMinimo, 95), max($bajoMinimo), 500],
                 ['GET /cartera', count($cartera), $this->pct($cartera, 50), $this->pct($cartera, 95), max($cartera), 500],
+                ...$filasPanel,
             ]);
             $this->line('Sin latencia de red: en red local sumar el RTT (normalmente < 5 ms).');
         } finally {
