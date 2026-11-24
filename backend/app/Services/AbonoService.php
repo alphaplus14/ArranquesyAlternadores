@@ -2,47 +2,76 @@
 
 namespace App\Services;
 
+use App\Enums\MedioPago;
 use App\Exceptions\ReglaInventarioException;
 use App\Models\AbonoAnulacion;
 use App\Models\AbonoCliente;
 use App\Models\Cliente;
 use App\Models\User;
+use App\Support\RangoFechas;
 use Illuminate\Support\Facades\DB;
 
 /**
- * RF-15: abonos de clientes. Un abono nunca se edita ni se borra: anularlo es un movimiento nuevo
- * con usuario, fecha y motivo (misma lógica de RF-07). No toca existencias.
- * Se puede abonar a un cliente inactivo: desactivarlo solo impide venderle a crédito.
+ * RF-15 (S-30): abonos de clientes. Un abono nunca se edita ni se borra; anularlo es un
+ * movimiento nuevo con motivo, usuario y fecha (misma lógica de RF-07, regla 8). Un abono mayor al
+ * saldo se permite: queda saldo a favor. Los movimientos de dinero no tocan existencias.
  */
 class AbonoService
 {
-    /** @param  array{fecha?:string, valor:int|string, medio:string, referencia?:?string, nota?:?string}  $datos */
-    public function registrar(Cliente $cliente, array $datos, User $usuario): AbonoCliente
-    {
+    public function registrar(
+        Cliente $cliente,
+        string $fecha,
+        string|int|float $valor,
+        MedioPago $medio,
+        ?string $referencia,
+        ?string $nota,
+        User $usuario,
+    ): AbonoCliente {
+        if (! $cliente->activo) {
+            throw new ReglaInventarioException('El cliente está inactivo: actívelo para registrarle abonos.', 422);
+        }
+
+        if (! is_numeric($valor) || bccomp((string) $valor, '0', 2) <= 0) {
+            throw new ReglaInventarioException('El valor del abono debe ser mayor que 0.', 422);
+        }
+
+        if ($fecha > RangoFechas::hoy()) {
+            throw new ReglaInventarioException('La fecha del abono no puede ser futura.', 422);
+        }
+
         return AbonoCliente::create([
             'cliente_id' => $cliente->id,
-            'fecha' => $datos['fecha'] ?? now()->toDateString(),
-            'valor' => $datos['valor'],
-            'medio' => $datos['medio'],
-            'referencia' => $datos['referencia'] ?? null,
-            'nota' => $datos['nota'] ?? null,
+            'fecha' => $fecha,
+            'valor' => $valor,
+            'medio' => $medio,
+            'referencia' => self::textoOpcional($referencia),
+            'nota' => self::textoOpcional($nota),
             'usuario_id' => $usuario->id,
         ]);
     }
 
-    public function anular(AbonoCliente $abono, string $motivo, User $usuario): AbonoCliente
+    /** Solo admin (ruta). No se anula dos veces: 422 (y UNIQUE(abono_id) como última barrera). */
+    public function anular(AbonoCliente $abono, string $motivo, User $usuario): AbonoAnulacion
     {
         return DB::transaction(function () use ($abono, $motivo, $usuario) {
             $abono = AbonoCliente::query()->lockForUpdate()->findOrFail($abono->id);
 
-            // UNIQUE(abono_id) en abono_anulaciones es la última barrera contra una doble anulación.
             if (AbonoAnulacion::where('abono_id', $abono->id)->exists()) {
-                throw new ReglaInventarioException('El abono ya fue anulado.', 422);
+                throw new ReglaInventarioException('Este abono ya fue anulado.', 422);
             }
 
-            AbonoAnulacion::create(['abono_id' => $abono->id, 'motivo' => $motivo, 'usuario_id' => $usuario->id]);
-
-            return $abono;
+            return AbonoAnulacion::create([
+                'abono_id' => $abono->id,
+                'motivo' => trim($motivo),
+                'usuario_id' => $usuario->id,
+            ]);
         });
+    }
+
+    private static function textoOpcional(?string $texto): ?string
+    {
+        $texto = trim((string) $texto);
+
+        return $texto === '' ? null : $texto;
     }
 }

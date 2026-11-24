@@ -13,6 +13,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 /**
  * RF-01 / RF-02. `existencia` no es asignable en masa: solo la cambian los servicios de inventario.
  * S-23: no hay marcas; las referencias de un repuesto se distinguen por código, proveedor y calidad.
+ * S-25: codigo_fabricante = código de barras o QR del producto (opcional, único por proveedor).
+ * S-26: `activo` tampoco es asignable en masa: solo lo cambia ReferenciaService (desactivar/reactivar).
  */
 class Referencia extends Model
 {
@@ -21,8 +23,9 @@ class Referencia extends Model
     protected $table = 'referencias';
 
     protected $fillable = [
-        'codigo_referencia', 'calidad', 'proveedor_id', 'categoria_id',
+        'codigo_referencia', 'codigo_fabricante', 'calidad', 'proveedor_id', 'categoria_id',
         'codigo_universal_id', 'descripcion', 'precio_venta', 'iva_venta_porcentaje',
+        'stock_minimo', // RF-22: null = usa el general; 0 = no maneja mínimo
     ];
 
     /** InnoDB no indexa palabras más cortas que innodb_ft_min_token_size (3 por defecto). */
@@ -45,7 +48,23 @@ class Referencia extends Model
             'precio_venta' => 'decimal:2',
             'iva_venta_porcentaje' => 'decimal:2', // RF-14 / S-15: 19, o 0 = sin IVA
             'existencia' => 'integer',
+            'activo' => 'boolean',
+            'stock_minimo' => 'integer',
         ];
+    }
+
+    protected $attributes = ['activo' => true];
+
+    /** S-26 / RF-11: la creación también queda en auditoría (admin y logística crean). */
+    protected function auditaCreacion(): bool
+    {
+        return true;
+    }
+
+    /** S-26: solo las referencias activas (listado, búsqueda, agotados, escaneo). */
+    public function scopeActivas($query)
+    {
+        return $query->where('referencias.activo', true);
     }
 
     public function proveedor(): BelongsTo

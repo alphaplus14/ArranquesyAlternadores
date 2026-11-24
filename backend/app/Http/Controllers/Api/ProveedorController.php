@@ -3,41 +3,41 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\ProveedorRequest;
 use App\Models\Proveedor;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Schema;
-use Illuminate\Validation\Rule;
 
-/** RF-08 (filtro de agotados) / RF-11. RF-16: plazo_dias prellena el vencimiento de las compras. */
+/**
+ * RF-08 (filtro de agotados) / RF-11. RF-16: plazo_dias prellena el vencimiento de las compras.
+ * S-24: crear es de admin y logística (rutas); editar y borrar, solo del admin.
+ * S-29: NIT obligatorio al crear y asesor opcional (ProveedorRequest).
+ */
 class ProveedorController extends Controller
 {
+    private const CAMPOS = ['id', 'nombre', 'nit', 'asesor', 'plazo_dias'];
+
     public function index(): JsonResponse
     {
-        // RF-16: plazo_dias solo prellena el vencimiento. El listado del filtro no depende de esa columna.
-        $columnas = ['id', 'nombre', 'nit'];
-        if (Schema::hasColumn('proveedores', 'plazo_dias')) {
-            $columnas[] = 'plazo_dias';
-        }
-
-        return response()->json(Proveedor::orderBy('nombre')->get($columnas));
+        return response()->json(Proveedor::orderBy('nombre')->get(self::CAMPOS));
     }
 
-    public function store(Request $request): JsonResponse
+    public function store(ProveedorRequest $request): JsonResponse
     {
-        return response()->json(Proveedor::create($this->validar($request)), 201);
+        $proveedor = Proveedor::create($request->validated());
+
+        return response()->json($proveedor->only(self::CAMPOS), 201);
     }
 
     public function show(Proveedor $proveedor): JsonResponse
     {
-        return response()->json($proveedor);
+        return response()->json($proveedor->only(self::CAMPOS));
     }
 
-    public function update(Request $request, Proveedor $proveedor): JsonResponse
+    public function update(ProveedorRequest $request, Proveedor $proveedor): JsonResponse
     {
-        $proveedor->update($this->validar($request, $proveedor));
+        $proveedor->update($request->validated());
 
-        return response()->json($proveedor);
+        return response()->json($proveedor->only(self::CAMPOS));
     }
 
     public function destroy(Proveedor $proveedor): JsonResponse
@@ -45,17 +45,5 @@ class ProveedorController extends Controller
         $proveedor->delete();
 
         return response()->json(null, 204);
-    }
-
-    private function validar(Request $request, ?Proveedor $proveedor = null): array
-    {
-        $requerido = $proveedor ? 'sometimes' : 'required';
-
-        return $request->validate([
-            'nombre' => [$requerido, 'string', 'max:150'],
-            'nit' => ['nullable', 'string', 'max:30', Rule::unique('proveedores')->ignore($proveedor?->id)],
-            // RF-16: solo prellena el vencimiento de sus compras a crédito.
-            'plazo_dias' => ['nullable', 'integer', 'min:0', 'max:365'],
-        ]);
     }
 }

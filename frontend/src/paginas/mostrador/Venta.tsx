@@ -1,24 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useSearchParams } from 'react-router-dom'
 import { api, mensajeError } from '../../api/cliente'
-import { NOMBRE_CALIDAD, type Calidad, type Cliente, type MetodoCaptura, type Pagina, type Referencia, type RespuestaEscaneo, type Venta as TVenta, type VentaItem } from '../../api/tipos'
-import { useAviso } from '../../componentes/Avisos'
+import { NOMBRE_CALIDAD, type Calidad, type Cliente, type MetodoCaptura, type Pagina, type Referencia, type Venta as TVenta, type VentaItem } from '../../api/tipos'
 import ChipCalidad from '../../componentes/ChipCalidad'
-import Dialogo, { DialogoSeccion } from '../../componentes/Dialogo'
-import ListaEleccion, { type FilaEleccion } from '../../componentes/ListaEleccion'
 import Medida from '../../componentes/Medida'
-import Paginacion from '../../componentes/Paginacion'
 import Resumen from '../../componentes/Resumen'
 import { useScanner } from '../../hooks/useScanner'
 import { useDebounce } from '../../hooks/useDebounce'
-import { useListaPaginada } from '../../hooks/useListaPaginada'
 import { formatoNumero, leerNumero } from '../../componentes/numeros'
 
+interface Aviso { tipo: 'ok' | 'error'; texto: string }
 interface ReversoPendiente { item?: VentaItem; tipo: 'devolucion' | 'anulacion' }
 interface DatosCredito { cliente_id: number; factura_contapyme: string | null }
-
-/** El mostrador elige de a 15: el diálogo no carga el padrón entero. */
-const CLIENTES_POR_PAGINA = 15
 
 /** vence_el llega como aaaa-mm-dd: se arma la fecha local para que no se corra un día por la zona horaria. */
 function fechaCorta(iso: string) {
@@ -43,8 +37,11 @@ function errorPrecio(texto: string): string | null {
  */
 export default function Venta() {
   const qc = useQueryClient()
-  const avisos = useAviso()
-  const [ventaId, setVentaId] = useState<number | null>(null)
+  // RF-18: ?venta=ID abre esa venta (enlace desde la cartera del cliente).
+  const [params] = useSearchParams()
+  const pedida = Number(params.get('venta')) || null
+  const [ventaId, setVentaId] = useState<number | null>(pedida)
+  const [aviso, setAviso] = useState<Aviso | null>(null)
   const [respaldo, setRespaldo] = useState(false)
   const [reverso, setReverso] = useState<ReversoPendiente | null>(null)
   const [eligiendoCliente, setEligiendoCliente] = useState(false)
@@ -76,43 +73,20 @@ export default function Venta() {
   const abrir = useMutation({
     mutationFn: async (credito?: DatosCredito) =>
       (await api.post<TVenta>('/ventas', credito ? { forma_pago: 'credito', ...credito } : undefined)).data,
-    onSuccess: (v) => {
-      setVentaId(v.id)
-      qc.setQueryData(['venta', v.id], v)
-      setEditandoPrecio(null)
-      const deQuien = v.forma_pago === 'credito' && v.cliente?.nombre ? ` de ${v.cliente.nombre}` : ''
-      avisos.mostrar(
-        'ok',
-        v.forma_pago === 'credito'
-          ? `Se abrió la venta #${v.id} a crédito${deQuien}. Ya puede escanear.`
-          : `Se abrió la venta #${v.id} de contado. Ya puede escanear.`,
-      )
-    },
-    onError: (e) => avisos.mostrar('error', mensajeError(e)),
+    onSuccess: (v) => { setVentaId(v.id); qc.setQueryData(['venta', v.id], v); setAviso(null); setEditandoPrecio(null) },
   })
 
   const escanear = useMutation({
     mutationFn: async ({ codigo, metodo }: { codigo: string; metodo: MetodoCaptura }) =>
-      (await api.post<RespuestaEscaneo>(`/ventas/${ventaId}/escanear`, { codigo_barras: codigo, metodo_captura: metodo })).data,
+      (await api.post(`/ventas/${ventaId}/escanear`, { codigo_barras: codigo, metodo_captura: metodo })).data,
     onSuccess: (r) => {
-      avisos.mostrar('ok', `✓ ${r.unidad.codigo_barras} · ${r.referencia.codigo_referencia} · ${[r.referencia.proveedor, r.referencia.calidad && NOMBRE_CALIDAD[r.referencia.calidad as Calidad]].filter(Boolean).join(' · ')} — quedan ${r.referencia.existencia} (${r.metodo_captura})`)
-      // RF-06: una sola petición por escaneo. El ítem llega completo y se agrega a la venta en caché.
-      const clave = ['venta', r.venta_id]
-      if (!qc.getQueryData<TVenta>(clave)) {
-        qc.invalidateQueries({ queryKey: clave })
-        return
-      }
-      void qc.cancelQueries({ queryKey: clave })
-      qc.setQueryData<TVenta>(clave, (actual) =>
-        actual && !actual.items.some((i) => i.id === r.item.id)
-          ? { ...actual, items: [...actual.items, r.item] }
-          : actual,
-      )
-    },
-    onError: (e) => {
-      avisos.mostrar('error', mensajeError(e))
+      setAviso({
+        tipo: 'ok',
+        texto: `✓ ${r.unidad.codigo_barras} · ${r.referencia.codigo_referencia} · ${[r.referencia.proveedor, r.referencia.calidad && NOMBRE_CALIDAD[r.referencia.calidad as Calidad]].filter(Boolean).join(' · ')} — quedan ${r.referencia.existencia} (${r.metodo_captura})`,
+      })
       qc.invalidateQueries({ queryKey: ['venta', ventaId] })
     },
+    onError: (e) => setAviso({ tipo: 'error', texto: mensajeError(e) }),
   })
 
   const cerrar = useMutation({
@@ -120,21 +94,21 @@ export default function Venta() {
     onSuccess: (v) => {
       qc.setQueryData(['venta', v.id], v)
       qc.invalidateQueries({ queryKey: ['ventas'] })
-      avisos.mostrar(
-        'ok',
-        v.forma_pago === 'credito'
+      setAviso({
+        tipo: 'ok',
+        texto: v.forma_pago === 'credito'
           ? `Venta #${v.id} a crédito cerrada.${v.vence_el ? ` Vence el ${fechaCorta(v.vence_el)}.` : ''} Facture en Contapyme.`
           : `Venta #${v.id} cerrada. Facture en Contapyme.`,
-      )
+      })
     },
-    onError: (e) => avisos.mostrar('error', mensajeError(e)),
+    onError: (e) => setAviso({ tipo: 'error', texto: mensajeError(e) }),
   })
 
   const onCodigo = useCallback(
     (codigo: string, metodo: MetodoCaptura) => {
       if (inputRef.current) inputRef.current.value = ''
       if (ventaId === null || venta.data?.estado !== 'abierta') {
-        avisos.mostrar('error', 'Abra una venta antes de escanear.')
+        setAviso({ tipo: 'error', texto: 'Abra una venta antes de escanear.' })
         return
       }
       escanear.mutate({ codigo, metodo })
@@ -198,9 +172,7 @@ export default function Venta() {
             {v && <span className={credito ? 'chip credito' : 'chip'}>{credito ? 'Crédito' : 'Contado'}</span>}
           </h2>
           <div className="acciones">
-            <button type="button" className="secundario" onClick={() => abrir.mutate(undefined)} disabled={abrir.isPending}>
-              {abrir.isPending && !eligiendoCliente ? 'Abriendo…' : 'Nueva venta'}
-            </button>
+            <button type="button" className="secundario" onClick={() => abrir.mutate(undefined)} disabled={abrir.isPending}>Nueva venta</button>
             <button type="button" className="secundario" onClick={() => setEligiendoCliente(true)} disabled={abrir.isPending}>Nueva venta a crédito</button>
             {abierta && <button type="button" className="secundario" onClick={() => setRespaldo(true)}>Buscar sin escáner</button>}
             {abierta && <button type="button" className="primario" onClick={() => cerrar.mutate()} disabled={cerrar.isPending}>Cerrar venta</button>}
@@ -229,6 +201,8 @@ export default function Venta() {
           disabled={!abierta}
           autoComplete="off"
         />
+        {aviso && <div className={`aviso ${aviso.tipo}`} role="status">{aviso.texto}</div>}
+
         {v && (
           <table>
             <thead>
@@ -248,7 +222,7 @@ export default function Venta() {
                         onGuardado={(nueva, precio) => {
                           qc.setQueryData(['venta', nueva.id], nueva)
                           dejarDeEditar(i.id)
-                          avisos.mostrar('ok', `Precio de ${i.unidad.codigo_barras} cambiado a $${formatoNumero(precio)}.`)
+                          setAviso({ tipo: 'ok', texto: `Precio de ${i.unidad.codigo_barras} cambiado a $${formatoNumero(precio)}.` })
                         }}
                         onTerminar={() => dejarDeEditar(i.id)}
                       />
@@ -315,6 +289,7 @@ export default function Venta() {
       {eligiendoCliente && (
         <DialogoCredito
           abriendo={abrir.isPending}
+          error={abrir.isError ? mensajeError(abrir.error) : null}
           onConfirmar={(datos) => abrir.mutate(datos, { onSuccess: () => setEligiendoCliente(false) })}
           onCerrar={() => { setEligiendoCliente(false); abrir.reset() }}
         />
@@ -324,7 +299,7 @@ export default function Venta() {
         <DialogoReverso
           ventaId={v.id}
           pendiente={reverso}
-          onListo={(nueva) => { qc.setQueryData(['venta', nueva.id], nueva); setReverso(null); avisos.mostrar('ok', 'Reverso registrado; la unidad volvió al inventario.') }}
+          onListo={(nueva) => { qc.setQueryData(['venta', nueva.id], nueva); setReverso(null); setAviso({ tipo: 'ok', texto: 'Reverso registrado; la unidad volvió al inventario.' }) }}
           onCerrar={() => setReverso(null)}
         />
       )}
@@ -332,74 +307,40 @@ export default function Venta() {
   )
 }
 
-/**
- * RF-12: buscar por código de barras, referencia, código universal o descripción y elegir la unidad.
- * El orden lo da el backend (código antes que descripción, con existencia primero); aquí no se reordena.
- */
+/** RF-12: buscar por referencia o código universal y elegir la unidad. */
 function BusquedaRespaldo({ onElegir, onCerrar }: { onElegir: (codigo: string) => void; onCerrar: () => void }) {
-  // Es el tipo Unidad de api/tipos; se deriva aquí para no tocar los imports del archivo.
-  type Unidad = NonNullable<Referencia['unidades_disponibles']>[number]
   const [q, setQ] = useState('')
   const termino = useDebounce(q.trim())
 
   const resultado = useQuery({
     queryKey: ['buscar', termino],
-    queryFn: async () => (await api.get<{ unidad: Unidad | null; referencias: Referencia[] }>('/buscar', { params: { q: termino } })).data,
+    queryFn: async () => (await api.get<{ unidad: unknown; referencias: Referencia[] }>('/buscar', { params: { q: termino } })).data,
     enabled: termino.length >= 2,
   })
 
-  const filas: FilaEleccion[] = []
-  const unidad = resultado.data?.unidad
-  if (unidad) {
-    filas.push({
-      id: `unidad-${unidad.id}`,
-      titulo: unidad.codigo_barras,
-      meta: [unidad.referencia?.codigo_referencia, unidad.referencia?.descripcion].filter(Boolean).join(' · '),
-      detalle: unidad.estado === 'disponible' ? 'Unidad leída' : 'Esta unidad ya no está disponible',
-      onElegir: unidad.estado === 'disponible' ? () => onElegir(unidad.codigo_barras) : undefined,
-    })
-  }
-  for (const r of resultado.data?.referencias ?? []) {
-    const disponibles = r.unidades_disponibles ?? []
-    const meta = [r.codigo_universal?.codigo, r.calidad && NOMBRE_CALIDAD[r.calidad], r.proveedor?.nombre, `existencia ${r.existencia}`].filter(Boolean).join(' · ')
-    if (disponibles.length === 1) {
-      filas.push({
-        id: r.id,
-        titulo: r.codigo_referencia,
-        meta,
-        detalle: r.descripcion,
-        agotada: r.existencia <= 0,
-        onElegir: () => onElegir(disponibles[0].codigo_barras),
-      })
-    } else {
-      filas.push({
-        id: r.id,
-        titulo: r.codigo_referencia,
-        meta,
-        detalle: disponibles.length === 0 ? 'Sin unidades disponibles' : r.descripcion,
-        agotada: r.existencia <= 0,
-        acciones: disponibles.map((u) => ({ id: String(u.id), texto: u.codigo_barras, mono: true, onElegir: () => onElegir(u.codigo_barras) })),
-      })
-    }
-  }
-
   return (
-    <Dialogo
-      titulo="Buscar sin escáner"
-      descripcion="Código de barras, referencia, universal o descripción"
-      variante="ancha"
-      onCerrar={onCerrar}
-      pie={<button type="button" className="secundario" onClick={onCerrar}>Cerrar</button>}
-    >
-      <DialogoSeccion>
-        <input autoFocus placeholder="Ej. alternador hilux" aria-label="Buscar unidad" value={q} onChange={(e) => setQ(e.target.value)} />
-        <ListaEleccion
-          filas={termino.length < 2 ? [] : filas}
-          pendiente={resultado.isFetching}
-          vacio={termino.length < 2 ? 'Escriba al menos 2 caracteres.' : 'Sin resultados.'}
-        />
-      </DialogoSeccion>
-    </Dialogo>
+    <div className="modal" onKeyDown={(e) => e.key === 'Escape' && onCerrar()}>
+      <div className="modal-caja ancha">
+        <h2>Buscar sin escáner</h2>
+        <input autoFocus placeholder="Código de barras, referencia o código universal" value={q} onChange={(e) => setQ(e.target.value)} />
+        {resultado.isFetching && <p>Buscando…</p>}
+        {resultado.data?.referencias.map((r) => (
+          <div key={r.id} className="resultado">
+            <div>
+              <strong>{r.codigo_referencia}</strong> {r.codigo_universal && <span className="chip">{r.codigo_universal.codigo}</span>} <ChipCalidad calidad={r.calidad} /> · {r.proveedor?.nombre} · existencia {r.existencia}
+            </div>
+            <div className="unidades">
+              {r.unidades_disponibles?.map((u) => (
+                <button key={u.id} className="mono" onClick={() => onElegir(u.codigo_barras)}>{u.codigo_barras}</button>
+              ))}
+              {r.unidades_disponibles?.length === 0 && <em>Sin unidades disponibles</em>}
+            </div>
+          </div>
+        ))}
+        {resultado.data && resultado.data.referencias.length === 0 && <p>Sin resultados.</p>}
+        <div className="acciones"><button type="button" className="secundario" onClick={onCerrar}>Cerrar</button></div>
+      </div>
+    </div>
   )
 }
 
@@ -410,7 +351,6 @@ function DialogoReverso({ ventaId, pendiente, onListo, onCerrar }: {
   onListo: (v: TVenta) => void
   onCerrar: () => void
 }) {
-  const avisos = useAviso()
   const [motivo, setMotivo] = useState('')
   const reversar = useMutation({
     mutationFn: async () =>
@@ -420,7 +360,6 @@ function DialogoReverso({ ventaId, pendiente, onListo, onCerrar }: {
         venta_item_id: pendiente.item?.id ?? null,
       })).data,
     onSuccess: onListo,
-    onError: (e) => avisos.mostrar('error', mensajeError(e)),
   })
 
   const titulo = pendiente.item
@@ -428,25 +367,20 @@ function DialogoReverso({ ventaId, pendiente, onListo, onCerrar }: {
     : 'Anular la venta completa'
 
   return (
-    <Dialogo
-      titulo={titulo}
-      descripcion="La venta no se borra: queda un reverso con su usuario, fecha y motivo."
-      onCerrar={onCerrar}
-      pendiente={reversar.isPending}
-      onEnviar={() => reversar.mutate()}
-      pie={(
-        <>
-          <button type="button" className="secundario" disabled={reversar.isPending} onClick={onCerrar}>Cancelar</button>
-          <button type="submit" className="peligro" disabled={motivo.trim().length < 3 || reversar.isPending}>Confirmar reverso</button>
-        </>
-      )}
-    >
-      <DialogoSeccion>
+    <div className="modal">
+      <form className="modal-caja" onSubmit={(e) => { e.preventDefault(); reversar.mutate() }}>
+        <h2>{titulo}</h2>
+        <p>La venta no se borra: queda un reverso con su usuario, fecha y motivo.</p>
         <label>Motivo (obligatorio)
           <textarea autoFocus required minLength={3} value={motivo} onChange={(e) => setMotivo(e.target.value)} />
         </label>
-      </DialogoSeccion>
-    </Dialogo>
+        {reversar.isError && <div className="aviso error">{mensajeError(reversar.error)}</div>}
+        <div className="acciones">
+          <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
+          <button className="peligro" disabled={motivo.trim().length < 3 || reversar.isPending}>Confirmar reverso</button>
+        </div>
+      </form>
+    </div>
   )
 }
 
@@ -454,13 +388,13 @@ function DialogoReverso({ ventaId, pendiente, onListo, onCerrar }: {
  * RF-14: la venta a crédito exige un cliente activo (RF-13). El mostrador puede crearlo al vuelo;
  * editarlo es del admin. La factura de Contapyme es solo un texto de referencia.
  */
-function DialogoCredito({ abriendo, onConfirmar, onCerrar }: {
+function DialogoCredito({ abriendo, error, onConfirmar, onCerrar }: {
   abriendo: boolean
+  error: string | null
   onConfirmar: (datos: DatosCredito) => void
   onCerrar: () => void
 }) {
   const qc = useQueryClient()
-  const avisos = useAviso()
   const [q, setQ] = useState('')
   const [elegido, setElegido] = useState<Cliente | null>(null)
   const [factura, setFactura] = useState('')
@@ -468,12 +402,9 @@ function DialogoCredito({ abriendo, onConfirmar, onCerrar }: {
   const [nuevo, setNuevo] = useState({ nombre: '', documento: '', telefono: '' })
   const termino = useDebounce(q.trim())
 
-  const { filas: clientes, resultado, info, irA, cargando } = useListaPaginada<Cliente>({
-    clave: ['clientes', 'activos', termino],
-    filtros: q,
-    traer: async (pagina) => (await api.get<Pagina<Cliente>>('/clientes', {
-      params: { q: termino || undefined, activo: 1, page: pagina, por_pagina: CLIENTES_POR_PAGINA },
-    })).data,
+  const clientes = useQuery({
+    queryKey: ['clientes', 'activos', termino],
+    queryFn: async () => (await api.get<Pagina<Cliente>>('/clientes', { params: { q: termino || undefined, activo: 1, por_pagina: 10 } })).data,
   })
 
   const crear = useMutation({
@@ -488,25 +419,57 @@ function DialogoCredito({ abriendo, onConfirmar, onCerrar }: {
       setNuevo({ nombre: '', documento: '', telefono: '' })
       qc.invalidateQueries({ queryKey: ['clientes'] })
     },
-    onError: (e) => avisos.mostrar('error', mensajeError(e)),
   })
 
-  const filas: FilaEleccion[] = clientes.map((c) => ({
-    id: c.id,
-    titulo: c.nombre,
-    meta: [c.documento, `plazo ${c.plazo_dias} días`].filter(Boolean).join(' · '),
-    onElegir: () => setElegido(c),
-  }))
-
   return (
-    <Dialogo
-      titulo="Nueva venta a crédito"
-      descripcion="La factura de Contapyme es solo una referencia: este sistema no factura."
-      variante="ancha"
-      onCerrar={onCerrar}
-      pendiente={abriendo}
-      pie={(
-        <>
+    <div className="modal" onKeyDown={(e) => e.key === 'Escape' && onCerrar()}>
+      <div className="modal-caja ancha" role="dialog" aria-modal="true" aria-labelledby="credito-titulo">
+        <h2 id="credito-titulo">Nueva venta a crédito</h2>
+
+        {elegido ? (
+          <div className="aviso ok">
+            Cliente: {elegido.nombre}{elegido.documento && ` · ${elegido.documento}`} · plazo {elegido.plazo_dias} días{' '}
+            <button type="button" className="enlace" onClick={() => setElegido(null)}>Cambiar</button>
+          </div>
+        ) : creando ? (
+          <form className="formulario" onSubmit={(e) => { e.preventDefault(); crear.mutate() }}>
+            <h3>Crear cliente rápido</h3>
+            <label>Nombre<input autoFocus required maxLength={150} value={nuevo.nombre} onChange={(e) => setNuevo({ ...nuevo, nombre: e.target.value })} /></label>
+            <label>Documento (opcional)<input maxLength={30} value={nuevo.documento} onChange={(e) => setNuevo({ ...nuevo, documento: e.target.value })} /></label>
+            <label>Teléfono (opcional)<input maxLength={30} inputMode="tel" value={nuevo.telefono} onChange={(e) => setNuevo({ ...nuevo, telefono: e.target.value })} /></label>
+            <p className="ayuda">El sistema le pone el plazo por defecto; el administrador lo cambia en Clientes.</p>
+            {crear.isError && <div className="aviso error">{mensajeError(crear.error)}</div>}
+            <div className="acciones">
+              <button type="button" className="secundario" onClick={() => { setCreando(false); crear.reset() }}>Volver a buscar</button>
+              <button className="primario" disabled={crear.isPending || nuevo.nombre.trim() === ''}>Crear y elegir</button>
+            </div>
+          </form>
+        ) : (
+          <>
+            <input autoFocus placeholder="Buscar cliente por nombre o documento" aria-label="Buscar cliente" value={q} onChange={(e) => setQ(e.target.value)} />
+            {clientes.isFetching && <p className="ayuda">Buscando…</p>}
+            <ul className="lista">
+              {clientes.data?.data.map((c) => (
+                <li key={c.id}>
+                  <button type="button" className="enlace" onClick={() => setElegido(c)}>{c.nombre}</button>
+                  {c.documento && <> · {c.documento}</>} · plazo {c.plazo_dias} días
+                </li>
+              ))}
+            </ul>
+            {clientes.data && clientes.data.data.length === 0 && <p>Sin clientes activos para esta búsqueda.</p>}
+            <div>
+              <button type="button" className="secundario" onClick={() => { setCreando(true); setNuevo((n) => ({ ...n, nombre: q.trim() })) }}>Crear cliente rápido</button>
+            </div>
+          </>
+        )}
+
+        <label>Factura de Contapyme (opcional)
+          <input maxLength={40} value={factura} onChange={(e) => setFactura(e.target.value)} />
+        </label>
+        <p className="ayuda">Solo como referencia: este sistema no factura. La factura se hace en Contapyme.</p>
+
+        {error && <div className="aviso error">{error}</div>}
+        <div className="acciones">
           <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
           <button
             type="button"
@@ -516,49 +479,9 @@ function DialogoCredito({ abriendo, onConfirmar, onCerrar }: {
           >
             {abriendo ? 'Abriendo…' : 'Abrir venta a crédito'}
           </button>
-        </>
-      )}
-    >
-      <DialogoSeccion titulo={creando ? 'Crear cliente rápido' : 'Cliente'}>
-        {creando ? (
-          <form className="formulario" onSubmit={(e) => { e.preventDefault(); crear.mutate() }}>
-            <label>Nombre<input autoFocus required maxLength={150} value={nuevo.nombre} onChange={(e) => setNuevo({ ...nuevo, nombre: e.target.value })} /></label>
-            <label>Documento (opcional)<input maxLength={30} value={nuevo.documento} onChange={(e) => setNuevo({ ...nuevo, documento: e.target.value })} /></label>
-            <label>Teléfono (opcional)<input maxLength={30} inputMode="tel" value={nuevo.telefono} onChange={(e) => setNuevo({ ...nuevo, telefono: e.target.value })} /></label>
-            <p className="ayuda">El sistema le pone el plazo por defecto; el administrador lo cambia en Clientes.</p>
-            <div className="acciones">
-              <button type="button" className="secundario" onClick={() => { setCreando(false); crear.reset() }}>Volver a buscar</button>
-              <button className="primario" disabled={crear.isPending || nuevo.nombre.trim() === ''}>Crear y elegir</button>
-            </div>
-          </form>
-        ) : (
-          <>
-            {!elegido && (
-              <>
-                <input autoFocus placeholder="Buscar cliente por nombre o documento" aria-label="Buscar cliente" value={q} onChange={(e) => setQ(e.target.value)} />
-                <button type="button" className="eleccion-alta" onClick={() => { setCreando(true); setNuevo((n) => ({ ...n, nombre: q.trim() })) }}>
-                  Crear cliente rápido
-                </button>
-              </>
-            )}
-            <ListaEleccion
-              filas={filas}
-              pendiente={cargando && !elegido}
-              vacio={resultado ? 'Sin clientes activos para esta búsqueda.' : undefined}
-              elegida={elegido ? {
-                titulo: elegido.nombre,
-                meta: [elegido.documento, `plazo ${elegido.plazo_dias} días`].filter(Boolean).join(' · '),
-                onCambiar: () => setElegido(null),
-              } : undefined}
-            />
-            {!elegido && info && info.ultima > 1 && <Paginacion pagina={resultado} onCambiar={irA} />}
-          </>
-        )}
-        <label>Factura de Contapyme (opcional)
-          <input maxLength={40} value={factura} onChange={(e) => setFactura(e.target.value)} />
-        </label>
-      </DialogoSeccion>
-    </Dialogo>
+        </div>
+      </div>
+    </div>
   )
 }
 

@@ -30,7 +30,7 @@ class IngresoController extends Controller
     public function index(Request $request): JsonResponse
     {
         $pagina = Ingreso::query()
-            ->with(['proveedor:id,nombre', 'usuario:id,name', 'confirmadoPor:id,name'])
+            ->with(['proveedor:id,nombre,asesor', 'usuario:id,name', 'confirmadoPor:id,name']) // S-29: asesor bajo el nombre
             ->withSum('items as unidades', 'cantidad')
             ->when($request->query('proveedor_id'), fn ($q, $v) => $q->where('proveedor_id', $v))
             ->when($request->query('estado'), fn ($q, $v) => $q->where('estado', $v))
@@ -65,8 +65,12 @@ class IngresoController extends Controller
     /** RF-20: 201 si crea la línea, 200 si sumó 1 a la existente; 404 con motivo si el código no existe. */
     public function escanear(Request $request, Ingreso $ingreso): JsonResponse
     {
-        $codigo = $request->validate(['codigo' => ['required', 'string', 'max:80']])['codigo'];
-        $item = $this->servicio->escanear($ingreso, $codigo);
+        $datos = $request->validate([
+            'codigo' => ['required', 'string', 'max:120'],
+            // S-25: para resolver un "Código ambiguo", la referencia elegida entre las opciones.
+            'referencia_id' => ['sometimes', 'nullable', 'integer'],
+        ]);
+        $item = $this->servicio->escanear($ingreso, $datos['codigo'], $datos['referencia_id'] ?? null);
 
         return (new IngresoItemResource($item))->response()->setStatusCode($item->wasRecentlyCreated ? 201 : 200);
     }
@@ -160,7 +164,7 @@ class IngresoController extends Controller
     private function cargar(Ingreso $ingreso): Ingreso
     {
         return $ingreso->load([
-            'proveedor:id,nombre,plazo_dias',
+            'proveedor:id,nombre,nit,asesor,plazo_dias', // S-29: asesor en el encabezado
             'usuario:id,name',
             'confirmadoPor:id,name',
             'items' => fn ($q) => $q->orderBy('id'),

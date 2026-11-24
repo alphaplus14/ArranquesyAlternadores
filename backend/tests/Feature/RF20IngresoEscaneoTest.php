@@ -124,14 +124,14 @@ it('RF-20: logística crea la referencia que falta y el escaneo siguiente agrega
     escanearIngreso($id, 'NUEVA-001')->assertCreated()->assertJsonPath('cantidad', 1)->assertJsonPath('costo_unitario', '0.00');
 });
 
-it('RF-20: logística crea una referencia pero recibe 403 al editarla o borrarla', function () {
+it('RF-20 / S-26: logística crea y edita una referencia, pero nadie la borra', function () {
     actuarComo(Rol::Logistica);
     $proveedor = referencia('RN-4410')->proveedor_id;
 
     $nueva = $this->postJson('/api/referencias', referenciaDelProveedor($proveedor, 'NUEVA-002'))->assertCreated()->json('id');
 
-    $this->patchJson("/api/referencias/{$nueva}", ['descripcion' => 'Otra'])->assertForbidden();
-    $this->deleteJson("/api/referencias/{$nueva}")->assertForbidden();
+    $this->patchJson("/api/referencias/{$nueva}", ['descripcion' => 'Otra'])->assertOk()->assertJsonPath('descripcion', 'Otra');
+    $this->deleteJson("/api/referencias/{$nueva}")->assertMethodNotAllowed();
 });
 
 it('RF-20: crear una referencia con un código que ya tiene ese proveedor responde 422', function () {

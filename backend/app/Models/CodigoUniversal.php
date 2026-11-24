@@ -16,7 +16,13 @@ class CodigoUniversal extends Model
 
     protected $table = 'codigos_universales';
 
-    protected $fillable = ['codigo', 'categoria_id', 'descripcion'];
+    /** RF-22: stock_minimo se evalúa sobre la suma de sus referencias activas. */
+    protected $fillable = ['codigo', 'categoria_id', 'descripcion', 'stock_minimo'];
+
+    protected function casts(): array
+    {
+        return ['stock_minimo' => 'integer'];
+    }
 
     public function categoria(): BelongsTo
     {

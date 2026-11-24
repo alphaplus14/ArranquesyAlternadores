@@ -31,6 +31,8 @@ export interface Opcion {
 /** RF-16: plazo_dias solo prellena el vencimiento de las compras a crédito. */
 export interface Proveedor extends Opcion {
   nit?: string | null
+  /** S-29: asesor comercial (opcional). */
+  asesor?: string | null
   plazo_dias?: number | null
 }
 
@@ -54,12 +56,22 @@ export const NOMBRE_CALIDAD: Record<Calidad, string> = { fino: 'Fino', generico:
 export interface Referencia {
   id: number
   codigo_referencia: string
+  /** S-25: código de barras o QR del producto (opcional). */
+  codigo_fabricante?: string | null
   calidad: Calidad | null
   descripcion: string
   precio_venta: string
   /** RF-14 / S-15: IVA con que se vende (0 = sin IVA). */
   iva_venta_porcentaje: string
   existencia: number
+  /** S-26: false = desactivada. */
+  activo?: boolean
+  /** RF-22: propio (null = usa el general; 0 = no maneja). */
+  stock_minimo?: number | null
+  minimo_efectivo?: number | null
+  minimo_origen?: 'general' | 'personalizado' | null
+  minimo_por_universal?: boolean
+  bajo_minimo?: boolean
   proveedor_id: number
   categoria_id: number
   codigo_universal_id: number | null
@@ -72,6 +84,8 @@ export interface Referencia {
 export interface DesgloseUniversal {
   id: number
   codigo: string
+  /** RF-22: null = usa el general; 0 = no maneja. */
+  stock_minimo?: number | null
   descripcion: string | null
   categoria: Opcion
   existencia_total: number
@@ -209,6 +223,80 @@ export interface RespuestaEscaneo {
   referencia: { id: number; codigo_referencia: string; descripcion: string; calidad: Calidad | null; proveedor: string; existencia: number }
 }
 
+export type EstadoUnidad = 'disponible' | 'vendida' | 'retirada'
+
+/** RF-21 (S-27): baja (salida) o reintegro de unidades. */
+export type TipoAjuste = 'baja' | 'reintegro'
+export type MotivoBaja = 'garantia' | 'devolucion_proveedor' | 'dano' | 'perdida' | 'otro'
+export type MotivoReintegro = 'error_de_registro' | 'otro'
+export type MotivoAjuste = MotivoBaja | MotivoReintegro
+
+export const NOMBRE_MOTIVO: Record<MotivoAjuste, string> = {
+  garantia: 'Garantía',
+  devolucion_proveedor: 'Devolución a proveedor',
+  dano: 'Daño',
+  perdida: 'Pérdida',
+  error_de_registro: 'Error de registro',
+  otro: 'Otro',
+}
+
+export interface ReferenciaUnidad {
+  id: number
+  codigo_referencia: string
+  descripcion: string
+  calidad: Calidad | null
+  proveedor: Opcion
+}
+
+export interface AjusteInventario {
+  id: number
+  tipo: TipoAjuste
+  motivo: MotivoAjuste
+  nota: string | null
+  created_at: string
+  usuario: { id: number; name: string }
+  cantidad: number
+  unidades: Array<{
+    id: number
+    codigo_barras: string
+    estado: EstadoUnidad
+    metodo_captura: MetodoCaptura
+    reintegrable: boolean
+    referencia: ReferenciaUnidad
+  }>
+}
+
+export interface Devolucion {
+  venta_item_id: number
+  precio_unitario: string | null
+  iva_porcentaje: string | null
+  unidad: { id: number; codigo_barras: string; estado: EstadoUnidad }
+  referencia: ReferenciaUnidad
+  venta: {
+    id: number
+    forma_pago: FormaPago
+    created_at: string
+    cerrada_at: string | null
+    cliente: { id: number; nombre: string; documento: string | null } | null
+  }
+  reverso: { id: number; tipo: 'devolucion' | 'anulacion'; motivo: string; created_at: string } | null
+}
+
+export interface FilaBajoMinimo {
+  tipo: 'referencia' | 'universal'
+  id: number
+  codigo: string
+  descripcion: string | null
+  calidad: Calidad | null
+  proveedor: Opcion | null
+  categoria: Opcion
+  existencia: number
+  minimo: number
+  origen: 'general' | 'personalizado'
+  faltante: number
+  referencias: Array<{ id: number; codigo_referencia: string; calidad: Calidad | null; proveedor: Opcion; existencia: number }> | null
+}
+
 export interface Auditoria {
   id: number
   tabla: string
@@ -230,13 +318,12 @@ export interface Pagina<T> {
 }
 
 /** RF-15 / RF-17: lista fija de config/cartera.php. */
-export type MedioPago = 'efectivo' | 'transferencia' | 'tarjeta' | 'cheque' | 'otro'
+export type MedioPago = 'efectivo' | 'transferencia' | 'consignacion' | 'otro'
 
 export const NOMBRE_MEDIO: Record<MedioPago, string> = {
   efectivo: 'Efectivo',
   transferencia: 'Transferencia',
-  tarjeta: 'Tarjeta',
-  cheque: 'Cheque',
+  consignacion: 'Consignación',
   otro: 'Otro',
 }
 
@@ -424,4 +511,105 @@ type GrupoVencimiento = { cantidad: number; pendiente: string }
 export interface Vencimientos extends PaginaInforme<FilaVencimiento, { vencidas: GrupoVencimiento; por_vencer: GrupoVencimiento; todas: GrupoVencimiento }> {
   hoy: string
   aviso_dias: number
+}
+
+/* RF-15 / RF-18 (S-30): módulo Cartera (mostrador/admin), distinto del ResumenCartera de informes contables. */
+export const RANGOS: { clave: RangoAntiguedad; texto: string }[] = [
+  { clave: 'al_dia', texto: 'Al día' },
+  { clave: 'd1_30', texto: '1-30' },
+  { clave: 'd31_60', texto: '31-60' },
+  { clave: 'd61_90', texto: '61-90' },
+  { clave: 'mas_90', texto: '+90' },
+]
+
+export interface ResumenClienteLista {
+  cliente: { id: number; nombre: string; documento: string | null; telefono: string | null; plazo_dias: number; activo: boolean } | null
+  ventas: string
+  abonado: string
+  saldo: string
+  saldo_a_favor: boolean
+  vencido: string
+  proximo_vencimiento: string | null
+  vencida_desde: string | null
+  antiguedad: Record<RangoAntiguedad, string>
+  corte?: string
+  coincidencia?: { venta_id: number; factura_contapyme: string | null } | null
+}
+
+export interface ListaCartera extends Pagina<ResumenClienteLista> {
+  totales: {
+    cartera_total: string
+    saldo_a_favor: string
+    vencido_total: string
+    clientes_con_saldo: number
+    clientes_vencidos: number
+    antiguedad: Record<RangoAntiguedad, string>
+  }
+  corte: string
+}
+
+export interface AbonoClienteCartera {
+  id: number
+  cliente_id: number
+  fecha: string
+  valor: string
+  medio: MedioPago
+  referencia: string | null
+  nota: string | null
+  created_at: string
+  usuario?: { id: number; name: string }
+  anulado: boolean | null
+  anulacion?: { id: number; motivo: string; created_at: string; usuario: { id: number; name: string } | null } | null
+}
+
+export interface VentaCartera {
+  id: number
+  factura_contapyme: string | null
+  cerrada_at: string
+  vence_el: string | null
+  total: string
+  aplicado: string
+  pendiente: string
+  estado: 'al_dia' | 'por_vencer' | 'vencida'
+  estado_texto: string
+  dias_vencida: number
+  rango: RangoAntiguedad | null
+}
+
+export interface DetalleCartera {
+  resumen: ResumenClienteLista
+  ventas: VentaCartera[]
+  ventas_total: number
+  abonos: AbonoClienteCartera[]
+}
+
+export type EstadoFiltroVenta = 'todas' | 'pendientes' | 'vencidas' | 'pagadas'
+
+export interface MovimientoCuenta {
+  tipo: 'venta' | 'reverso' | 'abono' | 'anulacion_abono'
+  dia: string
+  momento: string
+  descripcion: string
+  venta_id?: number
+  reverso_id?: number
+  abono_id?: number
+  medio?: MedioPago
+  referencia?: string | null
+  nota?: string | null
+  motivo?: string
+  usuario?: string | null
+  anulado?: boolean
+  anulacion?: { motivo: string; usuario: string | null; fecha: string } | null
+  cargo: string
+  abono: string
+  saldo: string
+}
+
+export interface CarteraEstadoCuenta {
+  cliente: { id: number; nombre: string; documento: string | null }
+  desde: string | null
+  hasta: string | null
+  saldo_inicial: string
+  movimientos: MovimientoCuenta[]
+  saldo_final: string
 }

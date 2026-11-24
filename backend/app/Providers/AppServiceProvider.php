@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Models\AjusteInventario;
 use App\Models\Ingreso;
 use App\Models\Reverso;
 use App\Models\Venta;
@@ -34,6 +35,7 @@ class AppServiceProvider extends ServiceProvider
             'ingreso' => Ingreso::class,
             'venta' => Venta::class,
             'reverso' => Reverso::class,
+            'ajuste' => AjusteInventario::class, // RF-21: baja y reintegro
         ]);
 
         // Velocidad (regla 13): un N+1 falla en desarrollo y tests en vez de pasar desapercibido.

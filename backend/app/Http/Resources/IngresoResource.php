@@ -27,6 +27,7 @@ class IngresoResource extends JsonResource
                 'id' => $this->proveedor->id,
                 'nombre' => $this->proveedor->nombre,
                 'plazo_dias' => $this->proveedor->plazo_dias,
+                'asesor' => $this->proveedor->asesor, // S-29
             ]),
             'numero_documento' => $this->numero_documento,
             'fecha' => $this->fecha?->toDateString(),

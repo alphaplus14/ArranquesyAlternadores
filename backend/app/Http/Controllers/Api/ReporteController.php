@@ -8,6 +8,7 @@ use App\Models\Cliente;
 use App\Models\Proveedor;
 use App\Models\Referencia;
 use App\Services\ReporteService;
+use App\Services\StockMinimoService;
 use App\Services\VencimientoService;
 use App\Support\InformeExcel;
 use Illuminate\Http\JsonResponse;
@@ -21,10 +22,9 @@ use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 /**
- * RF-08: agotados por proveedor. RF-18: informes de compras, ventas a crédito, cartera, cuentas
- * por pagar, estados de cuenta, remisiones pendientes y diferencias. RF-22: vencimientos. RF-23:
- * cada uno se exporta a Excel con ?formato=xlsx. Paginados en el servidor; los totales cubren
- * todas las filas, no solo la página.
+ * RF-08: agotados por proveedor. RF-22: bajo mínimo. RF-18: informes de compras, ventas a crédito,
+ * cartera, cuentas por pagar, estados de cuenta, remisiones pendientes y diferencias. Vencimientos
+ * (adenda v1.3) y exportación a Excel con ?formato=xlsx (RF-23).
  */
 class ReporteController extends Controller
 {
@@ -33,14 +33,30 @@ class ReporteController extends Controller
         private readonly VencimientoService $vencimientos,
     ) {}
 
+    /** RF-22 (S-28): productos con existencia <= su mínimo efectivo, mayor faltante primero. */
+    public function bajoMinimo(Request $request, StockMinimoService $servicio): JsonResponse
+    {
+        $filtros = $request->validate([
+            'proveedor_id' => ['nullable', 'integer', 'exists:proveedores,id'],
+            'categoria_id' => ['nullable', 'integer', 'exists:categorias,id'],
+        ]);
+
+        return response()->json($servicio->bajoMinimo($filtros, min((int) $request->query('por_pagina', 50), 200)));
+    }
+
     public function agotados(Request $request): AnonymousResourceCollection
     {
-        $datos = $request->validate(['proveedor_id' => ['required', 'integer', 'exists:proveedores,id']]);
+        $datos = $request->validate([
+            'proveedor_id' => ['required', 'integer', 'exists:proveedores,id'],
+            'categoria_id' => ['nullable', 'integer', 'exists:categorias,id'], // RF-22: mismo filtro que Bajo mínimo
+        ]);
 
         // Índice (proveedor_id, existencia).
         $pagina = Referencia::query()
             ->where('proveedor_id', $datos['proveedor_id'])
             ->where('existencia', 0)
+            ->when($datos['categoria_id'] ?? null, fn ($q, $v) => $q->where('categoria_id', $v))
+            ->activas() // S-26: una desactivada no es un agotado
             ->with(['categoria:id,nombre,admite_codigo_universal', 'codigoUniversal:id,codigo'])
             ->orderBy('codigo_referencia')
             ->paginate(min((int) $request->query('por_pagina', 50), 200));

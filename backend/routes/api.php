@@ -1,13 +1,17 @@
 <?php
 
 use App\Http\Controllers\Api\AbonoController;
+use App\Http\Controllers\Api\AjusteController;
 use App\Http\Controllers\Api\AuditoriaController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BusquedaController;
+use App\Http\Controllers\Api\CarteraController;
 use App\Http\Controllers\Api\CategoriaController;
 use App\Http\Controllers\Api\ClienteController;
 use App\Http\Controllers\Api\CodigoUniversalController;
+use App\Http\Controllers\Api\ConfiguracionController;
 use App\Http\Controllers\Api\CuentaController;
+use App\Http\Controllers\Api\DevolucionController;
 use App\Http\Controllers\Api\EtiquetaController;
 use App\Http\Controllers\Api\IngresoController;
 use App\Http\Controllers\Api\PagoController;
@@ -29,6 +33,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me'])->middleware('rol:admin,logistica,mostrador,contable');
 
+    // S-25: aviso de que un código ya existe con otro proveedor. Antes de /referencias/{referencia}.
+    Route::get('/referencias/coincidencias', [ReferenciaController::class, 'coincidencias'])->middleware('rol:admin,logistica');
+
     // Listas de proveedores y clientes: también las usa el módulo contable (RF-21).
     Route::middleware('rol:admin,logistica,mostrador,contable')->group(function () {
         Route::get('/proveedores', [ProveedorController::class, 'index']);
@@ -43,29 +50,37 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/codigos-universales', [CodigoUniversalController::class, 'index']);
         Route::get('/codigos-universales/{codigoUniversal}', [CodigoUniversalController::class, 'show']); // RF-02
         Route::get('/buscar', BusquedaController::class)->middleware('medir:500')->name('buscar'); // RF-12
-        Route::get('/reportes/agotados', [ReporteController::class, 'agotados']); // RF-08
     });
 
-    // RF-20: logística crea la referencia que no existe al escanear un ingreso; editar y desactivar son del admin.
+    // RF-20: logística crea la referencia que no existe al escanear un ingreso.
     Route::post('/referencias', [ReferenciaController::class, 'store'])->middleware('rol:admin,logistica');
+    // S-26: logística también edita, desactiva y reactiva referencias. No hay DELETE (tienen historial).
+    // RF-08 / RF-22 / S-28: agotados y stock mínimo son trabajo de reposición de logística y
+    // administración; mostrador recibe 403 (ve la existencia en el listado de productos).
+    Route::middleware('rol:admin,logistica')->group(function () {
+        Route::get('/reportes/agotados', [ReporteController::class, 'agotados']); // RF-08
+        Route::get('/reportes/bajo-minimo', [ReporteController::class, 'bajoMinimo'])->middleware('medir:500'); // RF-22
+    });
+
+    Route::middleware('rol:admin,logistica')->group(function () {
+        Route::match(['put', 'patch'], '/referencias/{referencia}', [ReferenciaController::class, 'update']);
+        Route::post('/referencias/{referencia}/desactivar', [ReferenciaController::class, 'desactivar']);
+        Route::post('/referencias/{referencia}/reactivar', [ReferenciaController::class, 'reactivar']);
+    });
+    // S-24: logística también crea proveedores y categorías; editarlos y borrarlos es del admin.
+    Route::post('/proveedores', [ProveedorController::class, 'store'])->middleware('rol:admin,logistica');
+    Route::post('/categorias', [CategoriaController::class, 'store'])->middleware('rol:admin,logistica');
 
     // RF-13: el mostrador crea clientes al vender a crédito; editar es solo del admin.
     Route::post('/clientes', [ClienteController::class, 'store'])->middleware('rol:admin,mostrador');
 
-    // RF-15 / S-14: el mostrador registra abonos y ve el saldo; anularlos es solo del admin.
-    Route::middleware('rol:admin,mostrador')->group(function () {
-        Route::get('/clientes/{cliente}/saldo', [AbonoController::class, 'saldo']);
-        Route::post('/clientes/{cliente}/abonos', [AbonoController::class, 'store']);
-    });
-
     // Módulo administrador: catálogo (RF-01), usuarios y auditoría (RF-11).
     Route::middleware('rol:admin')->group(function () {
-        Route::apiResource('categorias', CategoriaController::class)->except(['index']);
+        Route::apiResource('categorias', CategoriaController::class)->except(['index', 'store']);
         Route::apiResource('proveedores', ProveedorController::class)
-            ->parameters(['proveedores' => 'proveedor'])->except(['index']);
+            ->parameters(['proveedores' => 'proveedor'])->except(['index', 'store']);
         Route::apiResource('codigos-universales', CodigoUniversalController::class)
             ->parameters(['codigos-universales' => 'codigoUniversal'])->except(['index', 'show']);
-        Route::apiResource('referencias', ReferenciaController::class)->except(['index', 'show', 'store']);
 
         Route::get('/usuarios', [UsuarioController::class, 'index']);
         Route::post('/usuarios', [UsuarioController::class, 'store']);
@@ -73,6 +88,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('/cuenta', [CuentaController::class, 'update']);
 
         Route::get('/auditoria', [AuditoriaController::class, 'index']);
+
+        // RF-22: mínimo general del almacén (auditado).
+        Route::get('/configuracion/stock-minimo', [ConfiguracionController::class, 'stockMinimo']);
+        Route::put('/configuracion/stock-minimo', [ConfiguracionController::class, 'fijarStockMinimo']);
 
         Route::match(['put', 'patch'], '/clientes/{cliente}', [ClienteController::class, 'update']); // RF-13
 
@@ -127,6 +146,28 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/etiquetas/tamanos', [EtiquetaController::class, 'tamanos']);
         Route::post('/etiquetas', [EtiquetaController::class, 'generar']);
     });
+
+    // RF-21 (S-27): salidas y reintegros de inventario, y devoluciones de clientes por código de
+    // unidad (RF-07). Logística y admin; mostrador 403. Sin DELETE: los ajustes son inmutables.
+    Route::middleware('rol:admin,logistica')->group(function () {
+        Route::get('/ajustes', [AjusteController::class, 'index']);
+        Route::get('/ajustes/unidad', [AjusteController::class, 'unidad'])->middleware('medir:500')->name('ajustes.unidad');
+        Route::post('/ajustes/salidas', [AjusteController::class, 'salidas'])->name('ajustes.salidas');
+        Route::post('/ajustes/reintegros', [AjusteController::class, 'reintegros'])->name('ajustes.reintegros');
+
+        Route::get('/devoluciones/consulta', [DevolucionController::class, 'consulta'])->middleware('medir:500')->name('devoluciones.consulta');
+        Route::post('/devoluciones', [DevolucionController::class, 'store']);
+    });
+
+    // RF-15 / RF-18 (S-30): cartera de clientes. Admin y mostrador; logística 403. Los abonos no
+    // tienen rutas para editar ni borrar; anularlos es solo del admin.
+    Route::middleware('rol:admin,mostrador')->group(function () {
+        Route::get('/cartera', [CarteraController::class, 'index'])->middleware('medir:500')->name('cartera');
+        Route::post('/clientes/{cliente}/abonos', [AbonoController::class, 'store']);
+        Route::get('/clientes/{cliente}/cartera', [CarteraController::class, 'show']); // RF-18
+        Route::get('/clientes/{cliente}/estado-cuenta', [CarteraController::class, 'estadoCuenta']); // RF-18
+    });
+    Route::post('/abonos/{abono}/anulaciones', [AbonoController::class, 'anular'])->middleware('rol:admin');
 
     // Módulo de mostrador: venta = descargue (RF-06, RF-12) y reversos (RF-07).
     Route::middleware('rol:mostrador')->group(function () {

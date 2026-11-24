@@ -6,7 +6,11 @@ use App\Models\AbonoCliente;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/** @mixin AbonoCliente  RF-15: el abono se muestra siempre, también anulado. */
+/**
+ * RF-15: un abono, con su anulación si la tiene (sigue visible, no cuenta en el saldo).
+ *
+ * @mixin AbonoCliente
+ */
 class AbonoResource extends JsonResource
 {
     public function toArray(Request $request): array
@@ -14,17 +18,21 @@ class AbonoResource extends JsonResource
         return [
             'id' => $this->id,
             'cliente_id' => $this->cliente_id,
-            'fecha' => $this->fecha->toDateString(),
+            'fecha' => $this->fecha?->toDateString(),
             'valor' => $this->valor,
             'medio' => $this->medio,
             'referencia' => $this->referencia,
             'nota' => $this->nota,
-            'usuario' => $this->whenLoaded('usuario', fn () => ['id' => $this->usuario->id, 'name' => $this->usuario->name]),
             'created_at' => $this->created_at,
+            'usuario' => $this->whenLoaded('usuario', fn () => ['id' => $this->usuario->id, 'name' => $this->usuario->name]),
+            'anulado' => $this->relationLoaded('anulacion') ? $this->anulacion !== null : null,
             'anulacion' => $this->whenLoaded('anulacion', fn () => $this->anulacion ? [
+                'id' => $this->anulacion->id,
                 'motivo' => $this->anulacion->motivo,
-                'usuario' => ['id' => $this->anulacion->usuario->id, 'name' => $this->anulacion->usuario->name],
                 'created_at' => $this->anulacion->created_at,
+                'usuario' => $this->anulacion->relationLoaded('usuario')
+                    ? ['id' => $this->anulacion->usuario->id, 'name' => $this->anulacion->usuario->name]
+                    : null,
             ] : null),
         ];
     }

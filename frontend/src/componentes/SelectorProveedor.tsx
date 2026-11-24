@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { useProveedores } from '../hooks/useCatalogos'
-import { filtrarProveedores } from './filtroProveedores'
+import { useAuth } from '../auth/AuthProvider'
+import { filtrarProveedores, normalizarNit, normalizarTexto } from './filtroProveedores'
+import DialogoProveedor from './DialogoProveedor'
 
 /** Opciones visibles a la vez; con más, se pide seguir escribiendo. */
 const MAXIMO = 50
 const ALTO_LISTA = 300
 
-interface Opcion { valor: string; nombre: string; nit?: string | null }
+interface Opcion { valor: string; nombre: string; nit?: string | null; asesor?: string | null }
+/** Valor de la opción «+ Crear proveedor "…"» (S-24). */
+const CREAR = '__crear__'
 type Via = 'enter' | 'clic' | 'tab'
 
 /**
@@ -18,7 +22,7 @@ type Via = 'enter' | 'clic' | 'tab'
  * hacia arriba si abajo no cabe (también con el teclado virtual del móvil).
  */
 export default function SelectorProveedor({
-  value, onChange, id, required, placeholder, opcionTodos, limpiable, autoFocus, error, alElegir, className,
+  value, onChange, id, required, placeholder, opcionTodos, limpiable, autoFocus, error, alElegir, className, permitirCrear,
   'aria-invalid': ariaInvalid, 'aria-label': ariaLabel,
 }: {
   value: string
@@ -35,11 +39,17 @@ export default function SelectorProveedor({
   error?: string
   /** Se llama tras elegir con Enter o clic (no con Tab ni mientras se escribe). */
   alElegir?: () => void
+  /** S-24: ofrece «+ Crear proveedor "…"» (solo admin y logística; nunca en los filtros). */
+  permitirCrear?: boolean
   className?: string
   'aria-invalid'?: boolean
   'aria-label'?: string
 }) {
   const proveedores = useProveedores()
+  const { tieneRol } = useAuth()
+  const puedeCrear = !!permitirCrear && tieneRol('logistica') // el admin pasa siempre
+  /** Texto con que se abrió "Nuevo proveedor"; null = cerrado. */
+  const [creando, setCreando] = useState<string | null>(null)
   const base = useId()
   const listaId = `${base}-lista`
   const errorId = `${base}-error`
@@ -55,10 +65,16 @@ export default function SelectorProveedor({
 
   const seleccionado = proveedores.data?.find((p) => String(p.id) === value)
   const filtrados = useMemo(() => filtrarProveedores(proveedores.data ?? [], texto ?? ''), [proveedores.data, texto])
-  const opciones: Opcion[] = useMemo(() => [
+  // Crear solo si lo escrito no coincide exacto con un nombre o un NIT existente.
+  const escrito = (texto ?? '').trim()
+  const coincideExacto = escrito !== '' && (proveedores.data ?? []).some((p) =>
+    normalizarTexto(p.nombre) === normalizarTexto(escrito) || (!!p.nit && normalizarNit(p.nit) === normalizarNit(escrito)))
+  const ofrecerCrear = puedeCrear && escrito !== '' && !coincideExacto
+  const encontrados: Opcion[] = useMemo(() => [
     ...(opcionTodos && !texto ? [{ valor: '', nombre: opcionTodos }] : []),
-    ...filtrados.slice(0, MAXIMO).map((p) => ({ valor: String(p.id), nombre: p.nombre, nit: p.nit })),
+    ...filtrados.slice(0, MAXIMO).map((p) => ({ valor: String(p.id), nombre: p.nombre, nit: p.nit, asesor: p.asesor })),
   ], [filtrados, opcionTodos, texto])
+  const opciones: Opcion[] = ofrecerCrear ? [...encontrados, { valor: CREAR, nombre: escrito }] : encontrados
   const hayMas = filtrados.length > MAXIMO
   const conLimpiar = (opcionTodos !== undefined || limpiable) && value !== '' && texto === null
 
@@ -75,6 +91,12 @@ export default function SelectorProveedor({
   const cerrar = () => { setAbierta(false); setActiva(-1) }
 
   const elegir = (o: Opcion, via: Via) => {
+    if (o.valor === CREAR) {
+      // Abre "Nuevo proveedor" con lo escrito; la selección anterior vuelve al salir del campo.
+      cerrar()
+      setCreando(o.nombre)
+      return
+    }
     editando.current = false
     setTexto(null)
     cerrar()
@@ -217,6 +239,7 @@ export default function SelectorProveedor({
       {abierta && createPortal(
         // mousedown no quita el foco del input: el clic elige sin disparar el blur.
         <div className="selector-lista" style={{ position: 'fixed', ...posicion }} onMouseDown={(e) => e.preventDefault()}>
+          {encontrados.length === 0 && <div className="selector-nota" role="status">Sin resultados</div>}
           <ul role="listbox" id={listaId} aria-label="Proveedores">
             {opciones.map((o, i) => (
               <li
@@ -224,19 +247,41 @@ export default function SelectorProveedor({
                 id={`${listaId}-${i}`}
                 role="option"
                 aria-selected={i === activa}
-                className={`selector-opcion${i === activa ? ' activa' : ''}${o.valor === value ? ' elegida' : ''}`}
+                className={`selector-opcion${i === activa ? ' activa' : ''}${o.valor === value ? ' elegida' : ''}${o.valor === CREAR ? ' crear' : ''}`}
                 onMouseMove={() => { if (i !== activa) setActiva(i) }}
                 onClick={() => elegir(o, 'clic')}
               >
-                <span>{o.nombre}</span>
-                {o.nit && <small>NIT {o.nit}</small>}
+                {o.valor === CREAR
+                  ? <span>+ Crear proveedor «{o.nombre}»</span>
+                  : <><span>{o.nombre}</span>{(o.nit || o.asesor) && <small>{[o.nit && `NIT ${o.nit}`, o.asesor && `Asesor: ${o.asesor}`].filter(Boolean).join(' · ')}</small>}</>}
               </li>
             ))}
           </ul>
-          {opciones.length === 0 && <div className="selector-nota" role="status">Sin resultados</div>}
           {hayMas && <div className="selector-nota" role="status">Siga escribiendo para acotar</div>}
         </div>,
         document.body,
+      )}
+
+      {creando !== null && (
+        <DialogoProveedor
+          texto={creando}
+          onGuardado={(nuevo) => {
+            editando.current = false
+            setTexto(null)
+            setCreando(null)
+            onChange(String(nuevo.id))
+            // Al siguiente campo (N.º del documento en la modal de ingreso), o de vuelta al selector.
+            setTimeout(() => (alElegir ? alElegir() : input.current?.focus()), 0)
+          }}
+          onUsar={(idExistente) => {
+            editando.current = false
+            setTexto(null)
+            setCreando(null)
+            onChange(String(idExistente))
+            setTimeout(() => (alElegir ? alElegir() : input.current?.focus()), 0)
+          }}
+          onCerrar={() => { setCreando(null); setTimeout(() => input.current?.focus(), 0) }}
+        />
       )}
     </>
   )

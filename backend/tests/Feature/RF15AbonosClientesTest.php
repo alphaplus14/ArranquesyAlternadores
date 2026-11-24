@@ -13,7 +13,7 @@ use Illuminate\Support\Carbon;
 
 beforeEach(fn () => sembrarDemo());
 
-function abonar(Cliente $cliente, int $valor, array $extra = []): int
+function abonarId(Cliente $cliente, int $valor, array $extra = []): int
 {
     return test()->postJson("/api/clientes/{$cliente->id}/abonos", ['valor' => $valor, 'medio' => 'efectivo', ...$extra])
         ->assertCreated()
@@ -25,7 +25,7 @@ it('RF-15: venta a crédito de 100 y abono de 40 dejan saldo 60', function () {
     ventaCreditoCerrada($cliente, 1, 100);
     actuarComo(Rol::Mostrador);
 
-    abonar($cliente, 40);
+    abonarId($cliente, 40);
 
     $this->getJson("/api/clientes/{$cliente->id}/saldo")->assertOk()
         ->assertJsonPath('cargos', '100.00')
@@ -48,7 +48,7 @@ it('RF-15: anular el abono devuelve el saldo a 100 y el abono sigue visible', fu
     $cliente = Cliente::factory()->create();
     ventaCreditoCerrada($cliente, 1, 100);
     actuarComo(Rol::Admin);
-    $abono = abonar($cliente, 40);
+    $abono = abonarId($cliente, 40);
 
     $this->postJson("/api/abonos/{$abono}/anulaciones", ['motivo' => 'Consignación rechazada'])
         ->assertCreated()
@@ -65,7 +65,7 @@ it('RF-15: anular el abono devuelve el saldo a 100 y el abono sigue visible', fu
 it('RF-15: un abono no se anula dos veces y la anulación exige motivo', function () {
     $cliente = Cliente::factory()->create();
     actuarComo(Rol::Admin);
-    $abono = abonar($cliente, 40);
+    $abono = abonarId($cliente, 40);
 
     $this->postJson("/api/abonos/{$abono}/anulaciones", [])->assertJsonValidationErrors('motivo');
     $this->postJson("/api/abonos/{$abono}/anulaciones", ['motivo' => 'Error'])->assertCreated();
@@ -75,7 +75,7 @@ it('RF-15: un abono no se anula dos veces y la anulación exige motivo', functio
 it('RF-15 / S-14: el mostrador abona y ve el saldo, pero no anula; logística no entra', function () {
     $cliente = Cliente::factory()->create();
     actuarComo(Rol::Mostrador);
-    $abono = abonar($cliente, 40);
+    $abono = abonarId($cliente, 40);
 
     $this->postJson("/api/abonos/{$abono}/anulaciones", ['motivo' => 'Error'])->assertForbidden();
 
@@ -87,7 +87,7 @@ it('RF-15 / S-14: el mostrador abona y ve el saldo, pero no anula; logística no
 it('RF-15: el abono es inmutable y no tiene ruta para borrarse', function () {
     $cliente = Cliente::factory()->create();
     actuarComo(Rol::Admin);
-    $abono = AbonoCliente::find(abonar($cliente, 40));
+    $abono = AbonoCliente::find(abonarId($cliente, 40));
 
     $abono->valor = 10;
     expect(fn () => $abono->save())->toThrow(RegistroInmutableException::class);
@@ -125,7 +125,7 @@ it('RF-15: se puede abonar a un cliente inactivo', function () {
     $cliente->update(['activo' => false]);
     actuarComo(Rol::Mostrador);
 
-    abonar($cliente, 100);
+    abonarId($cliente, 100);
 
     $this->getJson("/api/clientes/{$cliente->id}/saldo")->assertJsonPath('saldo', '0.00');
 });
@@ -135,7 +135,7 @@ it('RF-15: si lo abonado supera lo vendido, la diferencia es saldo a favor', fun
     ventaCreditoCerrada($cliente, 1, 100);
     actuarComo(Rol::Mostrador);
 
-    abonar($cliente, 130);
+    abonarId($cliente, 130);
 
     $this->getJson("/api/clientes/{$cliente->id}/saldo")
         ->assertJsonPath('saldo', '-30.00')
@@ -166,7 +166,7 @@ it('RF-15 / S-12 / S-13: el abono se aplica FIFO y lo pendiente cae en su rango 
     Carbon::setTestNow('2026-11-21 10:00:00');
     actuarComo(Rol::Mostrador);
 
-    abonar($cliente, 60);
+    abonarId($cliente, 60);
 
     $respuesta = $this->getJson("/api/clientes/{$cliente->id}/saldo")
         ->assertJsonPath('saldo', '140.00')

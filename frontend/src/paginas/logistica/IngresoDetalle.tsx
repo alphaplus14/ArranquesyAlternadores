@@ -3,18 +3,22 @@ import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
 import { api, erroresCampo, mensajeError } from '../../api/cliente'
-import { useAviso, useAvisoTexto } from '../../componentes/Avisos'
-import Dialogo, { DialogoSeccion } from '../../componentes/Dialogo'
-import type { FormaPago, Ingreso, IngresoItem } from '../../api/tipos'
+import type { FormaPago, Ingreso, IngresoItem, Opcion, Pagina } from '../../api/tipos'
 import { fechaCorta, sumarDias } from '../../componentes/fechas'
 import CampoDescuento, { type ModoDescuento } from '../../componentes/CampoDescuento'
-import FichaReferencia from '../../componentes/FichaReferencia'
 import Medida from '../../componentes/Medida'
 import { formatoNumero, leerNumero, pesos } from '../../componentes/numeros'
+import { useCategorias } from '../../hooks/useCatalogos'
+import SelectorCategoria from '../../componentes/SelectorCategoria'
+import ControlSegmentado, { type OpcionSegmento } from '../../componentes/ControlSegmentado'
+import AvisoCoincidencias from '../../componentes/AvisoCoincidencias'
 import { useScanner } from '../../hooks/useScanner'
+import { useBloquearScroll } from '../../hooks/useBloquearScroll'
+import { atraparTab } from '../../componentes/foco'
 import Resumen from '../../componentes/Resumen'
 import Icono from '../../componentes/Icono'
 
+interface Aviso { tipo: 'ok' | 'error' | 'atencion'; texto: string }
 type Campo = 'cantidad' | 'costo_unitario' | 'descuento_porcentaje' | 'iva_porcentaje'
 const CAMPOS: Campo[] = ['cantidad', 'costo_unitario', 'descuento_porcentaje', 'iva_porcentaje']
 /** IVA de una línea de compra (S-22): 0 = sin IVA. Si la línea trae otro valor, se agrega. */
@@ -79,6 +83,16 @@ const REGLAS: Record<Campo, { etiqueta: string; validar: (n: number | null) => s
   },
 }
 
+interface OpcionAmbigua { id: number; codigo_referencia: string; codigo_fabricante: string | null; descripcion: string }
+interface Ambiguo { codigo: string; opciones: OpcionAmbigua[] }
+
+/** S-25: 422 del escaneo cuando el código coincide con varias referencias del mismo proveedor. */
+function codigoAmbiguo(error: unknown): Ambiguo | null {
+  if (!(error instanceof AxiosError) || error.response?.status !== 422) return null
+  const datos = error.response.data as { motivo?: string; codigo?: string; opciones?: OpcionAmbigua[] } | undefined
+  return datos?.motivo === 'codigo_ambiguo' && datos.opciones ? { codigo: datos.codigo ?? '', opciones: datos.opciones } : null
+}
+
 /** Cuerpo del 404 del escaneo cuando el código no es una referencia del proveedor (RF-20). */
 function codigoInexistente(error: unknown): string | null {
   if (!(error instanceof AxiosError) || error.response?.status !== 404) return null
@@ -97,13 +111,15 @@ function codigoInexistente(error: unknown): string | null {
 export default function IngresoDetalle() {
   const { id } = useParams()
   const qc = useQueryClient()
-  const avisos = useAviso()
+  const [aviso, setAviso] = useState<Aviso | null>(null)
   const [creando, setCreando] = useState<string | null>(null)
   const [fila, setFilaEstado] = useState<Fila | null>(null)
   // Copia sincrónica: el blur de una fila y el clic en otra llegan en el mismo ciclo.
   const filaRef = useRef<Fila | null>(null)
   const ponerFila = (f: Fila | null) => { filaRef.current = f; setFilaEstado(f) }
   const [quitando, setQuitando] = useState<number | null>(null)
+  /** S-25: el código leído coincide con varias referencias; se elige una. */
+  const [ambiguo, setAmbiguo] = useState<Ambiguo | null>(null)
   const [condiciones, setCondiciones] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -125,7 +141,7 @@ export default function IngresoDetalle() {
     if (Object.values(erroresDe(f)).some(Boolean) || Object.keys(cambios).length === 0) return
     guardarLinea(f, cambios)
       .then(actualizar)
-      .catch((e) => avisos.mostrar('error', `No se guardó la línea ${f.codigo}: ${mensajeError(e)}`))
+      .catch((e) => setAviso({ tipo: 'error', texto: `No se guardó la línea ${f.codigo}: ${mensajeError(e)}` }))
   }
 
   const abrirFila = (it: LineaEditable, foco: Campo) => {
@@ -154,14 +170,14 @@ export default function IngresoDetalle() {
       actualizar(await guardarLinea(f, cambios))
       if (filaRef.current?.itemId === f.itemId) ponerFila(null)
       // Un error anterior (por ejemplo, "falta el costo") ya no aplica tras corregir.
-      avisos.limpiarSi('error')
+      setAviso((a) => (a?.tipo === 'error' ? null : a))
     } catch (e) {
       const actual = filaRef.current
       // El foco va al campo que señala el backend (422), si lo señala.
       const conError = Object.keys(erroresCampo(e))
       const foco = CAMPOS.find((c) => conError.includes(c)) ?? f.foco
       if (actual?.itemId === f.itemId) ponerFila({ ...actual, foco, guardando: false, intentado: true, errorServidor: mensajeError(e) })
-      else avisos.mostrar('error', `No se guardó la línea ${f.codigo}: ${mensajeError(e)}`)
+      else setAviso({ tipo: 'error', texto: `No se guardó la línea ${f.codigo}: ${mensajeError(e)}` })
     }
   }
 
@@ -175,50 +191,57 @@ export default function IngresoDetalle() {
   }
 
   const escanear = useMutation({
-    mutationFn: async (codigo: string) => (await api.post<IngresoItem>(`/ingresos/${id}/escanear`, { codigo })).data,
+    mutationFn: async ({ codigo, referenciaId }: { codigo: string; referenciaId?: number }) =>
+      (await api.post<IngresoItem>(`/ingresos/${id}/escanear`, { codigo, referencia_id: referenciaId })).data,
     onSuccess: (linea) => {
       const sinCosto = Number(linea.costo_unitario) <= 0
       // Captura rápida: línea nueva o sin costo → se abre su costo con el foco (Enter guarda).
       const nueva = !qc.getQueryData<Ingreso>(['ingreso', id])?.items.some((x) => x.id === linea.id)
       if (nueva || sinCosto) abrirFila(linea, 'costo_unitario')
-      avisos.mostrar(
-        sinCosto ? 'atencion' : 'ok',
-        `✓ ${linea.referencia?.codigo_referencia} · ${linea.referencia?.descripcion} — cantidad ${linea.cantidad}${sinCosto ? ' · escriba el costo en la tabla' : ''}`,
-      )
+      setAviso({
+        tipo: sinCosto ? 'atencion' : 'ok',
+        texto: `✓ ${linea.referencia?.codigo_referencia} · ${linea.referencia?.descripcion} — cantidad ${linea.cantidad}${sinCosto ? ' · escriba el costo en la tabla' : ''}`,
+      })
       qc.invalidateQueries({ queryKey: ['ingreso', id] })
     },
-    onError: (e, codigo) => {
+    onError: (e, { codigo }) => {
       const inexistente = codigoInexistente(e)
       if (inexistente !== null) {
-        avisos.mostrar('atencion', `El código ${inexistente} no es una referencia de este proveedor. Créela para agregarla.`)
+        setAviso({ tipo: 'atencion', texto: `El código ${inexistente} no es una referencia de este proveedor. Créela para agregarla.` })
         setCreando(inexistente || codigo)
         return
       }
-      avisos.mostrar('error', mensajeError(e))
+      const varias = codigoAmbiguo(e)
+      if (varias) {
+        setAviso(null)
+        setAmbiguo(varias)
+        return
+      }
+      setAviso({ tipo: 'error', texto: mensajeError(e) })
     },
   })
 
   const quitar = useMutation({
     mutationFn: async (itemId: number) => (await api.delete<Ingreso>(`/ingresos/${id}/items/${itemId}`)).data,
     onSuccess: actualizar,
-    onError: (e) => avisos.mostrar('error', mensajeError(e)),
+    onError: (e) => setAviso({ tipo: 'error', texto: mensajeError(e) }),
     onSettled: () => { setQuitando(null); inputRef.current?.focus() },
   })
   const confirmar = useMutation({
     mutationFn: async () => (await api.post<Ingreso>(`/ingresos/${id}/confirmar`)).data,
-    onSuccess: (nuevo) => { actualizar(nuevo); qc.invalidateQueries({ queryKey: ['ingresos'] }); avisos.limpiar() },
-    onError: (e) => avisos.mostrar('error', mensajeError(e)),
+    onSuccess: (nuevo) => { actualizar(nuevo); qc.invalidateQueries({ queryKey: ['ingresos'] }); setAviso(null) },
+    onError: (e) => setAviso({ tipo: 'error', texto: mensajeError(e) }),
   })
 
   const onCodigo = useCallback((codigo: string) => {
     if (inputRef.current) inputRef.current.value = ''
-    escanear.mutate(codigo)
+    escanear.mutate({ codigo })
   }, [escanear])
   const scanner = useScanner(onCodigo)
 
   // El lector recupera el foco salvo que haya un diálogo abierto, una fila en edición o una
   // confirmación de quitar. Así lo que se digita en ellos no lo captura el escáner.
-  const hayDialogo = creando !== null || fila !== null || quitando !== null || condiciones
+  const hayDialogo = creando !== null || fila !== null || quitando !== null || ambiguo !== null || condiciones
   useEffect(() => {
     if (!hayDialogo && borrador) inputRef.current?.focus()
   }, [hayDialogo, borrador, escanear.isPending])
@@ -233,8 +256,6 @@ export default function IngresoDetalle() {
     inputRef.current?.focus()
   }, 0)
 
-  useAvisoTexto(ingreso.isError ? mensajeError(ingreso.error) : null)
-  if (ingreso.isError) return <div className="panel">No se pudo cargar el ingreso.</div>
   if (!i) return <div className="panel">Cargando…</div>
 
   const unidades = i.items.reduce((suma, it) => suma + it.cantidad, 0)
@@ -269,7 +290,7 @@ export default function IngresoDetalle() {
     <div className="pila">
       <div className="pagina-encabezado">
         <h1>{i.tipo === 'factura' ? 'Factura' : 'Remisión'} {i.numero_documento}</h1>
-        <p>{i.proveedor?.nombre} · {i.fecha.slice(0, 10)}</p>
+        <p>{i.proveedor?.nombre} · {i.fecha.slice(0, 10)}{i.proveedor?.asesor && <small className="asesor">Asesor: {i.proveedor.asesor}</small>}</p>
       </div>
       <Resumen
         clave="ingreso-detalle-resumen"
@@ -316,6 +337,34 @@ export default function IngresoDetalle() {
             <p className="ayuda">Se busca entre las referencias de {i.proveedor?.nombre}. Leer el mismo código otra vez suma 1. Haga clic en un valor o en el lápiz para editar la línea: Tab recorre, Enter guarda y Esc cancela.</p>
           </>
         )}
+        {aviso && <div className={`aviso ${aviso.tipo}`} role="status">{aviso.texto}</div>}
+        {ambiguo && (
+          <div
+            className="aviso atencion eleccion-codigo"
+            role="group"
+            aria-labelledby="codigo-ambiguo-titulo"
+            onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); setAmbiguo(null) } }}
+          >
+            <p id="codigo-ambiguo-titulo">Código ambiguo: <strong>{ambiguo.codigo}</strong> coincide con varias referencias de este proveedor. ¿Cuál es?</p>
+            <div className="opciones-codigo">
+              {ambiguo.opciones.map((o, n) => (
+                <button
+                  key={o.id}
+                  type="button"
+                  className="secundario"
+                  autoFocus={n === 0}
+                  onClick={() => { setAmbiguo(null); escanear.mutate({ codigo: ambiguo.codigo, referenciaId: o.id }) }}
+                >
+                  <strong>{o.codigo_referencia}</strong>
+                  {o.codigo_fabricante && <small> · código de barras {o.codigo_fabricante}</small>}
+                  <small> · {o.descripcion}</small>
+                </button>
+              ))}
+              <button type="button" className="enlace" onClick={() => setAmbiguo(null)}>Cancelar</button>
+            </div>
+          </div>
+        )}
+
         <div className="tabla-desplazable">
         <table ref={tablaRef} className="tabla-lineas">
           <thead><tr><th>Referencia</th><th>Cant.</th><th>Costo</th><th>Desc. %</th><th>IVA %</th><th>Neto</th><th>IVA</th><th><span className="solo-lector">Acciones</span></th></tr></thead>
@@ -404,17 +453,16 @@ export default function IngresoDetalle() {
       {condiciones && (
         <DialogoCondiciones
           ingreso={i}
-          onGuardado={(nuevo) => { actualizar(nuevo); setCondiciones(false); avisos.limpiar() }}
+          onGuardado={(nuevo) => { actualizar(nuevo); setCondiciones(false); setAviso(null) }}
           onCerrar={() => setCondiciones(false)}
         />
       )}
 
       {creando !== null && i.proveedor && (
-        <FichaReferencia
-          modo="ingreso"
+        <DialogoReferencia
           codigo={creando}
           proveedor={i.proveedor}
-          onGuardada={() => { setCreando(null); escanear.mutate(creando) }}
+          onCreada={() => { setCreando(null); escanear.mutate({ codigo: creando }) }}
           onCerrar={() => setCreando(null)}
         />
       )}
@@ -527,6 +575,163 @@ function FilaEnEdicion({ it, fila, onCambiar, onGuardar, onCancelar, onSalir }: 
   )
 }
 
+/** Candado pequeño de los datos fijos (decorativo: el texto ya dice que es fijo). */
+function Candado() {
+  return (
+    <svg className="candado" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" />
+    </svg>
+  )
+}
+
+type TipoCodigo = 'barras' | 'referencia'
+const TIPOS_CODIGO: OpcionSegmento<TipoCodigo>[] = [
+  { valor: 'barras', texto: 'Código de barras o QR' },
+  { valor: 'referencia', texto: 'Referencia del proveedor' },
+]
+
+/**
+ * RF-20: crea la referencia que no existe con el código leído y el proveedor del ingreso (ambos
+ * fijos). Precio de venta > 0 (S-20). Calidad opcional (S-23). El IVA de venta no se pide: el
+ * backend lo deja en 19 % (S-15). S-24: logística también puede crear la categoría (sin código universal).
+ */
+function DialogoReferencia({ codigo, proveedor, onCreada, onCerrar }: {
+  codigo: string
+  proveedor: Opcion
+  onCreada: () => void
+  onCerrar: () => void
+}) {
+  const categorias = useCategorias()
+  const campoCategoria = useRef<HTMLSelectElement>(null)
+  const campoCalidad = useRef<HTMLSelectElement>(null)
+  const [f, setF] = useState({ calidad: '', categoria_id: '', descripcion: '', precio_venta: '', codigo_universal_id: '' })
+  // S-25: el código leído puede ser el de barras del producto o la referencia del proveedor.
+  // De 8 a 14 dígitos se toma como código de barras; si no, como referencia.
+  const [tipo, setTipo] = useState<TipoCodigo>(/^\d{8,14}$/.test(codigo) ? 'barras' : 'referencia')
+  /** El otro código (el que no se leyó), opcional; y el que se consulta al salir del campo. */
+  const [otro, setOtro] = useState('')
+  const [otroConsultado, setOtroConsultado] = useState('')
+  useBloquearScroll()
+  // El foco empieza en Categoría también si algo lo movió durante el montaje.
+  useEffect(() => {
+    const cuadro = requestAnimationFrame(() => campoCategoria.current?.focus())
+    return () => cancelAnimationFrame(cuadro)
+  }, [])
+  const categoria = categorias.data?.find((c) => String(c.id) === f.categoria_id)
+  const admiteUniversal = categoria?.admite_codigo_universal ?? false
+
+  const universales = useQuery({
+    queryKey: ['universales', 'categoria', f.categoria_id],
+    queryFn: async () => (await api.get<Pagina<{ id: number; codigo: string; categoria_id: number }>>('/codigos-universales', { params: { por_pagina: 100 } })).data.data,
+    enabled: admiteUniversal,
+  })
+
+  const crear = useMutation({
+    mutationFn: async () => api.post('/referencias', {
+      // Leído como código de barras: la referencia es opcional (vacía = el mismo código, S-25).
+      codigo_referencia: tipo === 'referencia' ? codigo : otro.trim(),
+      codigo_fabricante: tipo === 'barras' ? codigo : otro.trim() || null,
+      proveedor_id: proveedor.id,
+      calidad: f.calidad || null,
+      categoria_id: Number(f.categoria_id),
+      descripcion: f.descripcion.trim(),
+      precio_venta: Number(f.precio_venta),
+      codigo_universal_id: admiteUniversal && f.codigo_universal_id ? Number(f.codigo_universal_id) : null,
+    }),
+    onSuccess: onCreada,
+  })
+
+  const errorPrecio = f.precio_venta === '' ? null : Number(f.precio_venta) > 0 ? null : 'El precio de venta debe ser mayor que 0.'
+  const completo = f.categoria_id !== '' && f.descripcion.trim() !== '' && f.precio_venta !== '' && errorPrecio === null
+  const campo = (k: keyof typeof f) => ({ value: f[k], onChange: (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value }) })
+
+  return (
+    <div className="modal" onKeyDown={(e) => { if (e.key === 'Escape') onCerrar(); else atraparTab(e) }}>
+      <form className="modal-caja" role="dialog" aria-modal="true" aria-labelledby="crear-referencia-titulo" onSubmit={(e) => { e.preventDefault(); crear.mutate() }}>
+        <h2 id="crear-referencia-titulo">Crear referencia</h2>
+        {/* Datos fijos: no son campos (no se enfocan ni se editan). */}
+        <dl className="datos-fijos">
+          <div>
+            <dt>Código leído</dt>
+            <dd><Candado />{codigo}<span className="solo-lector">, fijado por el escaneo</span></dd>
+          </div>
+          <div>
+            <dt>Proveedor</dt>
+            <dd><Candado />{proveedor.nombre}<span className="solo-lector">, fijado por el ingreso</span></dd>
+          </div>
+        </dl>
+        <p className="ayuda">El código no existe para este proveedor. Se crea para el proveedor de este ingreso, con el código escaneado, y al guardarla se agrega la línea.</p>
+        <ControlSegmentado
+          id="tipo-codigo-leido"
+          etiqueta="¿Qué es el código leído?"
+          opciones={TIPOS_CODIGO}
+          valor={tipo}
+          onCambio={(nuevo) => { setTipo(nuevo); setOtro(''); setOtroConsultado('') }}
+        />
+        <div className="codigos-referencia">
+          {/* El campo del código leído es un dato fijo (no se enfoca); el otro, opcional y editable. */}
+          {tipo === 'referencia' ? (
+            <div className="codigo-fijo">
+              <span className="etiqueta-campo">Referencia del proveedor</span>
+              <span className="valor-fijo"><Candado />{codigo}<span className="solo-lector">, el código leído</span></span>
+            </div>
+          ) : (
+            <>
+              <label>Referencia del proveedor (opcional)
+                <input maxLength={80} value={otro} autoComplete="off" aria-describedby="referencia-vacia-ayuda" onChange={(e) => setOtro(e.target.value)} onBlur={() => setOtroConsultado(otro)} />
+              </label>
+              <p id="referencia-vacia-ayuda" className="ayuda">Si el producto no trae otra referencia, déjela vacía y se usará el código de barras.</p>
+            </>
+          )}
+          {tipo === 'barras' ? (
+            <div className="codigo-fijo">
+              <span className="etiqueta-campo">Código de barras o QR del producto</span>
+              <span className="valor-fijo"><Candado />{codigo}<span className="solo-lector">, el código leído</span></span>
+            </div>
+          ) : (
+            <label>Código de barras o QR del producto (si lo trae)
+              <input maxLength={120} value={otro} autoComplete="off" onChange={(e) => setOtro(e.target.value)} onBlur={() => setOtroConsultado(otro)} />
+            </label>
+          )}
+        </div>
+        <AvisoCoincidencias codigos={[codigo, otroConsultado]} proveedorId={proveedor.id} />
+        <SelectorCategoria
+          selectRef={campoCategoria}
+          autoFocus
+          value={f.categoria_id}
+          onChange={(categoria_id) => setF((v) => ({ ...v, categoria_id }))}
+          alElegir={() => campoCalidad.current?.focus()}
+        />
+        <label>Calidad (opcional)
+          <select ref={campoCalidad} {...campo('calidad')}>
+            <option value="">—</option>
+            <option value="fino">Fino</option>
+            <option value="generico">Genérico</option>
+          </select>
+        </label>
+        {admiteUniversal && (
+          <label>Código universal (opcional)
+            <select {...campo('codigo_universal_id')}>
+              <option value="">Sin universal: la referencia es su código único</option>
+              {universales.data?.filter((u) => String(u.categoria_id) === f.categoria_id).map((u) => <option key={u.id} value={u.id}>{u.codigo}</option>)}
+            </select>
+          </label>
+        )}
+        <label>Descripción<input required maxLength={255} {...campo('descripcion')} /></label>
+        <label>Precio de venta
+          <input type="number" min="0.01" step="0.01" required aria-invalid={errorPrecio !== null} {...campo('precio_venta')} />
+        </label>
+        <p className={errorPrecio ? 'ayuda error' : 'ayuda'}>{errorPrecio ?? 'Mayor que 0. Si no lo conoce, consúltelo con el administrador antes de crearla.'}</p>
+        {crear.isError && <div className="aviso error">{mensajeError(crear.error)}</div>}
+        <div className="acciones">
+          <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
+          <button className="primario" disabled={!completo || crear.isPending}>{crear.isPending ? 'Guardando…' : 'Crear y agregar'}</button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
 /**
  * RF-16 / RF-09: forma de pago, vencimiento y descuento del documento de un borrador.
  * A crédito, el vencimiento se prellena con fecha + plazo del proveedor y se corrige con el que
@@ -562,22 +767,12 @@ function DialogoCondiciones({ ingreso, onGuardado, onCerrar }: {
   })
   const errores = guardar.isError ? erroresCampo(guardar.error) : {}
   const general = guardar.isError && Object.keys(errores).length === 0 ? mensajeError(guardar.error) : null
-  useAvisoTexto(general)
+  useBloquearScroll()
 
   return (
-    <Dialogo
-      titulo="Condiciones del documento"
-      onCerrar={onCerrar}
-      pendiente={guardar.isPending}
-      onEnviar={() => guardar.mutate()}
-      pie={(
-        <>
-          <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
-          <button type="submit" className="primario" disabled={guardar.isPending}>{guardar.isPending ? 'Guardando…' : 'Guardar'}</button>
-        </>
-      )}
-    >
-      <DialogoSeccion>
+    <div className="modal" onKeyDown={(e) => { if (e.key === 'Escape') onCerrar(); else atraparTab(e) }}>
+      <form className="modal-caja" role="dialog" aria-modal="true" aria-labelledby="condiciones-titulo" onSubmit={(e) => { e.preventDefault(); guardar.mutate() }}>
+        <h2 id="condiciones-titulo">Condiciones del documento</h2>
         <label>Pago
           <select autoFocus value={forma} onChange={(e) => cambiarForma(e.target.value as FormaPago)}>
             <option value="contado">Contado</option>
@@ -602,7 +797,12 @@ function DialogoCondiciones({ ingreso, onGuardado, onCerrar }: {
           onModo={setModo}
           onValor={setDescuento}
         />
-      </DialogoSeccion>
-    </Dialogo>
+        {general && <div className="aviso error">{general}</div>}
+        <div className="acciones">
+          <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
+          <button className="primario" disabled={guardar.isPending}>{guardar.isPending ? 'Guardando…' : 'Guardar'}</button>
+        </div>
+      </form>
+    </div>
   )
 }

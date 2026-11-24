@@ -13,8 +13,9 @@ it('RF-11: cambiar precio y descripción de una referencia deja el antes, el des
 
     $this->patchJson("/api/referencias/{$referencia->id}", ['precio_venta' => 99000, 'descripcion' => 'Regulador IM204 12V'])->assertOk();
 
+    // S-26: la fila de creación (campo "*") también está en el historial; aquí cuentan las ediciones.
     $historial = collect($this->getJson("/api/auditoria?tabla=referencias&registro_id={$referencia->id}")->assertOk()->json('data'))
-        ->keyBy('campo');
+        ->keyBy('campo')->except('*');
 
     expect($historial)->toHaveCount(2)
         ->and($historial['precio_venta']['valor_anterior'])->toBe('85000.00')
@@ -31,7 +32,8 @@ it('RF-11: una edición sin cambios reales no genera filas', function () {
 
     $this->patchJson("/api/referencias/{$referencia->id}", ['descripcion' => $referencia->descripcion])->assertOk();
 
-    expect(Auditoria::where('tabla', 'referencias')->count())->toBe(0);
+    // S-26: las creaciones (campo "*") sí se auditan; una edición sin cambios no agrega filas.
+    expect(Auditoria::where('tabla', 'referencias')->where('campo', '!=', '*')->count())->toBe(0);
 });
 
 it('RF-11: se auditan proveedores, usuarios y el resto del catálogo, sin copiar contraseñas', function () {

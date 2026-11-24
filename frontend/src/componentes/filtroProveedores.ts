@@ -1,11 +1,11 @@
 /**
- * Filtro de proveedores en el navegador (sin peticiones): por nombre o por NIT, "contiene",
+ * Filtro de proveedores en el navegador (sin peticiones): por nombre, NIT o asesor (S-29), "contiene",
  * sin importar mayúsculas ni tildes. El NIT se compara sin puntos, guiones ni espacios, así
  * "900.123.456-7" se encuentra con "9001234567" o con "900123". Primero van los que empiezan
  * por lo escrito y, dentro de cada grupo, por nombre.
  */
 
-export interface ProveedorFiltrable { id: number; nombre: string; nit?: string | null }
+export interface ProveedorFiltrable { id: number; nombre: string; nit?: string | null; asesor?: string | null }
 
 /** Minúsculas y sin diacríticos: "Óchoa" → "ochoa". */
 export function normalizarTexto(texto: string): string {
@@ -29,9 +29,10 @@ export function filtrarProveedores<T extends ProveedorFiltrable>(lista: readonly
   for (const p of lista) {
     const nombre = normalizarTexto(p.nombre)
     const nit = p.nit ? normalizarNit(p.nit) : ''
+    const asesor = p.asesor ? normalizarTexto(p.asesor) : ''
     const conNit = nitBuscado !== '' && nit !== ''
-    if (nombre.startsWith(texto) || (conNit && nit.startsWith(nitBuscado))) empiezan.push(p)
-    else if (nombre.includes(texto) || (conNit && nit.includes(nitBuscado))) contienen.push(p)
+    if (nombre.startsWith(texto) || (conNit && nit.startsWith(nitBuscado)) || (asesor !== '' && asesor.startsWith(texto))) empiezan.push(p)
+    else if (nombre.includes(texto) || (conNit && nit.includes(nitBuscado)) || asesor.includes(texto)) contienen.push(p)
   }
   return [...empiezan.sort(porNombre), ...contienen.sort(porNombre)]
 }

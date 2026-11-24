@@ -8,7 +8,7 @@
 - Tests: 328 en verde (17 nuevos en `RF21ModuloContableTest`). `tsc`, eslint y build limpios.
 - BD de desarrollo migrada; usuario `contable` / `cambiar123`.
 
-**Pendiente:** integrar `origin/cesar`; probar en navegador con datos reales.
+**Pendiente:** probar en navegador con datos reales tras merge de `origin/cesar`.
 
 **Verificar:** `cd backend && php artisan test`; entrar como `contable`.
 

@@ -6,7 +6,7 @@ use App\Models\Concerns\Inmutable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-/** RF-15: anulación de un abono, con usuario, fecha y motivo. El abono original sigue visible. */
+/** RF-15 (S-30): anulación de un abono, con motivo, usuario y fecha. Inmutable. */
 class AbonoAnulacion extends Model
 {
     use Inmutable;

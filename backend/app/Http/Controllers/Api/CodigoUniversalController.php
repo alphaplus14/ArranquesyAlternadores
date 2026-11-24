@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Categoria;
 use App\Models\CodigoUniversal;
 use App\Models\Referencia;
+use App\Services\StockMinimoService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -51,6 +52,7 @@ class CodigoUniversalController extends Controller
             'id' => $codigoUniversal->id,
             'codigo' => $codigoUniversal->codigo,
             'descripcion' => $codigoUniversal->descripcion,
+            'stock_minimo' => $codigoUniversal->stock_minimo, // RF-22
             'categoria' => $codigoUniversal->categoria()->first(['id', 'nombre']),
             'existencia_total' => $referencias->sum('existencia'),
             'referencias' => $referencias->map(fn (Referencia $r) => [
@@ -87,6 +89,8 @@ class CodigoUniversalController extends Controller
             'codigo' => [$requerido, 'string', 'max:60', Rule::unique('codigos_universales')->ignore($universal?->id)],
             'categoria_id' => [$requerido, 'integer', 'exists:categorias,id'],
             'descripcion' => ['nullable', 'string', 'max:255'],
+            // RF-22: se evalúa sobre la suma de sus referencias activas. null = general; 0 = sin mínimo.
+            'stock_minimo' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:'.StockMinimoService::MAXIMO],
         ]);
 
         // RF-01: solo categorías que admiten código universal.
