@@ -1077,9 +1077,18 @@ input[aria-invalid='true']:not([type='checkbox']):not([type='radio']):focus-visi
 .tramo.d61_90, .punto.d61_90 { background: #D64545; }
 .tramo.mas_90, .punto.mas_90 { background: #8E1B1B; }
 .filtros-cartera { align-items: center; }
+.filtros-cartera .busca input { min-width: 300px; min-height: 44px; box-sizing: border-box; } /* placeholder "Cliente, documento, venta o factura" completo */
 .filtros-cartera .check { min-height: 44px; font-size: 0.9rem; color: var(--texto); gap: 8px; }
 .filtros-cartera .campo-corte { flex-direction: row; align-items: center; gap: 8px; }
 .filtros-cartera .campo-corte input { min-height: 44px; }
+/* Detalle de cartera: filtros de "Ventas a crédito" (S-30). */
+.filtros-ventas-cartera { align-items: flex-start; }
+.filtros-ventas-cartera select, .filtros-ventas-cartera input, .filtros-ventas-cartera .busca input { min-height: 44px; box-sizing: border-box; }
+.filtros-ventas-cartera .limpiar-filtros { align-self: flex-end; }
+.contador-ventas { margin: 4px 0 8px; min-height: 1.2em; }
+.vacio-con-accion { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.vacio-con-accion p { margin: 0; }
+.coincidencia-venta { color: var(--primario); font-weight: 600; }
 .chip.saldo-favor { background: var(--ok-fondo); color: var(--ok); font-weight: 600; }
 .chip.estado-venta { font-weight: 600; white-space: nowrap; }
 .chip.estado-venta.al_dia { background: var(--ok-fondo); color: var(--ok); }
@@ -1097,6 +1106,11 @@ a.boton { display: inline-flex; align-items: center; justify-content: center; }
 @media (max-width: 639px) {
   .antiguedad-rangos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .filtros-cartera .busca, .filtros-cartera .campo-corte { width: 100%; }
+  .filtros-cartera .busca input { min-width: 0; }
+  .filtros-ventas-cartera { flex-direction: column; align-items: stretch; }
+  .filtros-ventas-cartera label, .filtros-ventas-cartera .busca { width: 100%; }
+  .filtros-ventas-cartera select, .filtros-ventas-cartera input { width: 100%; }
+  .filtros-ventas-cartera .limpiar-filtros { align-self: stretch; width: 100%; }
   .filtros-cartera .campo-corte input { flex: 1; }
   .tabla-cartera td.celda-accion .acciones-fila > * { flex: 1; }
   .datos-abono { grid-template-columns: 1fr; }

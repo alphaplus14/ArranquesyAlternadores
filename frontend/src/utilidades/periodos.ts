@@ -13,7 +13,7 @@ export const PERIODOS: { valor: Periodo; texto: string }[] = [
   { valor: 'mes_anterior', texto: 'Mes anterior' },
   { valor: 'ultimos_3_meses', texto: 'Últimos 3 meses' },
   { valor: 'ultimo_anio', texto: 'Último año' },
-  { valor: 'todo', texto: 'Todo' },
+  { valor: 'todo', texto: 'Todo el historial' },
   { valor: 'personalizado', texto: 'Personalizado' },
 ]
 

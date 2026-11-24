@@ -292,6 +292,8 @@ export interface ResumenCartera {
   vencida_desde: string | null
   antiguedad: Record<RangoAntiguedad, string>
   corte?: string
+  /** Solo en GET /cartera con búsqueda: la venta por la que apareció el cliente (n.º o factura). */
+  coincidencia?: { venta_id: number; factura_contapyme: string | null } | null
 }
 
 export interface ListaCartera extends Pagina<ResumenCartera> {
@@ -322,6 +324,8 @@ export interface Abono {
 
 export interface VentaCartera {
   id: number
+  /** N.º de factura de Contapyme (texto de referencia; este sistema no factura). */
+  factura_contapyme: string | null
   cerrada_at: string
   vence_el: string | null
   total: string
@@ -336,8 +340,12 @@ export interface VentaCartera {
 export interface DetalleCartera {
   resumen: ResumenCartera
   ventas: VentaCartera[]
+  /** Ventas a crédito del cliente sin filtros (para "N de M"). */
+  ventas_total: number
   abonos: Abono[]
 }
+
+export type EstadoFiltroVenta = 'todas' | 'pendientes' | 'vencidas' | 'pagadas'
 
 export interface MovimientoCuenta {
   tipo: 'venta' | 'reverso' | 'abono' | 'anulacion_abono'

@@ -81,7 +81,7 @@ export default function Cartera() {
         <div className="formulario en-linea filtros-cartera">
           <label className="busca">
             <Icono nombre="buscar" />
-            <input placeholder="Nombre o documento" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Buscar cliente por nombre o documento" />
+            <input placeholder="Cliente, documento, venta o factura" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Buscar por cliente, documento, número de venta o factura de Contapyme" />
           </label>
           <label className="check"><input type="checkbox" checked={soloConSaldo} onChange={(e) => setSoloConSaldo(e.target.checked)} /> Solo con saldo</label>
           <label className="check"><input type="checkbox" checked={soloVencidos} onChange={(e) => setSoloVencidos(e.target.checked)} /> Solo vencidos</label>
@@ -103,7 +103,14 @@ export default function Cartera() {
               {filas.map((f) => f.cliente && (
                 <tr key={f.cliente.id}>
                   <td data-etiqueta="Cliente">
-                    <span><strong>{f.cliente.nombre}</strong>{f.cliente.documento && <small className="bloque">{f.cliente.documento}</small>}</span>
+                    <span>
+                      <strong>{f.cliente.nombre}</strong>{f.cliente.documento && <small className="bloque">{f.cliente.documento}</small>}
+                      {f.coincidencia && (
+                        <small className="bloque coincidencia-venta">
+                          Venta #{f.coincidencia.venta_id}{f.coincidencia.factura_contapyme ? ` · factura ${f.coincidencia.factura_contapyme}` : ''}
+                        </small>
+                      )}
+                    </span>
                   </td>
                   <td data-etiqueta="Saldo" className="col-numero">
                     {f.saldo_a_favor ? <span className="chip saldo-favor">{textoSaldo(f.saldo)}</span> : <strong>{pesos(f.saldo)}</strong>}
@@ -112,7 +119,8 @@ export default function Cartera() {
                   <td data-etiqueta="Próximo vencimiento">{f.proximo_vencimiento ? fechaCorta(f.proximo_vencimiento) : '—'}</td>
                   <td className="celda-accion">
                     <div className="acciones-fila">
-                      <Link className="boton secundario boton-44" to={`/cartera/${f.cliente.id}`} aria-label={`Ver la cartera de ${f.cliente.nombre}`}>Ver</Link>
+                      <Link className="boton secundario boton-44" to={f.coincidencia ? `/cartera/${f.cliente.id}?q=${encodeURIComponent(`#${f.coincidencia.venta_id}`)}` : `/cartera/${f.cliente.id}`}
+                        aria-label={f.coincidencia ? `Ver la venta #${f.coincidencia.venta_id} de ${f.cliente.nombre}` : `Ver la cartera de ${f.cliente.nombre}`}>Ver</Link>
                       <button
                         type="button"
                         className="primario boton-44"
