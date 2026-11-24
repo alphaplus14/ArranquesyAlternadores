@@ -378,6 +378,23 @@ tr.reversado td:last-child { text-decoration: none; }
 .chip.abierta, .chip.borrador { background: var(--aviso-fondo); color: var(--aviso); }
 .chip.cerrada, .chip.confirmado { background: var(--ok-fondo); color: var(--ok); }
 .chip.digitado { background: #F3E8FF; color: #5B2EA6; }
+/* S-31: unidad vendida con el código del proveedor (el sistema la eligió). El texto lo dice. */
+.chip.por-referencia { background: #E0F2FE; color: #075985; font-weight: 600; white-space: nowrap; }
+.opciones-referencia { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.opcion-referencia {
+  width: 100%; min-height: 44px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  text-align: left; padding: 10px 12px; border-radius: 10px;
+}
+.opcion-referencia:not(:disabled):hover, .opcion-referencia:focus-visible { border-color: var(--primario); background: var(--suave-fondo); }
+.opcion-referencia-linea { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.opcion-referencia small { color: var(--suave); overflow-wrap: anywhere; }
+.opcion-existencia { font-weight: 600; }
+.opcion-existencia.agotado { color: var(--peligro); }
+/* La nota del diálogo de elegir referencia nombra el código: se ve completa, en varias líneas si hace falta. */
+.dialogo-apilado .modal-cabeza-texto .nota-referencias { white-space: normal; overflow-wrap: anywhere; }
+@media (max-width: 639px) {
+  .tabla-venta td.celda-accion .enlace { min-height: 44px; }
+}
 .chip.calidad { font-weight: 600; } /* S-23: fino / genérico */
 .chip.sin-precio, .chip.credito { background: var(--aviso-fondo); color: var(--aviso); font-weight: 600; }
 

@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
+import { AxiosError } from 'axios'
 import { api, mensajeError } from '../../api/cliente'
-import { NOMBRE_CALIDAD, type Calidad, type Cliente, type MetodoCaptura, type Pagina, type Referencia, type Venta as TVenta, type VentaItem } from '../../api/tipos'
+import { NOMBRE_CALIDAD, type Calidad, type Cliente, type MetodoCaptura, type OpcionReferenciaVenta, type Pagina, type Referencia, type Venta as TVenta, type VentaItem } from '../../api/tipos'
 import ChipCalidad from '../../componentes/ChipCalidad'
+import DialogoElegirReferencia from '../../componentes/mostrador/DialogoElegirReferencia'
 import Medida from '../../componentes/Medida'
 import Resumen from '../../componentes/Resumen'
 import { useScanner } from '../../hooks/useScanner'
@@ -47,6 +49,8 @@ export default function Venta() {
   const [eligiendoCliente, setEligiendoCliente] = useState(false)
   /** RF-14 / S-18: ítem cuyo precio se está editando (solo en una venta a crédito abierta). */
   const [editandoPrecio, setEditandoPrecio] = useState<number | null>(null)
+  /** S-31: el código del proveedor está en varias referencias; se espera que quien vende elija. */
+  const [eligiendoRef, setEligiendoRef] = useState<{ codigo: string; metodo: MetodoCaptura; referencias: OpcionReferenciaVenta[] } | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   // Retoma la última venta abierta del usuario.
@@ -76,17 +80,28 @@ export default function Venta() {
     onSuccess: (v) => { setVentaId(v.id); qc.setQueryData(['venta', v.id], v); setAviso(null); setEditandoPrecio(null) },
   })
 
+  // S-31: el código puede ser la etiqueta del local o el del proveedor/fabricante; el backend
+  // decide. Con referenciaId se resuelve un código que está en varias referencias.
   const escanear = useMutation({
-    mutationFn: async ({ codigo, metodo }: { codigo: string; metodo: MetodoCaptura }) =>
-      (await api.post(`/ventas/${ventaId}/escanear`, { codigo_barras: codigo, metodo_captura: metodo })).data,
+    mutationFn: async ({ codigo, metodo, referenciaId }: { codigo: string; metodo: MetodoCaptura; referenciaId?: number }) =>
+      (await api.post(`/ventas/${ventaId}/escanear`, { codigo_barras: codigo, metodo_captura: metodo, referencia_id: referenciaId })).data,
     onSuccess: (r) => {
+      const porReferencia = r.origen_codigo === 'referencia' ? ' · por referencia' : ''
       setAviso({
         tipo: 'ok',
-        texto: `✓ ${r.unidad.codigo_barras} · ${r.referencia.codigo_referencia} · ${[r.referencia.proveedor, r.referencia.calidad && NOMBRE_CALIDAD[r.referencia.calidad as Calidad]].filter(Boolean).join(' · ')} — quedan ${r.referencia.existencia} (${r.metodo_captura})`,
+        texto: `✓ ${r.unidad.codigo_barras}${porReferencia} · ${r.referencia.codigo_referencia} · ${[r.referencia.proveedor, r.referencia.calidad && NOMBRE_CALIDAD[r.referencia.calidad as Calidad]].filter(Boolean).join(' · ')} — quedan ${r.referencia.existencia} (${r.metodo_captura})`,
       })
       qc.invalidateQueries({ queryKey: ['venta', ventaId] })
     },
-    onError: (e) => setAviso({ tipo: 'error', texto: mensajeError(e) }),
+    onError: (e, { codigo, metodo }) => {
+      const datos = e instanceof AxiosError ? e.response?.data as { tipo?: string; referencias?: OpcionReferenciaVenta[] } | undefined : undefined
+      if (datos?.tipo === 'elegir_referencia' && datos.referencias?.length) {
+        setAviso(null)
+        setEligiendoRef({ codigo, metodo, referencias: datos.referencias })
+        return
+      }
+      setAviso({ tipo: 'error', texto: mensajeError(e) })
+    },
   })
 
   const cerrar = useMutation({
@@ -127,7 +142,7 @@ export default function Venta() {
 
   // El input del lector recupera el foco siempre que no haya un diálogo abierto.
   // Editar un precio cuenta como diálogo: el lector no le roba el foco al campo.
-  const hayDialogo = respaldo || reverso !== null || eligiendoCliente || precioEnEdicion
+  const hayDialogo = respaldo || reverso !== null || eligiendoCliente || precioEnEdicion || eligiendoRef !== null
   useEffect(() => {
     if (!hayDialogo) inputRef.current?.focus()
   }, [hayDialogo, ventaId, abierta, escanear.isPending])
@@ -194,7 +209,8 @@ export default function Venta() {
         <input
           ref={inputRef}
           className="escaner"
-          placeholder={abierta ? 'Escanee la etiqueta (o digite el código y Enter)' : 'Abra una venta para escanear'}
+          placeholder={abierta ? 'Escanee la etiqueta o el código del proveedor' : 'Abra una venta para escanear'}
+          aria-label="Etiqueta del local o código del proveedor"
           onKeyDown={scanner.onKeyDown}
           onPaste={scanner.onPaste}
           onBlur={reenfocar}
@@ -204,17 +220,20 @@ export default function Venta() {
         {aviso && <div className={`aviso ${aviso.tipo}`} role="status">{aviso.texto}</div>}
 
         {v && (
-          <table>
+          <table className="tabla-apilable tabla-venta">
             <thead>
               <tr><th>Código</th><th>Referencia</th><th>Proveedor</th><th>Precio</th><th>Captura</th><th>Usuario</th><th>Hora</th><th></th></tr>
             </thead>
             <tbody>
               {v.items.map((i) => (
                 <tr key={i.id} className={i.reverso_id ? 'reversado' : ''}>
-                  <td className="mono">{i.unidad.codigo_barras}</td>
-                  <td>{i.unidad.referencia?.codigo_referencia} <small>{i.unidad.referencia?.descripcion}</small></td>
-                  <td>{i.unidad.referencia?.proveedor?.nombre} <ChipCalidad calidad={i.unidad.referencia?.calidad} /></td>
-                  <td>
+                  <td data-etiqueta="Código">
+                    <span className="mono">{i.unidad.codigo_barras}</span>
+                    {i.origen_codigo === 'referencia' && <> <span className="chip por-referencia" title="Se vendió con el código del proveedor; el sistema eligió esta unidad">por referencia</span></>}
+                  </td>
+                  <td data-etiqueta="Referencia"><span>{i.unidad.referencia?.codigo_referencia} <small>{i.unidad.referencia?.descripcion}</small></span></td>
+                  <td data-etiqueta="Proveedor"><span>{i.unidad.referencia?.proveedor?.nombre} <ChipCalidad calidad={i.unidad.referencia?.calidad} /></span></td>
+                  <td data-etiqueta="Precio">
                     {v && precioEditable(i) && editandoPrecio === i.id ? (
                       <CeldaPrecio
                         ventaId={v.id}
@@ -235,10 +254,10 @@ export default function Venta() {
                     )}
                     {i.iva_porcentaje !== null && <> <small>{Number(i.iva_porcentaje) === 0 ? 'sin IVA' : `IVA ${Number(i.iva_porcentaje)} %`}</small></>}
                   </td>
-                  <td><span className={`chip ${i.metodo_captura}`}>{i.metodo_captura}</span></td>
-                  <td>{i.usuario.name}</td>
-                  <td>{new Date(i.created_at).toLocaleTimeString()}</td>
-                  <td>
+                  <td data-etiqueta="Captura"><span className={`chip ${i.metodo_captura}`}>{i.metodo_captura}</span></td>
+                  <td data-etiqueta="Usuario">{i.usuario.name}</td>
+                  <td data-etiqueta="Hora">{new Date(i.created_at).toLocaleTimeString()}</td>
+                  <td className="celda-accion">
                     {i.reverso_id ? <em>reversado</em> : (
                       <button className="enlace" onClick={() => setReverso({ item: i, tipo: abierta ? 'anulacion' : 'devolucion' })}>
                         {abierta ? 'Quitar' : 'Devolver'}
@@ -283,6 +302,19 @@ export default function Venta() {
         <BusquedaRespaldo
           onElegir={(codigo) => { setRespaldo(false); escanear.mutate({ codigo, metodo: 'digitado' }) }}
           onCerrar={() => setRespaldo(false)}
+        />
+      )}
+
+      {eligiendoRef && (
+        <DialogoElegirReferencia
+          codigo={eligiendoRef.codigo}
+          referencias={eligiendoRef.referencias}
+          onElegir={(referenciaId) => {
+            const { codigo, metodo } = eligiendoRef
+            setEligiendoRef(null)
+            escanear.mutate({ codigo, metodo, referenciaId })
+          }}
+          onCerrar={() => setEligiendoRef(null)}
         />
       )}
 

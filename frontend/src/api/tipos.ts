@@ -160,10 +160,25 @@ export interface VentaItem {
   precio_unitario: string | null
   iva_porcentaje: string | null
   metodo_captura: MetodoCaptura
+  /** S-31: 'referencia' si se vendió con el código del proveedor (el sistema eligió la unidad). */
+  origen_codigo?: OrigenCodigo
   created_at: string
   usuario: { id: number; name: string }
   unidad: Unidad
   reverso_id: number | null
+}
+
+/** S-31: con qué código se vendió la unidad. */
+export type OrigenCodigo = 'etiqueta' | 'referencia'
+
+/** S-31: una de las referencias que comparten el código escaneado (422 tipo 'elegir_referencia'). */
+export interface OpcionReferenciaVenta {
+  id: number
+  codigo_referencia: string
+  descripcion: string
+  proveedor: string | null
+  calidad: Calidad | null
+  existencia: number
 }
 
 export interface Reverso {
