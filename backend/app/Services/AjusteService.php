@@ -8,6 +8,7 @@ use App\Enums\TipoAjuste;
 use App\Exceptions\ReglaInventarioException;
 use App\Models\AjusteInventario;
 use App\Models\AjusteItem;
+use App\Models\Referencia;
 use App\Models\Unidad;
 use App\Models\User;
 use App\Support\RangoFechas;
@@ -203,7 +204,10 @@ class AjusteService
 
     private function noExiste(string $codigo): ReglaInventarioException
     {
-        return new ReglaInventarioException("No existe una unidad con el código {$codigo}.", 422, ['codigo' => $codigo]);
+        // S-31: los ajustes exigen la etiqueta del local; si es el código de una referencia, se dice.
+        $mensaje = Referencia::mensajeNoEsEtiqueta($codigo) ?? "No existe una unidad con el código {$codigo}.";
+
+        return new ReglaInventarioException($mensaje, 422, ['codigo' => $codigo]);
     }
 
     /** @param Collection<int, AjusteInventario> $ajustes */

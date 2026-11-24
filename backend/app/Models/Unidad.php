@@ -14,9 +14,11 @@ class Unidad extends Model
 
     protected $fillable = ['referencia_id', 'ingreso_item_id', 'codigo_barras', 'estado'];
 
+    // S-31: etiqueta_impresa_at no es asignable en masa; la marca EtiquetaService al imprimir.
+
     protected function casts(): array
     {
-        return ['estado' => EstadoUnidad::class];
+        return ['estado' => EstadoUnidad::class, 'etiqueta_impresa_at' => 'datetime'];
     }
 
     public function referencia(): BelongsTo

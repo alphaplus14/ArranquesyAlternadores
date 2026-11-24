@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\MetodoCaptura;
+use App\Enums\OrigenCodigo;
 use App\Exceptions\RegistroInmutableException;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -36,12 +37,13 @@ class VentaItem extends Model
 
     protected $table = 'venta_items';
 
-    protected $fillable = ['venta_id', 'unidad_id', 'precio_unitario', 'iva_porcentaje', 'metodo_captura', 'usuario_id'];
+    protected $fillable = ['venta_id', 'unidad_id', 'precio_unitario', 'iva_porcentaje', 'metodo_captura', 'origen_codigo', 'usuario_id'];
 
     protected function casts(): array
     {
         return [
             'metodo_captura' => MetodoCaptura::class,
+            'origen_codigo' => OrigenCodigo::class, // S-31: etiqueta | referencia
             'precio_unitario' => 'decimal:2',
             'iva_porcentaje' => 'decimal:2',
         ];

@@ -6,6 +6,7 @@ use App\Enums\EstadoUnidad;
 use App\Enums\MetodoCaptura;
 use App\Enums\TipoReverso;
 use App\Exceptions\ReglaInventarioException;
+use App\Models\Referencia;
 use App\Models\Unidad;
 use App\Models\User;
 use App\Models\VentaItem;
@@ -41,7 +42,9 @@ class DevolucionService
         $unidad = Unidad::query()->where('codigo_barras', $codigo)->first(['id', 'codigo_barras', 'estado']);
 
         if (! $unidad) {
-            throw new ReglaInventarioException("No existe una unidad con el código {$codigo}.", 404);
+            // S-31: la devolución exige la etiqueta del local; si es el código de una referencia, se dice.
+            $mensaje = Referencia::mensajeNoEsEtiqueta($codigo);
+            throw new ReglaInventarioException($mensaje ?? "No existe una unidad con el código {$codigo}.", $mensaje ? 422 : 404);
         }
 
         if ($unidad->estado === EstadoUnidad::Retirada) {

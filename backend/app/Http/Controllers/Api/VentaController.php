@@ -64,6 +64,8 @@ class VentaController extends Controller
         $datos = $request->validate([
             'codigo_barras' => ['required', 'string', 'max:32'],
             'metodo_captura' => ['required', Rule::enum(MetodoCaptura::class)],
+            // S-31: para resolver un código de proveedor que está en varias referencias.
+            'referencia_id' => ['nullable', 'integer'],
         ]);
 
         $item = $this->ventas->escanear(
@@ -71,6 +73,7 @@ class VentaController extends Controller
             $datos['codigo_barras'],
             MetodoCaptura::from($datos['metodo_captura']),
             $request->user(),
+            isset($datos['referencia_id']) ? (int) $datos['referencia_id'] : null,
         );
 
         // Respuesta mínima para que el escaneo sea rápido; el frontend refresca la venta aparte.
@@ -79,6 +82,7 @@ class VentaController extends Controller
         return response()->json([
             'venta_item_id' => $item->id,
             'metodo_captura' => $item->metodo_captura,
+            'origen_codigo' => $item->origen_codigo, // S-31: etiqueta | referencia
             'unidad' => [
                 'id' => $item->unidad->id,
                 'codigo_barras' => $item->unidad->codigo_barras,

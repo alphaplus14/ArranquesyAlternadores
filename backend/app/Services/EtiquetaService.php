@@ -38,6 +38,11 @@ class EtiquetaService
             'descripcion' => $u->referencia->descripcion,
         ]);
 
+        // S-31: la primera impresión marca la unidad como etiquetada (las reimpresiones no la
+        // cambian). Al vender por código del proveedor se prefieren las unidades sin etiqueta.
+        Unidad::query()->whereIn('id', $unidades->pluck('id'))->whereNull('etiqueta_impresa_at')
+            ->update(['etiqueta_impresa_at' => now()]);
+
         return Pdf::loadView('etiquetas.pdf', [
             'etiquetas' => $etiquetas,
             'tamano' => $tamano,

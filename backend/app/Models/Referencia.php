@@ -53,6 +53,31 @@ class Referencia extends Model
         return $query->where('referencias.activo', true);
     }
 
+    /**
+     * S-31 / S-25: referencias cuyo código del proveedor o del fabricante es exactamente $codigo
+     * (sin espacios en los extremos; la intercalación utf8mb4_unicode_ci ignora mayúsculas). Cada
+     * columna tiene índice simple: MySQL resuelve el OR con index_merge (union), sin recorrer la tabla.
+     */
+    public function scopePorCodigoProveedor($query, string $codigo)
+    {
+        $codigo = trim($codigo);
+
+        return $query->where(fn ($q) => $q->where('referencias.codigo_referencia', $codigo)->orWhere('referencias.codigo_fabricante', $codigo));
+    }
+
+    /**
+     * S-31: mensaje para Ajustes y Devoluciones cuando el código no es una etiqueta del local pero
+     * sí el de una referencia. null si tampoco es de una referencia.
+     */
+    public static function mensajeNoEsEtiqueta(string $codigo): ?string
+    {
+        $ref = self::query()->porCodigoProveedor($codigo)->with('proveedor:id,nombre')->orderBy('id')->first(['id', 'codigo_referencia', 'proveedor_id']);
+
+        return $ref
+            ? "Ese es el código de la referencia {$ref->codigo_referencia} ({$ref->proveedor?->nombre}), no una etiqueta del local. Escanee la etiqueta de la unidad."
+            : null;
+    }
+
     public function proveedor(): BelongsTo
     {
         return $this->belongsTo(Proveedor::class);

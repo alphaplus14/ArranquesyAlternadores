@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\EstadoUnidad;
 use App\Enums\MetodoCaptura;
+use App\Enums\OrigenCodigo;
 use App\Enums\TipoAjuste;
 use App\Enums\TipoMovimiento;
 use App\Exceptions\ReglaInventarioException;
@@ -92,8 +93,9 @@ class InventarioService
 
     /**
      * RF-06: la unidad sale del inventario. La unidad debe venir bloqueada con lockForUpdate().
+     * S-31: $origen dice si se escaneó la etiqueta del local o el código de la referencia.
      */
-    public function darSalida(Unidad $unidad, Venta $venta, int $usuarioId, MetodoCaptura $metodo): void
+    public function darSalida(Unidad $unidad, Venta $venta, int $usuarioId, MetodoCaptura $metodo, OrigenCodigo $origen = OrigenCodigo::Etiqueta): void
     {
         $this->exigirTransaccion();
 
@@ -111,7 +113,7 @@ class InventarioService
 
         Referencia::whereKey($unidad->referencia_id)->decrement('existencia');
 
-        $this->registrarMovimiento(TipoMovimiento::Venta, $unidad, $usuarioId, $metodo, 'venta', $venta->id);
+        $this->registrarMovimiento(TipoMovimiento::Venta, $unidad, $usuarioId, $metodo, 'venta', $venta->id, $origen);
     }
 
     /**
@@ -204,6 +206,7 @@ class InventarioService
         ?MetodoCaptura $metodo,
         string $origenType,
         int $origenId,
+        OrigenCodigo $origenCodigo = OrigenCodigo::Etiqueta,
     ): void {
         MovimientoInventario::create([
             'tipo' => $tipo,
@@ -213,6 +216,7 @@ class InventarioService
             'metodo_captura' => $metodo,
             'origen_type' => $origenType,
             'origen_id' => $origenId,
+            'origen_codigo' => $origenCodigo,
         ]);
     }
 
