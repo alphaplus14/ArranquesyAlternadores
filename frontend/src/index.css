@@ -1389,6 +1389,9 @@ input[aria-invalid='true']:not([type='checkbox']):not([type='radio']):focus-visi
 .ficha-venta-cifras { white-space: nowrap; }
 .ficha-resumen { justify-content: center; min-width: 8.5rem; }
 .ficha-resumen small { color: var(--suave); }
+/* S-46: la venta por empezar (borrador local; nace con el primer escaneo). */
+.ficha-venta.ficha-borrador { border-style: dashed; cursor: default; }
+.venta-borrador { margin: 12px 0 0; }
 .ventas-abiertas-select { margin: 4px 0 10px; }
 .ventas-abiertas-select select { min-height: 44px; width: 100%; box-sizing: border-box; }
 /* Tarjeta de la venta: título, tabla con scroll propio y totales con "Cerrar venta". */

@@ -31,7 +31,8 @@ export default function Layout() {
   // admin no ve "Venta" ni consulta sus ventas abiertas para el punto de alerta.
   const vende = usuario?.rol === 'mostrador'
   const abiertas = useVentasAbiertas(vende)
-  const hayVentasViejas = (abiertas.data ?? []).some(esDeDiaAnterior)
+  // S-46: solo avisan las que tienen ítems vigentes (las vacías se descartan solas, sin avisos).
+  const hayVentasViejas = (abiertas.data ?? []).some((v) => v.items_count > 0 && esDeDiaAnterior(v))
 
   // Orden: Mostrador, Productos, Logística, Administración, Consulta. Qué ve cada rol no cambia.
   const grupos: { etiqueta: string; items: ItemMenu[] }[] = [

@@ -217,7 +217,8 @@ export interface Reverso {
 
 export interface Venta {
   id: number
-  estado: 'abierta' | 'cerrada'
+  /** S-46: `descartada` solo la pone el sistema a una abierta sin ítems vigentes. */
+  estado: 'abierta' | 'cerrada' | 'descartada'
   /** RF-14 */
   forma_pago: FormaPago
   cliente: { id: number; nombre: string; documento: string | null; plazo_dias: number } | null
@@ -226,6 +227,8 @@ export interface Venta {
   usuario?: { id: number; name: string }
   created_at: string
   cerrada_at: string | null
+  /** S-46: cuándo la descartó el sistema (solo en descartadas). */
+  descartada_at?: string | null
   /** Fecha (aaaa-mm-dd) que calcula el backend al cerrar una venta a crédito. */
   vence_el: string | null
   items: VentaItem[]
