@@ -22,8 +22,14 @@ use Illuminate\Support\Facades\DB;
  *   ventas a crédito CERRADAS antes del fin del día de corte (S-09). Sin precio (ventas antiguas) = 0.
  * - Abonado = abonos con fecha <= corte y sin anulación hasta el corte.
  * - Saldo = ventas − abonado. Negativo = saldo a favor.
- * - FIFO (S-12): los abonos se aplican a las ventas más antiguas (por cierre, luego id). Pendiente
- *   de cada venta = max(0, min(neto, acumulado − abonado)). No se guarda la asignación.
+ * - Asignación (S-32, reemplaza S-12), en una sola función (asignacion()):
+ *   1. Lo DIRIGIDO a una venta (abonos con venta_id) se aplica a esa venta hasta su neto:
+ *      aplicado_dirigido = min(dirigido vigente, neto).
+ *   2. Pool general = todo lo abonado − lo dirigido aplicado: los abonos generales, el excedente de
+ *      un dirigido (p. ej. tras un reverso) y lo dirigido a ventas que aún no cuentan al corte.
+ *   3. El pool se aplica FIFO (por cierre, luego id) a lo que queda de cada venta:
+ *      pendiente = max(0, min(resto, acumulado de restos − pool)). No se guarda el reparto.
+ *   Suma de pendientes − saldo a favor = saldo del cliente.
  * - Vencido = pendiente de las ventas con vence_el < corte. Rangos (S-13): al día (incluye las que
  *   vencen hoy), 1-30, 31-60, 61-90 y más de 90 días vencidos.
  */
@@ -104,7 +110,7 @@ class CarteraService
     public function detalle(Cliente $cliente, ?string $corte = null, array $filtros = []): array
     {
         $corte = $corte ?: RangoFechas::hoy();
-        $todas = DB::query()->fromSub($this->ventasFifo($corte, $cliente->id), 'f');
+        $todas = DB::query()->fromSub($this->asignacion($corte, $cliente->id), 'f');
         $totalVentas = (clone $todas)->count();
 
         $consulta = clone $todas;
@@ -117,6 +123,7 @@ class CarteraService
             ->map(function ($v) {
                 $neto = (float) $v->neto;
                 $pendiente = (float) $v->pendiente;
+                $dirigido = (float) $v->aplicado_dirigido;
                 $dias = (int) $v->dias;
 
                 return [
@@ -126,6 +133,9 @@ class CarteraService
                     'vence_el' => $v->vence_el,
                     'total' => self::pesos($neto),
                     'aplicado' => self::pesos($neto - $pendiente),
+                    // S-32: lo aplicado se desglosa en dirigido a esta venta y general (FIFO).
+                    'aplicado_dirigido' => self::pesos($dirigido),
+                    'aplicado_general' => self::pesos($neto - $dirigido - $pendiente),
                     'pendiente' => self::pesos($pendiente),
                     ...self::estadoVenta($pendiente, $dias),
                 ];
@@ -133,7 +143,7 @@ class CarteraService
 
         $abonos = AbonoCliente::query()
             ->where('cliente_id', $cliente->id)
-            ->with('usuario:id,name', 'anulacion.usuario:id,name')
+            ->with('usuario:id,name', 'anulacion.usuario:id,name', 'venta:id,factura_contapyme')
             ->orderByDesc('fecha')
             ->orderByDesc('id')
             ->get();
@@ -295,7 +305,7 @@ class CarteraService
 
         // Abonos (también los anulados) y, aparte, sus anulaciones.
         $abonos = AbonoCliente::query()->where('cliente_id', $cliente->id)
-            ->with('usuario:id,name', 'anulacion.usuario:id,name')
+            ->with('usuario:id,name', 'anulacion.usuario:id,name', 'venta:id,factura_contapyme')
             ->get();
 
         foreach ($abonos as $a) {
@@ -303,6 +313,8 @@ class CarteraService
                 'tipo' => 'abono', 'dia' => $a->fecha->toDateString(), 'momento' => $local($a->created_at)->toIso8601String(), 'orden' => 3,
                 'descripcion' => 'Abono · '.$a->medio->value.($a->referencia ? " · {$a->referencia}" : ''),
                 'abono_id' => $a->id, 'medio' => $a->medio->value, 'referencia' => $a->referencia, 'nota' => $a->nota,
+                // S-32: a qué se aplicó (venta dirigida o "General").
+                'venta_id' => $a->venta_id, 'aplicado_a' => $a->aplicadoA(),
                 'usuario' => $a->usuario?->name,
                 'anulado' => $a->anulacion !== null,
                 'anulacion' => $a->anulacion ? [
@@ -406,7 +418,7 @@ class CarteraService
     {
         $busqueda = trim((string) $busqueda);
         $prefijo = addcslashes($busqueda, '%_\\').'%';
-        $porVenta = $this->ventasFifo($corte, $clienteId);
+        $porVenta = $this->asignacion($corte, $clienteId);
 
         $agregado = DB::query()->fromSub($porVenta, 'f')
             ->groupBy('f.cliente_id')
@@ -445,22 +457,60 @@ class CarteraService
     }
 
     /**
-     * Una fila por venta a crédito cerrada: neto al corte, abono aplicado (FIFO), pendiente y días
-     * vencidos (positivo = vencida).
+     * S-32: LA función de asignación. Una fila por venta a crédito cerrada al corte con su neto, lo
+     * dirigido aplicado, el pendiente y los días vencidos (positivo = vencida). La usan el detalle,
+     * la lista (vencido, próximo vencimiento, antigüedad, filtros) y los filtros por estado, así que
+     * todo da lo mismo. Todo en SQL con funciones de ventana, sin traer ventas a memoria.
+     *
+     * pool = abonado vigente del cliente − Σ aplicado_dirigido. Incluye los abonos generales, el
+     * excedente de un dirigido mayor que el neto (reverso posterior) y lo dirigido a una venta que
+     * no cuenta al corte. Nunca es negativo: lo dirigido sale de los mismos abonos vigentes.
      */
-    protected function ventasFifo(string $corte, ?int $clienteId = null): Builder
+    protected function asignacion(string $corte, ?int $clienteId = null): Builder
     {
         $abonos = $this->abonadoPorCliente($corte, $clienteId);
+        $dirigidos = $this->dirigidoPorVenta($corte, $clienteId);
 
         $conAcumulado = DB::query()->fromSub($this->ventasNetas($corte, $clienteId), 'vn')
             ->leftJoinSub($abonos, 'ab', 'ab.cliente_id', '=', 'vn.cliente_id')
-            ->selectRaw('vn.*, COALESCE(ab.abonado, 0) AS abonado_cliente,
-                SUM(vn.neto) OVER (PARTITION BY vn.cliente_id ORDER BY vn.cerrada_at, vn.id) AS acumulado');
+            ->leftJoinSub($dirigidos, 'd', 'd.venta_id', '=', 'vn.id')
+            ->selectRaw('vn.*,
+                LEAST(COALESCE(d.dirigido, 0), vn.neto) AS aplicado_dirigido,
+                COALESCE(ab.abonado, 0) - SUM(LEAST(COALESCE(d.dirigido, 0), vn.neto)) OVER (PARTITION BY vn.cliente_id) AS pool,
+                SUM(vn.neto - LEAST(COALESCE(d.dirigido, 0), vn.neto)) OVER (PARTITION BY vn.cliente_id ORDER BY vn.cerrada_at, vn.id) AS acumulado');
 
         return DB::query()->fromSub($conAcumulado, 'x')
-            ->selectRaw('x.id, x.cliente_id, x.cerrada_at, x.vence_el, x.factura_contapyme, x.neto, x.bruto,
-                GREATEST(0, LEAST(x.neto, x.acumulado - x.abonado_cliente)) AS pendiente,
+            ->selectRaw('x.id, x.cliente_id, x.cerrada_at, x.vence_el, x.factura_contapyme, x.neto, x.bruto, x.aplicado_dirigido,
+                GREATEST(0, LEAST(x.neto - x.aplicado_dirigido, x.acumulado - x.pool)) AS pendiente,
                 COALESCE(DATEDIFF(?, x.vence_el), 0) AS dias', [$corte]);
+    }
+
+    /** S-32: lo dirigido vigente al corte por venta (índice cliente_id, venta_id). */
+    protected function dirigidoPorVenta(string $corte, ?int $clienteId = null): Builder
+    {
+        $fin = RangoFechas::finExclusivo($corte)->format('Y-m-d H:i:s');
+
+        return DB::table('abonos_clientes as a')
+            ->leftJoin('abono_anulaciones as an', fn ($j) => $j->on('an.abono_id', '=', 'a.id')->where('an.created_at', '<', $fin))
+            ->whereNotNull('a.venta_id')
+            ->where('a.fecha', '<=', $corte)
+            ->whereNull('an.id')
+            ->when($clienteId, fn ($q, $id) => $q->where('a.cliente_id', $id))
+            ->groupBy('a.venta_id')
+            ->selectRaw('a.venta_id, SUM(a.valor) AS dirigido');
+    }
+
+    /**
+     * S-32: pendiente HOY de una venta a crédito cerrada del cliente (null si no es una de ellas).
+     * Lo usa AbonoService para validar un abono dirigido.
+     */
+    public function pendienteDeVenta(Cliente $cliente, int $ventaId): ?string
+    {
+        $fila = DB::query()->fromSub($this->asignacion(RangoFechas::hoy(), $cliente->id), 'f')
+            ->where('f.id', $ventaId)
+            ->first(['f.pendiente']);
+
+        return $fila ? self::pesos($fila->pendiente) : null;
     }
 
     /** Valor de cada venta a crédito cerrada al corte, neto de los reversos hechos hasta el corte. */

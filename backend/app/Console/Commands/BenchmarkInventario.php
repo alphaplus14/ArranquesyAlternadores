@@ -176,10 +176,18 @@ class BenchmarkInventario extends Command
             DB::table('venta_items')->insert($lote);
         }
 
+        // Abonos generales a la mitad de los clientes y (S-32) uno dirigido a la venta más reciente
+        // de uno de cada tres, para que la asignación haga el trabajo completo.
+        $ultimaVenta = DB::table('ventas')->whereIn('cliente_id', $clienteIds)->groupBy('cliente_id')
+            ->selectRaw('cliente_id, MAX(id) AS id')->pluck('id', 'cliente_id');
         $abonos = [];
         foreach ($clienteIds as $i => $clienteId) {
             if ($i % 2 === 0) {
-                $abonos[] = ['cliente_id' => $clienteId, 'fecha' => $ahora->toDateString(), 'valor' => 150000, 'medio' => 'efectivo',
+                $abonos[] = ['cliente_id' => $clienteId, 'venta_id' => null, 'fecha' => $ahora->toDateString(), 'valor' => 150000, 'medio' => 'efectivo',
+                    'usuario_id' => $usuario->id, 'created_at' => $ahora];
+            }
+            if ($i % 3 === 0) {
+                $abonos[] = ['cliente_id' => $clienteId, 'venta_id' => $ultimaVenta[$clienteId] ?? null, 'fecha' => $ahora->toDateString(), 'valor' => 50000, 'medio' => 'transferencia',
                     'usuario_id' => $usuario->id, 'created_at' => $ahora];
             }
         }

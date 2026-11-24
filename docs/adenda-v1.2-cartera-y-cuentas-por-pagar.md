@@ -209,7 +209,7 @@ Cada paso con un test Pest por criterio de aceptación y commit `feat(RF-xx)`.
 | S-09 | Solo las ventas a crédito **cerradas** cuentan para la cartera. |
 | S-10 | Contado: precio estándar de la referencia, sin cambios. Crédito: se aplica el estándar al escanear y se puede cambiar, con auditoría, mientras la venta esté abierta. Ningún precio puede ser 0. |
 | S-11 | Plazo por defecto de clientes: 30 días. |
-| S-12 | Los abonos se aplican FIFO a las ventas más antiguas; no se elige a qué venta se abona. |
+| S-12 | **Reemplazado (23-nov-2026) por S-32** (`docs/supuestos.md`): un abono puede ser general (FIFO a las ventas más antiguas, como antes) o dirigido a una venta a crédito. Antes: los abonos se aplicaban FIFO a las ventas más antiguas; no se elegía a qué venta se abonaba. |
 | S-13 | Rangos de antigüedad: al día, 1-30, 31-60, 61-90 y más de 90 días vencidos. |
 | S-14 | Abonos de clientes: admin y mostrador. Pagos a proveedores e informes: solo admin. |
 | S-15 | IVA de venta 19 % salvo que la referencia tenga 0. |

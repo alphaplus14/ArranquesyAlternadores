@@ -18,6 +18,9 @@ class AbonoResource extends JsonResource
         return [
             'id' => $this->id,
             'cliente_id' => $this->cliente_id,
+            // S-32: null = general (FIFO); con número, dirigido a esa venta a crédito.
+            'venta_id' => $this->venta_id,
+            'aplicado_a' => $this->aplicadoA(),
             'fecha' => $this->fecha?->toDateString(),
             'valor' => $this->valor,
             'medio' => $this->medio,

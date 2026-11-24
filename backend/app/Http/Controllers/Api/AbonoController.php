@@ -32,6 +32,8 @@ class AbonoController extends Controller
             'medio' => ['required', Rule::enum(MedioPago::class)],
             'referencia' => ['nullable', 'string', 'max:60'],
             'nota' => ['nullable', 'string', 'max:255'],
+            // S-32: null = abono general (FIFO); con número, dirigido a esa venta.
+            'venta_id' => ['nullable', 'integer'],
         ], [
             'valor.gt' => 'El valor del abono debe ser mayor que 0.',
         ]);
@@ -44,11 +46,12 @@ class AbonoController extends Controller
             $datos['referencia'] ?? null,
             $datos['nota'] ?? null,
             $request->user(),
+            isset($datos['venta_id']) ? (int) $datos['venta_id'] : null,
         );
 
         // El saldo nuevo va en la misma respuesta: la pantalla no recarga todo.
         return response()->json([
-            'abono' => new AbonoResource($abono->load('usuario:id,name', 'anulacion')),
+            'abono' => new AbonoResource($abono->load('usuario:id,name', 'anulacion', 'venta:id,factura_contapyme')),
             'resumen' => $this->cartera->resumenDe($cliente),
         ], 201);
     }
@@ -60,7 +63,7 @@ class AbonoController extends Controller
         $this->abonos->anular($abono, $datos['motivo'], $request->user());
 
         return response()->json([
-            'abono' => new AbonoResource($abono->load('usuario:id,name', 'anulacion.usuario:id,name')),
+            'abono' => new AbonoResource($abono->load('usuario:id,name', 'anulacion.usuario:id,name', 'venta:id,factura_contapyme')),
             'resumen' => $this->cartera->resumenDe($abono->cliente()->firstOrFail()),
         ], 201);
     }
