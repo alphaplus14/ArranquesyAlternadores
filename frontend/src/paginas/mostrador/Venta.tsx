@@ -9,6 +9,7 @@ import DialogoElegirReferencia from '../../componentes/mostrador/DialogoElegirRe
 import Medida from '../../componentes/Medida'
 import Resumen from '../../componentes/Resumen'
 import { useScanner } from '../../hooks/useScanner'
+import { useAngosta } from '../../hooks/useAngosta'
 import { rotuloIvaIncluido } from '../../utilidades/cartera'
 import { useDebounce } from '../../hooks/useDebounce'
 import { formatoNumero, leerNumero, pesos } from '../../componentes/numeros'
@@ -53,6 +54,8 @@ export default function Venta() {
   /** S-31: el código del proveedor está en varias referencias; se espera que quien vende elija. */
   const [eligiendoRef, setEligiendoRef] = useState<{ codigo: string; metodo: MetodoCaptura; referencias: OpcionReferenciaVenta[] } | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  // A 360 px el placeholder largo se corta; el aria-label sigue diciendo qué códigos acepta.
+  const angosta = useAngosta()
 
   // Retoma la última venta abierta del usuario.
   const abiertas = useQuery({
@@ -210,7 +213,7 @@ export default function Venta() {
         <input
           ref={inputRef}
           className="escaner"
-          placeholder={abierta ? 'Escanee la etiqueta o el código del proveedor' : 'Abra una venta para escanear'}
+          placeholder={abierta ? (angosta ? 'Escanee o digite el código' : 'Escanee la etiqueta o el código del proveedor') : 'Abra una venta para escanear'}
           aria-label="Etiqueta del local o código del proveedor"
           onKeyDown={scanner.onKeyDown}
           onPaste={scanner.onPaste}
