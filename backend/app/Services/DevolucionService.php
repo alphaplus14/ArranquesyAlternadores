@@ -256,6 +256,8 @@ class DevolucionService
             ->get([
                 'v.id as venta_id', 'v.cerrada_at', 'v.forma_pago', 'c.id as cliente_id', 'c.nombre as cliente_nombre', 'c.documento as cliente_documento',
                 'u.referencia_id', 'venta_items.precio_unitario', DB::raw('COUNT(*) as cantidad_disponible'), DB::raw('MIN(venta_items.id) as primer_item'),
+                // En el orden en que se devuelven (menor id primero), para mostrarlas antes de registrar.
+                DB::raw("GROUP_CONCAT(u.codigo_barras ORDER BY venta_items.id SEPARATOR ',') as codigos"),
             ]);
 
         if ($grupos->isEmpty() && $ventaId === null) {
@@ -287,6 +289,7 @@ class DevolucionService
                 ],
                 'precio_unitario' => $g->precio_unitario,
                 'cantidad_disponible' => (int) $g->cantidad_disponible,
+                'codigos' => explode(',', (string) $g->codigos),
                 // S-34: compatibilidad con quien todavía elige un solo ítem.
                 'venta_item_id' => (int) $g->primer_item,
             ])->values()->all(),

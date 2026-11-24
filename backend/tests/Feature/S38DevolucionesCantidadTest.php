@@ -39,7 +39,9 @@ it('S-38 (a): devolver 2 de 3 unidades de un grupo: un solo reverso de 2 ítems,
         ->assertJsonPath('ventas.0.cantidad_disponible', 3)
         ->assertJsonPath('ventas.0.precio_unitario', '80000.00')
         ->assertJsonPath('ventas.0.saldo_actual', '240000.00')
-        ->assertJsonPath('ventas.0.cliente.nombre', 'Taller Grupo');
+        ->assertJsonPath('ventas.0.cliente.nombre', 'Taller Grupo')
+        // En el orden en que se devolverían (menor ítem primero).
+        ->assertJsonPath('ventas.0.codigos', codigosS38($ref));
 
     $r = devolverGrupo($ventaId, $ref, '80000.00', 2)->assertCreated()
         ->assertJsonPath('cantidad', 2)
@@ -49,6 +51,7 @@ it('S-38 (a): devolver 2 de 3 unidades de un grupo: un solo reverso de 2 ítems,
 
     $codigos = codigosS38($ref);
     expect($r->json('devueltas'))->toBe([$codigos[0], $codigos[1]])
+        ->and($r->json('devueltas_ids'))->toHaveCount(2)
         ->and(Reverso::where('venta_id', $ventaId)->count())->toBe(1)
         ->and(Reverso::where('venta_id', $ventaId)->first()->items()->count())->toBe(2)
         ->and(Unidad::where('referencia_id', $ref->id)->where('estado', 'disponible')->count())->toBe(2)

@@ -307,20 +307,37 @@ export interface Devolucion {
   reverso: { id: number; tipo: 'devolucion' | 'anulacion'; motivo: string; created_at: string } | null
 }
 
-/** S-34: un ítem vendido (venta cerrada, sin reverso) candidato a devolverse por código de proveedor. */
-export interface CandidataDevolucion {
-  venta_item_id: number
+/**
+ * S-34 / S-38: un grupo candidato a devolverse por código de proveedor: ítems sin reverso de una venta
+ * cerrada, de la misma referencia y al mismo precio. `codigos` en el orden en que se devuelven.
+ */
+export interface GrupoDevolucion {
   venta_id: number
   cerrada_at: string
   forma_pago: FormaPago
   cliente: { id: number; nombre: string; documento: string | null } | null
+  /** Saldo actual del cliente (solo ventas a crédito). */
+  saldo_actual: string | null
+  referencia: { id: number; codigo_referencia: string; descripcion: string; calidad: Calidad | null; proveedor: string | null }
   precio_unitario: string | null
-  codigo_barras: string
-  referencia: { id: number; codigo_referencia: string; descripcion: string; proveedor: string | null }
+  cantidad_disponible: number
+  codigos: string[]
+  venta_item_id: number
 }
 
-/** S-34: la consulta de devolución trae la venta de la etiqueta o, con un código de proveedor, candidatas. */
-export type ConsultaDevolucion = Devolucion | { tipo: 'elegir_venta'; codigo: string; ventas: CandidataDevolucion[] }
+/** La consulta trae la venta de la etiqueta (con el saldo actual si es a crédito) o, con un código de proveedor, grupos. */
+export type ConsultaDevolucion =
+  | (Devolucion & { saldo_actual?: string | null })
+  | { tipo: 'elegir_venta'; codigo: string; ventas: GrupoDevolucion[] }
+
+/** S-38: respuesta de POST /devoluciones: el primer ítem, cuántas se devolvieron y el saldo antes y después. */
+export interface ResultadoDevolucion extends Devolucion {
+  cantidad: number
+  total: string
+  devueltas: string[]
+  devueltas_ids: number[]
+  saldo_cliente: { antes: string; despues: string } | null
+}
 
 /** RF-22: fila del informe Bajo mínimo (referencia sin universal o universal con su desglose). */
 export interface FilaBajoMinimo {

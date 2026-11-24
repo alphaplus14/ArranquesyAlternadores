@@ -78,6 +78,7 @@ class DevolucionController extends Controller
             'cantidad' => $items->count(),
             'total' => number_format((float) $items->sum(fn ($i) => (float) $i->precio_unitario), 2, '.', ''),
             'devueltas' => $items->map(fn ($i) => $i->unidad->codigo_barras)->values(),
+            'devueltas_ids' => $items->map(fn ($i) => $i->unidad->id)->values(),
             'saldo_cliente' => $r['saldo_antes'] === null ? null : ['antes' => $r['saldo_antes'], 'despues' => $r['saldo_despues']],
         ], 201);
     }

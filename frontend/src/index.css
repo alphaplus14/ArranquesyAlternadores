@@ -440,6 +440,12 @@ tr.reversado td:has(.icono-accion) { text-decoration: none; }
 .chip.sin-precio, .chip.credito { background: var(--aviso-fondo); color: var(--aviso); font-weight: 600; }
 
 /* Un aviso a la vez, fuera del flujo: no empuja la tabla. Lo pinta Avisos. */
+/* Avisos dentro de la página (formularios, diálogos, aviso de crédito). El merge con legri los había
+   quitado al pasar los avisos generales a .aviso-flotante; las pantallas de cesar los siguen usando. */
+.aviso { padding: 10px 12px; border-radius: 8px; margin: 8px 0; font-weight: 600; }
+.aviso.ok { background: var(--ok-fondo); color: var(--ok); }
+.aviso.error { background: var(--error-fondo); color: var(--peligro); }
+.aviso.atencion { background: var(--aviso-fondo); color: var(--aviso); }
 .aviso-flotante {
   position: fixed; z-index: 80; right: 24px; bottom: 24px;
   width: min(420px, calc(100% - 32px));
@@ -1358,6 +1364,49 @@ input[aria-invalid='true']:not([type='checkbox']):not([type='radio']):focus-visi
 .candidata-linea { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
 .candidata-venta small { color: var(--suave); overflow-wrap: anywhere; }
 @media (max-width: 639px) { .elegir-venta .busca input { max-width: none; } }
+/* S-38: cantidad con − / + (44 px). */
+.campo-cantidad { display: flex; flex-direction: column; gap: 4px; }
+.stepper { display: inline-flex; align-items: stretch; gap: 0; }
+.stepper button { min-width: 44px; min-height: 44px; padding: 0; font-size: 1.25rem; line-height: 1; }
+.stepper button:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.stepper button:last-child { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.stepper input { width: 5.5rem; min-height: 44px; box-sizing: border-box; text-align: center; border-radius: 0; margin: 0 -1px; -moz-appearance: textfield; }
+.stepper input::-webkit-outer-spin-button, .stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+/* Salidas: lector y cantidad en una fila (se apilan en pantallas angostas). */
+.lector-con-cantidad { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+.lector-con-cantidad .lector-campo { flex: 1 1 280px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.lector-con-cantidad .campo-cantidad .ayuda { max-width: 16rem; }
+.lector-con-cantidad .etiqueta-campo, .campo-cantidad .etiqueta-campo { align-self: flex-start; text-align: left; }
+/* El código de una unidad nunca se parte en dos líneas. */
+.codigo-unidad { white-space: nowrap; }
+.bloque-chip { display: table; margin-top: 4px; }
+/* Lote de salida agrupado por referencia. */
+.tabla-lote .cantidad-lote { font-size: 1.05rem; white-space: nowrap; }
+.tabla-lote details summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.unidades-lote { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.unidades-lote li { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.unidades-lote .codigo-unidad { display: inline-flex; align-items: center; gap: 6px; }
+/* Devoluciones: aviso del saldo, motivo y resultado. */
+.aviso-saldo { border-radius: var(--radio); }
+.motivo-devolucion { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+.motivo-devolucion label { flex: 1 1 220px; min-width: 0; }
+.motivo-devolucion select, .motivo-devolucion input { min-height: 44px; width: 100%; box-sizing: border-box; }
+.agregar-nota { align-self: flex-end; }
+.devolucion-hecha { border-color: var(--ok); background: var(--ok-fondo); }
+.devolucion-hecha p { margin: 0 0 6px; }
+.codigos-lista { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.chip.disponibles { background: var(--suave-fondo); color: var(--texto); font-weight: 600; white-space: nowrap; }
+.dato-unidades details summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+@media (max-width: 639px) {
+  .lector-con-cantidad { flex-direction: column; align-items: stretch; }
+  .lector-con-cantidad .lector-campo { flex-basis: auto; }
+  .stepper { width: 100%; }
+  .stepper input { flex: 1; width: auto; }
+  .motivo-devolucion { flex-direction: column; align-items: stretch; }
+  .agregar-nota { align-self: flex-start; }
+  .tabla-lote td.celda-unidades { display: block; }
+  .tabla-lote td.celda-unidades::before { display: none; }
+}
 .chip.saldo-favor { background: var(--ok-fondo); color: var(--ok); font-weight: 600; }
 .chip.estado-venta { font-weight: 600; white-space: nowrap; }
 .chip.estado-venta.al_dia { background: var(--ok-fondo); color: var(--ok); }
