@@ -45,8 +45,19 @@ class CarteraController extends Controller
     /** RF-18: ventas a crédito del cliente (FIFO por venta), abonos, saldo y antigüedad. */
     public function show(Request $request, Cliente $cliente): JsonResponse
     {
-        $datos = $request->validate(['corte' => ['nullable', 'date_format:Y-m-d']]);
-        $detalle = $this->cartera->detalle($cliente, $datos['corte'] ?? null);
+        $datos = $request->validate([
+            'corte' => ['nullable', 'date_format:Y-m-d'],
+            'busqueda' => ['nullable', 'string', 'max:60'],
+            'estado' => ['nullable', 'in:todas,pendientes,vencidas,pagadas'],
+            'desde' => ['nullable', 'date_format:Y-m-d'],
+            'hasta' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:desde'],
+        ]);
+        $detalle = $this->cartera->detalle($cliente, $datos['corte'] ?? null, [
+            'busqueda' => $datos['busqueda'] ?? null,
+            'estado' => $datos['estado'] ?? 'todas',
+            'desde' => $datos['desde'] ?? null,
+            'hasta' => $datos['hasta'] ?? null,
+        ]);
 
         return response()->json([...$detalle, 'abonos' => AbonoResource::collection($detalle['abonos'])]);
     }

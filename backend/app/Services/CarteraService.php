@@ -10,6 +10,7 @@ use App\Support\RangoFechas;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -42,10 +43,11 @@ class CarteraService
     public function listar(array $filtros, int $porPagina = self::POR_PAGINA, int $pagina = 0): array
     {
         $corte = $filtros['corte'] ?? null ?: RangoFechas::hoy();
+        $coincidencias = $this->ventasQueCoinciden($corte, $filtros['busqueda'] ?? null);
 
         // Una sola consulta: una fila AGREGADA por cliente (no las ventas). Los filtros, los totales,
         // el orden y la página se resuelven sobre esas filas, sin repetir el cálculo FIFO.
-        $filas = DB::query()->fromSub($this->porCliente($corte, $filtros['busqueda'] ?? null), 'c')
+        $filas = DB::query()->fromSub($this->porCliente($corte, $filtros['busqueda'] ?? null, null, $coincidencias->keys()->all()), 'c')
             ->when($filtros['solo_con_saldo'] ?? false, fn ($q) => $q->where('c.saldo', '>', 0))
             ->when($filtros['solo_vencidos'] ?? false, fn ($q) => $q->where('c.vencido', '>', 0))
             ->get()
@@ -65,7 +67,9 @@ class CarteraService
 
         $pagina = $pagina > 0 ? $pagina : LengthAwarePaginator::resolveCurrentPage();
         $paginador = new LengthAwarePaginator(
-            $filas->forPage($pagina, $porPagina)->map(fn ($f) => $this->filaCliente($f))->values(),
+            $filas->forPage($pagina, $porPagina)
+                ->map(fn ($f) => $this->filaCliente($f) + ['coincidencia' => $coincidencias->get((int) $f->id)])
+                ->values(),
             $filas->count(),
             $porPagina,
             $pagina,
@@ -88,13 +92,25 @@ class CarteraService
      * RF-18: detalle del cliente. Ventas a crédito cerradas con su total neto, vencimiento, abono
      * aplicado (FIFO), pendiente, estado y rango; los abonos (también los anulados) y el resumen.
      *
+     * Filtros de la lista de ventas (S-30): busqueda (n.º de venta o factura Contapyme), estado
+     * (todas|pendientes|vencidas|pagadas) y desde/hasta sobre la fecha de cierre (días de Bogotá,
+     * hasta inclusivo). El FIFO se calcula sobre TODAS las ventas del cliente y los filtros se
+     * aplican después, en la consulta exterior: filtrar antes cambiaría el pendiente. El resumen
+     * (saldo, vencido, antigüedad) nunca cambia con los filtros.
+     *
+     * @param  array{busqueda?: string|null, estado?: string|null, desde?: string|null, hasta?: string|null}  $filtros
      * @return array<string, mixed>
      */
-    public function detalle(Cliente $cliente, ?string $corte = null): array
+    public function detalle(Cliente $cliente, ?string $corte = null, array $filtros = []): array
     {
         $corte = $corte ?: RangoFechas::hoy();
+        $todas = DB::query()->fromSub($this->ventasFifo($corte, $cliente->id), 'f');
+        $totalVentas = (clone $todas)->count();
 
-        $ventas = DB::query()->fromSub($this->ventasFifo($corte, $cliente->id), 'f')
+        $consulta = clone $todas;
+        $this->filtrarVentas($consulta, $filtros);
+
+        $ventas = $consulta
             ->orderBy('f.cerrada_at')
             ->orderBy('f.id')
             ->get()
@@ -105,6 +121,7 @@ class CarteraService
 
                 return [
                     'id' => (int) $v->id,
+                    'factura_contapyme' => $v->factura_contapyme,
                     'cerrada_at' => $v->cerrada_at,
                     'vence_el' => $v->vence_el,
                     'total' => self::pesos($neto),
@@ -124,8 +141,97 @@ class CarteraService
         return [
             'resumen' => $this->resumenDe($cliente, $corte),
             'ventas' => $ventas->values()->all(),
+            'ventas_total' => $totalVentas,
             'abonos' => $abonos,
         ];
+    }
+
+    /** Filtros de la lista de ventas del detalle, sobre las filas ya calculadas con FIFO. */
+    protected function filtrarVentas(Builder $q, array $filtros): void
+    {
+        $termino = self::terminoVenta($filtros['busqueda'] ?? null);
+        if ($termino) {
+            $q->where(function ($w) use ($termino) {
+                if ($termino['id'] !== null) {
+                    $w->orWhere('f.id', $termino['id']);
+                }
+                if ($termino['factura'] !== null) {
+                    $w->orWhere('f.factura_contapyme', 'like', $termino['factura']);
+                }
+            });
+        }
+
+        match ($filtros['estado'] ?? 'todas') {
+            'pendientes' => $q->where('f.pendiente', '>', 0),
+            'vencidas' => $q->where('f.pendiente', '>', 0)->where('f.dias', '>', 0),
+            'pagadas' => $q->where('f.pendiente', '<=', 0),
+            default => null,
+        };
+
+        if ($filtros['desde'] ?? null) {
+            $q->where('f.cerrada_at', '>=', RangoFechas::inicio($filtros['desde'])->format('Y-m-d H:i:s'));
+        }
+        if ($filtros['hasta'] ?? null) {
+            $q->where('f.cerrada_at', '<', RangoFechas::finExclusivo($filtros['hasta'])->format('Y-m-d H:i:s'));
+        }
+    }
+
+    /**
+     * Cómo se busca una venta (S-30). "#4" = solo la venta 4. "4" = la venta 4 o una factura de
+     * Contapyme que empiece por "4". Cualquier otro texto = prefijo de factura. Sin espacios en los
+     * extremos; la intercalación de MySQL (utf8mb4_unicode_ci) ya ignora mayúsculas. null = sin término.
+     *
+     * @return array{id: int|null, factura: string|null}|null
+     */
+    protected static function terminoVenta(?string $busqueda): ?array
+    {
+        $t = trim((string) $busqueda);
+        if ($t === '') {
+            return null;
+        }
+        if (preg_match('/^#\s*(\d{1,18})$/', $t, $m)) {
+            return ['id' => (int) $m[1], 'factura' => null];
+        }
+
+        return [
+            'id' => preg_match('/^\d{1,18}$/', $t) ? (int) $t : null,
+            'factura' => addcslashes($t, '%_\\').'%',
+        ];
+    }
+
+    /**
+     * GET /cartera: ventas a crédito cerradas al corte cuyo n.º o factura Contapyme coincide con la
+     * búsqueda; la primera por cliente (cliente_id => {venta_id, factura_contapyme}). Dos consultas
+     * con índice (PK y ventas.factura_contapyme) en vez de un OR que obligaría a recorrer la tabla.
+     *
+     * @return Collection<int, array{venta_id: int, factura_contapyme: string|null}>
+     */
+    protected function ventasQueCoinciden(string $corte, ?string $busqueda): Collection
+    {
+        $termino = self::terminoVenta($busqueda);
+        if (! $termino) {
+            return collect();
+        }
+
+        $fin = RangoFechas::finExclusivo($corte)->format('Y-m-d H:i:s');
+        $base = fn () => DB::table('ventas')
+            ->where('forma_pago', FormaPago::Credito->value)
+            ->where('estado', EstadoVenta::Cerrada->value)
+            ->whereNotNull('cliente_id')
+            ->where('cerrada_at', '<', $fin)
+            ->select('id', 'cliente_id', 'factura_contapyme');
+
+        $filas = collect();
+        if ($termino['id'] !== null) {
+            $filas = $filas->concat($base()->where('id', $termino['id'])->get());
+        }
+        if ($termino['factura'] !== null) {
+            $filas = $filas->concat($base()->where('factura_contapyme', 'like', $termino['factura'])->orderBy('factura_contapyme')->limit(500)->get());
+        }
+
+        return $filas
+            ->groupBy(fn ($v) => (int) $v->cliente_id)
+            ->map(fn ($vs) => ['venta_id' => (int) $vs->first()->id, 'factura_contapyme' => $vs->first()->factura_contapyme]);
     }
 
     /**
@@ -293,9 +399,10 @@ class CarteraService
 
     /**
      * Una fila por cliente: ventas, abonado, saldo, vencido, próximo vencimiento y rangos.
-     * Con búsqueda, filtra por prefijo de nombre o documento (índices; sin comodín inicial).
+     * Con búsqueda, filtra por prefijo de nombre o documento (índices; sin comodín inicial) o por
+     * los clientes dueños de una venta que coincide por n.º o factura ($idsPorVenta).
      */
-    protected function porCliente(string $corte, ?string $busqueda = null, ?int $clienteId = null): Builder
+    protected function porCliente(string $corte, ?string $busqueda = null, ?int $clienteId = null, array $idsPorVenta = []): Builder
     {
         $busqueda = trim((string) $busqueda);
         $prefijo = addcslashes($busqueda, '%_\\').'%';
@@ -325,7 +432,8 @@ class CarteraService
             ->when($clienteId, fn ($q, $id) => $q->where('cl.id', $id))
             ->when($busqueda !== '', fn ($q) => $q->where(fn ($w) => $w
                 ->where('cl.nombre', 'like', $prefijo)
-                ->orWhere('cl.documento', 'like', $prefijo)))
+                ->orWhere('cl.documento', 'like', $prefijo)
+                ->when($idsPorVenta, fn ($o) => $o->orWhereIn('cl.id', $idsPorVenta))))
             ->selectRaw('cl.id, cl.nombre, cl.documento, cl.telefono, cl.plazo_dias, cl.activo,
                 COALESCE(ag.ventas, 0) AS ventas,
                 COALESCE(ab.abonado, 0) AS abonado,
@@ -350,7 +458,7 @@ class CarteraService
                 SUM(vn.neto) OVER (PARTITION BY vn.cliente_id ORDER BY vn.cerrada_at, vn.id) AS acumulado');
 
         return DB::query()->fromSub($conAcumulado, 'x')
-            ->selectRaw('x.id, x.cliente_id, x.cerrada_at, x.vence_el, x.neto, x.bruto,
+            ->selectRaw('x.id, x.cliente_id, x.cerrada_at, x.vence_el, x.factura_contapyme, x.neto, x.bruto,
                 GREATEST(0, LEAST(x.neto, x.acumulado - x.abonado_cliente)) AS pendiente,
                 COALESCE(DATEDIFF(?, x.vence_el), 0) AS dias', [$corte]);
     }
@@ -370,8 +478,8 @@ class CarteraService
             ->whereNotNull('v.cliente_id')
             ->where('v.cerrada_at', '<', $fin)
             ->when($clienteId, fn ($q, $id) => $q->where('v.cliente_id', $id))
-            ->groupBy('v.id', 'v.cliente_id', 'v.cerrada_at', 'v.vence_el')
-            ->selectRaw('v.id, v.cliente_id, v.cerrada_at, v.vence_el,
+            ->groupBy('v.id', 'v.cliente_id', 'v.cerrada_at', 'v.vence_el', 'v.factura_contapyme')
+            ->selectRaw('v.id, v.cliente_id, v.cerrada_at, v.vence_el, v.factura_contapyme,
                 SUM(CASE WHEN r.id IS NULL THEN COALESCE(vi.precio_unitario, 0) ELSE 0 END) AS neto,
                 SUM(COALESCE(vi.precio_unitario, 0)) AS bruto');
     }
