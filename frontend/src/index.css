@@ -1364,6 +1364,21 @@ input[aria-invalid='true']:not([type='checkbox']):not([type='radio']):focus-visi
 .candidata-linea { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
 .candidata-venta small { color: var(--suave); overflow-wrap: anywhere; }
 @media (max-width: 639px) { .elegir-venta .busca input { max-width: none; } }
+/* S-40: fichas de ventas abiertas (se desplazan en horizontal sin desbordar la página). */
+.ventas-abiertas { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 10px; min-width: 0; }
+.ventas-abiertas-titulo { font-size: 0.8rem; color: var(--suave); font-weight: 600; }
+.ventas-abiertas-fichas { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scroll-snap-type: x proximity; min-width: 0; }
+.ficha-venta {
+  flex: 0 0 auto; min-width: 11rem; max-width: 16rem; min-height: 44px; scroll-snap-align: start;
+  display: flex; flex-direction: column; align-items: stretch; gap: 2px; text-align: left; padding: 8px 10px; border-radius: 10px;
+}
+.ficha-venta.activa { border: 2px solid var(--primario); background: var(--suave-fondo); }
+.ficha-venta-linea { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.ficha-venta-cliente { font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ficha-venta small { color: var(--suave); }
+.chip.vieja { background: var(--aviso-fondo); color: var(--aviso); font-weight: 600; }
+.punto-alerta { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--peligro); margin-left: 6px; flex: none; }
+.resumen-cierre { margin-bottom: 8px; }
 /* S-39: entradas por ajuste. */
 .entrada-cantidad { display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap; }
 .vista-previa { margin: 0 0 10px; font-size: 1rem; }
@@ -1389,7 +1404,7 @@ input[aria-invalid='true']:not([type='checkbox']):not([type='radio']):focus-visi
 .lector-con-cantidad { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
 .lector-con-cantidad .lector-campo { flex: 1 1 280px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .lector-con-cantidad .campo-cantidad .ayuda { max-width: 16rem; }
-.lector-con-cantidad .etiqueta-campo, .campo-cantidad .etiqueta-campo { align-self: flex-start; text-align: left; }
+.lector-con-cantidad .etiqueta-campo, .campo-cantidad .etiqueta-campo, .ajustes-seccion > .etiqueta-campo { align-self: flex-start; text-align: left; }
 /* El código de una unidad nunca se parte en dos líneas. */
 .codigo-unidad { white-space: nowrap; }
 .bloque-chip { display: table; margin-top: 4px; }
@@ -1416,6 +1431,7 @@ input[aria-invalid='true']:not([type='checkbox']):not([type='radio']):focus-visi
   .stepper { width: 100%; }
   .stepper input { flex: 1; width: auto; }
   .motivo-devolucion { flex-direction: column; align-items: stretch; }
+  .motivo-devolucion label { flex: 0 0 auto; } /* en columna, la base de 220 px sería alto */
   .agregar-nota { align-self: flex-start; }
   .tabla-lote td.celda-unidades { display: block; }
   .tabla-lote td.celda-unidades::before { display: none; }

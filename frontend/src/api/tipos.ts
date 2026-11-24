@@ -491,6 +491,20 @@ export interface EstadoCuenta {
   saldo_final: string
 }
 
+/** S-40: una venta abierta en el listado (GET /ventas?estado=abierta). */
+export interface VentaAbierta {
+  id: number
+  forma_pago: FormaPago
+  cliente: { id: number; nombre: string; plazo_dias?: number } | null
+  factura_contapyme: string | null
+  created_at: string
+  usuario: { id: number; name: string }
+  /** Ítems vigentes (sin reverso). */
+  items_count: number
+  /** S-33: total con IVA incluido. */
+  total: string | number
+}
+
 /** RF-06: respuesta de POST /ventas/{id}/escanear. `item` tiene la misma forma que en GET /ventas/{id}. */
 export interface RespuestaEscaneo {
   venta_id: number
@@ -503,6 +517,8 @@ export interface RespuestaEscaneo {
   origen_codigo?: OrigenCodigo
   /** S-33: totales de la venta después del escaneo (precios con IVA incluido). */
   totales?: TotalesVenta
+  /** S-40: todos los ítems de la lectura (con cantidad > 1, varios); `item` es el último. */
+  items?: VentaItem[]
 }
 
 export interface Auditoria {

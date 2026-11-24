@@ -6,12 +6,15 @@ import logo from '../assets/logo-la8va.jpg'
 import Icono, { type IconoNombre } from './Icono'
 import MiCuenta from './MiCuenta'
 import MenuUsuario from './MenuUsuario'
+import { esDeDiaAnterior, useVentasAbiertas } from '../hooks/useVentasAbiertas'
 
 interface ItemMenu {
   to: string
   texto: string
   icono: IconoNombre
   fin?: boolean
+  /** S-40: punto de aviso con su texto accesible. */
+  alerta?: string
 }
 
 export default function Layout() {
@@ -24,13 +27,17 @@ export default function Layout() {
     if (window.innerWidth < 960) setAbierto(false)
   }, [ubicacion.pathname])
 
+  // S-40: ventas abiertas desde un día anterior (las del usuario; el admin, todas).
+  const abiertas = useVentasAbiertas(tieneRol('mostrador'))
+  const hayVentasViejas = (abiertas.data ?? []).some(esDeDiaAnterior)
+
   // Orden: Mostrador, Productos, Logística, Administración, Consulta. Qué ve cada rol no cambia.
   const grupos: { etiqueta: string; items: ItemMenu[] }[] = [
     tieneRol('mostrador')
       ? {
           etiqueta: 'Mostrador',
           items: [
-            { to: '/mostrador/venta', texto: 'Venta', icono: 'venta' },
+            { to: '/mostrador/venta', texto: 'Venta', icono: 'venta', alerta: hayVentasViejas ? 'Hay ventas abiertas de días anteriores' : undefined },
             { to: RUTA_CARTERA, texto: 'Cartera', icono: 'billetera' }, // RF-15 / S-30
           ],
         }
@@ -92,6 +99,7 @@ export default function Layout() {
                   <NavLink key={item.to} to={item.to} end={item.fin}>
                     <Icono nombre={item.icono} />
                     <span>{item.texto}</span>
+                    {item.alerta && <span className="punto-alerta" title={item.alerta}><span className="solo-lector">{item.alerta}</span></span>}
                   </NavLink>
                 ))}
               </div>

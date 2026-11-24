@@ -56,3 +56,10 @@ export function formatearHora(valor: string | Date | null | undefined): string {
   const fecha = aInstante(valor)
   return Number.isNaN(fecha.getTime()) ? '—' : formatoHora.format(fecha)
 }
+
+const formatoDiaIso = new Intl.DateTimeFormat('en-CA', { timeZone: ZONA_COLOMBIA, year: 'numeric', month: '2-digit', day: '2-digit' })
+
+/** S-40: el día (AAAA-MM-DD) de un instante en Colombia. Sirve para comparar con hoyEnBogota(). */
+export function diaEnColombia(valor: string | Date): string {
+  return formatoDiaIso.format(aInstante(valor))
+}

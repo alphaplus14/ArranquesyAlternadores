@@ -1,10 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { AxiosError } from 'axios'
 import { api, mensajeError } from '../../api/cliente'
-import { NOMBRE_CALIDAD, type Calidad, type Cliente, type MetodoCaptura, type OpcionReferenciaVenta, type Pagina, type Referencia, type RespuestaEscaneo, type Venta as TVenta, type VentaItem } from '../../api/tipos'
+import { NOMBRE_CALIDAD, type Calidad, type Cliente, type MetodoCaptura, type OpcionReferenciaVenta, type Pagina, type Referencia, type RespuestaEscaneo, type Venta as TVenta, type VentaAbierta, type VentaItem } from '../../api/tipos'
 import { useAviso } from '../../componentes/Avisos'
+import { useAuth } from '../../auth/AuthProvider'
+import CampoCantidad from '../../componentes/CampoCantidad'
+import { sumarDias } from '../../componentes/fechas'
 import ChipCalidad from '../../componentes/ChipCalidad'
 import Dialogo, { DialogoSeccion } from '../../componentes/Dialogo'
 import ListaEleccion, { type FilaEleccion } from '../../componentes/ListaEleccion'
@@ -14,6 +17,8 @@ import Paginacion from '../../componentes/Paginacion'
 import Resumen from '../../componentes/Resumen'
 import { useScanner } from '../../hooks/useScanner'
 import { useAngosta } from '../../hooks/useAngosta'
+import { CLAVE_ABIERTAS, esDeDiaAnterior, useVentasAbiertas } from '../../hooks/useVentasAbiertas'
+import { hoyEnBogota } from '../../utilidades/periodos'
 import { formatearFecha, formatearFechaHora, formatearHora } from '../../utilidades/fechas'
 import { rotuloIvaIncluido } from '../../utilidades/cartera'
 import { useDebounce } from '../../hooks/useDebounce'
@@ -39,14 +44,27 @@ function errorPrecio(texto: string): string | null {
 }
 
 
+/** S-40: máximo de unidades por lectura con el código del proveedor (igual que el backend). */
+const MAX_CANTIDAD = 50
+
+/** S-40: "Contado" o "Crédito · Cliente". */
+const nombreVenta = (v: { forma_pago: TVenta['forma_pago']; cliente: { nombre: string } | null }) =>
+  v.forma_pago === 'credito' ? `Crédito · ${v.cliente?.nombre ?? '—'}` : 'Contado'
+
+/** Pregunta antes de abrir una venta igual a una que ya está abierta (S-40). */
+interface Duplicada { existente: VentaAbierta; abrirOtra: () => void }
+
 /**
  * RF-06: venta de mostrador. Cada escaneo descuenta de inmediato (no al cerrar).
  * RF-12: input siempre enfocado para el lector, y búsqueda manual de respaldo (queda "digitado").
  * RF-07: reversos con motivo obligatorio; nada se borra.
+ * S-40: el mostrador escanea a lo largo del día y cierra al final; puede tener varias ventas
+ * abiertas (la de contado del día y las de crédito) y cambia entre ellas desde la barra de fichas.
  */
 export default function Venta() {
   const qc = useQueryClient()
   const avisos = useAviso()
+  const { usuario } = useAuth()
   // RF-18: ?venta=ID abre esa venta (enlace desde la cartera del cliente).
   const [params] = useSearchParams()
   const pedida = Number(params.get('venta')) || null
@@ -57,18 +75,23 @@ export default function Venta() {
   /** RF-14 / S-18: ítem cuyo precio se está editando (solo en una venta a crédito abierta). */
   const [editandoPrecio, setEditandoPrecio] = useState<number | null>(null)
   /** S-31: el código del proveedor está en varias referencias; se espera que quien vende elija. */
-  const [eligiendoRef, setEligiendoRef] = useState<{ codigo: string; metodo: MetodoCaptura; referencias: OpcionReferenciaVenta[] } | null>(null)
+  const [eligiendoRef, setEligiendoRef] = useState<{ codigo: string; metodo: MetodoCaptura; cantidad: number; referencias: OpcionReferenciaVenta[] } | null>(null)
+  /** S-40: abrir una venta igual a una ya abierta pregunta antes. */
+  const [duplicada, setDuplicada] = useState<Duplicada | null>(null)
+  /** S-40: cerrar pide confirmación con el resumen. */
+  const [confirmandoCierre, setConfirmandoCierre] = useState(false)
+  /** S-40: unidades por lectura con el código del proveedor (con una etiqueta siempre es 1). */
+  const [cantidad, setCantidad] = useState(1)
   const inputRef = useRef<HTMLInputElement>(null)
   // A 360 px el placeholder largo se corta; el aria-label sigue diciendo qué códigos acepta.
   const angosta = useAngosta()
 
-  // Retoma la última venta abierta del usuario.
-  const abiertas = useQuery({
-    queryKey: ['ventas', 'abiertas'],
-    queryFn: async () => (await api.get<Pagina<{ id: number }>>('/ventas', { params: { estado: 'abierta' } })).data,
-  })
+  // S-40: todas las ventas abiertas (las del usuario; el admin, las de todos). Sin una pedida, se
+  // retoma la más antigua.
+  const abiertas = useVentasAbiertas()
+  const listaAbiertas = abiertas.data ?? []
   useEffect(() => {
-    if (ventaId === null && abiertas.data?.data[0]) setVentaId(abiertas.data.data[0].id)
+    if (ventaId === null && abiertas.data?.[0]) setVentaId(abiertas.data[0].id)
   }, [abiertas.data, ventaId])
 
   const venta = useQuery({
@@ -82,6 +105,8 @@ export default function Venta() {
     queryFn: async () => (await api.get<Pagina<{ id: number; created_at: string; items_count: number; total: string | number; forma_pago: TVenta['forma_pago']; cliente: { id: number; nombre: string } | null }>>('/ventas', { params: { estado: 'cerrada' } })).data,
   })
 
+  const enfocarLector = () => setTimeout(() => inputRef.current?.focus(), 0)
+
   // Sin cuerpo = contado, igual que antes del crédito (RF-14).
   const abrir = useMutation({
     mutationFn: async (credito?: DatosCredito) =>
@@ -89,6 +114,7 @@ export default function Venta() {
     onSuccess: (v) => {
       setVentaId(v.id)
       qc.setQueryData(['venta', v.id], v)
+      qc.invalidateQueries({ queryKey: CLAVE_ABIERTAS })
       setEditandoPrecio(null)
       const deQuien = v.forma_pago === 'credito' && v.cliente?.nombre ? ` de ${v.cliente.nombre}` : ''
       avisos.mostrar(
@@ -101,35 +127,65 @@ export default function Venta() {
     onError: (e) => avisos.mostrar('error', mensajeError(e)),
   })
 
+  // S-40: las ventas abiertas propias (el admin ve todas, pero solo pregunta por las suyas).
+  const propias = listaAbiertas.filter((a) => a.usuario?.id === usuario?.id)
+  const nuevaContado = () => {
+    const existente = propias.find((a) => a.forma_pago === 'contado')
+    if (existente) setDuplicada({ existente, abrirOtra: () => abrir.mutate(undefined) })
+    else abrir.mutate(undefined)
+  }
+  const nuevaCredito = (datos: DatosCredito) => {
+    const existente = propias.find((a) => a.forma_pago === 'credito' && a.cliente?.id === datos.cliente_id)
+    setEligiendoCliente(false)
+    if (existente) setDuplicada({ existente, abrirOtra: () => abrir.mutate(datos) })
+    else abrir.mutate(datos)
+  }
+  const cambiarA = useCallback((id: number) => {
+    setVentaId(id)
+    setEditandoPrecio(null)
+    enfocarLector()
+  }, [])
+
   // S-31: el código puede ser la etiqueta del local o el del proveedor/fabricante; el backend
-  // decide. Con referenciaId se resuelve un código que está en varias referencias.
+  // decide. Con referenciaId se resuelve un código que está en varias referencias. S-40: con
+  // cantidad > 1 agrega N unidades del código del proveedor.
   const escanear = useMutation({
-    // S-31: el código puede ser la etiqueta del local o el del proveedor/fabricante; el backend
-    // decide. Con referenciaId se resuelve un código que está en varias referencias.
-    mutationFn: async ({ codigo, metodo, referenciaId }: { codigo: string; metodo: MetodoCaptura; referenciaId?: number }) =>
-      (await api.post<RespuestaEscaneo>(`/ventas/${ventaId}/escanear`, { codigo_barras: codigo, metodo_captura: metodo, referencia_id: referenciaId })).data,
+    mutationFn: async ({ codigo, metodo, referenciaId, cantidad: n }: { codigo: string; metodo: MetodoCaptura; referenciaId?: number; cantidad: number }) =>
+      (await api.post<RespuestaEscaneo>(`/ventas/${ventaId}/escanear`, { codigo_barras: codigo, metodo_captura: metodo, referencia_id: referenciaId, cantidad: n })).data,
     onSuccess: (r) => {
+      const nuevos = r.items?.length ? r.items : [r.item]
       const porReferencia = r.origen_codigo === 'referencia' ? ' · por referencia' : ''
-      avisos.mostrar('ok', `✓ ${r.unidad.codigo_barras}${porReferencia} · ${r.referencia.codigo_referencia} · ${[r.referencia.proveedor, r.referencia.calidad && NOMBRE_CALIDAD[r.referencia.calidad as Calidad]].filter(Boolean).join(' · ')} — quedan ${r.referencia.existencia} (${r.metodo_captura})`)
-      // RF-06: una sola petición por escaneo. El ítem llega completo y se agrega a la venta en caché,
-      // con los totales nuevos (S-33) que calcula el backend.
+      const cuales = nuevos.length === 1 ? r.unidad.codigo_barras : `${nuevos.length} unidades`
+      avisos.mostrar('ok', `✓ ${cuales}${porReferencia} · ${r.referencia.codigo_referencia} · ${[r.referencia.proveedor, r.referencia.calidad && NOMBRE_CALIDAD[r.referencia.calidad as Calidad]].filter(Boolean).join(' · ')} — quedan ${r.referencia.existencia} (${r.metodo_captura})`)
+      setCantidad(1)
+      // RF-06: una sola petición por escaneo. Los ítems llegan completos y se agregan a la venta en
+      // caché, con los totales nuevos (S-33) que calcula el backend; la ficha de la venta también.
       const clave = ['venta', r.venta_id]
+      qc.setQueryData<VentaAbierta[]>(CLAVE_ABIERTAS, (lista) => lista?.map((a) => (a.id === r.venta_id
+        ? { ...a, items_count: a.items_count + nuevos.length, total: r.totales?.total ?? a.total }
+        : a)))
       if (!qc.getQueryData<TVenta>(clave)) {
         qc.invalidateQueries({ queryKey: clave })
         return
       }
       void qc.cancelQueries({ queryKey: clave })
-      qc.setQueryData<TVenta>(clave, (actual) =>
-        actual && !actual.items.some((i) => i.id === r.item.id)
-          ? { ...actual, items: [...actual.items, r.item], totales: r.totales ?? actual.totales }
-          : actual,
-      )
+      qc.setQueryData<TVenta>(clave, (actual) => {
+        if (!actual) return actual
+        const faltan = nuevos.filter((n) => !actual.items.some((i) => i.id === n.id))
+        return faltan.length ? { ...actual, items: [...actual.items, ...faltan], totales: r.totales ?? actual.totales } : actual
+      })
     },
-    onError: (e, { codigo, metodo }) => {
-      const datos = e instanceof AxiosError ? e.response?.data as { tipo?: string; referencias?: OpcionReferenciaVenta[] } | undefined : undefined
+    onError: (e, { codigo, metodo, referenciaId, cantidad: n }) => {
+      const datos = e instanceof AxiosError ? e.response?.data as { tipo?: string; message?: string; referencias?: OpcionReferenciaVenta[] } | undefined : undefined
       if (datos?.tipo === 'elegir_referencia' && datos.referencias?.length) {
         avisos.limpiar()
-        setEligiendoRef({ codigo, metodo, referencias: datos.referencias })
+        setEligiendoRef({ codigo, metodo, cantidad: n, referencias: datos.referencias })
+        return
+      }
+      // S-40: con una etiqueta la cantidad no aplica: se vende esa unidad (1).
+      if (n > 1 && datos?.message?.startsWith('Cada etiqueta es una unidad')) {
+        setCantidad(1)
+        escanear.mutate({ codigo, metodo, referenciaId, cantidad: 1 })
         return
       }
       avisos.mostrar('error', mensajeError(e))
@@ -142,6 +198,7 @@ export default function Venta() {
     onSuccess: (v) => {
       qc.setQueryData(['venta', v.id], v)
       qc.invalidateQueries({ queryKey: ['ventas'] })
+      setConfirmandoCierre(false)
       avisos.mostrar(
         'ok',
         v.forma_pago === 'credito'
@@ -149,9 +206,11 @@ export default function Venta() {
           : `Venta #${v.id} cerrada. Facture en Contapyme.`,
       )
     },
-    onError: (e) => avisos.mostrar('error', mensajeError(e)),
+    onError: (e) => { setConfirmandoCierre(false); avisos.mostrar('error', mensajeError(e)) },
   })
 
+  const cantidadRef = useRef(cantidad)
+  cantidadRef.current = cantidad
   const onCodigo = useCallback(
     (codigo: string, metodo: MetodoCaptura) => {
       if (inputRef.current) inputRef.current.value = ''
@@ -159,7 +218,7 @@ export default function Venta() {
         avisos.mostrar('error', 'Abra una venta antes de escanear.')
         return
       }
-      escanear.mutate({ codigo, metodo })
+      escanear.mutate({ codigo, metodo, cantidad: cantidadRef.current })
     },
     [ventaId, venta.data?.estado, escanear, avisos],
   )
@@ -175,7 +234,7 @@ export default function Venta() {
 
   // El input del lector recupera el foco siempre que no haya un diálogo abierto.
   // Editar un precio cuenta como diálogo: el lector no le roba el foco al campo.
-  const hayDialogo = respaldo || reverso !== null || eligiendoCliente || precioEnEdicion || eligiendoRef !== null
+  const hayDialogo = respaldo || reverso !== null || eligiendoCliente || precioEnEdicion || eligiendoRef !== null || duplicada !== null || confirmandoCierre
   useEffect(() => {
     if (!hayDialogo) inputRef.current?.focus()
   }, [hayDialogo, ventaId, abierta, escanear.isPending])
@@ -183,18 +242,32 @@ export default function Venta() {
   // si hay diálogo cuando corre, no cuando se pintó el input, o le roba el foco al diálogo.
   const hayDialogoRef = useRef(hayDialogo)
   hayDialogoRef.current = hayDialogo
-  const reenfocar = () => setTimeout(() => { if (!hayDialogoRef.current) inputRef.current?.focus() }, 0)
+  const reenfocar = () => setTimeout(() => {
+    // El stepper de cantidad y la barra de ventas también se usan con teclado: no se les roba el foco.
+    const activo = document.activeElement
+    if (activo?.closest('.campo-cantidad, .ventas-abiertas')) return
+    if (!hayDialogoRef.current) inputRef.current?.focus()
+  }, 0)
 
-  const vigentes = v?.items.filter((i) => !i.reverso_id) ?? []
-  const ultimo = [...(v?.items ?? [])].reverse().find((i) => !i.reverso_id)
+  const vigentes = useMemo(() => v?.items.filter((i) => !i.reverso_id) ?? [], [v?.items])
+  const ultimo = vigentes[vigentes.length - 1]
   // Solo cierra la edición de ese ítem: si ya se abrió la de otro, la deja abierta.
-  const dejarDeEditar = (id: number) => setEditandoPrecio((actual) => (actual === id ? null : actual))
+  const dejarDeEditar = useCallback((id: number) => setEditandoPrecio((actual) => (actual === id ? null : actual)), [])
+  // S-40: callbacks estables para que, con 200 ítems, un escaneo solo pinte la fila nueva (React.memo).
+  const pedirReverso = useCallback((item: VentaItem, tipo: ReversoPendiente['tipo']) => setReverso({ item, tipo }), [])
+  const precioGuardado = useCallback((nueva: TVenta, item: VentaItem, precio: number) => {
+    qc.setQueryData(['venta', nueva.id], nueva)
+    dejarDeEditar(item.id)
+    avisos.mostrar('ok', `Precio de ${item.unidad.codigo_barras} cambiado a $${formatoNumero(precio)}.`)
+  }, [qc, dejarDeEditar, avisos])
+
+  const vieja = abierta && v ? esDeDiaAnterior(v) : false
 
   return (
     <div>
       <div className="pagina-encabezado">
         <h1>Venta de mostrador</h1>
-        <p>Cada lectura descuenta la unidad al momento. La venta no se borra: se reversa.</p>
+        <p>Cada lectura descuenta la unidad al momento. Puede escanear durante el día y cerrar al final. La venta no se borra: se reversa.</p>
       </div>
       <Resumen
         clave="venta-resumen"
@@ -202,14 +275,14 @@ export default function Venta() {
           <>
             <span>Venta <strong>{v ? `#${v.id}` : '—'}</strong>{v ? ` · ${v.estado}` : ' · sin abrir'}</span>
             <span>Ítems <strong>{v ? vigentes.length : '—'}</strong></span>
-            <span className={v && v.reversos.length > 0 ? 'resumen-agotados' : ''}>Reversos <strong>{v ? v.reversos.length : '—'}</strong></span>
-            <span>Última <strong>{ultimo?.unidad.codigo_barras ?? '—'}</strong></span>
+            <span>Total <strong>{v?.totales ? pesos(v.totales.total) : '—'}</strong></span>
+            <span>Abiertas <strong>{listaAbiertas.length}</strong></span>
           </>
         )}
       >
         <Medida etiqueta="Venta" valor={v ? `#${v.id}` : '—'} pie={v?.estado ?? 'Sin abrir'} tono="azul" icono="venta" />
         <Medida etiqueta="Ítems vigentes" valor={v ? vigentes.length : '—'} tono="amarillo" icono="caja" />
-        <Medida etiqueta="Reversos" valor={v ? v.reversos.length : '—'} tono="rojo" icono="auditoria" />
+        <Medida etiqueta="Total (IVA incl.)" valor={v?.totales ? pesos(v.totales.total) : '—'} pie={v && v.reversos.length > 0 ? `${v.reversos.length} reverso(s)` : undefined} tono="rojo" icono="billetera" />
         <Medida etiqueta="Última unidad" valor={ultimo?.unidad.codigo_barras ?? '—'} pie={ultimo?.unidad.referencia?.codigo_referencia} tono="verde" icono="etiqueta" codigo />
       </Resumen>
       <div className="venta">
@@ -220,17 +293,28 @@ export default function Venta() {
             {v && <span className={credito ? 'chip credito' : 'chip'}>{credito ? 'Crédito' : 'Contado'}</span>}
           </h2>
           <div className="acciones">
-            <button type="button" className="secundario" onClick={() => abrir.mutate(undefined)} disabled={abrir.isPending}>
+            <button type="button" className="secundario boton-44" onClick={nuevaContado} disabled={abrir.isPending}>
               {abrir.isPending && !eligiendoCliente ? 'Abriendo…' : 'Nueva venta'}
             </button>
-            <button type="button" className="secundario" onClick={() => setEligiendoCliente(true)} disabled={abrir.isPending}>Nueva venta a crédito</button>
-            {abierta && <button type="button" className="secundario" onClick={() => setRespaldo(true)}>Buscar sin escáner</button>}
-            {abierta && <button type="button" className="primario" onClick={() => cerrar.mutate()} disabled={cerrar.isPending}>Cerrar venta</button>}
+            <button type="button" className="secundario boton-44" onClick={() => setEligiendoCliente(true)} disabled={abrir.isPending}>Nueva venta a crédito</button>
+            {abierta && <button type="button" className="secundario boton-44" onClick={() => setRespaldo(true)}>Buscar sin escáner</button>}
+            {abierta && <button type="button" className="primario boton-44" onClick={() => setConfirmandoCierre(true)} disabled={cerrar.isPending}>Cerrar venta</button>}
             {v && !abierta && vigentes.length > 0 && (
-              <button type="button" className="peligro" onClick={() => setReverso({ tipo: 'anulacion' })}>Anular venta completa</button>
+              <button type="button" className="peligro boton-44" onClick={() => setReverso({ tipo: 'anulacion' })}>Anular venta completa</button>
             )}
           </div>
         </div>
+
+        {listaAbiertas.length > 0 && (
+          <BarraVentasAbiertas ventas={listaAbiertas} activa={v?.id ?? null} conUsuario={usuario?.rol === 'admin'} onElegir={cambiarA} />
+        )}
+
+        {vieja && v && (
+          <div className="aviso atencion" role="status">
+            Esta venta se abrió el {formatearFecha(v.created_at)} y sigue abierta. Ciérrala cuando termines de descargar
+            {credito ? '; el vencimiento se cuenta desde el cierre.' : '.'}
+          </div>
+        )}
 
         {v && credito && (
           <p className="venta-credito">
@@ -241,17 +325,30 @@ export default function Venta() {
           </p>
         )}
 
-        <input
-          ref={inputRef}
-          className="escaner"
-          placeholder={abierta ? (angosta ? 'Escanee o digite el código' : 'Escanee la etiqueta o el código del proveedor') : 'Abra una venta para escanear'}
-          aria-label="Etiqueta del local o código del proveedor"
-          onKeyDown={scanner.onKeyDown}
-          onPaste={scanner.onPaste}
-          onBlur={reenfocar}
-          disabled={!abierta}
-          autoComplete="off"
-        />
+        <div className="lector-con-cantidad">
+          <div className="lector-campo">
+            <input
+              ref={inputRef}
+              className="escaner"
+              placeholder={abierta ? (angosta ? 'Escanee o digite el código' : 'Escanee la etiqueta o el código del proveedor') : 'Abra una venta para escanear'}
+              aria-label="Etiqueta del local o código del proveedor"
+              onKeyDown={scanner.onKeyDown}
+              onPaste={scanner.onPaste}
+              onBlur={reenfocar}
+              disabled={!abierta}
+              autoComplete="off"
+            />
+          </div>
+          <CampoCantidad
+            id="venta-cantidad"
+            etiqueta="Cantidad"
+            valor={cantidad}
+            max={MAX_CANTIDAD}
+            onCambio={setCantidad}
+            disabled={!abierta}
+            ayuda="Con el código del proveedor. Cada etiqueta es una unidad."
+          />
+        </div>
         {v && (
           <table className="tabla-apilable tabla-venta">
             <thead>
@@ -259,45 +356,18 @@ export default function Venta() {
             </thead>
             <tbody>
               {v.items.map((i) => (
-                <tr key={i.id} className={i.reverso_id ? 'reversado' : ''}>
-                  <td data-etiqueta="Código">
-                    <span className="mono">{i.unidad.codigo_barras}</span>
-                    {i.origen_codigo === 'referencia' && <> <span className="chip por-referencia" title="Se vendió con el código del proveedor; el sistema eligió esta unidad">por referencia</span></>}
-                  </td>
-                  <td data-etiqueta="Referencia"><span>{i.unidad.referencia?.codigo_referencia} <small>{i.unidad.referencia?.descripcion}</small></span></td>
-                  <td data-etiqueta="Proveedor"><span>{i.unidad.referencia?.proveedor?.nombre} <ChipCalidad calidad={i.unidad.referencia?.calidad} /></span></td>
-                  <td data-etiqueta="Precio">
-                    {v && precioEditable(i) && editandoPrecio === i.id ? (
-                      <CeldaPrecio
-                        ventaId={v.id}
-                        item={i}
-                        onGuardado={(nueva, precio) => {
-                          qc.setQueryData(['venta', nueva.id], nueva)
-                          dejarDeEditar(i.id)
-                          avisos.mostrar('ok', `Precio de ${i.unidad.codigo_barras} cambiado a $${formatoNumero(precio)}.`)
-                        }}
-                        onTerminar={() => dejarDeEditar(i.id)}
-                      />
-                    ) : precioEditable(i) ? (
-                      <button type="button" className="enlace" title="Cambiar el precio de este ítem" onClick={() => setEditandoPrecio(i.id)}>
-                        {i.precio_unitario === null ? '—' : formatoNumero(i.precio_unitario)}
-                      </button>
-                    ) : (
-                      i.precio_unitario === null ? '—' : formatoNumero(i.precio_unitario)
-                    )}
-                    {i.iva_porcentaje !== null && <> <small>{Number(i.iva_porcentaje) === 0 ? 'sin IVA' : `IVA ${Number(i.iva_porcentaje)} %`}</small></>}
-                  </td>
-                  <td data-etiqueta="Captura"><span className={`chip ${i.metodo_captura}`}>{i.metodo_captura}</span></td>
-                  <td data-etiqueta="Usuario">{i.usuario.name}</td>
-                  <td data-etiqueta="Hora">{formatearHora(i.created_at)}</td>
-                  <td className="celda-accion">
-                    {i.reverso_id ? <em>reversado</em> : (
-                      <button className="enlace" onClick={() => setReverso({ item: i, tipo: abierta ? 'anulacion' : 'devolucion' })}>
-                        {abierta ? 'Quitar' : 'Devolver'}
-                      </button>
-                    )}
-                  </td>
-                </tr>
+                <FilaItem
+                  key={i.id}
+                  item={i}
+                  ventaId={v.id}
+                  abierta={abierta}
+                  editable={precioEditable(i)}
+                  editando={editandoPrecio === i.id}
+                  onEditar={setEditandoPrecio}
+                  onTerminar={dejarDeEditar}
+                  onGuardado={precioGuardado}
+                  onReverso={pedirReverso}
+                />
               ))}
               {v.items.length === 0 && <tr><td colSpan={8} className="vacio">Sin ítems todavía.</td></tr>}
             </tbody>
@@ -345,7 +415,7 @@ export default function Venta() {
 
       {respaldo && (
         <BusquedaRespaldo
-          onElegir={(codigo) => { setRespaldo(false); escanear.mutate({ codigo, metodo: 'digitado' }) }}
+          onElegir={(codigo) => { setRespaldo(false); escanear.mutate({ codigo, metodo: 'digitado', cantidad: 1 }) }}
           onCerrar={() => setRespaldo(false)}
         />
       )}
@@ -355,9 +425,9 @@ export default function Venta() {
           codigo={eligiendoRef.codigo}
           referencias={eligiendoRef.referencias}
           onElegir={(referenciaId) => {
-            const { codigo, metodo } = eligiendoRef
+            const { codigo, metodo, cantidad: n } = eligiendoRef
             setEligiendoRef(null)
-            escanear.mutate({ codigo, metodo, referenciaId })
+            escanear.mutate({ codigo, metodo, referenciaId, cantidad: n })
           }}
           onCerrar={() => setEligiendoRef(null)}
         />
@@ -366,8 +436,39 @@ export default function Venta() {
       {eligiendoCliente && (
         <DialogoCredito
           abriendo={abrir.isPending}
-          onConfirmar={(datos) => abrir.mutate(datos, { onSuccess: () => setEligiendoCliente(false) })}
+          onConfirmar={nuevaCredito}
           onCerrar={() => { setEligiendoCliente(false); abrir.reset() }}
+        />
+      )}
+
+      {duplicada && (
+        <Dialogo
+          titulo={duplicada.existente.forma_pago === 'credito' ? 'Ya hay una venta a crédito abierta de este cliente' : 'Ya tienes una venta de contado abierta'}
+          variante="confirmar"
+          onCerrar={() => setDuplicada(null)}
+          pie={(
+            <>
+              <button type="button" className="secundario boton-44" onClick={() => { const otra = duplicada.abrirOtra; setDuplicada(null); otra() }}>Abrir otra</button>
+              <button type="button" className="primario boton-44" autoFocus onClick={() => { cambiarA(duplicada.existente.id); setDuplicada(null) }}>Continuar con esa</button>
+            </>
+          )}
+        >
+          <DialogoSeccion>
+            <p>
+              {duplicada.existente.forma_pago === 'credito' ? `${duplicada.existente.cliente?.nombre ?? 'El cliente'} ya tiene` : 'Ya tienes'} una venta {duplicada.existente.forma_pago === 'credito' ? 'a crédito' : 'de contado'} abierta
+              {' '}(#{duplicada.existente.id}, {duplicada.existente.items_count} {duplicada.existente.items_count === 1 ? 'ítem' : 'ítems'}, {pesos(duplicada.existente.total)}). ¿Continuar con ella o abrir otra?
+            </p>
+          </DialogoSeccion>
+        </Dialogo>
+      )}
+
+      {confirmandoCierre && v && (
+        <DialogoCerrarVenta
+          venta={v}
+          items={vigentes.length}
+          pendiente={cerrar.isPending}
+          onCerrarVenta={() => cerrar.mutate()}
+          onSeguir={() => setConfirmandoCierre(false)}
         />
       )}
 
@@ -375,11 +476,169 @@ export default function Venta() {
         <DialogoReverso
           ventaId={v.id}
           pendiente={reverso}
-          onListo={(nueva) => { qc.setQueryData(['venta', nueva.id], nueva); setReverso(null); avisos.mostrar('ok', 'Reverso registrado; la unidad volvió al inventario.') }}
+          onListo={(nueva) => {
+            qc.setQueryData(['venta', nueva.id], nueva)
+            qc.invalidateQueries({ queryKey: CLAVE_ABIERTAS })
+            setReverso(null)
+            avisos.mostrar('ok', 'Reverso registrado; la unidad volvió al inventario.')
+          }}
           onCerrar={() => setReverso(null)}
         />
       )}
     </div>
+  )
+}
+
+/**
+ * S-40: una ficha por venta abierta (tipo, cliente, ítems y total), la activa resaltada. Se recorre
+ * con las flechas y se elige con Enter o clic; el foco vuelve al lector. A 360 px se desplaza en
+ * horizontal sin desbordar la página.
+ */
+function BarraVentasAbiertas({ ventas, activa, conUsuario, onElegir }: {
+  ventas: VentaAbierta[]
+  activa: number | null
+  conUsuario: boolean
+  onElegir: (id: number) => void
+}) {
+  const botones = useRef<Array<HTMLButtonElement | null>>([])
+  const indiceActiva = Math.max(0, ventas.findIndex((v) => v.id === activa))
+
+  const mover = (e: KeyboardEvent<HTMLButtonElement>, i: number) => {
+    const destino = { ArrowRight: i + 1, ArrowDown: i + 1, ArrowLeft: i - 1, ArrowUp: i - 1, Home: 0, End: ventas.length - 1 }[e.key]
+    if (destino === undefined) return
+    e.preventDefault()
+    const j = (destino + ventas.length) % ventas.length
+    botones.current[j]?.focus()
+  }
+
+  return (
+    <div className="ventas-abiertas" role="group" aria-label={`Ventas abiertas (${ventas.length})`}>
+      <span className="ventas-abiertas-titulo">Ventas abiertas</span>
+      <div className="ventas-abiertas-fichas">
+        {ventas.map((v, i) => (
+          <button
+            key={v.id}
+            ref={(b) => { botones.current[i] = b }}
+            type="button"
+            className={v.id === activa ? 'ficha-venta activa' : 'ficha-venta'}
+            aria-pressed={v.id === activa}
+            tabIndex={i === indiceActiva ? 0 : -1}
+            onKeyDown={(e) => mover(e, i)}
+            onClick={() => onElegir(v.id)}
+          >
+            <span className="ficha-venta-linea">
+              <strong>#{v.id}</strong>
+              <span className={v.forma_pago === 'credito' ? 'chip credito' : 'chip'}>{v.forma_pago === 'credito' ? 'Crédito' : 'Contado'}</span>
+              {esDeDiaAnterior(v) && <span className="chip vieja" title="Abierta desde un día anterior">{formatearFecha(v.created_at)}</span>}
+            </span>
+            {v.forma_pago === 'credito' && <span className="ficha-venta-cliente">{v.cliente?.nombre ?? '—'}</span>}
+            <span className="ficha-venta-linea">
+              <span>{v.items_count} {v.items_count === 1 ? 'ítem' : 'ítems'}</span>
+              <strong>{pesos(v.total)}</strong>
+            </span>
+            {conUsuario && <small>{v.usuario?.name}</small>}
+            <span className="solo-lector">{nombreVenta(v)}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * S-40: una fila de la tabla. Memoizada: con 200 ítems, escanear o quitar solo vuelve a pintar las
+ * filas que cambian (los callbacks que recibe son estables).
+ */
+const FilaItem = memo(function FilaItem({ item: i, ventaId, abierta, editable, editando, onEditar, onTerminar, onGuardado, onReverso }: {
+  item: VentaItem
+  ventaId: number
+  abierta: boolean
+  editable: boolean
+  editando: boolean
+  onEditar: (id: number) => void
+  onTerminar: (id: number) => void
+  onGuardado: (nueva: TVenta, item: VentaItem, precio: number) => void
+  onReverso: (item: VentaItem, tipo: ReversoPendiente['tipo']) => void
+}) {
+  return (
+    <tr className={i.reverso_id ? 'reversado' : ''}>
+      <td data-etiqueta="Código">
+        <span className="mono codigo-unidad">{i.unidad.codigo_barras}</span>
+        {i.origen_codigo === 'referencia' && <> <span className="chip por-referencia" title="Se vendió con el código del proveedor; el sistema eligió esta unidad">por referencia</span></>}
+      </td>
+      <td data-etiqueta="Referencia"><span>{i.unidad.referencia?.codigo_referencia} <small>{i.unidad.referencia?.descripcion}</small></span></td>
+      <td data-etiqueta="Proveedor"><span>{i.unidad.referencia?.proveedor?.nombre} <ChipCalidad calidad={i.unidad.referencia?.calidad} /></span></td>
+      <td data-etiqueta="Precio">
+        {editable && editando ? (
+          <CeldaPrecio
+            ventaId={ventaId}
+            item={i}
+            onGuardado={(nueva, precio) => onGuardado(nueva, i, precio)}
+            onTerminar={() => onTerminar(i.id)}
+          />
+        ) : editable ? (
+          <button type="button" className="enlace" title="Cambiar el precio de este ítem" onClick={() => onEditar(i.id)}>
+            {i.precio_unitario === null ? '—' : formatoNumero(i.precio_unitario)}
+          </button>
+        ) : (
+          i.precio_unitario === null ? '—' : formatoNumero(i.precio_unitario)
+        )}
+        {i.iva_porcentaje !== null && <> <small>{Number(i.iva_porcentaje) === 0 ? 'sin IVA' : `IVA ${Number(i.iva_porcentaje)} %`}</small></>}
+      </td>
+      <td data-etiqueta="Captura"><span className={`chip ${i.metodo_captura}`}>{i.metodo_captura}</span></td>
+      <td data-etiqueta="Usuario">{i.usuario.name}</td>
+      <td data-etiqueta="Hora">{formatearHora(i.created_at)}</td>
+      <td className="celda-accion">
+        {i.reverso_id ? <em>reversado</em> : (
+          <button className="enlace" onClick={() => onReverso(i, abierta ? 'anulacion' : 'devolucion')}>
+            {abierta ? 'Quitar' : 'Devolver'}
+          </button>
+        )}
+      </td>
+    </tr>
+  )
+})
+
+/**
+ * S-40: confirmación antes de cerrar: ítems, total con IVA incluido, forma de pago, cliente y, en
+ * crédito, el vencimiento que se fijará (hoy + plazo del cliente, S-11). Al cerrar, los precios
+ * quedan fijos.
+ */
+function DialogoCerrarVenta({ venta: v, items, pendiente, onCerrarVenta, onSeguir }: {
+  venta: TVenta
+  items: number
+  pendiente: boolean
+  onCerrarVenta: () => void
+  onSeguir: () => void
+}) {
+  const credito = v.forma_pago === 'credito'
+  const vence = credito && v.cliente ? sumarDias(hoyEnBogota(), v.cliente.plazo_dias) : null
+
+  return (
+    <Dialogo
+      titulo={`Cerrar la venta #${v.id}`}
+      variante="confirmar"
+      onCerrar={onSeguir}
+      pendiente={pendiente}
+      pie={(
+        <>
+          <button type="button" className="secundario boton-44" disabled={pendiente} onClick={onSeguir}>Seguir escaneando</button>
+          <button type="button" className="primario boton-44" autoFocus disabled={pendiente} onClick={onCerrarVenta}>{pendiente ? 'Cerrando…' : 'Cerrar venta'}</button>
+        </>
+      )}
+    >
+      <DialogoSeccion>
+        <dl className="datos-fijos resumen-cierre">
+          <div><dt>Ítems</dt><dd>{items}</dd></div>
+          <div><dt>Total (IVA incl.)</dt><dd><strong>{v.totales ? pesos(v.totales.total) : '—'}</strong></dd></div>
+          <div><dt>Forma de pago</dt><dd>{credito ? 'Crédito' : 'Contado'}</dd></div>
+          {credito && <div><dt>Cliente</dt><dd>{v.cliente?.nombre ?? '—'}</dd></div>}
+          {vence && <div><dt>Vencimiento</dt><dd>{fechaCorta(vence)} ({v.cliente?.plazo_dias} días)</dd></div>}
+        </dl>
+        <p>Al cerrar, los precios quedan fijos y la venta no se puede editar; solo reversar.</p>
+        {items === 0 && <p className="aviso atencion">La venta no tiene ítems vigentes.</p>}
+      </DialogoSeccion>
+    </Dialogo>
   )
 }
 
