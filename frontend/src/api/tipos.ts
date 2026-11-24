@@ -48,6 +48,8 @@ export interface Unidad {
   estado: EstadoUnidad
   referencia_id: number
   referencia?: Referencia
+  /** S-34: en la verificación de una salida, 'referencia' si el sistema asignó la unidad. */
+  origen_codigo?: OrigenCodigo
 }
 
 /** S-23: calidad opcional de una referencia. */
@@ -257,6 +259,8 @@ export interface AjusteInventario {
     codigo_barras: string
     estado: EstadoUnidad
     metodo_captura: MetodoCaptura
+    /** S-34: 'referencia' si se leyó el código del proveedor y el sistema eligió la unidad. */
+    origen_codigo?: OrigenCodigo
     /** true si sigue retirada y esta es su última baja. */
     reintegrable: boolean
     referencia: ReferenciaUnidad
@@ -279,6 +283,21 @@ export interface Devolucion {
   }
   reverso: { id: number; tipo: 'devolucion' | 'anulacion'; motivo: string; created_at: string } | null
 }
+
+/** S-34: un ítem vendido (venta cerrada, sin reverso) candidato a devolverse por código de proveedor. */
+export interface CandidataDevolucion {
+  venta_item_id: number
+  venta_id: number
+  cerrada_at: string
+  forma_pago: FormaPago
+  cliente: { id: number; nombre: string; documento: string | null } | null
+  precio_unitario: string | null
+  codigo_barras: string
+  referencia: { id: number; codigo_referencia: string; descripcion: string; proveedor: string | null }
+}
+
+/** S-34: la consulta de devolución trae la venta de la etiqueta o, con un código de proveedor, candidatas. */
+export type ConsultaDevolucion = Devolucion | { tipo: 'elegir_venta'; codigo: string; ventas: CandidataDevolucion[] }
 
 /** RF-22: fila del informe Bajo mínimo (referencia sin universal o universal con su desglose). */
 export interface FilaBajoMinimo {

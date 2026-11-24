@@ -7,7 +7,9 @@ import ChipCalidad from '../ChipCalidad'
  * No se adivina: quien vende elige cuál y la venta reenvía el mismo código con referencia_id.
  * Escape o Cancelar cierran sin vender; el foco vuelve al campo de escaneo (lo hace la pantalla).
  */
-export default function DialogoElegirReferencia({ codigo, referencias, onElegir, onCerrar }: {
+export default function DialogoElegirReferencia({ titulo = '¿Cuál referencia se vende?', codigo, referencias, onElegir, onCerrar }: {
+  /** S-34: lo usa también Salidas ("¿Cuál referencia sale?"). */
+  titulo?: string
   codigo: string
   referencias: OpcionReferenciaVenta[]
   onElegir: (referenciaId: number) => void
@@ -15,7 +17,7 @@ export default function DialogoElegirReferencia({ codigo, referencias, onElegir,
 }) {
   return (
     <DialogoApilado
-      titulo="¿Cuál referencia se vende?"
+      titulo={titulo}
       nota={<p className="nota-obligatorio nota-referencias">El código <strong className="mono">{codigo}</strong> está en {referencias.length} referencias. Elija una.</p>}
       onCerrar={onCerrar}
       onEnviar={() => {}}

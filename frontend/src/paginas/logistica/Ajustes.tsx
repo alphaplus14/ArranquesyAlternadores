@@ -1,16 +1,20 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
 import { api, mensajeError } from '../../api/cliente'
 import {
   NOMBRE_MOTIVO,
   type AjusteInventario,
+  type CandidataDevolucion,
+  type ConsultaDevolucion,
   type Devolucion,
   type MetodoCaptura,
   type MotivoAjuste,
   type MotivoBaja,
   type MotivoReintegro,
+  type OpcionReferenciaVenta,
+  type OrigenCodigo,
   type Pagina,
   type ReferenciaUnidad,
   type TipoAjuste,
@@ -18,8 +22,12 @@ import {
 } from '../../api/tipos'
 import { useScanner } from '../../hooks/useScanner'
 import { useListaPaginada } from '../../hooks/useListaPaginada'
+import { useDebounce } from '../../hooks/useDebounce'
+import { useAngosta } from '../../hooks/useAngosta'
 import ControlSegmentado from '../../componentes/ControlSegmentado'
 import ChipCalidad from '../../componentes/ChipCalidad'
+import Icono from '../../componentes/Icono'
+import DialogoElegirReferencia from '../../componentes/mostrador/DialogoElegirReferencia'
 import Paginacion from '../../componentes/Paginacion'
 import { atraparTab } from '../../componentes/foco'
 import { pesos } from '../../componentes/numeros'
@@ -43,9 +51,16 @@ const PESTANAS: { valor: Pestana; texto: string }[] = [
 const MOTIVOS_BAJA: MotivoBaja[] = ['garantia', 'devolucion_proveedor', 'dano', 'perdida', 'otro']
 const MOTIVOS_REINTEGRO: MotivoReintegro[] = ['error_de_registro', 'otro']
 
-/** Una unidad del lote de salida, con el método con que llegó su código (RF-12). */
+/**
+ * Una unidad del lote de salida, con el método con que llegó su código (RF-12). S-34: `codigo` es
+ * siempre la etiqueta de la unidad; con código de proveedor, `leido` es lo escaneado y `origen`
+ * 'referencia' (la unidad la asignó el sistema).
+ */
 interface ItemLote {
   codigo: string
+  unidadId: number
+  leido: string
+  origen: OrigenCodigo
   metodo: MetodoCaptura
   referencia: ReferenciaUnidad
   error?: string
@@ -72,7 +87,8 @@ export default function Ajustes() {
   const cambiar = (p: Pestana) => setParams(p === 'salidas' ? {} : { p }, { replace: true })
 
   const retirarDevuelta = (d: Devolucion, metodo: MetodoCaptura) => {
-    setLote((l) => (l.some((i) => i.codigo === d.unidad.codigo_barras) ? l : [{ codigo: d.unidad.codigo_barras, metodo, referencia: d.referencia }, ...l]))
+    const codigo = d.unidad.codigo_barras
+    setLote((l) => (l.some((i) => i.codigo === codigo) ? l : [{ codigo, unidadId: d.unidad.id, leido: codigo, origen: 'etiqueta', metodo, referencia: d.referencia }, ...l]))
     cambiar('salidas')
   }
 
@@ -94,6 +110,9 @@ export default function Ajustes() {
 
 /* ─────────────────────────────── Salidas ─────────────────────────────── */
 
+/** Lectura pendiente de verificar (S-34: con referenciaId cuando se eligió entre varias referencias). */
+interface Lectura { codigo: string; metodo: MetodoCaptura; referenciaId?: number }
+
 function Salidas({ lote, setLote }: { lote: ItemLote[]; setLote: (f: (l: ItemLote[]) => ItemLote[]) => void }) {
   const qc = useQueryClient()
   const inputRef = useRef<HTMLInputElement>(null)
@@ -102,46 +121,89 @@ function Salidas({ lote, setLote }: { lote: ItemLote[]; setLote: (f: (l: ItemLot
   const [nota, setNota] = useState('')
   const [aviso, setAviso] = useState<Aviso>(null)
   const [confirmando, setConfirmando] = useState(false)
-  // Códigos que se están verificando: dos lecturas seguidas del mismo no entran dos veces.
-  const enCurso = useRef(new Set<string>())
+  const [verificando, setVerificando] = useState(false)
+  /** S-34: el código de proveedor está en varias referencias; se espera la elección. */
+  const [eligiendo, setEligiendo] = useState<{ lectura: Lectura; referencias: OpcionReferenciaVenta[] } | null>(null)
   const loteRef = useRef(lote)
   loteRef.current = lote
+  // S-34: las lecturas se verifican una tras otra. Así dos lecturas seguidas del mismo código de
+  // proveedor excluyen la unidad que tomó la anterior (excluir[]) y nunca piden la misma.
+  const cola = useRef<Lectura[]>([])
+  const ocupado = useRef(false)
 
+  // A 360 px el texto largo se corta: el rótulo del campo ya dice qué códigos acepta.
+  const angosta = useAngosta()
   const enfocar = () => setTimeout(() => inputRef.current?.focus(), 0)
   useEffect(() => { inputRef.current?.focus() }, [])
 
-  const verificar = useMutation({
-    mutationFn: async ({ codigo }: { codigo: string; metodo: MetodoCaptura }) =>
-      (await api.get<Unidad>('/ajustes/unidad', { params: { tipo: 'baja' satisfies TipoAjuste, codigo } })).data,
-    onSuccess: (u, { codigo, metodo }) => {
-      enCurso.current.delete(codigo)
-      const r = u.referencia
-      if (!r) return
-      const referencia: ReferenciaUnidad = {
-        id: r.id,
-        codigo_referencia: r.codigo_referencia,
-        descripcion: r.descripcion,
-        calidad: r.calidad,
-        proveedor: r.proveedor ?? { id: r.proveedor_id, nombre: '' },
+  const procesar = async () => {
+    if (ocupado.current) return
+    ocupado.current = true
+    setVerificando(true)
+    while (cola.current.length > 0) {
+      const lectura = cola.current.shift()!
+      try {
+        const u = (await api.get<Unidad>('/ajustes/unidad', {
+          params: {
+            tipo: 'baja' satisfies TipoAjuste,
+            codigo: lectura.codigo,
+            referencia_id: lectura.referenciaId,
+            excluir: loteRef.current.map((i) => i.unidadId),
+          },
+        })).data
+        const r = u.referencia
+        if (!r) continue
+        const referencia: ReferenciaUnidad = {
+          id: r.id,
+          codigo_referencia: r.codigo_referencia,
+          descripcion: r.descripcion,
+          calidad: r.calidad,
+          proveedor: r.proveedor ?? { id: r.proveedor_id, nombre: '' },
+        }
+        const origen: OrigenCodigo = u.origen_codigo ?? 'etiqueta'
+        const item: ItemLote = { codigo: u.codigo_barras, unidadId: u.id, leido: lectura.codigo, origen, metodo: lectura.metodo, referencia }
+        const repetida = loteRef.current.some((i) => i.codigo === u.codigo_barras)
+        if (repetida) {
+          setAviso({ tipo: 'atencion', texto: `La unidad ${u.codigo_barras} ya está en el lote.` })
+          continue
+        }
+        loteRef.current = [item, ...loteRef.current]
+        setLote((l) => (l.some((i) => i.codigo === item.codigo) ? l : [item, ...l]))
+        setAviso({
+          tipo: 'ok',
+          texto: origen === 'referencia'
+            ? `${u.codigo_barras} agregada al lote por referencia (${lectura.codigo}) · ${referencia.codigo_referencia} · ${referencia.proveedor.nombre}`
+            : `${u.codigo_barras} agregada al lote · ${referencia.codigo_referencia} · ${referencia.proveedor.nombre}`,
+        })
+      } catch (e) {
+        const datos = e instanceof AxiosError ? e.response?.data as { tipo?: string; referencias?: OpcionReferenciaVenta[] } | undefined : undefined
+        if (datos?.tipo === 'elegir_referencia' && datos.referencias?.length) {
+          // Lo que siga en la cola espera a la elección.
+          setAviso(null)
+          setEligiendo({ lectura, referencias: datos.referencias })
+          break
+        }
+        setAviso({ tipo: 'error', texto: mensajeError(e) })
       }
-      setLote((l) => (l.some((i) => i.codigo === u.codigo_barras) ? l : [{ codigo: u.codigo_barras, metodo, referencia }, ...l]))
-      setAviso({ tipo: 'ok', texto: `${u.codigo_barras} agregada al lote · ${referencia.codigo_referencia} · ${referencia.proveedor.nombre}` })
-    },
-    onError: (e, { codigo }) => {
-      enCurso.current.delete(codigo)
-      setAviso({ tipo: 'error', texto: mensajeError(e) })
-    },
-  })
+    }
+    ocupado.current = false
+    setVerificando(false)
+  }
+
+  const encolar = (lectura: Lectura) => {
+    cola.current.push(lectura)
+    void procesar()
+  }
 
   const onCodigo = (codigo: string, metodo: MetodoCaptura) => {
     if (inputRef.current) inputRef.current.value = ''
-    if (loteRef.current.some((i) => i.codigo === codigo) || enCurso.current.has(codigo)) {
+    // Una etiqueta ya leída no entra dos veces; un código de proveedor sí (otra unidad).
+    if (loteRef.current.some((i) => i.codigo === codigo)) {
       setAviso({ tipo: 'atencion', texto: `La unidad ${codigo} ya está en el lote.` })
       return
     }
-    enCurso.current.add(codigo)
     setConfirmando(false)
-    verificar.mutate({ codigo, metodo })
+    encolar({ codigo, metodo })
   }
   const scanner = useScanner(onCodigo)
 
@@ -152,7 +214,10 @@ function Salidas({ lote, setLote }: { lote: ItemLote[]; setLote: (f: (l: ItemLot
       (await api.post<AjusteInventario>('/ajustes/salidas', {
         motivo,
         nota: nota.trim() || null,
-        codigos: lote.map((i) => ({ codigo: i.codigo, metodo_captura: i.metodo })),
+        // S-34: con código de proveedor se envía lo leído y la unidad asignada en la verificación.
+        codigos: lote.map((i) => (i.origen === 'referencia'
+          ? { codigo: i.leido, metodo_captura: i.metodo, origen_codigo: 'referencia', unidad_codigo: i.codigo }
+          : { codigo: i.codigo, metodo_captura: i.metodo, origen_codigo: 'etiqueta' })),
       })).data,
     onSuccess: (a) => {
       setLote(() => [])
@@ -215,16 +280,18 @@ function Salidas({ lote, setLote }: { lote: ItemLote[]; setLote: (f: (l: ItemLot
       {motivo === 'garantia' && <p className="ayuda">Garantía solo registra la salida: el reclamo al fabricante se sigue por fuera del sistema.</p>}
       {motivo === 'devolucion_proveedor' && <p className="ayuda">Solo saca la unidad del inventario: no crea nota crédito ni cambia el saldo del proveedor.</p>}
 
-      <label htmlFor="ajustes-lector">Código de la unidad (etiqueta del local)</label>
+      <label htmlFor="ajustes-lector">Etiqueta del local o código del proveedor</label>
       <input
         id="ajustes-lector"
         ref={inputRef}
         className="escaner"
-        placeholder="Escanee la etiqueta (o digite el código y Enter)"
+        placeholder={angosta ? 'Escanee o digite el código' : 'Escanee la etiqueta o el código del proveedor'}
         onKeyDown={scanner.onKeyDown}
         onPaste={scanner.onPaste}
         autoComplete="off"
       />
+      <p className="ayuda">Con el código del proveedor el sistema elige la unidad: primero las que no tienen etiqueta impresa, la más antigua.</p>
+      {verificando && <p className="ayuda" role="status">Verificando…</p>}
       {aviso && <div className={`aviso ${aviso.tipo}`} role="status">{aviso.texto}</div>}
 
       {n === 0 ? (
@@ -236,13 +303,17 @@ function Salidas({ lote, setLote }: { lote: ItemLote[]; setLote: (f: (l: ItemLot
           <tbody>
             {lote.map((i) => (
               <tr key={i.codigo} className={i.error ? 'fila-con-error' : undefined}>
-                <td data-etiqueta="Unidad" className="mono">
-                  {i.codigo} {i.metodo === 'digitado' && <span className="chip digitado">digitado</span>}
-                  {i.error && <div className="ayuda error">{i.error}</div>}
+                <td data-etiqueta="Unidad">
+                  <span>
+                    <span className="mono">{i.codigo}</span>
+                    {i.origen === 'referencia' && <> <span className="chip por-referencia" title={`Leído: ${i.leido}. El sistema eligió esta unidad.`}>por referencia</span></>}
+                    {i.metodo === 'digitado' && <> <span className="chip digitado">digitado</span></>}
+                    {i.error && <span className="ayuda error bloque">{i.error}</span>}
+                  </span>
                 </td>
                 <td data-etiqueta="Referencia"><strong>{i.referencia.codigo_referencia}</strong></td>
                 <td data-etiqueta="Descripción">{i.referencia.descripcion}</td>
-                <td data-etiqueta="Proveedor">{i.referencia.proveedor.nombre} <ChipCalidad calidad={i.referencia.calidad} /></td>
+                <td data-etiqueta="Proveedor"><span>{i.referencia.proveedor.nombre} <ChipCalidad calidad={i.referencia.calidad} /></span></td>
                 <td className="celda-accion">
                   <button type="button" className="secundario boton-44" onClick={() => quitar(i.codigo)} aria-label={`Quitar ${i.codigo} del lote`}>Quitar</button>
                 </td>
@@ -265,39 +336,108 @@ function Salidas({ lote, setLote }: { lote: ItemLote[]; setLote: (f: (l: ItemLot
           </div>
         ) : (
           <div className="acciones">
-            <button type="button" className="primario boton-44" disabled={n === 0 || registrar.isPending} onClick={pedirConfirmacion}>{textoBoton}</button>
+            <button type="button" className="primario boton-44" disabled={n === 0 || registrar.isPending || verificando} onClick={pedirConfirmacion}>{textoBoton}</button>
           </div>
         )}
       </div>
+
+      {eligiendo && (
+        <DialogoElegirReferencia
+          titulo="¿Cuál referencia sale?"
+          codigo={eligiendo.lectura.codigo}
+          referencias={eligiendo.referencias}
+          onElegir={(referenciaId) => {
+            const { lectura } = eligiendo
+            setEligiendo(null)
+            // La elegida va primero; lo que esperaba en la cola sigue después.
+            cola.current.unshift({ ...lectura, referenciaId })
+            void procesar()
+            enfocar()
+          }}
+          onCerrar={() => {
+            setEligiendo(null)
+            enfocar()
+            void procesar()
+          }}
+        />
+      )}
     </div>
   )
 }
 
 /* ─────────────────────────── Devoluciones de clientes ─────────────────────────── */
 
+/** Lo que se va a devolver: con etiqueta, la venta de esa unidad; con código de proveedor, el ítem elegido (S-34). */
+interface Encontrada { datos: Devolucion; metodo: MetodoCaptura; leido: string; ventaItemId?: number }
+
+/** S-34: el ítem candidato convertido al formato de la tarjeta de devolución. */
+function desdeCandidata(c: CandidataDevolucion): Devolucion {
+  return {
+    venta_item_id: c.venta_item_id,
+    precio_unitario: c.precio_unitario,
+    iva_porcentaje: null,
+    unidad: { id: 0, codigo_barras: c.codigo_barras, estado: 'vendida' },
+    referencia: {
+      id: c.referencia.id,
+      codigo_referencia: c.referencia.codigo_referencia,
+      descripcion: c.referencia.descripcion,
+      calidad: null,
+      proveedor: { id: 0, nombre: c.referencia.proveedor ?? '' },
+    },
+    venta: { id: c.venta_id, forma_pago: c.forma_pago, created_at: c.cerrada_at, cerrada_at: c.cerrada_at, cliente: c.cliente },
+    reverso: null,
+  }
+}
+
 function Devoluciones({ onRetirar }: { onRetirar: (d: Devolucion, metodo: MetodoCaptura) => void }) {
   const qc = useQueryClient()
   const inputRef = useRef<HTMLInputElement>(null)
-  const [encontrada, setEncontrada] = useState<{ datos: Devolucion; metodo: MetodoCaptura } | null>(null)
+  const [encontrada, setEncontrada] = useState<Encontrada | null>(null)
   const [hecha, setHecha] = useState<{ datos: Devolucion; metodo: MetodoCaptura } | null>(null)
   const [motivo, setMotivo] = useState('')
   const [aviso, setAviso] = useState<Aviso>(null)
+  /** S-34: ventas candidatas de un código de proveedor; nunca se elige una sola sin preguntar. */
+  const [candidatas, setCandidatas] = useState<{ codigo: string; metodo: MetodoCaptura; ventas: CandidataDevolucion[] } | null>(null)
+  const [buscarVenta, setBuscarVenta] = useState('')
+  const ventaBuscada = useDebounce(buscarVenta.trim().replace(/^#\s*/, ''))
 
+  // A 360 px el texto largo se corta: el rótulo del campo ya dice qué códigos acepta.
+  const angosta = useAngosta()
   const enfocar = () => setTimeout(() => inputRef.current?.focus(), 0)
   useEffect(() => { inputRef.current?.focus() }, [])
 
   const consultar = useMutation({
     mutationFn: async ({ codigo }: { codigo: string; metodo: MetodoCaptura }) =>
-      (await api.get<Devolucion>('/devoluciones/consulta', { params: { codigo } })).data,
-    onSuccess: (datos, { metodo }) => {
-      setEncontrada({ datos, metodo })
+      (await api.get<ConsultaDevolucion>('/devoluciones/consulta', { params: { codigo } })).data,
+    onSuccess: (datos, { codigo, metodo }) => {
       setAviso(null)
+      if ('tipo' in datos && datos.tipo === 'elegir_venta') {
+        setEncontrada(null)
+        setBuscarVenta('')
+        setCandidatas({ codigo: datos.codigo, metodo, ventas: datos.ventas })
+        return
+      }
+      setCandidatas(null)
+      setEncontrada({ datos: datos as Devolucion, metodo, leido: codigo })
     },
     onError: (e) => {
       setEncontrada(null)
+      setCandidatas(null)
       setAviso({ tipo: 'error', texto: mensajeError(e) })
     },
   })
+
+  // Buscar por n.º de venta: primero entre las candidatas cargadas; si no está, se pregunta al backend.
+  const filtradas = candidatas?.ventas.filter((v) => ventaBuscada === '' || String(v.venta_id).startsWith(ventaBuscada)) ?? []
+  const buscarEnServidor = candidatas !== null && /^\d+$/.test(ventaBuscada) && filtradas.length === 0
+  const porVenta = useQuery({
+    queryKey: ['devoluciones', 'candidatas', candidatas?.codigo, ventaBuscada],
+    queryFn: async () => (await api.get<ConsultaDevolucion>('/devoluciones/consulta', { params: { codigo: candidatas?.codigo, venta: ventaBuscada } })).data,
+    enabled: buscarEnServidor,
+  })
+  const listaVentas = buscarEnServidor
+    ? (porVenta.data && 'tipo' in porVenta.data ? porVenta.data.ventas : [])
+    : filtradas
 
   const onCodigo = (codigo: string, metodo: MetodoCaptura) => {
     if (inputRef.current) inputRef.current.value = ''
@@ -307,11 +447,18 @@ function Devoluciones({ onRetirar }: { onRetirar: (d: Devolucion, metodo: Metodo
   }
   const scanner = useScanner(onCodigo)
 
+  const elegir = (c: CandidataDevolucion) => {
+    if (!candidatas) return
+    setEncontrada({ datos: desdeCandidata(c), metodo: candidatas.metodo, leido: candidatas.codigo, ventaItemId: c.venta_item_id })
+    setCandidatas(null)
+  }
+
   const registrar = useMutation({
     mutationFn: async () => {
       if (!encontrada) throw new Error('Escanee la unidad que devuelve el cliente.')
       return (await api.post<Devolucion>('/devoluciones', {
-        codigo: encontrada.datos.unidad.codigo_barras,
+        codigo: encontrada.ventaItemId ? encontrada.leido : encontrada.datos.unidad.codigo_barras,
+        venta_item_id: encontrada.ventaItemId,
         motivo: motivo.trim(),
         metodo_captura: encontrada.metodo,
       })).data
@@ -323,6 +470,8 @@ function Devoluciones({ onRetirar }: { onRetirar: (d: Devolucion, metodo: Metodo
       setMotivo('')
       setAviso({ tipo: 'ok', texto: `Devolución registrada: la unidad ${datos.unidad.codigo_barras} volvió al inventario.` })
       qc.invalidateQueries({ queryKey: ['referencias'] })
+      qc.invalidateQueries({ queryKey: ['cartera'] })
+      qc.invalidateQueries({ queryKey: ['cartera-cliente'] })
       enfocar()
     },
     onError: (e) => setAviso({ tipo: 'error', texto: mensajeError(e) }),
@@ -334,13 +483,14 @@ function Devoluciones({ onRetirar }: { onRetirar: (d: Devolucion, metodo: Metodo
 
   return (
     <div className="ajustes-seccion">
+      <p className="ayuda">Escanee la etiqueta de la unidad. Sin etiqueta, escanee el código del proveedor y elija la venta.</p>
       <p className="ayuda">Solo para ventas cerradas. Si la venta sigue abierta, anule el ítem desde Mostrador.</p>
-      <label htmlFor="devolucion-lector">Código de la unidad que devuelve el cliente</label>
+      <label htmlFor="devolucion-lector">Etiqueta de la unidad o código del proveedor</label>
       <input
         id="devolucion-lector"
         ref={inputRef}
         className="escaner"
-        placeholder="Escanee la etiqueta (o digite el código y Enter)"
+        placeholder={angosta ? 'Escanee o digite el código' : 'Escanee la etiqueta o el código del proveedor'}
         onKeyDown={scanner.onKeyDown}
         onPaste={scanner.onPaste}
         autoComplete="off"
@@ -356,6 +506,43 @@ function Devoluciones({ onRetirar }: { onRetirar: (d: Devolucion, metodo: Metodo
         </div>
       )}
 
+      {candidatas && (
+        <section className="elegir-venta" aria-labelledby="elegir-venta-titulo">
+          <h3 id="elegir-venta-titulo">Elija la venta que devuelve</h3>
+          <p className="ayuda">
+            Ventas cerradas con unidades de <strong className="mono">{candidatas.codigo}</strong> sin devolver, de la más reciente a la más antigua (hasta 20).
+          </p>
+          <label className="busca">
+            <Icono nombre="buscar" />
+            <input value={buscarVenta} onChange={(e) => setBuscarVenta(e.target.value)} placeholder="N.º de venta" inputMode="numeric" aria-label="Buscar por número de venta" />
+          </label>
+          {buscarEnServidor && porVenta.isFetching ? <p className="ayuda" role="status">Buscando la venta…</p> : listaVentas.length === 0 ? (
+            <p className="vacio">Ninguna venta coincide.</p>
+          ) : (
+            <ul className="lista-candidatas">
+              {listaVentas.map((c) => (
+                <li key={c.venta_item_id}>
+                  <button type="button" className="candidata-venta" onClick={() => elegir(c)} aria-label={`Elegir la venta #${c.venta_id}, unidad ${c.codigo_barras}`}>
+                    <span className="candidata-linea">
+                      <strong>Venta #{c.venta_id}</strong>
+                      <strong>{c.precio_unitario ? pesos(c.precio_unitario) : '—'}</strong>
+                    </span>
+                    <span className="candidata-linea">
+                      <span>{c.cliente?.nombre ?? 'Mostrador'}</span>
+                      <span className={c.forma_pago === 'credito' ? 'chip credito' : 'chip'}>{c.forma_pago === 'credito' ? 'Crédito' : 'Contado'}</span>
+                    </span>
+                    <small>{fechaHora(c.cerrada_at)} · unidad <span className="mono">{c.codigo_barras}</span> · {c.referencia.codigo_referencia}{c.referencia.proveedor ? ` · ${c.referencia.proveedor}` : ''}</small>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="acciones">
+            <button type="button" className="secundario boton-44" onClick={() => { setCandidatas(null); enfocar() }}>Cancelar</button>
+          </div>
+        </section>
+      )}
+
       {d && (
         <form className="tarjeta-devolucion" onSubmit={(e) => { e.preventDefault(); registrar.mutate() }}>
           <dl className="datos-fijos datos-devolucion">
@@ -364,7 +551,7 @@ function Devoluciones({ onRetirar }: { onRetirar: (d: Devolucion, metodo: Metodo
             <div><dt>Cliente</dt><dd>{d.venta.cliente?.nombre ?? 'Mostrador'}</dd></div>
             <div><dt>Forma de pago</dt><dd><span className={credito ? 'chip credito' : 'chip'}>{credito ? 'Crédito' : 'Contado'}</span></dd></div>
             <div><dt>Precio</dt><dd>{precio}</dd></div>
-            <div><dt>Unidad</dt><dd className="mono">{d.unidad.codigo_barras}</dd></div>
+            <div><dt>Unidad</dt><dd><span className="mono">{d.unidad.codigo_barras}</span>{encontrada?.ventaItemId && <> <span className="chip por-referencia">elegida por referencia</span></>}</dd></div>
             <div><dt>Referencia</dt><dd>{d.referencia.codigo_referencia} · {d.referencia.descripcion}</dd></div>
             <div><dt>Proveedor</dt><dd>{d.referencia.proveedor.nombre} <ChipCalidad calidad={d.referencia.calidad} /></dd></div>
           </dl>
@@ -474,7 +661,9 @@ function Historial() {
                     <ul className="unidades-ajuste">
                       {a.unidades.map((u) => (
                         <li key={u.id}>
-                          <span className="mono">{u.codigo_barras}</span> · <strong>{u.referencia.codigo_referencia}</strong> · {u.referencia.proveedor.nombre}{' '}
+                          <span className="mono">{u.codigo_barras}</span>
+                          {u.origen_codigo === 'referencia' && <> <span className="chip por-referencia" title="Se leyó el código del proveedor; el sistema eligió esta unidad">por referencia</span></>}
+                          {' '}· <strong>{u.referencia.codigo_referencia}</strong> · {u.referencia.proveedor.nombre}{' '}
                           <ChipCalidad calidad={u.referencia.calidad} />
                           <span className={`chip estado-${u.estado}`} title="Estado actual de la unidad">{u.estado}</span>
                         </li>

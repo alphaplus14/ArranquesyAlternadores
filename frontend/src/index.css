@@ -1132,6 +1132,19 @@ input[aria-invalid='true']:not([type='checkbox']):not([type='radio']):focus-visi
 .totales-venta .linea-total dt { color: var(--texto); font-weight: 600; align-self: center; }
 .totales-venta .linea-total dd { font-size: 1.5rem; font-weight: 700; }
 @media (max-width: 639px) { .totales-venta { max-width: none; } }
+/* S-34: devoluciones con código de proveedor: elegir la venta. */
+.elegir-venta { display: flex; flex-direction: column; gap: 8px; padding: 14px; border: 1px solid var(--borde); border-radius: var(--radio); }
+.elegir-venta h3 { margin: 0; }
+.elegir-venta .busca input { min-width: 0; width: 100%; max-width: 280px; min-height: 44px; box-sizing: border-box; padding-left: 34px; }
+.lista-candidatas { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 26rem; overflow-y: auto; }
+.candidata-venta {
+  width: 100%; min-height: 44px; display: flex; flex-direction: column; align-items: stretch; gap: 2px;
+  text-align: left; padding: 10px 12px; border-radius: 10px;
+}
+.candidata-venta:hover, .candidata-venta:focus-visible { border-color: var(--primario); background: var(--suave-fondo); }
+.candidata-linea { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.candidata-venta small { color: var(--suave); overflow-wrap: anywhere; }
+@media (max-width: 639px) { .elegir-venta .busca input { max-width: none; } }
 .chip.saldo-favor { background: var(--ok-fondo); color: var(--ok); font-weight: 600; }
 .chip.estado-venta { font-weight: 600; white-space: nowrap; }
 .chip.estado-venta.al_dia { background: var(--ok-fondo); color: var(--ok); }
