@@ -486,7 +486,8 @@ tr.reversado td:has(.icono-accion) { text-decoration: none; }
 .pila { display: flex; flex-direction: column; gap: 16px; }
 .columnas { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; }
 .columnas > * { grid-column: span 4; }
-.venta { display: grid; grid-template-columns: 1fr 300px; gap: 16px; }
+.venta { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; }
+.venta > .panel, .venta > .lateral { min-width: 0; }
 .lateral .lista { font-size: 0.9rem; }
 .reversos { padding-left: 18px; }
 .resultado { border-bottom: 1px solid var(--borde); padding: 8px 0; }
@@ -813,7 +814,7 @@ td.col-accion .icono-accion { display: inline-grid; vertical-align: middle; }
   .medida, .columnas > * { grid-column: span 12; }
 }
 @media (max-width: 800px) {
-  .venta { grid-template-columns: 1fr; }
+  .venta { grid-template-columns: minmax(0, 1fr); }
 }
 @media (prefers-reduced-motion: reduce) {
   .cuerpo,
@@ -1365,18 +1366,43 @@ input[aria-invalid='true']:not([type='checkbox']):not([type='radio']):focus-visi
 .candidata-venta small { color: var(--suave); overflow-wrap: anywhere; }
 @media (max-width: 639px) { .elegir-venta .busca input { max-width: none; } }
 /* S-40: fichas de ventas abiertas (se desplazan en horizontal sin desbordar la página). */
-.ventas-abiertas { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 10px; min-width: 0; }
+.ventas-abiertas { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 10px; min-width: 0; max-width: 100%; }
 .ventas-abiertas-titulo { font-size: 0.8rem; color: var(--suave); font-weight: 600; }
-.ventas-abiertas-fichas { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scroll-snap-type: x proximity; min-width: 0; }
+.ventas-abiertas-fichas {
+  display: flex; gap: 8px; overflow-x: auto; padding: 0 12px 4px 0; scroll-snap-type: x proximity; min-width: 0; max-width: 100%;
+  /* Contenedor posicionado: el texto solo para lectores (.solo-lector, absoluto) de una ficha no se
+     escapa del scroll ni estira el documento. */
+  position: relative;
+  /* Degradado en el borde derecho: indica que hay más fichas al desplazar. */
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+}
 .ficha-venta {
-  flex: 0 0 auto; min-width: 11rem; max-width: 16rem; min-height: 44px; scroll-snap-align: start;
+  position: relative; flex: 0 0 auto; min-width: 10rem; max-width: 14rem; min-height: 44px; scroll-snap-align: start;
   display: flex; flex-direction: column; align-items: stretch; gap: 2px; text-align: left; padding: 8px 10px; border-radius: 10px;
 }
 .ficha-venta.activa { border: 2px solid var(--primario); background: var(--suave-fondo); }
 .ficha-venta-linea { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
 .ficha-venta-cliente { font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ficha-venta small { color: var(--suave); }
-.chip.vieja { background: var(--aviso-fondo); color: var(--aviso); font-weight: 600; }
+.ficha-venta-detalle { font-size: 0.85rem; }
+.ficha-venta-cifras { white-space: nowrap; }
+.ficha-resumen { justify-content: center; min-width: 8.5rem; }
+.ficha-resumen small { color: var(--suave); }
+.ventas-abiertas-select { margin: 4px 0 10px; }
+.ventas-abiertas-select select { min-height: 44px; width: 100%; box-sizing: border-box; }
+/* Tarjeta de la venta: título, tabla con scroll propio y totales con "Cerrar venta". */
+.venta-titulo h2 { margin: 0; }
+.venta-subtitulo { margin: 2px 0 0; font-size: 0.85rem; color: var(--suave); }
+.tabla-venta-scroll { overflow-x: auto; max-width: 100%; min-width: 0; position: relative; }
+.venta-cuerpo { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: start; }
+.venta-totales { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.venta-totales .totales-venta { margin: 0; max-width: none; padding: 10px 12px; border: 1px solid var(--borde); border-radius: var(--radio); }
+.boton-cerrar-venta { width: 100%; }
+@media (min-width: 1100px) {
+  .venta-cuerpo { grid-template-columns: minmax(0, 1fr) 240px; }
+  .venta-cuerpo .venta-totales { position: sticky; top: 12px; order: 0; }
+}
 .punto-alerta { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--peligro); margin-left: 6px; flex: none; }
 .resumen-cierre { margin-bottom: 8px; }
 /* S-39: entradas por ajuste. */

@@ -12,9 +12,7 @@ import ChipCalidad from '../../componentes/ChipCalidad'
 import Dialogo, { DialogoSeccion } from '../../componentes/Dialogo'
 import ListaEleccion, { type FilaEleccion } from '../../componentes/ListaEleccion'
 import DialogoElegirReferencia from '../../componentes/mostrador/DialogoElegirReferencia'
-import Medida from '../../componentes/Medida'
 import Paginacion from '../../componentes/Paginacion'
-import Resumen from '../../componentes/Resumen'
 import { useScanner } from '../../hooks/useScanner'
 import { useAngosta } from '../../hooks/useAngosta'
 import { CLAVE_ABIERTAS, esDeDiaAnterior, useVentasAbiertas } from '../../hooks/useVentasAbiertas'
@@ -46,10 +44,6 @@ function errorPrecio(texto: string): string | null {
 
 /** S-40: máximo de unidades por lectura con el código del proveedor (igual que el backend). */
 const MAX_CANTIDAD = 50
-
-/** S-40: "Contado" o "Crédito · Cliente". */
-const nombreVenta = (v: { forma_pago: TVenta['forma_pago']; cliente: { nombre: string } | null }) =>
-  v.forma_pago === 'credito' ? `Crédito · ${v.cliente?.nombre ?? '—'}` : 'Contado'
 
 /** Pregunta antes de abrir una venta igual a una que ya está abierta (S-40). */
 interface Duplicada { existente: VentaAbierta; abrirOtra: () => void }
@@ -250,7 +244,6 @@ export default function Venta() {
   }, 0)
 
   const vigentes = useMemo(() => v?.items.filter((i) => !i.reverso_id) ?? [], [v?.items])
-  const ultimo = vigentes[vigentes.length - 1]
   // Solo cierra la edición de ese ítem: si ya se abrió la de otro, la deja abierta.
   const dejarDeEditar = useCallback((id: number) => setEditandoPrecio((actual) => (actual === id ? null : actual)), [])
   // S-40: callbacks estables para que, con 200 ítems, un escaneo solo pinte la fila nueva (React.memo).
@@ -269,36 +262,19 @@ export default function Venta() {
         <h1>Venta de mostrador</h1>
         <p>Cada lectura descuenta la unidad al momento. Puede escanear durante el día y cerrar al final. La venta no se borra: se reversa.</p>
       </div>
-      <Resumen
-        clave="venta-resumen"
-        compacto={(
-          <>
-            <span>Venta <strong>{v ? `#${v.id}` : '—'}</strong>{v ? ` · ${v.estado}` : ' · sin abrir'}</span>
-            <span>Ítems <strong>{v ? vigentes.length : '—'}</strong></span>
-            <span>Total <strong>{v?.totales ? pesos(v.totales.total) : '—'}</strong></span>
-            <span>Abiertas <strong>{listaAbiertas.length}</strong></span>
-          </>
-        )}
-      >
-        <Medida etiqueta="Venta" valor={v ? `#${v.id}` : '—'} pie={v?.estado ?? 'Sin abrir'} tono="azul" icono="venta" />
-        <Medida etiqueta="Ítems vigentes" valor={v ? vigentes.length : '—'} tono="amarillo" icono="caja" />
-        <Medida etiqueta="Total (IVA incl.)" valor={v?.totales ? pesos(v.totales.total) : '—'} pie={v && v.reversos.length > 0 ? `${v.reversos.length} reverso(s)` : undefined} tono="rojo" icono="billetera" />
-        <Medida etiqueta="Última unidad" valor={ultimo?.unidad.codigo_barras ?? '—'} pie={ultimo?.unidad.referencia?.codigo_referencia} tono="verde" icono="etiqueta" codigo />
-      </Resumen>
       <div className="venta">
       <section className="panel">
         <div className="fila-titulo">
-          <h2>
-            Lectura {v && <span className={`chip ${v.estado}`}>{v.estado}</span>}{' '}
-            {v && <span className={credito ? 'chip credito' : 'chip'}>{credito ? 'Crédito' : 'Contado'}</span>}
-          </h2>
+          <div className="venta-titulo">
+            <h2>{v ? `Venta #${v.id}` : 'Sin venta abierta'}</h2>
+            {v && <p className="venta-subtitulo">{v.estado} · {credito ? 'Crédito' : 'Contado'} · {formatearFecha(v.created_at)}</p>}
+          </div>
           <div className="acciones">
             <button type="button" className="secundario boton-44" onClick={nuevaContado} disabled={abrir.isPending}>
               {abrir.isPending && !eligiendoCliente ? 'Abriendo…' : 'Nueva venta'}
             </button>
             <button type="button" className="secundario boton-44" onClick={() => setEligiendoCliente(true)} disabled={abrir.isPending}>Nueva venta a crédito</button>
             {abierta && <button type="button" className="secundario boton-44" onClick={() => setRespaldo(true)}>Buscar sin escáner</button>}
-            {abierta && <button type="button" className="primario boton-44" onClick={() => setConfirmandoCierre(true)} disabled={cerrar.isPending}>Cerrar venta</button>}
             {v && !abierta && vigentes.length > 0 && (
               <button type="button" className="peligro boton-44" onClick={() => setReverso({ tipo: 'anulacion' })}>Anular venta completa</button>
             )}
@@ -350,39 +326,48 @@ export default function Venta() {
           />
         </div>
         {v && (
-          <table className="tabla-apilable tabla-venta">
-            <thead>
-              <tr><th>Código</th><th>Referencia</th><th>Proveedor</th><th title="Precio con IVA incluido">Precio (IVA incl.)</th><th>Captura</th><th>Usuario</th><th>Hora</th><th></th></tr>
-            </thead>
-            <tbody>
-              {v.items.map((i) => (
-                <FilaItem
-                  key={i.id}
-                  item={i}
-                  ventaId={v.id}
-                  abierta={abierta}
-                  editable={precioEditable(i)}
-                  editando={editandoPrecio === i.id}
-                  onEditar={setEditandoPrecio}
-                  onTerminar={dejarDeEditar}
-                  onGuardado={precioGuardado}
-                  onReverso={pedirReverso}
-                />
-              ))}
-              {v.items.length === 0 && <tr><td colSpan={8} className="vacio">Sin ítems todavía.</td></tr>}
-            </tbody>
-          </table>
-        )}
+          <div className="venta-cuerpo">
+            {/* La tabla se desplaza por dentro: la página nunca se desborda. */}
+            <div className="tabla-venta-scroll">
+            <table className="tabla-apilable tabla-venta">
+              <thead>
+                <tr><th>Código</th><th>Referencia</th><th>Proveedor</th><th title="Precio con IVA incluido">Precio (IVA incl.)</th><th>Captura</th><th>Usuario</th><th>Hora</th><th></th></tr>
+              </thead>
+              <tbody>
+                {v.items.map((i) => (
+                  <FilaItem
+                    key={i.id}
+                    item={i}
+                    ventaId={v.id}
+                    abierta={abierta}
+                    editable={precioEditable(i)}
+                    editando={editandoPrecio === i.id}
+                    onEditar={setEditandoPrecio}
+                    onTerminar={dejarDeEditar}
+                    onGuardado={precioGuardado}
+                    onReverso={pedirReverso}
+                  />
+                ))}
+                {v.items.length === 0 && <tr><td colSpan={8} className="vacio">Sin ítems todavía.</td></tr>}
+              </tbody>
+            </table>
+            </div>
 
-        {v?.totales && v.items.length > 0 && (
-          <div className="totales-venta" aria-label="Totales de la venta">
-            <p className="ayuda">Precios con IVA incluido</p>
-            <dl>
-              <div><dt>Base (sin IVA)</dt><dd>{pesos(v.totales.base)}</dd></div>
-              <div><dt>{rotuloIvaIncluido(v.totales.iva_porcentajes)}</dt><dd>{pesos(v.totales.iva_incluido)}</dd></div>
-              <div className="linea-total"><dt>Total</dt><dd>{pesos(v.totales.total)}</dd></div>
-            </dl>
-            {v.totales.items_sin_iva > 0 && <p className="ayuda">{v.totales.items_sin_iva} ítem(s) antiguos sin IVA registrado: no se desglosan.</p>}
+            <aside className="venta-totales" aria-label="Totales de la venta">
+              <div className="totales-venta">
+                <p className="ayuda">Precios con IVA incluido</p>
+                <dl>
+                  <div><dt>Ítems</dt><dd>{vigentes.length}</dd></div>
+                  <div><dt>Base (sin IVA)</dt><dd>{pesos(v.totales?.base ?? 0)}</dd></div>
+                  <div><dt>{rotuloIvaIncluido(v.totales?.iva_porcentajes ?? [])}</dt><dd>{pesos(v.totales?.iva_incluido ?? 0)}</dd></div>
+                  <div className="linea-total"><dt>Total</dt><dd>{pesos(v.totales?.total ?? 0)}</dd></div>
+                </dl>
+                {(v.totales?.items_sin_iva ?? 0) > 0 && <p className="ayuda">{v.totales?.items_sin_iva} ítem(s) antiguos sin IVA registrado: no se desglosan.</p>}
+              </div>
+              {abierta && (
+                <button type="button" className="primario boton-44 boton-cerrar-venta" onClick={() => setConfirmandoCierre(true)} disabled={cerrar.isPending}>Cerrar venta</button>
+              )}
+            </aside>
           </div>
         )}
 
@@ -489,10 +474,19 @@ export default function Venta() {
   )
 }
 
+/** S-40: máximo de fichas de venta visibles en la barra (las demás, en "Ver todas"). */
+const MAX_FICHAS = 5
+
+/** "#6 · Contado · 0 ítems" (select angosto y listado). */
+const textoOpcion = (v: VentaAbierta) =>
+  `#${v.id} · ${v.forma_pago === 'credito' ? `Crédito · ${v.cliente?.nombre ?? '—'}` : 'Contado'} · ${v.items_count} ${v.items_count === 1 ? 'ítem' : 'ítems'}`
+
 /**
- * S-40: una ficha por venta abierta (tipo, cliente, ítems y total), la activa resaltada. Se recorre
- * con las flechas y se elige con Enter o clic; el foco vuelve al lector. A 360 px se desplaza en
- * horizontal sin desbordar la página.
+ * S-40: barra compacta de ventas abiertas. Hasta 5 fichas: la activa primero y luego las que tienen
+ * ítems, de la más reciente a la más antigua. Las vacías (salvo la activa) van en una sola ficha
+ * "Vacías (N)" y "Ver todas (N)" abre el listado con búsqueda. A <= 480 px es un select. Flechas,
+ * Inicio y Fin recorren las fichas; al elegir, el foco vuelve al lector (lo hace onElegir).
+ * Una venta de un día anterior lleva un punto de aviso con la fecha en el title.
  */
 function BarraVentasAbiertas({ ventas, activa, conUsuario, onElegir }: {
   ventas: VentaAbierta[]
@@ -500,48 +494,128 @@ function BarraVentasAbiertas({ ventas, activa, conUsuario, onElegir }: {
   conUsuario: boolean
   onElegir: (id: number) => void
 }) {
+  const muyAngosta = useAngosta(480)
   const botones = useRef<Array<HTMLButtonElement | null>>([])
-  const indiceActiva = Math.max(0, ventas.findIndex((v) => v.id === activa))
+  const [listado, setListado] = useState<'todas' | 'vacias' | null>(null)
 
+  const actual = ventas.find((v) => v.id === activa)
+  const conItems = ventas.filter((v) => v.id !== activa && v.items_count > 0).sort((a, b) => b.id - a.id)
+  const vacias = ventas.filter((v) => v.id !== activa && v.items_count === 0)
+  const espacio = MAX_FICHAS - (actual ? 1 : 0) - (vacias.length > 0 ? 1 : 0)
+  const visibles = [...(actual ? [actual] : []), ...conItems.slice(0, Math.max(espacio, 0))]
+
+  if (muyAngosta) {
+    return (
+      <label className="ventas-abiertas-select">Venta abierta
+        <select value={activa ?? ''} onChange={(e) => onElegir(Number(e.target.value))}>
+          {activa === null && <option value="">Elija una venta</option>}
+          {[...ventas].sort((a, b) => b.id - a.id).map((v) => <option key={v.id} value={v.id}>{textoOpcion(v)}</option>)}
+        </select>
+      </label>
+    )
+  }
+
+  const total = visibles.length + (vacias.length > 0 ? 1 : 0) + 1
   const mover = (e: KeyboardEvent<HTMLButtonElement>, i: number) => {
-    const destino = { ArrowRight: i + 1, ArrowDown: i + 1, ArrowLeft: i - 1, ArrowUp: i - 1, Home: 0, End: ventas.length - 1 }[e.key]
+    const destino = { ArrowRight: i + 1, ArrowDown: i + 1, ArrowLeft: i - 1, ArrowUp: i - 1, Home: 0, End: total - 1 }[e.key]
     if (destino === undefined) return
     e.preventDefault()
-    const j = (destino + ventas.length) % ventas.length
-    botones.current[j]?.focus()
+    botones.current[(destino + total) % total]?.focus()
   }
+  const indiceActiva = 0
+  const propsBoton = (i: number) => ({
+    ref: (b: HTMLButtonElement | null) => { botones.current[i] = b },
+    tabIndex: i === indiceActiva ? 0 : -1,
+    onKeyDown: (e: KeyboardEvent<HTMLButtonElement>) => mover(e, i),
+  })
 
   return (
     <div className="ventas-abiertas" role="group" aria-label={`Ventas abiertas (${ventas.length})`}>
       <span className="ventas-abiertas-titulo">Ventas abiertas</span>
       <div className="ventas-abiertas-fichas">
-        {ventas.map((v, i) => (
+        {visibles.map((v, i) => (
           <button
             key={v.id}
-            ref={(b) => { botones.current[i] = b }}
             type="button"
             className={v.id === activa ? 'ficha-venta activa' : 'ficha-venta'}
             aria-pressed={v.id === activa}
-            tabIndex={i === indiceActiva ? 0 : -1}
-            onKeyDown={(e) => mover(e, i)}
             onClick={() => onElegir(v.id)}
+            {...propsBoton(i)}
           >
             <span className="ficha-venta-linea">
-              <strong>#{v.id}</strong>
+              <strong>
+                #{v.id}
+                {esDeDiaAnterior(v) && <span className="punto-alerta" title={`Abierta el ${formatearFecha(v.created_at)}`}><span className="solo-lector">, abierta el {formatearFecha(v.created_at)}</span></span>}
+              </strong>
               <span className={v.forma_pago === 'credito' ? 'chip credito' : 'chip'}>{v.forma_pago === 'credito' ? 'Crédito' : 'Contado'}</span>
-              {esDeDiaAnterior(v) && <span className="chip vieja" title="Abierta desde un día anterior">{formatearFecha(v.created_at)}</span>}
             </span>
-            {v.forma_pago === 'credito' && <span className="ficha-venta-cliente">{v.cliente?.nombre ?? '—'}</span>}
-            <span className="ficha-venta-linea">
-              <span>{v.items_count} {v.items_count === 1 ? 'ítem' : 'ítems'}</span>
-              <strong>{pesos(v.total)}</strong>
+            <span className="ficha-venta-linea ficha-venta-detalle">
+              <span className="ficha-venta-cliente">{v.forma_pago === 'credito' ? (v.cliente?.nombre ?? '—') : 'Mostrador'}{conUsuario ? ` · ${v.usuario?.name}` : ''}</span>
+              <span className="ficha-venta-cifras">{v.items_count} · <strong>{pesos(v.total)}</strong></span>
             </span>
-            {conUsuario && <small>{v.usuario?.name}</small>}
-            <span className="solo-lector">{nombreVenta(v)}</span>
           </button>
         ))}
+        {vacias.length > 0 && (
+          <button type="button" className="ficha-venta ficha-resumen" onClick={() => setListado('vacias')} {...propsBoton(visibles.length)}>
+            <strong>Vacías ({vacias.length})</strong>
+            <small>Sin ítems todavía</small>
+          </button>
+        )}
+        <button type="button" className="ficha-venta ficha-resumen" onClick={() => setListado('todas')} {...propsBoton(total - 1)}>
+          <strong>Ver todas ({ventas.length})</strong>
+          <small>Buscar por número o cliente</small>
+        </button>
       </div>
+
+      {listado && (
+        <ListadoVentasAbiertas
+          ventas={listado === 'vacias' ? vacias : ventas}
+          titulo={listado === 'vacias' ? `Ventas abiertas sin ítems (${vacias.length})` : `Ventas abiertas (${ventas.length})`}
+          activa={activa}
+          conUsuario={conUsuario}
+          onElegir={(id) => { setListado(null); onElegir(id) }}
+          onCerrar={() => setListado(null)}
+        />
+      )}
     </div>
+  )
+}
+
+/** S-40: todas las ventas abiertas, con búsqueda por número o cliente, para cambiar de venta. */
+function ListadoVentasAbiertas({ ventas, titulo, activa, conUsuario, onElegir, onCerrar }: {
+  ventas: VentaAbierta[]
+  titulo: string
+  activa: number | null
+  conUsuario: boolean
+  onElegir: (id: number) => void
+  onCerrar: () => void
+}) {
+  const [q, setQ] = useState('')
+  const t = q.trim().replace(/^#\s*/, '').toLowerCase()
+  const filas: FilaEleccion[] = [...ventas]
+    .sort((a, b) => b.id - a.id)
+    .filter((v) => t === '' || String(v.id).startsWith(t) || (v.cliente?.nombre ?? 'mostrador').toLowerCase().includes(t))
+    .map((v) => ({
+      id: v.id,
+      titulo: `#${v.id}${v.id === activa ? ' (actual)' : ''}`,
+      meta: [v.forma_pago === 'credito' ? `Crédito · ${v.cliente?.nombre ?? '—'}` : 'Contado', `${v.items_count} ${v.items_count === 1 ? 'ítem' : 'ítems'}`, pesos(v.total), conUsuario ? v.usuario?.name : null].filter(Boolean).join(' · '),
+      detalle: `Abierta el ${formatearFechaHora(v.created_at)}`,
+      onElegir: () => onElegir(v.id),
+    }))
+
+  return (
+    <Dialogo
+      titulo={titulo}
+      descripcion="Elija la venta para seguir escaneando."
+      variante="ancha"
+      onCerrar={onCerrar}
+      pie={<button type="button" className="secundario boton-44" onClick={onCerrar}>Cerrar</button>}
+    >
+      <DialogoSeccion>
+        <input autoFocus placeholder="N.º de venta o cliente" aria-label="Buscar venta por número o cliente" value={q} onChange={(e) => setQ(e.target.value)} />
+        <ListaEleccion filas={filas} pendiente={false} vacio="Ninguna venta abierta coincide." />
+      </DialogoSeccion>
+    </Dialogo>
   )
 }
 
