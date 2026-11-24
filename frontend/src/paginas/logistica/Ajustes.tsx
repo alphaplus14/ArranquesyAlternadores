@@ -11,11 +11,13 @@ import {
   type GrupoDevolucion,
   type MetodoCaptura,
   type MotivoAjuste,
+  type MotivoAlta,
   type MotivoBaja,
   type MotivoReintegro,
   type OpcionReferenciaVenta,
   type OrigenCodigo,
   type Pagina,
+  type ReferenciaEntrada,
   type ReferenciaUnidad,
   type ResultadoDevolucion,
   type TipoAjuste,
@@ -27,6 +29,7 @@ import { useDebounce } from '../../hooks/useDebounce'
 import ControlSegmentado from '../../componentes/ControlSegmentado'
 import ChipCalidad from '../../componentes/ChipCalidad'
 import CampoCantidad from '../../componentes/CampoCantidad'
+import ImprimirEtiquetas from '../../componentes/ImprimirEtiquetas'
 import Icono from '../../componentes/Icono'
 import DialogoElegirReferencia from '../../componentes/mostrador/DialogoElegirReferencia'
 import Paginacion from '../../componentes/Paginacion'
@@ -43,15 +46,16 @@ import { textoSaldo } from '../../utilidades/cartera'
  * unidad puede entrar; esta pantalla solo muestra su mensaje. Nada se borra y nada se exporta.
  */
 
-type Pestana = 'salidas' | 'devoluciones' | 'historial'
+type Pestana = 'salidas' | 'entradas' | 'devoluciones' | 'historial'
 
 const PESTANAS: { valor: Pestana; texto: string }[] = [
   { valor: 'salidas', texto: 'Salidas' },
+  { valor: 'entradas', texto: 'Entradas' }, // S-39
   { valor: 'devoluciones', texto: 'Devoluciones de clientes' },
   { valor: 'historial', texto: 'Historial' },
 ]
 
-const MOTIVOS_BAJA: MotivoBaja[] = ['garantia', 'devolucion_proveedor', 'dano', 'perdida', 'otro']
+const MOTIVOS_BAJA: MotivoBaja[] = ['garantia', 'devolucion_proveedor', 'dano', 'perdida', 'faltante_inventario', 'otro']
 const MOTIVOS_REINTEGRO: MotivoReintegro[] = ['error_de_registro', 'otro']
 
 /**
@@ -100,11 +104,12 @@ export default function Ajustes() {
     <div className="pila ajustes">
       <div className="pagina-encabezado">
         <h1>Ajustes de inventario</h1>
-        <p>Salidas por garantía, devolución a proveedor, daño o pérdida; devoluciones de clientes y reintegros. Nada se borra.</p>
+        <p>Salidas por garantía, devolución a proveedor, daño, pérdida o faltante; entradas por inventario físico; devoluciones de clientes y reintegros. Nada se borra.</p>
       </div>
       <section className="panel">
         <ControlSegmentado id="ajustes-seccion" etiqueta="Sección" opciones={PESTANAS} valor={pestana} onCambio={cambiar} />
         {pestana === 'salidas' && <Salidas lote={lote} setLote={setLote} />}
+        {pestana === 'entradas' && <Entradas />}
         {pestana === 'devoluciones' && <Devoluciones onRetirar={retirarDevuelta} />}
         {pestana === 'historial' && <Historial />}
       </section>
@@ -425,6 +430,241 @@ function Salidas({ lote, setLote }: { lote: ItemLote[]; setLote: (f: (l: ItemLot
         />
       )}
     </div>
+  )
+}
+
+/* ─────────────────────────────── Entradas ─────────────────────────────── */
+
+/** S-39: motivos de una entrada por ajuste; el primero va por defecto. "Otro" exige nota. */
+const MOTIVOS_ALTA: MotivoAlta[] = ['sobrante_inventario', 'sin_factura', 'otro']
+const MAX_ENTRADA = 500
+
+/**
+ * S-39: entrada por ajuste de inventario físico. Se elige la referencia (escaneando o digitando el
+ * código del proveedor o fabricante, o buscando por referencia o descripción), la cantidad (1 a 500)
+ * y el motivo. Crea unidades nuevas con su código del local; no es una compra. Después se imprimen
+ * sus etiquetas.
+ */
+function Entradas() {
+  const qc = useQueryClient()
+  const inputRef = useRef<HTMLInputElement>(null)
+  const notaRef = useRef<HTMLTextAreaElement>(null)
+  const [texto, setTexto] = useState('')
+  const termino = useDebounce(texto.trim())
+  const [elegida, setElegida] = useState<{ referencia: ReferenciaEntrada; metodo: MetodoCaptura } | null>(null)
+  /** Varias referencias con el código escaneado: se elige una. */
+  const [opciones, setOpciones] = useState<{ codigo: string; metodo: MetodoCaptura; referencias: ReferenciaEntrada[] } | null>(null)
+  const [cantidad, setCantidad] = useState(1)
+  const [motivo, setMotivo] = useState<MotivoAlta>('sobrante_inventario')
+  const [nota, setNota] = useState('')
+  const [confirmando, setConfirmando] = useState(false)
+  const [aviso, setAviso] = useState<Aviso>(null)
+  const [hecha, setHecha] = useState<{ ajuste: AjusteInventario; referencia: ReferenciaEntrada; existencia: number } | null>(null)
+
+  const enfocar = () => setTimeout(() => inputRef.current?.focus(), 0)
+  useEffect(() => { inputRef.current?.focus() }, [])
+
+  const elegir = (referencia: ReferenciaEntrada, metodo: MetodoCaptura) => {
+    setElegida({ referencia, metodo })
+    setOpciones(null)
+    setTexto('')
+    setCantidad(1)
+    setConfirmando(false)
+    setAviso(null)
+  }
+
+  // Escáner o Enter: código exacto del proveedor o del fabricante.
+  const porCodigo = useMutation({
+    mutationFn: async ({ codigo }: { codigo: string; metodo: MetodoCaptura }) =>
+      (await api.get<{ referencias: ReferenciaEntrada[] }>('/ajustes/referencia', { params: { codigo } })).data.referencias,
+    onSuccess: (refs, { codigo, metodo }) => {
+      if (refs.length === 1) elegir(refs[0], metodo)
+      else { setOpciones({ codigo, metodo, referencias: refs }); setAviso(null) }
+    },
+    onError: (e) => setAviso({ tipo: 'error', texto: mensajeError(e) }),
+  })
+
+  const onCodigo = (codigo: string, metodo: MetodoCaptura) => {
+    setHecha(null)
+    porCodigo.mutate({ codigo, metodo })
+  }
+  const scanner = useScanner(onCodigo)
+
+  // Lo que se escribe a mano busca por referencia o descripción (máx. 10).
+  const busqueda = useQuery({
+    queryKey: ['ajustes', 'referencia', termino],
+    queryFn: async () => (await api.get<{ referencias: ReferenciaEntrada[] }>('/ajustes/referencia', { params: { q: termino } })).data.referencias,
+    enabled: termino.length >= 2 && !elegida,
+  })
+
+  const faltaNota = motivo === 'otro' && nota.trim() === ''
+
+  const registrar = useMutation({
+    mutationFn: async () => {
+      if (!elegida) throw new Error('Elija la referencia.')
+      return (await api.post<AjusteInventario>('/ajustes/entradas', {
+        referencia_id: elegida.referencia.id,
+        cantidad,
+        motivo,
+        nota: nota.trim() || null,
+        metodo_captura: elegida.metodo,
+      })).data
+    },
+    onSuccess: (ajuste) => {
+      if (elegida) setHecha({ ajuste, referencia: elegida.referencia, existencia: elegida.referencia.existencia + ajuste.cantidad })
+      setElegida(null)
+      setCantidad(1)
+      setNota('')
+      setMotivo('sobrante_inventario')
+      setConfirmando(false)
+      setAviso(null)
+      qc.invalidateQueries({ queryKey: ['ajustes'] })
+      qc.invalidateQueries({ queryKey: ['referencias'] })
+      enfocar()
+    },
+    onError: (e) => { setConfirmando(false); setAviso({ tipo: 'error', texto: mensajeError(e) }) },
+  })
+
+  const pedirConfirmacion = () => {
+    if (faltaNota) {
+      setAviso({ tipo: 'error', texto: 'Escriba una nota: el motivo "Otro" la exige.' })
+      notaRef.current?.focus()
+      return
+    }
+    setConfirmando(true)
+  }
+
+  const r = elegida?.referencia
+  const textoBoton = `Registrar entrada de ${cantidad} ${cantidad === 1 ? 'unidad' : 'unidades'}`
+
+  return (
+    <div className="ajustes-seccion">
+      <p className="ayuda">
+        Para unidades que aparecen en un inventario físico y no vienen de ninguna factura ni remisión. Se crean con su
+        código del local; no es una compra (no tienen costo ni generan deuda). Un error se corrige con una salida.
+      </p>
+
+      <label htmlFor="entrada-referencia" className="etiqueta-campo">Referencia</label>
+      <input
+        id="entrada-referencia"
+        ref={inputRef}
+        className="escaner"
+        placeholder="Escanee o escriba código o descripción"
+        value={texto}
+        onChange={(e) => { setTexto(e.target.value); setHecha(null) }}
+        onKeyDown={(e) => {
+          // Enter con lo escrito a mano: se toma como código exacto (como el escáner).
+          scanner.onKeyDown(e)
+          if (e.key === 'Enter' && texto.trim() !== '') setTexto('')
+        }}
+        onPaste={scanner.onPaste}
+        autoComplete="off"
+        aria-describedby="entrada-referencia-ayuda"
+      />
+      <small id="entrada-referencia-ayuda" className="ayuda">Código del proveedor o del fabricante (Enter), o parte de la referencia o la descripción.</small>
+      {porCodigo.isPending && <p className="ayuda" role="status">Buscando la referencia…</p>}
+      {aviso && <div className={`aviso ${aviso.tipo}`} role="status">{aviso.texto}</div>}
+
+      {!elegida && termino.length >= 2 && (
+        busqueda.isFetching && !busqueda.data ? <p className="ayuda" role="status">Buscando…</p>
+          : (busqueda.data?.length ?? 0) === 0 ? <p className="vacio">Ninguna referencia activa coincide.</p> : (
+            <ul className="lista-candidatas" aria-label="Referencias encontradas">
+              {busqueda.data!.map((ref) => <OpcionReferencia key={ref.id} r={ref} onElegir={() => elegir(ref, 'digitado')} />)}
+            </ul>
+          )
+      )}
+
+      {opciones && (
+        <section className="elegir-venta" aria-labelledby="entrada-opciones-titulo">
+          <h3 id="entrada-opciones-titulo">El código {opciones.codigo} está en {opciones.referencias.length} referencias</h3>
+          <ul className="lista-candidatas">
+            {opciones.referencias.map((ref, n) => <OpcionReferencia key={ref.id} r={ref} autoFocus={n === 0} onElegir={() => elegir(ref, opciones.metodo)} />)}
+          </ul>
+          <div className="acciones">
+            <button type="button" className="secundario boton-44" onClick={() => { setOpciones(null); enfocar() }}>Cancelar</button>
+          </div>
+        </section>
+      )}
+
+      {hecha && (
+        <div className="tarjeta-devolucion devolucion-hecha" role="status">
+          <p>
+            <strong>Entrada #{hecha.ajuste.id} registrada</strong> · {hecha.referencia.codigo_referencia} · {hecha.referencia.descripcion}:{' '}
+            {hecha.ajuste.cantidad === 1 ? '1 unidad nueva' : `${hecha.ajuste.cantidad} unidades nuevas`}. Existencia: <strong>{hecha.existencia}</strong>.
+          </p>
+          <details>
+            <summary>Ver {hecha.ajuste.cantidad === 1 ? 'el código creado' : `los ${hecha.ajuste.cantidad} códigos creados`}</summary>
+            <ul className="codigos-lista">{hecha.ajuste.unidades.map((u) => <li key={u.id} className="mono codigo-unidad">{u.codigo_barras}</li>)}</ul>
+          </details>
+          <ImprimirEtiquetas cuerpo={{ ajuste_id: hecha.ajuste.id }} cantidad={hecha.ajuste.cantidad} />
+          <div className="acciones acciones-izquierda">
+            <button type="button" className="secundario boton-44" onClick={() => { setHecha(null); enfocar() }}>Nueva entrada</button>
+          </div>
+        </div>
+      )}
+
+      {r && (
+        <form className="tarjeta-devolucion" onSubmit={(e) => { e.preventDefault(); pedirConfirmacion() }}>
+          <dl className="datos-fijos datos-devolucion">
+            <div><dt>Referencia</dt><dd><strong>{r.codigo_referencia}</strong> <ChipCalidad calidad={r.calidad} /></dd></div>
+            <div><dt>Descripción</dt><dd>{r.descripcion}</dd></div>
+            <div><dt>Proveedor</dt><dd>{r.proveedor?.nombre ?? '—'}</dd></div>
+            <div><dt>Existencia actual</dt><dd>{r.existencia}</dd></div>
+          </dl>
+          {!r.tiene_precio && (
+            <div className="aviso atencion" role="status">Sin precio de venta: no se podrá vender hasta que el administrador se lo asigne.</div>
+          )}
+
+          <div className="entrada-cantidad">
+            <CampoCantidad id="entrada-cantidad" etiqueta="Cantidad" valor={cantidad} max={MAX_ENTRADA} onCambio={(v) => { setCantidad(v); setConfirmando(false) }} ayuda={`De 1 a ${MAX_ENTRADA}.`} />
+            <p className="vista-previa" aria-live="polite">Existencia: <strong>{r.existencia} → {r.existencia + cantidad}</strong></p>
+          </div>
+
+          <div className="ajustes-motivo">
+            <label>Motivo
+              <select value={motivo} onChange={(e) => { setMotivo(e.target.value as MotivoAlta); setConfirmando(false) }}>
+                {MOTIVOS_ALTA.map((m) => <option key={m} value={m}>{NOMBRE_MOTIVO[m]}</option>)}
+              </select>
+            </label>
+            <label>Nota {motivo === 'otro' ? '(obligatoria)' : '(opcional)'}
+              <textarea ref={notaRef} rows={2} maxLength={500} value={nota} aria-invalid={faltaNota && confirmando ? true : undefined} onChange={(e) => setNota(e.target.value)} />
+            </label>
+          </div>
+
+          {confirmando ? (
+            <div className="confirmacion" role="alertdialog" aria-label="Confirmar entrada">
+              <p>¿Dar entrada a {cantidad} {cantidad === 1 ? 'unidad nueva' : 'unidades nuevas'} de <strong>{r.codigo_referencia}</strong> por {NOMBRE_MOTIVO[motivo]}? No se borra: queda en el historial.</p>
+              <div className="acciones">
+                <button type="button" className="secundario boton-44" onClick={() => { setConfirmando(false); enfocar() }}>Cancelar</button>
+                <button type="button" className="primario boton-44" autoFocus disabled={registrar.isPending} onClick={() => registrar.mutate()}>
+                  {registrar.isPending ? 'Registrando…' : 'Confirmar entrada'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="acciones">
+              <button type="button" className="secundario boton-44" onClick={() => { setElegida(null); setAviso(null); enfocar() }}>Cambiar referencia</button>
+              <button className="primario boton-44">{textoBoton}</button>
+            </div>
+          )}
+        </form>
+      )}
+    </div>
+  )
+}
+
+/** Una referencia para elegir: código, descripción, proveedor, calidad y existencia. */
+function OpcionReferencia({ r, onElegir, autoFocus }: { r: ReferenciaEntrada; onElegir: () => void; autoFocus?: boolean }) {
+  return (
+    <li>
+      <button type="button" className="candidata-venta" autoFocus={autoFocus} onClick={onElegir} aria-label={`Elegir ${r.codigo_referencia}, ${r.descripcion}`}>
+        <span className="candidata-linea">
+          <strong>{r.codigo_referencia} <ChipCalidad calidad={r.calidad} /></strong>
+          <span className="chip disponibles">Existencia {r.existencia}</span>
+        </span>
+        <small>{r.descripcion} · {r.proveedor?.nombre ?? '—'}{r.tiene_precio ? '' : ' · sin precio de venta'}</small>
+      </button>
+    </li>
   )
 }
 
@@ -772,7 +1012,8 @@ function Historial() {
     })).data,
   })
 
-  const motivos: MotivoAjuste[] = tipo === 'reintegro' ? MOTIVOS_REINTEGRO : tipo === 'baja' ? MOTIVOS_BAJA : [...MOTIVOS_BAJA, 'error_de_registro']
+  const motivos: MotivoAjuste[] = tipo === 'reintegro' ? MOTIVOS_REINTEGRO : tipo === 'baja' ? MOTIVOS_BAJA : tipo === 'alta' ? MOTIVOS_ALTA
+    : [...MOTIVOS_BAJA, 'error_de_registro', 'sobrante_inventario', 'sin_factura']
 
   return (
     <div className="ajustes-seccion">
@@ -781,6 +1022,7 @@ function Historial() {
           <select value={tipo} onChange={(e) => { setTipo(e.target.value as '' | TipoAjuste); setMotivo('') }}>
             <option value="">Todos</option>
             <option value="baja">Salidas</option>
+            <option value="alta">Entradas</option>
             <option value="reintegro">Reintegros</option>
           </select>
         </label>
@@ -809,12 +1051,22 @@ function Historial() {
                 <tr key={a.id}>
                   <td data-etiqueta="Fecha">{formatearFechaHora(a.created_at)}<div className="ayuda">#{a.id}</div></td>
                   <td data-etiqueta="Tipo y motivo">
-                    <span className={a.tipo === 'baja' ? 'chip salida' : 'chip reintegro'}>{a.tipo === 'baja' ? 'Salida' : 'Reintegro'}</span>{' '}
+                    <span className={`chip ${a.tipo === 'baja' ? 'salida' : a.tipo === 'alta' ? 'entrada' : 'reintegro'}`}>{a.tipo === 'baja' ? 'Salida' : a.tipo === 'alta' ? 'Entrada' : 'Reintegro'}</span>{' '}
                     {NOMBRE_MOTIVO[a.motivo]}
                     {a.nota && <div className="ayuda nota-ajuste">{a.nota}</div>}
                   </td>
                   <td data-etiqueta="Usuario">{a.usuario.name}</td>
                   <td data-etiqueta={`Unidades (${a.cantidad})`}>
+                    {a.tipo === 'alta' && a.unidades[0] ? (
+                      // S-39: una entrada es de una sola referencia: × N y los códigos creados en un desplegable.
+                      <div className="entrada-historial">
+                        <span><strong>× {a.cantidad}</strong> · <strong>{a.unidades[0].referencia.codigo_referencia}</strong> · {a.unidades[0].referencia.descripcion} · {a.unidades[0].referencia.proveedor.nombre}</span>
+                        <details>
+                          <summary>Ver {a.cantidad === 1 ? 'el código creado' : `los ${a.cantidad} códigos creados`}</summary>
+                          <ul className="codigos-lista">{a.unidades.map((u) => <li key={u.id} className="mono codigo-unidad">{u.codigo_barras} <span className={`chip estado-${u.estado}`}>{u.estado}</span></li>)}</ul>
+                        </details>
+                      </div>
+                    ) : (
                     <ul className="unidades-ajuste">
                       {a.unidades.map((u) => (
                         <li key={u.id}>
@@ -826,6 +1078,7 @@ function Historial() {
                         </li>
                       ))}
                     </ul>
+                    )}
                   </td>
                   <td className="celda-accion">
                     {reintegrables.length > 0 && (

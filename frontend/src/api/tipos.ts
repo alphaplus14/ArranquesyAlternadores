@@ -246,17 +246,35 @@ export interface TotalesVenta {
 }
 
 /** RF-21 (S-27): baja (salida) o reintegro de unidades. */
-export type TipoAjuste = 'baja' | 'reintegro'
-export type MotivoBaja = 'garantia' | 'devolucion_proveedor' | 'dano' | 'perdida' | 'otro'
+export type TipoAjuste = 'baja' | 'reintegro' | 'alta'
+export type MotivoBaja = 'garantia' | 'devolucion_proveedor' | 'dano' | 'perdida' | 'faltante_inventario' | 'otro'
 export type MotivoReintegro = 'error_de_registro' | 'otro'
-export type MotivoAjuste = MotivoBaja | MotivoReintegro
+/** S-39: motivos de una entrada por ajuste de inventario físico. */
+export type MotivoAlta = 'sobrante_inventario' | 'sin_factura' | 'otro'
+export type MotivoAjuste = MotivoBaja | MotivoReintegro | MotivoAlta
+
+/** S-39: referencia elegible para una entrada (GET /ajustes/referencia). */
+export interface ReferenciaEntrada {
+  id: number
+  codigo_referencia: string
+  codigo_fabricante: string | null
+  descripcion: string
+  proveedor: { id: number; nombre: string } | null
+  calidad: Calidad | null
+  existencia: number
+  precio_venta: string
+  tiene_precio: boolean
+}
 
 export const NOMBRE_MOTIVO: Record<MotivoAjuste, string> = {
   garantia: 'Garantía',
   devolucion_proveedor: 'Devolución a proveedor',
   dano: 'Daño',
   perdida: 'Pérdida',
+  faltante_inventario: 'Faltante de inventario físico',
   error_de_registro: 'Error de registro',
+  sobrante_inventario: 'Sobrante de inventario físico',
+  sin_factura: 'Mercancía sin factura',
   otro: 'Otro',
 }
 

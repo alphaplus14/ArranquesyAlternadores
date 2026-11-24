@@ -1364,6 +1364,19 @@ input[aria-invalid='true']:not([type='checkbox']):not([type='radio']):focus-visi
 .candidata-linea { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
 .candidata-venta small { color: var(--suave); overflow-wrap: anywhere; }
 @media (max-width: 639px) { .elegir-venta .busca input { max-width: none; } }
+/* S-39: entradas por ajuste. */
+.entrada-cantidad { display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap; }
+.vista-previa { margin: 0 0 10px; font-size: 1rem; }
+.imprimir-etiquetas { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin: 8px 0; }
+.imprimir-etiquetas label { flex: 0 1 260px; min-width: 0; }
+.imprimir-etiquetas select { min-height: 44px; width: 100%; box-sizing: border-box; }
+.entrada-historial { display: flex; flex-direction: column; gap: 4px; }
+.entrada-historial details summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; }
+.chip.entrada { background: var(--ok-fondo); color: var(--ok); font-weight: 600; }
+@media (max-width: 639px) {
+  .entrada-cantidad, .imprimir-etiquetas { flex-direction: column; align-items: stretch; }
+  .imprimir-etiquetas label { flex-basis: auto; }
+}
 /* S-38: cantidad con − / + (44 px). */
 .campo-cantidad { display: flex; flex-direction: column; gap: 4px; }
 .stepper { display: inline-flex; align-items: stretch; gap: 0; }
