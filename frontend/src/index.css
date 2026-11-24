@@ -1341,17 +1341,6 @@ input[aria-invalid='true']:not([type='checkbox']):not([type='radio']):focus-visi
 .opcion-factura small { color: var(--suave); }
 .desglose-dirigido, .aplicado-a { color: var(--suave); }
 .dialogo-apilado select { min-height: 44px; } /* táctil: igual que los campos de texto del diálogo */
-/* S-33: totales de la venta, con IVA incluido. */
-.totales-venta { margin: 12px 0 4px; margin-left: auto; max-width: 360px; }
-.totales-venta .ayuda { margin: 0 0 6px; text-align: right; }
-.totales-venta dl { margin: 0; display: flex; flex-direction: column; gap: 4px; }
-.totales-venta dl > div { display: flex; justify-content: space-between; gap: 16px; }
-.totales-venta dt { color: var(--suave); }
-.totales-venta dd { margin: 0; font-variant-numeric: tabular-nums; }
-.totales-venta .linea-total { border-top: 1px solid var(--borde); padding-top: 6px; margin-top: 2px; }
-.totales-venta .linea-total dt { color: var(--texto); font-weight: 600; align-self: center; }
-.totales-venta .linea-total dd { font-size: 1.5rem; font-weight: 700; }
-@media (max-width: 639px) { .totales-venta { max-width: none; } }
 /* S-34: devoluciones con código de proveedor: elegir la venta. */
 .elegir-venta { display: flex; flex-direction: column; gap: 8px; padding: 14px; border: 1px solid var(--borde); border-radius: var(--radio); }
 .elegir-venta h3 { margin: 0; }
@@ -1395,13 +1384,44 @@ input[aria-invalid='true']:not([type='checkbox']):not([type='radio']):focus-visi
 .venta-titulo h2 { margin: 0; }
 .venta-subtitulo { margin: 2px 0 0; font-size: 0.85rem; color: var(--suave); }
 .tabla-venta-scroll { overflow-x: auto; max-width: 100%; min-width: 0; position: relative; }
-.venta-cuerpo { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: start; }
-.venta-totales { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.venta-totales .totales-venta { margin: 0; max-width: none; padding: 10px 12px; border: 1px solid var(--borde); border-radius: var(--radio); }
-.boton-cerrar-venta { width: 100%; }
-@media (min-width: 1100px) {
-  .venta-cuerpo { grid-template-columns: minmax(0, 1fr) 240px; }
-  .venta-cuerpo .venta-totales { position: sticky; top: 12px; order: 0; }
+.venta-cuerpo { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+/* S-41: barra de total bajo la tabla (sin tarjeta) y "Cerrar venta" a la derecha. */
+.barra-total { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 0 0; border-top: 1px solid var(--borde); }
+.barra-total strong { font-size: 1.15rem; }
+/* S-41: tabla de la venta corta: proveedor, captura, usuario y hora en una segunda línea. */
+.tabla-venta { width: 100%; }
+.celda-referencia-venta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.fila-detalle-venta { color: var(--suave); font-size: 0.78rem; }
+.lector-con-cantidad { align-items: flex-end; }
+.venta-cantidad .campo-cantidad { gap: 2px; }
+.ver-todas { align-self: center; white-space: nowrap; flex: none; }
+/* Ventas cerradas recientes: dos líneas por venta y scroll propio. */
+.lateral h3 { margin-top: 0; }
+.lista-recientes { max-height: 26rem; overflow-y: auto; }
+.lista-recientes li { display: flex; flex-direction: column; gap: 2px; }
+.reciente-linea { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.reciente-cliente { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.reciente-detalle { color: var(--suave); }
+/* S-41: modal de cierre centrado: cabecera y pie fijos, ítems con scroll interno. */
+.modal.modal-cierre { align-items: center; padding: 16px; }
+.cierre-modal { max-width: 720px; max-height: 80dvh; display: flex; flex-direction: column; }
+.cierre-modal .modal-cabeza-texto .cierre-subtitulo { white-space: normal; }
+.cierre-cuerpo { flex: 1; min-height: 0; overflow-y: auto; }
+.tabla-cierre { width: 100%; }
+.cierre-pie { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+.cierre-totales { margin: 0; display: flex; flex-direction: column; gap: 2px; align-self: flex-end; min-width: 16rem; }
+.cierre-totales > div { display: flex; justify-content: space-between; gap: 16px; }
+.cierre-totales dt { color: var(--suave); }
+.cierre-totales dd { margin: 0; font-variant-numeric: tabular-nums; }
+.cierre-total { border-top: 1px solid var(--borde); padding-top: 4px; margin-top: 2px; }
+.cierre-total dt { color: var(--texto); font-weight: 600; align-self: center; }
+.cierre-total dd { font-size: 1.5rem; font-weight: 700; }
+.cierre-botones { display: flex; justify-content: flex-end; gap: 8px; }
+@media (max-width: 480px) {
+  .modal.modal-cierre { padding: 0; }
+  .cierre-modal { max-width: none; max-height: 100dvh; height: 100dvh; border-radius: 0; }
+  .cierre-totales { align-self: stretch; min-width: 0; }
+  .cierre-botones button { flex: 1; }
 }
 .punto-alerta { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--peligro); margin-left: 6px; flex: none; }
 .resumen-cierre { margin-bottom: 8px; }

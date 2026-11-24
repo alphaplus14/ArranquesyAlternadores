@@ -74,6 +74,9 @@ export default function Venta() {
   const [duplicada, setDuplicada] = useState<Duplicada | null>(null)
   /** S-40: cerrar pide confirmación con el resumen. */
   const [confirmandoCierre, setConfirmandoCierre] = useState(false)
+  /** S-41: botón "Cerrar venta"; al volver del modal recibe el foco. */
+  const botonCerrarRef = useRef<HTMLButtonElement>(null)
+  const focoAlCerrarDialogo = useRef<HTMLElement | null>(null)
   /** S-40: unidades por lectura con el código del proveedor (con una etiqueta siempre es 1). */
   const [cantidad, setCantidad] = useState(1)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -230,7 +233,12 @@ export default function Venta() {
   // Editar un precio cuenta como diálogo: el lector no le roba el foco al campo.
   const hayDialogo = respaldo || reverso !== null || eligiendoCliente || precioEnEdicion || eligiendoRef !== null || duplicada !== null || confirmandoCierre
   useEffect(() => {
-    if (!hayDialogo) inputRef.current?.focus()
+    if (hayDialogo) return
+    // S-41: si un diálogo pidió devolver el foco a su botón (p. ej. "Volver" del cierre), va ahí.
+    const destino = focoAlCerrarDialogo.current
+    focoAlCerrarDialogo.current = null
+    if (destino?.isConnected && !(destino as HTMLButtonElement).disabled) destino.focus()
+    else inputRef.current?.focus()
   }, [hayDialogo, ventaId, abierta, escanear.isPending])
   // Al pulsar un botón que abre un diálogo, el blur llega antes que el clic: el timeout debe leer
   // si hay diálogo cuando corre, no cuando se pintó el input, o le roba el foco al diálogo.
@@ -254,7 +262,8 @@ export default function Venta() {
     avisos.mostrar('ok', `Precio de ${item.unidad.codigo_barras} cambiado a $${formatoNumero(precio)}.`)
   }, [qc, dejarDeEditar, avisos])
 
-  const vieja = abierta && v ? esDeDiaAnterior(v) : false
+  // S-41: el aviso de venta vieja solo cuando ya tiene ítems (una vacía no apura nada).
+  const vieja = abierta && v ? esDeDiaAnterior(v) && vigentes.length > 0 : false
 
   return (
     <div>
@@ -315,15 +324,16 @@ export default function Venta() {
               autoComplete="off"
             />
           </div>
-          <CampoCantidad
-            id="venta-cantidad"
-            etiqueta="Cantidad"
-            valor={cantidad}
-            max={MAX_CANTIDAD}
-            onCambio={setCantidad}
-            disabled={!abierta}
-            ayuda="Con el código del proveedor. Cada etiqueta es una unidad."
-          />
+          <div className="venta-cantidad" title="Con el código del proveedor. Cada etiqueta es una unidad.">
+            <CampoCantidad
+              id="venta-cantidad"
+              etiqueta="Cantidad"
+              valor={cantidad}
+              max={MAX_CANTIDAD}
+              onCambio={setCantidad}
+              disabled={!abierta}
+            />
+          </div>
         </div>
         {v && (
           <div className="venta-cuerpo">
@@ -331,7 +341,7 @@ export default function Venta() {
             <div className="tabla-venta-scroll">
             <table className="tabla-apilable tabla-venta">
               <thead>
-                <tr><th>Código</th><th>Referencia</th><th>Proveedor</th><th title="Precio con IVA incluido">Precio (IVA incl.)</th><th>Captura</th><th>Usuario</th><th>Hora</th><th></th></tr>
+                <tr><th>Código</th><th>Referencia</th><th className="col-numero" title="Precio con IVA incluido">Precio (IVA incl.)</th><th><span className="solo-lector">Acciones</span></th></tr>
               </thead>
               <tbody>
                 {v.items.map((i) => (
@@ -348,26 +358,25 @@ export default function Venta() {
                     onReverso={pedirReverso}
                   />
                 ))}
-                {v.items.length === 0 && <tr><td colSpan={8} className="vacio">Sin ítems todavía.</td></tr>}
+                {v.items.length === 0 && <tr><td colSpan={4} className="vacio">Sin ítems todavía.</td></tr>}
               </tbody>
             </table>
             </div>
 
-            <aside className="venta-totales" aria-label="Totales de la venta">
-              <div className="totales-venta">
-                <p className="ayuda">Precios con IVA incluido</p>
-                <dl>
-                  <div><dt>Ítems</dt><dd>{vigentes.length}</dd></div>
-                  <div><dt>Base (sin IVA)</dt><dd>{pesos(v.totales?.base ?? 0)}</dd></div>
-                  <div><dt>{rotuloIvaIncluido(v.totales?.iva_porcentajes ?? [])}</dt><dd>{pesos(v.totales?.iva_incluido ?? 0)}</dd></div>
-                  <div className="linea-total"><dt>Total</dt><dd>{pesos(v.totales?.total ?? 0)}</dd></div>
-                </dl>
-                {(v.totales?.items_sin_iva ?? 0) > 0 && <p className="ayuda">{v.totales?.items_sin_iva} ítem(s) antiguos sin IVA registrado: no se desglosan.</p>}
-              </div>
+            {/* S-41: barra delgada con ítems y total; el desglose base / IVA va en el modal de cierre. */}
+            <div className="barra-total" aria-live="polite">
+              <span>{vigentes.length} {vigentes.length === 1 ? 'ítem' : 'ítems'} · Total <strong>{pesos(v.totales?.total ?? 0)}</strong> (IVA incl.)</span>
               {abierta && (
-                <button type="button" className="primario boton-44 boton-cerrar-venta" onClick={() => setConfirmandoCierre(true)} disabled={cerrar.isPending}>Cerrar venta</button>
+                <button
+                  ref={botonCerrarRef}
+                  type="button"
+                  className="primario boton-44"
+                  onClick={() => setConfirmandoCierre(true)}
+                  disabled={cerrar.isPending || vigentes.length === 0}
+                  title={vigentes.length === 0 ? 'La venta no tiene ítems' : undefined}
+                >Cerrar venta</button>
               )}
-            </aside>
+            </div>
           </div>
         )}
 
@@ -387,11 +396,17 @@ export default function Venta() {
 
       <aside className="panel lateral">
         <h3>Ventas cerradas recientes</h3>
-        <ul className="lista">
+        <ul className="lista lista-recientes">
           {recientes.data?.data.map((r) => (
             <li key={r.id}>
-              <button className="enlace" onClick={() => setVentaId(r.id)}>#{r.id}</button>
-              {r.forma_pago === 'credito' && <> <span className="chip credito">Crédito</span> {r.cliente?.nombre}</>} · {r.items_count} ítems · <span title="Total con IVA incluido">{pesos(r.total)}</span> · {formatearFechaHora(r.created_at)}
+              <span className="reciente-linea">
+                <button className="enlace" onClick={() => setVentaId(r.id)}>#{r.id}</button>
+                {r.forma_pago === 'credito' ? <span className="chip credito">Crédito</span> : <span className="chip">Contado</span>}
+                {r.forma_pago === 'credito' && <span className="reciente-cliente">{r.cliente?.nombre}</span>}
+              </span>
+              <small className="reciente-detalle">
+                {r.items_count} {r.items_count === 1 ? 'ítem' : 'ítems'} · <span title="Total con IVA incluido">{pesos(r.total)}</span> · {formatearFechaHora(r.created_at)}
+              </small>
             </li>
           ))}
         </ul>
@@ -450,10 +465,10 @@ export default function Venta() {
       {confirmandoCierre && v && (
         <DialogoCerrarVenta
           venta={v}
-          items={vigentes.length}
+          vieja={esDeDiaAnterior(v)}
           pendiente={cerrar.isPending}
           onCerrarVenta={() => cerrar.mutate()}
-          onSeguir={() => setConfirmandoCierre(false)}
+          onSeguir={() => { focoAlCerrarDialogo.current = botonCerrarRef.current; setConfirmandoCierre(false) }}
         />
       )}
 
@@ -561,9 +576,8 @@ function BarraVentasAbiertas({ ventas, activa, conUsuario, onElegir }: {
             <small>Sin ítems todavía</small>
           </button>
         )}
-        <button type="button" className="ficha-venta ficha-resumen" onClick={() => setListado('todas')} {...propsBoton(total - 1)}>
-          <strong>Ver todas ({ventas.length})</strong>
-          <small>Buscar por número o cliente</small>
+        <button type="button" className="enlace boton-44 ver-todas" onClick={() => setListado('todas')} title="Buscar por número o cliente" {...propsBoton(total - 1)}>
+          Ver todas ({ventas.length})
         </button>
       </div>
 
@@ -640,9 +654,17 @@ const FilaItem = memo(function FilaItem({ item: i, ventaId, abierta, editable, e
         <span className="mono codigo-unidad">{i.unidad.codigo_barras}</span>
         {i.origen_codigo === 'referencia' && <> <span className="chip por-referencia" title="Se vendió con el código del proveedor; el sistema eligió esta unidad">por referencia</span></>}
       </td>
-      <td data-etiqueta="Referencia"><span>{i.unidad.referencia?.codigo_referencia} <small>{i.unidad.referencia?.descripcion}</small></span></td>
-      <td data-etiqueta="Proveedor"><span>{i.unidad.referencia?.proveedor?.nombre} <ChipCalidad calidad={i.unidad.referencia?.calidad} /></span></td>
-      <td data-etiqueta="Precio">
+      <td data-etiqueta="Referencia">
+        <span className="celda-referencia-venta">
+          <span><strong>{i.unidad.referencia?.codigo_referencia}</strong> <small>{i.unidad.referencia?.descripcion}</small></span>
+          <small className="fila-detalle-venta">
+            {i.unidad.referencia?.proveedor?.nombre} <ChipCalidad calidad={i.unidad.referencia?.calidad} />
+            {' · '}<span className={`chip ${i.metodo_captura}`}>{i.metodo_captura}</span>
+            {' · '}{i.usuario.name} · {formatearHora(i.created_at)}
+          </small>
+        </span>
+      </td>
+      <td data-etiqueta="Precio" className="col-numero">
         {editable && editando ? (
           <CeldaPrecio
             ventaId={ventaId}
@@ -659,9 +681,6 @@ const FilaItem = memo(function FilaItem({ item: i, ventaId, abierta, editable, e
         )}
         {i.iva_porcentaje !== null && <> <small>{Number(i.iva_porcentaje) === 0 ? 'sin IVA' : `IVA ${Number(i.iva_porcentaje)} %`}</small></>}
       </td>
-      <td data-etiqueta="Captura"><span className={`chip ${i.metodo_captura}`}>{i.metodo_captura}</span></td>
-      <td data-etiqueta="Usuario">{i.usuario.name}</td>
-      <td data-etiqueta="Hora">{formatearHora(i.created_at)}</td>
       <td className="celda-accion">
         {i.reverso_id ? <em>reversado</em> : (
           <button className="enlace" onClick={() => onReverso(i, abierta ? 'anulacion' : 'devolucion')}>
@@ -673,45 +692,91 @@ const FilaItem = memo(function FilaItem({ item: i, ventaId, abierta, editable, e
   )
 })
 
+/** S-41: ítems vigentes agrupados por referencia y precio para el resumen del cierre. */
+interface GrupoCierre { clave: string; item: VentaItem; cantidad: number; precio: number }
+
+function agruparParaCierre(items: VentaItem[]): GrupoCierre[] {
+  const grupos = new Map<string, GrupoCierre>()
+  for (const i of items) {
+    if (i.reverso_id) continue // los reversados quedan auditados en la venta; no se cobran
+    const precio = Number(i.precio_unitario ?? 0)
+    const clave = `${i.unidad.referencia?.id ?? i.unidad.referencia_id}-${precio}`
+    const g = grupos.get(clave)
+    if (g) g.cantidad += 1
+    else grupos.set(clave, { clave, item: i, cantidad: 1, precio })
+  }
+  return [...grupos.values()]
+}
+
 /**
- * S-40: confirmación antes de cerrar: ítems, total con IVA incluido, forma de pago, cliente y, en
- * crédito, el vencimiento que se fijará (hoy + plazo del cliente, S-11). Al cerrar, los precios
- * quedan fijos.
+ * S-40 / S-41: confirmación del cierre en un modal centrado: todos los ítems vigentes agrupados por
+ * referencia y precio (cantidad, precio con IVA incluido, subtotal) y, en el pie, base, IVA incluido
+ * y total (los calcula el backend, S-33). En crédito, el vencimiento que se fijará (hoy + plazo, S-11).
+ * "Volver" o Esc no cierran la venta; mientras se cierra, el modal no se puede cerrar.
  */
-function DialogoCerrarVenta({ venta: v, items, pendiente, onCerrarVenta, onSeguir }: {
+function DialogoCerrarVenta({ venta: v, vieja, pendiente, onCerrarVenta, onSeguir }: {
   venta: TVenta
-  items: number
+  vieja: boolean
   pendiente: boolean
   onCerrarVenta: () => void
   onSeguir: () => void
 }) {
   const credito = v.forma_pago === 'credito'
   const vence = credito && v.cliente ? sumarDias(hoyEnBogota(), v.cliente.plazo_dias) : null
+  const grupos = useMemo(() => agruparParaCierre(v.items), [v.items])
+  const unidades = grupos.reduce((n, g) => n + g.cantidad, 0)
+  const t = v.totales
 
   return (
     <Dialogo
-      titulo={`Cerrar la venta #${v.id}`}
-      variante="confirmar"
+      titulo={`Cerrar venta #${v.id}`}
+      descripcion={(
+        <p className="cierre-subtitulo">
+          {credito ? 'Crédito' : 'Contado'} · abierta el {formatearFecha(v.created_at)}
+          {credito && <> · {v.cliente?.nombre ?? '—'}{v.cliente?.documento ? ` (${v.cliente.documento})` : ''}</>}
+        </p>
+      )}
+      variante="cierre"
       onCerrar={onSeguir}
       pendiente={pendiente}
       pie={(
-        <>
-          <button type="button" className="secundario boton-44" disabled={pendiente} onClick={onSeguir}>Seguir escaneando</button>
-          <button type="button" className="primario boton-44" autoFocus disabled={pendiente} onClick={onCerrarVenta}>{pendiente ? 'Cerrando…' : 'Cerrar venta'}</button>
-        </>
+        <div className="cierre-pie">
+          <dl className="cierre-totales">
+            <div><dt>Base (sin IVA)</dt><dd>{pesos(t?.base ?? 0)}</dd></div>
+            <div><dt>{rotuloIvaIncluido(t?.iva_porcentajes ?? [])}</dt><dd>{pesos(t?.iva_incluido ?? 0)}</dd></div>
+            <div className="cierre-total"><dt>Total</dt><dd>{pesos(t?.total ?? 0)}</dd></div>
+          </dl>
+          <div className="cierre-botones">
+            <button type="button" className="secundario boton-44" disabled={pendiente} onClick={onSeguir}>Volver</button>
+            <button type="button" className="primario boton-44" autoFocus disabled={pendiente} onClick={onCerrarVenta}>{pendiente ? 'Cerrando…' : 'Confirmar cierre'}</button>
+          </div>
+        </div>
       )}
     >
-      <DialogoSeccion>
-        <dl className="datos-fijos resumen-cierre">
-          <div><dt>Ítems</dt><dd>{items}</dd></div>
-          <div><dt>Total (IVA incl.)</dt><dd><strong>{v.totales ? pesos(v.totales.total) : '—'}</strong></dd></div>
-          <div><dt>Forma de pago</dt><dd>{credito ? 'Crédito' : 'Contado'}</dd></div>
-          {credito && <div><dt>Cliente</dt><dd>{v.cliente?.nombre ?? '—'}</dd></div>}
-          {vence && <div><dt>Vencimiento</dt><dd>{fechaCorta(vence)} ({v.cliente?.plazo_dias} días)</dd></div>}
-        </dl>
-        <p>Al cerrar, los precios quedan fijos y la venta no se puede editar; solo reversar.</p>
-        {items === 0 && <p className="aviso atencion">La venta no tiene ítems vigentes.</p>}
-      </DialogoSeccion>
+      <section className="modal-seccion cierre-cuerpo" aria-label="Ítems de la venta">
+        {vieja && <p className="aviso atencion">Esta venta se abrió el {formatearFecha(v.created_at)}.{credito ? ' El vencimiento se cuenta desde el cierre.' : ''}</p>}
+        {vence && <p className="ayuda">Vencerá el <strong>{fechaCorta(vence)}</strong> ({v.cliente?.plazo_dias} días).</p>}
+        <table className="tabla-cierre">
+          <caption className="solo-lector">Ítems vigentes agrupados por referencia y precio</caption>
+          <thead><tr><th>Referencia</th><th className="col-numero">Cantidad</th><th className="col-numero">Precio (IVA incl.)</th><th className="col-numero">Subtotal</th></tr></thead>
+          <tbody>
+            {grupos.map((g) => (
+              <tr key={g.clave}>
+                <td data-etiqueta="Referencia">
+                  <span>
+                    <strong>{g.item.unidad.referencia?.codigo_referencia}</strong> <small>{g.item.unidad.referencia?.descripcion}</small>
+                    <small className="bloque">{g.item.unidad.referencia?.proveedor?.nombre} <ChipCalidad calidad={g.item.unidad.referencia?.calidad} /></small>
+                  </span>
+                </td>
+                <td data-etiqueta="Cantidad" className="col-numero">{g.cantidad}</td>
+                <td data-etiqueta="Precio" className="col-numero">{pesos(g.precio)}</td>
+                <td data-etiqueta="Subtotal" className="col-numero"><strong>{pesos(g.precio * g.cantidad)}</strong></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="ayuda">{unidades} {unidades === 1 ? 'unidad' : 'unidades'}. Al cerrar, los precios quedan fijos y la venta no se puede editar; solo reversar.</p>
+      </section>
     </Dialogo>
   )
 }
