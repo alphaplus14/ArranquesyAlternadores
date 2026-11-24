@@ -13,6 +13,7 @@ use App\Models\Unidad;
 use App\Models\User;
 use App\Models\Venta;
 use App\Models\VentaItem;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -58,9 +59,29 @@ class VentaService
      */
     public function escanear(Venta $venta, string $codigoBarras, MetodoCaptura $metodo, User $usuario, ?int $referenciaId = null): VentaItem
     {
+        return $this->escanearVarias($venta, $codigoBarras, $metodo, $usuario, $referenciaId, 1)->first();
+    }
+
+    /** S-40: máximo de unidades por lectura con el código del proveedor. */
+    public const MAX_CANTIDAD = 50;
+
+    /**
+     * S-40: la misma lectura con cantidad. Con una etiqueta del local la cantidad es 1 (una unidad
+     * física); con el código del proveedor o fabricante se asignan N unidades DISTINTAS (criterio
+     * S-31/S-34, FOR UPDATE SKIP LOCKED) y se crean N ítems en UNA transacción: si no alcanzan, 422 y
+     * no se crea ninguno. Mismas reglas de precio (> 0) y de bloqueo que el escaneo de una.
+     *
+     * @return Collection<int, VentaItem>
+     */
+    public function escanearVarias(Venta $venta, string $codigoBarras, MetodoCaptura $metodo, User $usuario, ?int $referenciaId, int $cantidad): Collection
+    {
         $codigo = trim($codigoBarras);
 
-        return DB::transaction(function () use ($venta, $codigo, $metodo, $usuario, $referenciaId) {
+        if ($cantidad < 1 || $cantidad > self::MAX_CANTIDAD) {
+            throw new ReglaInventarioException('La cantidad debe estar entre 1 y '.self::MAX_CANTIDAD.'.', 422, ['campo' => 'cantidad']);
+        }
+
+        return DB::transaction(function () use ($venta, $codigo, $metodo, $usuario, $referenciaId, $cantidad) {
             $venta = Venta::query()->lockForUpdate()->findOrFail($venta->id);
 
             if (! $venta->estaAbierta()) {
@@ -85,6 +106,9 @@ class VentaService
                 ->first();
 
             if ($unidad) {
+                if ($cantidad > 1) {
+                    throw new ReglaInventarioException("Cada etiqueta es una unidad: {$codigo} se agrega de a una (cantidad 1).", 422, ['campo' => 'cantidad', 'codigo' => $codigo]);
+                }
                 if ($referenciaId !== null && $referenciaId !== (int) $unidad->referencia_id) {
                     throw new ReglaInventarioException("La referencia elegida no corresponde al código {$codigo}.", 422);
                 }
@@ -111,21 +135,27 @@ class VentaService
                 );
             }
 
-            $unidad ??= $this->resolver->unidadDisponible($referencia);
+            $unidades = match (true) {
+                $unidad !== null => collect([$unidad]),
+                $cantidad === 1 => collect([$this->resolver->unidadDisponible($referencia)]),
+                default => $this->resolver->unidadesDisponibles($referencia, $cantidad, [], bloquear: true),
+            };
 
-            $item = VentaItem::create([
-                'venta_id' => $venta->id,
-                'unidad_id' => $unidad->id,
-                'precio_unitario' => $precio,
-                'iva_porcentaje' => $iva,
-                'metodo_captura' => $metodo,
-                'origen_codigo' => $origen,
-                'usuario_id' => $usuario->id,
-            ]);
+            return $unidades->map(function (Unidad $u) use ($venta, $precio, $iva, $metodo, $origen, $usuario) {
+                $item = VentaItem::create([
+                    'venta_id' => $venta->id,
+                    'unidad_id' => $u->id,
+                    'precio_unitario' => $precio,
+                    'iva_porcentaje' => $iva,
+                    'metodo_captura' => $metodo,
+                    'origen_codigo' => $origen,
+                    'usuario_id' => $usuario->id,
+                ]);
 
-            $this->inventario->darSalida($unidad, $venta, $usuario->id, $metodo, $origen);
+                $this->inventario->darSalida($u, $venta, $usuario->id, $metodo, $origen);
 
-            return $item->setRelation('unidad', $unidad);
+                return $item->setRelation('unidad', $u);
+            })->values();
         });
     }
 

@@ -67,7 +67,9 @@ it('S-33: criterio 3: un ítem reversado no cuenta en base, IVA ni total', funct
         ->assertJsonPath('totales.total', '119000.00')
         ->assertJsonPath('totales.base', '100000.00')
         ->assertJsonPath('totales.iva_incluido', '19000.00');
-    $fila = collect($this->getJson('/api/ventas?estado=abierta&todas=1')->json('data'))->firstWhere('id', $ventaId);
+    // S-40: las abiertas de otro mostrador solo las ve el admin.
+    actuarComo(Rol::Admin);
+    $fila = collect($this->getJson('/api/ventas?estado=abierta')->json('data'))->firstWhere('id', $ventaId);
     expect((float) $fila['total'])->toBe(119000.0);
 });
 

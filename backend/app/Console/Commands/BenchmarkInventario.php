@@ -81,6 +81,18 @@ class BenchmarkInventario extends Command
                     ['codigo_barras' => 'BX000002', 'metodo_captura' => MetodoCaptura::Escaneado->value]), 201);
             }
 
+            // S-40: una lectura con cantidad 50 por código del proveedor (50 ítems en una transacción).
+            $porLote = Referencia::where('codigo_referencia', 'BX000003')->first();
+            $ingresoLote = $ingresos->crearBorrador(['proveedor_id' => $proveedor->id, 'numero_documento' => 'BENCH-50', 'fecha' => now()->toDateString()], $usuario);
+            $ingresos->agregarItem($ingresoLote, ['referencia_id' => $porLote->id, 'cantidad' => 500, 'costo_unitario' => 500]);
+            $ingresos->confirmar($ingresoLote, $usuario);
+            $ventaLote = $ventas->abrir($usuario);
+            $escaneos50 = [];
+            for ($i = 0; $i < 10; $i++) {
+                $escaneos50[] = $this->medir($kernel, $usuario, Request::create("/api/ventas/{$ventaLote->id}/escanear", 'POST',
+                    ['codigo_barras' => 'BX000003', 'metodo_captura' => MetodoCaptura::Escaneado->value, 'cantidad' => 50]), 201);
+            }
+
             $busquedas = [];
             for ($i = 0; $i < $n; $i++) {
                 $q = $i % 2 ? sprintf('BX%04d', random_int(1, 1999)) : $codigos[$i % $codigos->count()];
@@ -125,6 +137,7 @@ class BenchmarkInventario extends Command
             $this->table(['endpoint', 'n', 'p50 ms', 'p95 ms', 'máx ms', 'objetivo p95'], [
                 ['POST /ventas/{id}/escanear (etiqueta)', count($escaneos), $this->pct($escaneos, 50), $this->pct($escaneos, 95), max($escaneos), 300],
                 ['POST /ventas/{id}/escanear (código proveedor, S-31)', count($escaneosRef), $this->pct($escaneosRef, 50), $this->pct($escaneosRef, 95), max($escaneosRef), 300],
+                ['POST /ventas/{id}/escanear (cantidad 50, S-40)', count($escaneos50), $this->pct($escaneos50, 50), $this->pct($escaneos50, 95), max($escaneos50), 1000],
                 ['GET /buscar', count($busquedas), $this->pct($busquedas, 50), $this->pct($busquedas, 95), max($busquedas), 500],
                 ['GET /ajustes/referencia (S-39)', count($referenciasAjuste), $this->pct($referenciasAjuste, 50), $this->pct($referenciasAjuste, 95), max($referenciasAjuste), 500],
                 ['GET /reportes/bajo-minimo', count($bajoMinimo), $this->pct($bajoMinimo, 50), $this->pct($bajoMinimo, 95), max($bajoMinimo), 500],

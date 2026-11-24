@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\EstadoVenta;
 use App\Enums\MetodoCaptura;
+use App\Enums\Rol;
 use App\Enums\TipoReverso;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\AbrirVentaRequest;
@@ -31,23 +33,29 @@ class VentaController extends Controller
     ) {}
 
     /**
-     * Ventas recientes; por defecto, las abiertas del usuario para retomarlas.
+     * Ventas recientes; por defecto, las del usuario.
      * S-33: total con IVA incluido = suma de los ítems vigentes, en una subconsulta (sin N+1).
+     * S-40: con estado=abierta devuelve TODAS las abiertas (del usuario; el admin, de todos), de la
+     * más antigua a la más reciente, para retomarlas: la venta de contado del día y las de crédito.
+     * items_count cuenta solo los ítems vigentes (sin reverso).
      */
     public function index(Request $request): JsonResponse
     {
+        $abiertas = $request->query('estado') === EstadoVenta::Abierta->value;
+        $admin = $request->user()->rol === Rol::Admin;
+
         $pagina = Venta::query()
-            ->with('usuario:id,name', 'cliente:id,nombre')
-            ->withCount('items')
+            ->with('usuario:id,name', 'cliente:id,nombre,plazo_dias')
+            ->withCount(['items as items_count' => fn ($q) => $q->whereDoesntHave('reversoItem')])
             ->addSelect(['total' => DB::table('venta_items as vi')
                 ->leftJoin('reverso_items as ri', 'ri.venta_item_id', '=', 'vi.id')
                 ->whereColumn('vi.venta_id', 'ventas.id')
                 ->whereNull('ri.id')
                 ->selectRaw('COALESCE(SUM(vi.precio_unitario), 0)')])
             ->when($request->query('estado'), fn ($q, $v) => $q->where('estado', $v))
-            ->when(! $request->boolean('todas'), fn ($q) => $q->where('usuario_id', $request->user()->id))
-            ->orderByDesc('id')
-            ->paginate(25);
+            ->when(! ($abiertas ? $admin : $request->boolean('todas')), fn ($q) => $q->where('usuario_id', $request->user()->id))
+            ->when($abiertas, fn ($q) => $q->orderBy('id'), fn ($q) => $q->orderByDesc('id'))
+            ->paginate($abiertas ? 100 : 25);
 
         return response()->json($pagina);
     }
@@ -77,27 +85,40 @@ class VentaController extends Controller
             'metodo_captura' => ['required', Rule::enum(MetodoCaptura::class)],
             // S-31: para resolver un código de proveedor que está en varias referencias.
             'referencia_id' => ['nullable', 'integer'],
+            // S-40: unidades por lectura con el código del proveedor (con una etiqueta, 1).
+            'cantidad' => ['nullable', 'integer', 'min:1', 'max:'.VentaService::MAX_CANTIDAD],
+        ], [
+            'cantidad.min' => 'La cantidad debe estar entre 1 y '.VentaService::MAX_CANTIDAD.'.',
+            'cantidad.max' => 'La cantidad debe estar entre 1 y '.VentaService::MAX_CANTIDAD.'.',
+            'cantidad.integer' => 'La cantidad debe ser un número entero.',
         ]);
 
-        $item = $this->ventas->escanear(
+        $items = $this->ventas->escanearVarias(
             $venta,
             $datos['codigo_barras'],
             MetodoCaptura::from($datos['metodo_captura']),
             $request->user(),
             isset($datos['referencia_id']) ? (int) $datos['referencia_id'] : null,
+            (int) ($datos['cantidad'] ?? 1),
         );
+        $item = $items->last();
 
         // RF-06: una sola petición por escaneo. Se devuelve el ítem con la misma forma que en
         // GET /ventas/{id} para que el frontend lo agregue a la venta en caché sin pedirla otra vez.
+        // Todas las unidades son de la misma referencia: se carga una vez y se comparte (sin N+1).
         $item->unidad->load(
             'referencia:id,codigo_referencia,calidad,descripcion,precio_venta,existencia,proveedor_id',
             'referencia.proveedor:id,nombre',
         );
-        $item->setRelation('usuario', $request->user())->setRelation('reversoItem', null);
+        $referencia = $item->unidad->referencia;
+        $items->each(fn (VentaItem $i) => $i->setRelation('usuario', $request->user())->setRelation('reversoItem', null)
+            ->unidad->setRelation('referencia', $referencia));
 
         return response()->json([
             'venta_id' => $item->venta_id,
             'item' => new VentaItemResource($item),
+            // S-40: todos los ítems de la lectura (con cantidad > 1, varios).
+            'items' => VentaItemResource::collection($items),
             'venta_item_id' => $item->id,
             'metodo_captura' => $item->metodo_captura,
             'origen_codigo' => $item->origen_codigo, // S-31: etiqueta | referencia
