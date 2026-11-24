@@ -58,9 +58,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .logo-empresa { height: 3.25rem; width: auto; display: block; object-fit: contain; }
 .barra-espacio { flex: 1; }
 .icono-boton {
-  width: 2.4rem; height: 2.4rem; display: grid; place-items: center;
+  width: 2.4rem; height: 2.4rem; padding: 0; display: grid; place-items: center;
   border: 0; background: transparent; border-radius: 10px; color: var(--texto); cursor: pointer;
+  line-height: 0;
 }
+.icono-boton svg { display: block; }
 .icono-boton:hover { background: var(--suave-fondo); }
 .cuenta { position: relative; }
 .cuenta-panel {
@@ -219,7 +221,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   background: var(--suave-fondo);
 }
 .acciones { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: flex-end; }
-.acciones-fila { display: flex; gap: 6px; align-items: center; justify-content: flex-end; }
+.acciones-fila { display: flex; gap: 4px; align-items: center; justify-content: flex-end; }
 
 .busca { position: relative; display: flex; flex-direction: row; align-items: center; }
 .busca svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--suave); pointer-events: none; }
@@ -314,8 +316,12 @@ a.icono-accion:hover, button.icono-accion:hover {
   border-color: #B7C3DC;
   color: var(--primario);
 }
+button.icono-accion.peligro { color: var(--peligro); border-color: #F0B4B2; }
+button.icono-accion.ok { color: var(--ok); border-color: #A9D9BE; }
+button.icono-accion.editar { color: var(--primario); border-color: #B7C3DC; }
 button.icono-accion.peligro:hover { color: var(--peligro); border-color: var(--peligro); background: var(--error-fondo); }
 button.icono-accion.ok:hover { color: var(--ok); border-color: var(--ok); background: var(--ok-fondo); }
+button.icono-accion.editar:hover { color: var(--primario-hover); border-color: var(--primario); background: var(--suave-fondo); }
 a.icono-accion:focus-visible, button.icono-accion:focus-visible {
   outline: 2px solid var(--acento);
   outline-offset: 1px;
@@ -323,11 +329,23 @@ a.icono-accion:focus-visible, button.icono-accion:focus-visible {
 a.icono-accion svg, button.icono-accion svg { width: 18px; height: 18px; }
 
 table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--borde); vertical-align: top; }
-th { font-size: 0.78rem; color: var(--suave); text-transform: uppercase; letter-spacing: 0.03em; }
-tr:hover td { background: var(--suave-fondo); }
+th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid #E4EAF4; vertical-align: middle; }
+thead th {
+  background: #EEF2F8;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--suave);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+/* Cebra al estilo Sakai: fila par un tono más oscura que la impar, hover por encima. */
+table:not(.tabla-marcos) tbody tr:nth-child(even):not(.fila-error):not(.fila-edicion):not(.fila-total) td { background: #F3F6FB; }
+table:not(.tabla-marcos) tbody tr:hover:not(.fila-error):not(.fila-edicion) td { background: #E4EBF8; }
+table:not(.tabla-marcos) tbody tr.fila-total td { background: #E7EDF8; }
 tr.reversado td { color: var(--suave); text-decoration: line-through; }
-tr.reversado td:last-child { text-decoration: none; }
+tr.reversado td:last-child,
+tr.reversado td:has(.icono-accion) { text-decoration: none; }
 .vacio { text-align: center; color: var(--suave); padding: 28px; }
 .agotado { color: var(--peligro); font-weight: 700; }
 .antes { color: var(--peligro); }
@@ -340,10 +358,34 @@ tr.reversado td:last-child { text-decoration: none; }
 .chip.calidad { font-weight: 600; } /* S-23: fino / genérico */
 .chip.sin-precio, .chip.credito { background: var(--aviso-fondo); color: var(--aviso); font-weight: 600; }
 
-.aviso { padding: 10px 12px; border-radius: 8px; margin: 8px 0; font-weight: 600; }
-.aviso.ok { background: var(--ok-fondo); color: var(--ok); }
-.aviso.error { background: var(--error-fondo); color: var(--peligro); }
-.aviso.atencion { background: var(--aviso-fondo); color: var(--aviso); }
+/* Un aviso a la vez, fuera del flujo: no empuja la tabla. Lo pinta Avisos. */
+.aviso-flotante {
+  position: fixed; z-index: 80; right: 24px; bottom: 24px;
+  width: min(420px, calc(100% - 32px));
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 12px 10px 12px 14px; border-radius: 12px;
+  font-weight: 600; box-shadow: 0 12px 32px rgba(14, 26, 51, 0.18);
+  animation: aviso-entra 180ms ease-out;
+}
+.aviso-flotante.ok { background: var(--ok-fondo); color: var(--ok); }
+.aviso-flotante.error { background: var(--error-fondo); color: var(--peligro); }
+.aviso-flotante.atencion { background: var(--aviso-fondo); color: var(--aviso); }
+.aviso-flotante-texto { flex: 1; min-width: 0; }
+.aviso-flotante-texto p { margin: 0; }
+.aviso-flotante-texto a { color: inherit; font-weight: 700; }
+.aviso-cerrar {
+  flex: none; width: 2rem; height: 2rem; padding: 0;
+  display: grid; place-items: center;
+  border: 0; border-radius: 8px; background: transparent; color: inherit;
+}
+.aviso-cerrar:hover { background: rgba(14, 26, 51, 0.06); }
+@keyframes aviso-entra {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .aviso-flotante { animation: none; }
+}
 
 .paginacion { display: flex; gap: 12px; align-items: center; justify-content: flex-end; margin-top: 12px; color: var(--suave); font-size: 0.9rem; }
 .paginacion-controles { display: flex; gap: 4px; align-items: center; }
@@ -385,6 +427,8 @@ tr.reversado td:last-child { text-decoration: none; }
 .modal.confirmar p { margin: 0; }
 
 .cuenta-modal { max-width: 560px; padding: 0; gap: 0; overflow: hidden; }
+.cuenta-modal.dialogo-ancho { max-width: 800px; }
+.modal.confirmar .cuenta-modal { max-width: 420px; }
 .modal-ficha { align-items: center; padding: 32px 16px; }
 .ficha-modal { max-width: 640px; max-height: min(760px, calc(100dvh - 48px)); overflow: auto; }
 .ficha-modal .modal-cabeza,
@@ -411,7 +455,6 @@ tr.reversado td:last-child { text-decoration: none; }
 .modal-seccion h3 { margin: 0; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--suave); }
 .modal-seccion input { padding: 10px 12px; }
 .campos-dos { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.cuenta-modal > .aviso { margin: 0 22px 14px; }
 .modal-pie {
   display: flex; justify-content: flex-end; gap: 8px;
   padding: 14px 22px; border-top: 1px solid var(--borde); background: var(--suave-fondo);
@@ -518,6 +561,30 @@ input[aria-invalid='true'] { border-color: var(--peligro); }
 .lista { list-style: none; padding: 0; margin: 0; }
 .lista li { padding: 6px 0; border-bottom: 1px solid var(--borde); }
 
+/* Elegir un cliente o una unidad. El alta va al final, no suelta debajo. */
+.eleccion { display: flex; flex-direction: column; gap: 6px; max-height: 46vh; overflow: auto; }
+.eleccion-estado { margin: 4px 0; color: var(--suave); }
+.eleccion-fila, .eleccion-alta, .eleccion-elegida {
+  width: 100%; text-align: left; font: inherit; color: var(--texto);
+  border: 1px solid var(--borde); border-radius: 10px; background: #fff;
+  padding: 10px 12px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+}
+button.eleccion-fila { cursor: pointer; }
+button.eleccion-fila:hover, .eleccion-alta:hover { border-color: var(--primario); background: #F8FAFE; }
+.eleccion-fila strong { font-weight: 700; }
+.eleccion-fila small, .eleccion-meta { color: var(--suave); font-size: 0.85rem; font-weight: 500; }
+.eleccion-acciones { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.eleccion-alta {
+  cursor: pointer; border-style: dashed; color: var(--primario); font-weight: 650;
+  align-items: center;
+}
+.eleccion-elegida {
+  flex-direction: row; align-items: center; justify-content: space-between; gap: 12px;
+  background: var(--ok-fondo); border-color: transparent;
+}
+.eleccion-elegida div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.eleccion-elegida strong { color: var(--ok); }
+
 /* Catálogos: pestañas y filas con marco, al estilo de una tabla Sakai. */
 .catalogo {
   padding: 0 0 12px;
@@ -571,7 +638,6 @@ button.pestana.activa .pestana-cuenta { background: #E4EBFA; color: var(--primar
   padding: 16px 18px 0;
 }
 .catalogo-barra .formulario { margin: 0; flex: 1; min-width: 260px; }
-.catalogo-aviso { margin: 12px 18px 0; }
 .tabla-marcos-scroll { max-height: calc(100vh - 22rem); overflow: auto; padding: 0 12px 8px; }
 .tabla-marcos {
   width: 100%;
@@ -622,16 +688,8 @@ button.pestana.activa .pestana-cuenta { background: #E4EBFA; color: var(--primar
 }
 .edicion-fila { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .edicion-fila input { flex: 1; min-width: 160px; }
-button.accion {
-  padding: 6px 12px;
-  border-radius: 8px;
-  border: 1px solid var(--borde);
-  background: #fff;
-  color: var(--primario);
-  font-weight: 600;
-  font-size: 0.85rem;
-}
-button.accion:hover { background: var(--suave-fondo); border-color: var(--primario); }
+th.col-accion, td.col-accion { width: 1%; white-space: nowrap; text-align: right; vertical-align: middle; }
+td.col-accion .icono-accion { display: inline-grid; vertical-align: middle; }
 
 @media (min-width: 961px) {
   .cuerpo { transition: gap 160ms ease-out; }
@@ -693,12 +751,21 @@ button.accion:hover { background: var(--suave-fondo); border-color: var(--primar
   .tabla-lineas .precio-editable { align-items: flex-end; }
 }
 
-/* Tablas anchas: se desplazan dentro de su caja, no la página. */
-.tabla-desplazable { overflow-x: auto; }
+/* Tablas anchas: marco y se desplazan dentro de su caja, no la página. */
+.tabla-desplazable {
+  overflow-x: auto;
+  border: 1px solid var(--borde);
+  border-radius: 10px;
+  background: #fff;
+}
+.tabla-desplazable table { margin-top: 0; }
+.tabla-desplazable tbody tr:last-child td { border-bottom: 0; }
 
 /* Ingresos: botón "Nuevo ingreso" junto al título; debajo y a todo el ancho en pantallas angostas. */
 .encabezado-con-accion { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
 .encabezado-con-accion > .primario { flex: none; min-height: 44px; }
+.titulo-con-medida .medida-icono { width: 2rem; height: 2rem; border-radius: 8px; }
+.titulo-con-medida.rojo h2 { color: var(--peligro); }
 
 /* Modal "Nuevo ingreso": cabecera y pie fijos, el contenido hace scroll interno. */
 .modal-ingreso { align-items: center; padding: 32px 16px; }

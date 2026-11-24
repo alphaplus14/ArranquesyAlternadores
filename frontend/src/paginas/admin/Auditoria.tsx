@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { api } from '../../api/cliente'
 import type { Auditoria as TAuditoria, Pagina } from '../../api/tipos'
 import { useListaPaginada } from '../../hooks/useListaPaginada'
+import Dialogo, { DialogoSeccion } from '../../componentes/Dialogo'
 import Icono from '../../componentes/Icono'
 import Medida from '../../componentes/Medida'
 import Resumen from '../../componentes/Resumen'
@@ -178,41 +179,27 @@ function DialogoTablas({
   const listaRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    const alPulsar = (e: KeyboardEvent) => { if (e.key === 'Escape') onCerrar() }
-    document.addEventListener('keydown', alPulsar)
-    const anterior = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
     const fila = elegidoRef.current
     const lista = listaRef.current
     if (fila && lista) {
       const delta = fila.getBoundingClientRect().top - lista.getBoundingClientRect().top
       lista.scrollTop += delta - 64
     }
-    return () => {
-      document.removeEventListener('keydown', alPulsar)
-      document.body.style.overflow = anterior
-    }
-  }, [onCerrar])
+  }, [])
 
   const subtitulo = partes.length > 0
     ? `${visibles.length} ${visibles.length === 1 ? 'coincidencia' : 'coincidencias'}`
     : `${TABLAS_AUDITORIA.length} tablas con auditoría`
 
   return (
-    <div className="modal modal-proveedor">
-      <div className="modal-caja cuenta-modal proveedor-modal" role="dialog" aria-modal="true" aria-labelledby="filtro-tabla-titulo">
-        <header className="modal-cabeza">
-          <span className="avatar" aria-hidden><Icono nombre="auditoria" /></span>
-          <div className="modal-cabeza-texto">
-            <h2 id="filtro-tabla-titulo">Filtrar por tabla</h2>
-            <p>{subtitulo}</p>
-          </div>
-          <button type="button" className="icono-boton modal-cerrar" aria-label="Cerrar" onClick={onCerrar}>
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6L6 18" /></svg>
-          </button>
-        </header>
-
-        <section className="modal-seccion selector-cuerpo">
+    <Dialogo
+      titulo="Filtrar por tabla"
+      descripcion={subtitulo}
+      marca={<Icono nombre="auditoria" />}
+      variante="proveedor"
+      onCerrar={onCerrar}
+    >
+        <DialogoSeccion modo="selector">
           <label className="busca selector-busca">
             <Icono nombre="buscar" />
             <input
@@ -266,9 +253,8 @@ function DialogoTablas({
               )}
             </ul>
           </div>
-        </section>
-      </div>
-    </div>
+        </DialogoSeccion>
+    </Dialogo>
   )
 }
 

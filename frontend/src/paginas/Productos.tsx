@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeError } from '../api/cliente'
 import { NOMBRE_CALIDAD, type MetodoCaptura, type Pagina, type Referencia } from '../api/tipos'
+import { useAviso } from '../componentes/Avisos'
 import ChipCalidad from '../componentes/ChipCalidad'
 import FichaReferencia from '../componentes/FichaReferencia'
 import { useAuth } from '../auth/AuthProvider'
@@ -55,7 +56,6 @@ function sinPrecio(r: Referencia) {
   return Number(r.precio_venta) === 0
 }
 
-interface Aviso { tipo: 'ok' | 'error' | 'atencion'; texto: string }
 interface Lectura { codigo: string; metodo: MetodoCaptura; titulo: string; detalle: string }
 interface Busqueda {
   unidad: { codigo_barras: string; estado: string; referencia?: Referencia } | null
@@ -80,6 +80,7 @@ async function traerReferencias(termino: string, proveedorId: string, pagina: nu
  */
 export default function Productos() {
   const qc = useQueryClient()
+  const avisos = useAviso()
   const { tieneRol } = useAuth()
   const esAdmin = tieneRol('admin')
   const [q, setQ] = useState('')
@@ -87,7 +88,6 @@ export default function Productos() {
   const [resaltada, setResaltada] = useState<number | null>(null)
   /** Código con que el último escaneo filtró la lista (se muestra como chip para quitarlo). */
   const [filtroEscaneo, setFiltroEscaneo] = useState<string | null>(null)
-  const [aviso, setAviso] = useState<Aviso | null>(null)
   const [lectura, setLectura] = useState<Lectura | null>(null)
   const [ficha, setFicha] = useState<FichaCatalogo | null>(null)
   const [compactas, setCompactas] = useState(filasCompactasGuardadas)
@@ -154,7 +154,7 @@ export default function Productos() {
       if (!referencia) {
         setResaltada(null)
         setLectura({ codigo, metodo, titulo: 'Sin coincidencia', detalle: 'No está en el catálogo' })
-        setAviso({ tipo: 'error', texto: `Sin resultados para ${codigo}.` })
+        avisos.mostrar('error', `Sin resultados para ${codigo}.`)
         return
       }
       setResaltada(referencia.id)
@@ -175,13 +175,10 @@ export default function Productos() {
       // El código leído no se repite si es el mismo de la referencia (p. ej. el de la caja).
       const que = leido === referencia.codigo_referencia ? leido : `${leido} → ${referencia.codigo_referencia}`
       const partes = [que, referencia.descripcion, referencia.proveedor?.nombre, calidad, `existencia ${referencia.existencia}`]
-      setAviso({
-        tipo: vendida ? 'atencion' : 'ok',
-        texto: `${vendida ? 'Unidad vendida · ' : ''}${metodo === 'escaneado' ? 'Escaneado' : 'Digitado'} · ${partes.filter(Boolean).join(' · ')}`,
-      })
+      avisos.mostrar(vendida ? 'atencion' : 'ok', `${vendida ? 'Unidad vendida · ' : ''}${metodo === 'escaneado' ? 'Escaneado' : 'Digitado'} · ${partes.filter(Boolean).join(' · ')}`)
     },
     onError: (e) => {
-      setAviso({ tipo: 'error', texto: mensajeError(e) })
+      avisos.mostrar('error', mensajeError(e))
     },
   })
 
@@ -306,7 +303,6 @@ export default function Productos() {
           autoComplete="off"
           aria-label="Lector de código de barras"
         />
-        {aviso && <div className={`aviso ${aviso.tipo}`} role="status">{aviso.texto}</div>}
         {hayFiltroEscaneo && (
           <div className="filtro-activo">
             <span className="chip filtro">

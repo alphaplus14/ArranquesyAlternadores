@@ -1,11 +1,14 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeError } from '../../api/cliente'
+import { useAvisoTexto } from '../../componentes/Avisos'
 import type { Pagina, Rol, Usuario } from '../../api/tipos'
 import { useAuth } from '../../auth/AuthProvider'
 import { normalizarUsuario } from '../../auth/nombreUsuario'
 import { useListaPaginada } from '../../hooks/useListaPaginada'
+import { useAviso } from '../../componentes/Avisos'
 import Confirmar from '../../componentes/Confirmar'
+import Dialogo, { DialogoSeccion } from '../../componentes/Dialogo'
 import Icono from '../../componentes/Icono'
 import Medida from '../../componentes/Medida'
 import Resumen from '../../componentes/Resumen'
@@ -37,6 +40,7 @@ export default function Usuarios() {
   const crear = useMutation({ mutationFn: () => api.post('/usuarios', nuevo), onSuccess: () => { setNuevo({ name: '', usuario: '', password: '', rol: 'mostrador' }); refrescar() } })
   const cambiar = useMutation({ mutationFn: ({ id, ...datos }: Partial<Usuario> & { id: number }) => api.patch(`/usuarios/${id}`, datos), onSuccess: refrescar })
   const error = confirmacion ? crear.error : (crear.error ?? cambiar.error)
+  useAvisoTexto(error ? mensajeError(error) : null)
 
   const pedirConfirmacion = (c: Confirmacion) => { cambiar.reset(); setConfirmacion(c) }
   const aplicarConfirmacion = () => {
@@ -102,7 +106,6 @@ export default function Usuarios() {
         </select>
         <button className="primario" disabled={crear.isPending}>Crear usuario</button>
       </form>
-      {error && <div className="aviso error">{mensajeError(error)}</div>}
       </section>
 
       <section className="tarjeta-pagina">
@@ -178,25 +181,34 @@ export default function Usuarios() {
 }
 
 function CambiarClave({ usuario, onCerrar }: { usuario: Usuario; onCerrar: () => void }) {
+  const avisos = useAviso()
   const [f, setF] = useState({ password: '', password_confirmation: '' })
   const [seguro, setSeguro] = useState(false)
-  const guardar = useMutation({ mutationFn: () => api.patch(`/usuarios/${usuario.id}`, f), onSuccess: onCerrar })
+  const guardar = useMutation({
+    mutationFn: () => api.patch(`/usuarios/${usuario.id}`, f),
+    onSuccess: onCerrar,
+    onError: (e) => { if (!seguro) avisos.mostrar('error', mensajeError(e)) },
+  })
 
   return (
     <>
-      <div className="modal">
-        <form className="modal-caja" onSubmit={(e) => { e.preventDefault(); guardar.reset(); setSeguro(true) }}>
-          <h2>Contraseña de {usuario.name}</h2>
+      <Dialogo
+        titulo={`Contraseña de ${usuario.name}`}
+        descripcion={`Al guardar, se cierran todas las sesiones abiertas de ${usuario.name}.`}
+        onCerrar={onCerrar}
+        onEnviar={() => { guardar.reset(); setSeguro(true) }}
+        pie={(
+          <>
+            <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
+            <button type="submit" className="primario" disabled={guardar.isPending}>Guardar</button>
+          </>
+        )}
+      >
+        <DialogoSeccion>
           <label>Contraseña nueva<input type="password" required minLength={8} autoComplete="new-password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} /></label>
           <label>Repita la contraseña<input type="password" required autoComplete="new-password" value={f.password_confirmation} onChange={(e) => setF({ ...f, password_confirmation: e.target.value })} /></label>
-          <p className="ayuda">Al guardar, se cierran todas las sesiones abiertas de {usuario.name}.</p>
-          {guardar.isError && !seguro && <div className="aviso error">{mensajeError(guardar.error)}</div>}
-          <div className="acciones">
-            <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
-            <button className="primario" disabled={guardar.isPending}>Guardar</button>
-          </div>
-        </form>
-      </div>
+        </DialogoSeccion>
+      </Dialogo>
       {seguro && (
         <Confirmar
           id="confirmar-clave"

@@ -3,6 +3,8 @@ import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
 import { api, erroresCampo, mensajeError } from '../../api/cliente'
+import { useAviso, useAvisoTexto } from '../../componentes/Avisos'
+import Dialogo, { DialogoSeccion } from '../../componentes/Dialogo'
 import type { FormaPago, Ingreso, IngresoItem } from '../../api/tipos'
 import { fechaCorta, sumarDias } from '../../componentes/fechas'
 import CampoDescuento, { type ModoDescuento } from '../../componentes/CampoDescuento'
@@ -10,12 +12,9 @@ import FichaReferencia from '../../componentes/FichaReferencia'
 import Medida from '../../componentes/Medida'
 import { formatoNumero, leerNumero, pesos } from '../../componentes/numeros'
 import { useScanner } from '../../hooks/useScanner'
-import { useBloquearScroll } from '../../hooks/useBloquearScroll'
-import { atraparTab } from '../../componentes/foco'
 import Resumen from '../../componentes/Resumen'
 import Icono from '../../componentes/Icono'
 
-interface Aviso { tipo: 'ok' | 'error' | 'atencion'; texto: string }
 type Campo = 'cantidad' | 'costo_unitario' | 'descuento_porcentaje' | 'iva_porcentaje'
 const CAMPOS: Campo[] = ['cantidad', 'costo_unitario', 'descuento_porcentaje', 'iva_porcentaje']
 /** IVA de una línea de compra (S-22): 0 = sin IVA. Si la línea trae otro valor, se agrega. */
@@ -98,7 +97,7 @@ function codigoInexistente(error: unknown): string | null {
 export default function IngresoDetalle() {
   const { id } = useParams()
   const qc = useQueryClient()
-  const [aviso, setAviso] = useState<Aviso | null>(null)
+  const avisos = useAviso()
   const [creando, setCreando] = useState<string | null>(null)
   const [fila, setFilaEstado] = useState<Fila | null>(null)
   // Copia sincrónica: el blur de una fila y el clic en otra llegan en el mismo ciclo.
@@ -126,7 +125,7 @@ export default function IngresoDetalle() {
     if (Object.values(erroresDe(f)).some(Boolean) || Object.keys(cambios).length === 0) return
     guardarLinea(f, cambios)
       .then(actualizar)
-      .catch((e) => setAviso({ tipo: 'error', texto: `No se guardó la línea ${f.codigo}: ${mensajeError(e)}` }))
+      .catch((e) => avisos.mostrar('error', `No se guardó la línea ${f.codigo}: ${mensajeError(e)}`))
   }
 
   const abrirFila = (it: LineaEditable, foco: Campo) => {
@@ -155,14 +154,14 @@ export default function IngresoDetalle() {
       actualizar(await guardarLinea(f, cambios))
       if (filaRef.current?.itemId === f.itemId) ponerFila(null)
       // Un error anterior (por ejemplo, "falta el costo") ya no aplica tras corregir.
-      setAviso((a) => (a?.tipo === 'error' ? null : a))
+      avisos.limpiarSi('error')
     } catch (e) {
       const actual = filaRef.current
       // El foco va al campo que señala el backend (422), si lo señala.
       const conError = Object.keys(erroresCampo(e))
       const foco = CAMPOS.find((c) => conError.includes(c)) ?? f.foco
       if (actual?.itemId === f.itemId) ponerFila({ ...actual, foco, guardando: false, intentado: true, errorServidor: mensajeError(e) })
-      else setAviso({ tipo: 'error', texto: `No se guardó la línea ${f.codigo}: ${mensajeError(e)}` })
+      else avisos.mostrar('error', `No se guardó la línea ${f.codigo}: ${mensajeError(e)}`)
     }
   }
 
@@ -182,33 +181,33 @@ export default function IngresoDetalle() {
       // Captura rápida: línea nueva o sin costo → se abre su costo con el foco (Enter guarda).
       const nueva = !qc.getQueryData<Ingreso>(['ingreso', id])?.items.some((x) => x.id === linea.id)
       if (nueva || sinCosto) abrirFila(linea, 'costo_unitario')
-      setAviso({
-        tipo: sinCosto ? 'atencion' : 'ok',
-        texto: `✓ ${linea.referencia?.codigo_referencia} · ${linea.referencia?.descripcion} — cantidad ${linea.cantidad}${sinCosto ? ' · escriba el costo en la tabla' : ''}`,
-      })
+      avisos.mostrar(
+        sinCosto ? 'atencion' : 'ok',
+        `✓ ${linea.referencia?.codigo_referencia} · ${linea.referencia?.descripcion} — cantidad ${linea.cantidad}${sinCosto ? ' · escriba el costo en la tabla' : ''}`,
+      )
       qc.invalidateQueries({ queryKey: ['ingreso', id] })
     },
     onError: (e, codigo) => {
       const inexistente = codigoInexistente(e)
       if (inexistente !== null) {
-        setAviso({ tipo: 'atencion', texto: `El código ${inexistente} no es una referencia de este proveedor. Créela para agregarla.` })
+        avisos.mostrar('atencion', `El código ${inexistente} no es una referencia de este proveedor. Créela para agregarla.`)
         setCreando(inexistente || codigo)
         return
       }
-      setAviso({ tipo: 'error', texto: mensajeError(e) })
+      avisos.mostrar('error', mensajeError(e))
     },
   })
 
   const quitar = useMutation({
     mutationFn: async (itemId: number) => (await api.delete<Ingreso>(`/ingresos/${id}/items/${itemId}`)).data,
     onSuccess: actualizar,
-    onError: (e) => setAviso({ tipo: 'error', texto: mensajeError(e) }),
+    onError: (e) => avisos.mostrar('error', mensajeError(e)),
     onSettled: () => { setQuitando(null); inputRef.current?.focus() },
   })
   const confirmar = useMutation({
     mutationFn: async () => (await api.post<Ingreso>(`/ingresos/${id}/confirmar`)).data,
-    onSuccess: (nuevo) => { actualizar(nuevo); qc.invalidateQueries({ queryKey: ['ingresos'] }); setAviso(null) },
-    onError: (e) => setAviso({ tipo: 'error', texto: mensajeError(e) }),
+    onSuccess: (nuevo) => { actualizar(nuevo); qc.invalidateQueries({ queryKey: ['ingresos'] }); avisos.limpiar() },
+    onError: (e) => avisos.mostrar('error', mensajeError(e)),
   })
 
   const onCodigo = useCallback((codigo: string) => {
@@ -234,7 +233,8 @@ export default function IngresoDetalle() {
     inputRef.current?.focus()
   }, 0)
 
-  if (ingreso.isError) return <div className="panel"><div className="aviso error">{mensajeError(ingreso.error)}</div></div>
+  useAvisoTexto(ingreso.isError ? mensajeError(ingreso.error) : null)
+  if (ingreso.isError) return <div className="panel">No se pudo cargar el ingreso.</div>
   if (!i) return <div className="panel">Cargando…</div>
 
   const unidades = i.items.reduce((suma, it) => suma + it.cantidad, 0)
@@ -316,8 +316,6 @@ export default function IngresoDetalle() {
             <p className="ayuda">Se busca entre las referencias de {i.proveedor?.nombre}. Leer el mismo código otra vez suma 1. Haga clic en un valor o en el lápiz para editar la línea: Tab recorre, Enter guarda y Esc cancela.</p>
           </>
         )}
-        {aviso && <div className={`aviso ${aviso.tipo}`} role="status">{aviso.texto}</div>}
-
         <div className="tabla-desplazable">
         <table ref={tablaRef} className="tabla-lineas">
           <thead><tr><th>Referencia</th><th>Cant.</th><th>Costo</th><th>Desc. %</th><th>IVA %</th><th>Neto</th><th>IVA</th><th><span className="solo-lector">Acciones</span></th></tr></thead>
@@ -406,7 +404,7 @@ export default function IngresoDetalle() {
       {condiciones && (
         <DialogoCondiciones
           ingreso={i}
-          onGuardado={(nuevo) => { actualizar(nuevo); setCondiciones(false); setAviso(null) }}
+          onGuardado={(nuevo) => { actualizar(nuevo); setCondiciones(false); avisos.limpiar() }}
           onCerrar={() => setCondiciones(false)}
         />
       )}
@@ -564,12 +562,22 @@ function DialogoCondiciones({ ingreso, onGuardado, onCerrar }: {
   })
   const errores = guardar.isError ? erroresCampo(guardar.error) : {}
   const general = guardar.isError && Object.keys(errores).length === 0 ? mensajeError(guardar.error) : null
-  useBloquearScroll()
+  useAvisoTexto(general)
 
   return (
-    <div className="modal" onKeyDown={(e) => { if (e.key === 'Escape') onCerrar(); else atraparTab(e) }}>
-      <form className="modal-caja" role="dialog" aria-modal="true" aria-labelledby="condiciones-titulo" onSubmit={(e) => { e.preventDefault(); guardar.mutate() }}>
-        <h2 id="condiciones-titulo">Condiciones del documento</h2>
+    <Dialogo
+      titulo="Condiciones del documento"
+      onCerrar={onCerrar}
+      pendiente={guardar.isPending}
+      onEnviar={() => guardar.mutate()}
+      pie={(
+        <>
+          <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
+          <button type="submit" className="primario" disabled={guardar.isPending}>{guardar.isPending ? 'Guardando…' : 'Guardar'}</button>
+        </>
+      )}
+    >
+      <DialogoSeccion>
         <label>Pago
           <select autoFocus value={forma} onChange={(e) => cambiarForma(e.target.value as FormaPago)}>
             <option value="contado">Contado</option>
@@ -594,12 +602,7 @@ function DialogoCondiciones({ ingreso, onGuardado, onCerrar }: {
           onModo={setModo}
           onValor={setDescuento}
         />
-        {general && <div className="aviso error">{general}</div>}
-        <div className="acciones">
-          <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
-          <button className="primario" disabled={guardar.isPending}>{guardar.isPending ? 'Guardando…' : 'Guardar'}</button>
-        </div>
-      </form>
-    </div>
+      </DialogoSeccion>
+    </Dialogo>
   )
 }

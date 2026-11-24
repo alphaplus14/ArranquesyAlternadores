@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { api, mensajeError } from '../../api/cliente'
+import { useAvisoTexto } from '../../componentes/Avisos'
 import type { Unidad } from '../../api/tipos'
 import Medida from '../../componentes/Medida'
 import Resumen from '../../componentes/Resumen'
@@ -40,6 +41,8 @@ export default function Etiquetas() {
     },
     onSuccess: (url) => window.open(url, '_blank'),
   })
+  useAvisoTexto(unidades.isError ? mensajeError(unidades.error) : null)
+  useAvisoTexto(imprimir.isError ? mensajeError(imprimir.error) : null)
 
   const alternar = (id: number) => {
     const s = new Set(seleccion)
@@ -82,8 +85,6 @@ export default function Etiquetas() {
         <button className="primario">Cargar unidades</button>
       </form>
 
-      {unidades.isError && <div className="aviso error">{mensajeError(unidades.error)}</div>}
-
       {unidades.data && (
         <>
           <fieldset className="tamanos">
@@ -115,7 +116,6 @@ export default function Etiquetas() {
               Generar PDF ({seleccion.size} etiquetas)
             </button>
           </div>
-          {imprimir.isError && <div className="aviso error">{mensajeError(imprimir.error)}</div>}
         </>
       )}
     </div>

@@ -9,6 +9,11 @@ export function sumarDias(fecha: string, dias: number): string {
   return new Date(a, m - 1, d + dias).toLocaleDateString('en-CA')
 }
 
+/** Hoy en hora local (aaaa-mm-dd). */
+export function hoy(): string {
+  return new Date().toLocaleDateString('en-CA')
+}
+
 /** aaaa-mm-dd → dd/mm/aaaa (es-CO). */
 export function fechaCorta(iso: string): string {
   const [a, m, d] = iso.split('-').map(Number)

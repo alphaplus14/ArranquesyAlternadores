@@ -1,0 +1,19 @@
+/* Cartera (RF-15, RF-17, RF-18): cifras alineadas a la derecha y antigüedad en una fila. */
+.cifra { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+th.cifra { text-align: right; }
+tr.fila-total td { font-weight: 700; border-top: 2px solid var(--borde); }
+tr.fila-anterior td { color: var(--suave); font-style: italic; }
+.antiguedad { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; margin: 8px 0 4px; }
+.antiguedad div { border: 1px solid var(--borde); border-radius: 8px; padding: 8px 10px; }
+.antiguedad span { display: block; color: var(--suave); font-size: 0.8rem; }
+.antiguedad strong { font-variant-numeric: tabular-nums; }
+.antiguedad .vencida { border-color: #F2C4C4; background: #FFF6F6; }
+.filtros-informe { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin: 12px 0; }
+.filtros-informe label { min-width: 150px; }
+.filtros-informe .filtro-proveedor-ancho { min-width: 260px; }
+.lista-elegir { list-style: none; margin: 8px 0; padding: 0; max-height: 320px; overflow: auto; }
+.lista-elegir li { display: flex; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--borde); }
+.lista-elegir label { flex-direction: row; align-items: center; gap: 10px; color: var(--texto); }
+@media (max-width: 800px) {
+  .antiguedad { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

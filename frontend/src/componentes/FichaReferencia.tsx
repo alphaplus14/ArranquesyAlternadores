@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { api, mensajeError } from '../api/cliente'
 import type { Calidad, Opcion, Pagina, Referencia } from '../api/tipos'
 import { useCategorias, useProveedores } from '../hooks/useCatalogos'
+import { useAvisoTexto } from './Avisos'
+import Dialogo, { DialogoSeccion } from './Dialogo'
 import Icono from './Icono'
 
 /**
@@ -85,17 +87,6 @@ export default function FichaReferencia(props: FichaReferenciaProps) {
     onSuccess: props.onGuardada,
   })
 
-  useEffect(() => {
-    const alPulsar = (e: KeyboardEvent) => { if (e.key === 'Escape') props.onCerrar() }
-    document.addEventListener('keydown', alPulsar)
-    const desborde = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.removeEventListener('keydown', alPulsar)
-      document.body.style.overflow = desborde
-    }
-  }, [props.onCerrar])
-
   const setCampo = (k: keyof Valores, valor: string) => {
     setF((actual) => {
       const siguiente = { ...actual, [k]: valor }
@@ -123,28 +114,26 @@ export default function FichaReferencia(props: FichaReferenciaProps) {
     ? 'Mayor que 0. Si no lo conoce, consúltelo con el administrador antes de crearla.'
     : 'Mayor que 0. Una referencia sin precio no se puede vender.')
   const etiquetaBoton = guardar.isPending ? 'Guardando…' : ingreso ? 'Crear y agregar' : 'Guardar'
+  useAvisoTexto(sinCategorias ? 'No hay categorías en el catálogo. Pídale al administrador que las cree.' : null, 'atencion')
+  useAvisoTexto(guardar.isError ? mensajeError(guardar.error) : null)
 
   return (
-    <div className="modal modal-ficha">
-      <form
-        className="modal-caja cuenta-modal ficha-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="ficha-referencia-titulo"
-        onSubmit={(e) => { e.preventDefault(); if (completo && !guardar.isPending) guardar.mutate() }}
-      >
-        <header className="modal-cabeza">
-          <span className="avatar" aria-hidden><Icono nombre="etiqueta" /></span>
-          <div className="modal-cabeza-texto">
-            <h2 id="ficha-referencia-titulo">{titulo}</h2>
-            <p>{subtitulo}</p>
-          </div>
-          <button type="button" className="icono-boton modal-cerrar" aria-label="Cerrar" onClick={props.onCerrar}>
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6L6 18" /></svg>
-          </button>
-        </header>
-
-        <section className="modal-seccion">
+    <Dialogo
+      titulo={titulo}
+      descripcion={subtitulo}
+      marca={<Icono nombre="etiqueta" />}
+      variante="ficha"
+      onCerrar={props.onCerrar}
+      pendiente={guardar.isPending}
+      onEnviar={() => { if (completo && !guardar.isPending) guardar.mutate() }}
+      pie={(
+        <>
+          <button type="button" className="secundario" onClick={props.onCerrar}>Cancelar</button>
+          <button type="submit" className="primario" disabled={!completo || guardar.isPending}>{etiquetaBoton}</button>
+        </>
+      )}
+    >
+        <DialogoSeccion>
           <h3>Identidad</h3>
           {ingreso && <p className="ayuda">Este código no existe para este proveedor. Al guardarla se agrega la línea al ingreso.</p>}
           <div className="campos-dos">
@@ -169,10 +158,9 @@ export default function FichaReferencia(props: FichaReferenciaProps) {
           <label>Descripción
             <input required maxLength={255} value={f.descripcion} onChange={(e) => setCampo('descripcion', e.target.value)} />
           </label>
-        </section>
+        </DialogoSeccion>
 
-        <section className="modal-seccion">
-          <h3>Origen</h3>
+        <DialogoSeccion titulo="Origen">
           <div className="campos-dos">
             <label>Proveedor
               {ingreso ? (
@@ -191,9 +179,6 @@ export default function FichaReferencia(props: FichaReferenciaProps) {
               </select>
             </label>
           </div>
-          {sinCategorias && (
-            <div className="aviso atencion">No hay categorías en el catálogo. Pídale al administrador que las cree.</div>
-          )}
           {ingreso && <p className="ayuda">Si la categoría que necesita no aparece, pídale al administrador que la cree; aquí no se crean.</p>}
           {admiteUniversal && (
             <label>Código universal
@@ -203,10 +188,9 @@ export default function FichaReferencia(props: FichaReferenciaProps) {
               </select>
             </label>
           )}
-        </section>
+        </DialogoSeccion>
 
-        <section className="modal-seccion">
-          <h3>Venta</h3>
+        <DialogoSeccion titulo="Venta">
           <div className="campos-dos">
             <label>Precio de venta
               <input
@@ -229,15 +213,7 @@ export default function FichaReferencia(props: FichaReferenciaProps) {
           </div>
           <p id="ficha-precio-ayuda" className={errorPrecio ? 'ayuda error' : 'ayuda'}>{ayudaPrecio}</p>
           <p className="ayuda">0 % significa que la referencia se vende sin IVA. Es el IVA que queda guardado en cada venta.</p>
-        </section>
-
-        {guardar.isError && <div className="aviso error" role="alert">{mensajeError(guardar.error)}</div>}
-
-        <footer className="modal-pie">
-          <button type="button" className="secundario" onClick={props.onCerrar}>Cancelar</button>
-          <button className="primario" disabled={!completo || guardar.isPending}>{etiquetaBoton}</button>
-        </footer>
-      </form>
-    </div>
+        </DialogoSeccion>
+    </Dialogo>
   )
 }

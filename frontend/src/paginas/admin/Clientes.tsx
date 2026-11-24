@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeError } from '../../api/cliente'
+import { useAvisoTexto } from '../../componentes/Avisos'
 import type { Cliente, Pagina } from '../../api/tipos'
 import Icono from '../../componentes/Icono'
 import Medida from '../../componentes/Medida'
@@ -54,6 +55,8 @@ export default function Clientes() {
     mutationFn: (c: Cliente) => api.patch(`/clientes/${c.id}`, { activo: !c.activo }),
     onSuccess: refrescar,
   })
+  useAvisoTexto(crear.isError ? mensajeError(crear.error) : null)
+  useAvisoTexto((guardar.isError || alternar.isError) ? mensajeError(guardar.error ?? alternar.error) : null)
 
   const activos = filas.filter((c) => c.activo).length
   const campoNuevo = (k: keyof Borrador) => ({ value: nuevo[k], onChange: (e: { target: { value: string } }) => setNuevo({ ...nuevo, [k]: e.target.value }) })
@@ -94,7 +97,6 @@ export default function Clientes() {
           <input type="number" min={0} max={365} placeholder="Plazo (días)" title="Si lo deja vacío, el sistema pone el plazo por defecto" aria-label="Plazo en días" {...campoNuevo('plazo_dias')} />
           <button className="primario" disabled={crear.isPending || nuevo.nombre.trim() === ''}>Crear cliente</button>
         </form>
-        {crear.isError && <div className="aviso error">{mensajeError(crear.error)}</div>}
       </section>
 
       <section className="tarjeta-pagina">
@@ -112,9 +114,8 @@ export default function Clientes() {
             </select>
           </div>
         </div>
-        {(guardar.isError || alternar.isError) && <div className="aviso error">{mensajeError(guardar.error ?? alternar.error)}</div>}
         <table>
-          <thead><tr><th>Nombre</th><th>Documento</th><th>Teléfono</th><th>Plazo</th><th>Estado</th><th></th></tr></thead>
+          <thead><tr><th>Nombre</th><th>Documento</th><th>Teléfono</th><th>Plazo</th><th className="col-accion">Acciones</th></tr></thead>
           <tbody>
             {filas.map((c) => editando?.id === c.id ? (
               <tr key={c.id}>
@@ -122,8 +123,7 @@ export default function Clientes() {
                 <td><input maxLength={30} aria-label="Documento" {...campoEdicion('documento')} /></td>
                 <td><input maxLength={30} aria-label="Teléfono" inputMode="tel" {...campoEdicion('telefono')} /></td>
                 <td><input type="number" min={0} max={365} required aria-label="Plazo en días" {...campoEdicion('plazo_dias')} /></td>
-                <td>{c.activo ? 'Activo' : 'Inactivo'}</td>
-                <td><div className="acciones-fila">
+                <td className="col-accion"><div className="acciones-fila">
                   <button
                     type="button"
                     className="enlace"
@@ -139,24 +139,35 @@ export default function Clientes() {
                 <td>{c.documento ?? '—'}</td>
                 <td>{c.telefono ?? '—'}</td>
                 <td>{c.plazo_dias} días</td>
-                <td>
-                  <button type="button" className="enlace" disabled={alternar.isPending} onClick={() => alternar.mutate(c)}>
-                    {c.activo ? 'Activo · desactivar' : 'Inactivo · activar'}
-                  </button>
-                </td>
-                <td>
-                  <button
-                    type="button"
-                    className="enlace"
-                    onClick={() => {
-                      guardar.reset()
-                      setEditando({ id: c.id, datos: { nombre: c.nombre, documento: c.documento ?? '', telefono: c.telefono ?? '', plazo_dias: String(c.plazo_dias) } })
-                    }}
-                  >Editar</button>
+                <td className="col-accion">
+                  <div className="acciones-fila">
+                    <button
+                      type="button"
+                      className={`icono-accion ${c.activo ? 'peligro' : 'ok'}`}
+                      disabled={alternar.isPending}
+                      title={c.activo ? 'Activo · desactivar' : 'Inactivo · activar'}
+                      aria-label={c.activo ? `Desactivar a ${c.nombre}` : `Activar a ${c.nombre}`}
+                      onClick={() => alternar.mutate(c)}
+                    >
+                      <Icono nombre={c.activo ? 'desactivar' : 'activar'} />
+                    </button>
+                    <button
+                      type="button"
+                      className="icono-accion editar"
+                      title="Editar"
+                      aria-label={`Editar a ${c.nombre}`}
+                      onClick={() => {
+                        guardar.reset()
+                        setEditando({ id: c.id, datos: { nombre: c.nombre, documento: c.documento ?? '', telefono: c.telefono ?? '', plazo_dias: String(c.plazo_dias) } })
+                      }}
+                    >
+                      <Icono nombre="editar" />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
-            {filas.length === 0 && !cargando && <tr><td colSpan={6} className="vacio">Sin clientes para esta búsqueda.</td></tr>}
+            {filas.length === 0 && !cargando && <tr><td colSpan={5} className="vacio">Sin clientes para esta búsqueda.</td></tr>}
           </tbody>
         </table>
         <Paginacion pagina={resultado} onCambiar={irA} />

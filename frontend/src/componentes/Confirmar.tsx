@@ -1,8 +1,8 @@
-import { useEffect } from 'react'
+import { useAvisoTexto } from './Avisos'
+import Dialogo from './Dialogo'
 
 /** Pregunta antes de guardar un cambio. Escape o Cancelar vuelven atrás sin aplicar nada. */
 export default function Confirmar({
-  id = 'confirmar-titulo',
   titulo,
   texto,
   accion = 'Sí, estoy seguro',
@@ -22,30 +22,25 @@ export default function Confirmar({
   onConfirmar: () => void
   onCancelar: () => void
 }) {
-  useEffect(() => {
-    const alPulsar = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || pendiente) return
-      e.preventDefault()
-      e.stopPropagation()
-      onCancelar()
-    }
-    document.addEventListener('keydown', alPulsar, true)
-    return () => document.removeEventListener('keydown', alPulsar, true)
-  }, [onCancelar, pendiente])
+  useAvisoTexto(error ?? null)
 
   return (
-    <div className="modal confirmar">
-      <div className="modal-caja" role="alertdialog" aria-modal="true" aria-labelledby={id}>
-        <h2 id={id}>{titulo}</h2>
-        <p>{texto}</p>
-        {error && <div className="aviso error">{error}</div>}
-        <div className="acciones">
+    <Dialogo
+      titulo={titulo}
+      descripcion={texto}
+      alertdialog
+      variante="confirmar"
+      onCerrar={onCancelar}
+      pendiente={pendiente}
+      onEnviar={onConfirmar}
+      pie={(
+        <>
           <button type="button" className="secundario" autoFocus disabled={pendiente} onClick={onCancelar}>Cancelar</button>
-          <button type="button" className={peligro ? 'peligro' : 'primario'} disabled={pendiente} onClick={onConfirmar}>
+          <button type="submit" className={peligro ? 'peligro' : 'primario'} disabled={pendiente}>
             {pendiente ? 'Guardando…' : accion}
           </button>
-        </div>
-      </div>
-    </div>
+        </>
+      )}
+    />
   )
 }
