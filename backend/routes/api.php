@@ -143,6 +143,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/ajustes/unidad', [AjusteController::class, 'unidad'])->middleware('medir:500')->name('ajustes.unidad');
         Route::post('/ajustes/salidas', [AjusteController::class, 'salidas'])->name('ajustes.salidas');
         Route::post('/ajustes/reintegros', [AjusteController::class, 'reintegros'])->name('ajustes.reintegros');
+        // S-39: entradas por ajuste de inventario físico y búsqueda de la referencia (sin DELETE ni PUT).
+        Route::post('/ajustes/entradas', [AjusteController::class, 'entradas'])->name('ajustes.entradas');
+        Route::get('/ajustes/referencia', [AjusteController::class, 'referencia'])->middleware('medir:500')->name('ajustes.referencia');
 
         Route::get('/devoluciones/consulta', [DevolucionController::class, 'consulta'])->middleware('medir:500')->name('devoluciones.consulta');
         Route::post('/devoluciones', [DevolucionController::class, 'store']);

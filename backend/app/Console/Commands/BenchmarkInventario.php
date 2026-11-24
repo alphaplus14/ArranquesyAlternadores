@@ -87,6 +87,13 @@ class BenchmarkInventario extends Command
                 $busquedas[] = $this->medir($kernel, $usuario, Request::create('/api/buscar', 'GET', ['q' => $q]), 200);
             }
 
+            // S-39: búsqueda de la referencia para una entrada (código exacto o texto, máx. 10).
+            $referenciasAjuste = [];
+            for ($i = 0; $i < $n; $i++) {
+                $params = $i % 2 ? ['q' => sprintf('BX%04d', random_int(1, 1999))] : ['codigo' => sprintf('BX%06d', random_int(1, 1999))];
+                $referenciasAjuste[] = $this->medir($kernel, $usuario, Request::create('/api/ajustes/referencia', 'GET', $params), 200);
+            }
+
             // RF-22: mínimo general 3 para todo el catálogo de relleno (existencia 0: todas alertan)
             // y mínimos propios en una de cada diez, para que la consulta haga el trabajo completo.
             Configuracion::where('clave', Configuracion::STOCK_MINIMO_GENERAL)->update(['valor' => '3']);
@@ -119,6 +126,7 @@ class BenchmarkInventario extends Command
                 ['POST /ventas/{id}/escanear (etiqueta)', count($escaneos), $this->pct($escaneos, 50), $this->pct($escaneos, 95), max($escaneos), 300],
                 ['POST /ventas/{id}/escanear (código proveedor, S-31)', count($escaneosRef), $this->pct($escaneosRef, 50), $this->pct($escaneosRef, 95), max($escaneosRef), 300],
                 ['GET /buscar', count($busquedas), $this->pct($busquedas, 50), $this->pct($busquedas, 95), max($busquedas), 500],
+                ['GET /ajustes/referencia (S-39)', count($referenciasAjuste), $this->pct($referenciasAjuste, 50), $this->pct($referenciasAjuste, 95), max($referenciasAjuste), 500],
                 ['GET /reportes/bajo-minimo', count($bajoMinimo), $this->pct($bajoMinimo, 50), $this->pct($bajoMinimo, 95), max($bajoMinimo), 500],
                 ['GET /cartera', count($cartera), $this->pct($cartera, 50), $this->pct($cartera, 95), max($cartera), 500],
             ]);

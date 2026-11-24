@@ -9,6 +9,7 @@ use App\Enums\TipoAjuste;
 use App\Exceptions\ReglaInventarioException;
 use App\Models\AjusteInventario;
 use App\Models\AjusteItem;
+use App\Models\Referencia;
 use App\Models\Unidad;
 use App\Models\User;
 use App\Support\RangoFechas;
@@ -49,6 +50,70 @@ class AjusteService
     public function reintegrar(MotivoAjuste $motivo, ?string $nota, array $codigos, User $usuario): AjusteInventario
     {
         return $this->ajustar(TipoAjuste::Reintegro, $motivo, $nota, $codigos, $usuario);
+    }
+
+    /**
+     * S-39: entrada por ajuste de inventario físico. Crea $cantidad unidades nuevas de la referencia
+     * (InventarioService), un ajuste tipo 'alta' y un ajuste_item por unidad con el método con que se
+     * eligió la referencia (RF-12). Motivo obligatorio de la lista de altas; "otro" exige nota.
+     * Inmutable: un error se corrige con una salida.
+     */
+    public function alta(MotivoAjuste $motivo, ?string $nota, int $referenciaId, int $cantidad, MetodoCaptura $metodo, User $usuario): AjusteInventario
+    {
+        if (! in_array($motivo, MotivoAjuste::para(TipoAjuste::Alta), true)) {
+            throw new ReglaInventarioException('El motivo no corresponde a una entrada por ajuste.', 422, ['campo' => 'motivo']);
+        }
+
+        $nota = trim((string) $nota) === '' ? null : trim((string) $nota);
+        if ($motivo->exigeNota() && $nota === null) {
+            throw new ReglaInventarioException('Escriba una nota: el motivo "Otro" la exige.', 422, ['campo' => 'nota']);
+        }
+
+        $referencia = Referencia::query()->find($referenciaId, ['id', 'codigo_referencia', 'activo'])
+            ?? throw new ReglaInventarioException("No existe la referencia #{$referenciaId}.", 404);
+
+        return DB::transaction(function () use ($motivo, $nota, $referencia, $cantidad, $metodo, $usuario) {
+            $ajuste = AjusteInventario::create([
+                'tipo' => TipoAjuste::Alta,
+                'motivo' => $motivo,
+                'nota' => $nota,
+                'usuario_id' => $usuario->id,
+            ]);
+
+            $unidades = $this->inventario->darAltaPorAjuste($referencia, $cantidad, $ajuste, $usuario->id, $metodo);
+
+            AjusteItem::insert($unidades->map(fn (Unidad $u) => [
+                'ajuste_id' => $ajuste->id,
+                'unidad_id' => $u->id,
+                'metodo_captura' => $metodo->value,
+                'origen_codigo' => OrigenCodigo::Referencia->value,
+            ])->all());
+
+            return $ajuste;
+        });
+    }
+
+    /**
+     * S-39: referencias activas para una entrada. Con $codigo, las que tienen exactamente ese código
+     * del proveedor o del fabricante (ResolverCodigoService; varias = la pantalla elige). Con $q, por
+     * prefijo de código o texto de la descripción (scope buscarTexto: índices, sin comodín inicial),
+     * hasta 10.
+     *
+     * @return Collection<int, Referencia>
+     */
+    public function buscarReferencias(?string $codigo, ?string $q): Collection
+    {
+        $columnas = ['referencias.id', 'codigo_referencia', 'codigo_fabricante', 'descripcion', 'proveedor_id', 'calidad', 'existencia', 'precio_venta'];
+
+        if (trim((string) $codigo) !== '') {
+            $coinciden = $this->resolver->coincidencias(trim((string) $codigo), 10);
+
+            return $coinciden->isEmpty()
+                ? throw new ReglaInventarioException('No existe una referencia activa con el código '.trim((string) $codigo).'.', 404)
+                : Referencia::query()->whereKey($coinciden->pluck('id'))->with('proveedor:id,nombre')->orderBy('id')->get($columnas);
+        }
+
+        return Referencia::query()->activas()->buscarTexto(trim((string) $q))->with('proveedor:id,nombre')->limit(10)->get($columnas);
     }
 
     /**
