@@ -3,9 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Http\Resources\ReferenciaResource;
+use App\Http\Resources\AgotadoResource;
 use App\Models\Proveedor;
-use App\Models\Referencia;
 use App\Services\ReporteService;
 use App\Services\StockMinimoService;
 use Illuminate\Http\JsonResponse;
@@ -37,24 +36,15 @@ class ReporteController extends Controller
         return response()->json($servicio->bajoMinimo($filtros, min((int) $request->query('por_pagina', 50), 200)));
     }
 
+    /** RF-08 / S-47: agotados de todos los proveedores por defecto; proveedor y categoría acotan. */
     public function agotados(Request $request): AnonymousResourceCollection
     {
-        $datos = $request->validate([
-            'proveedor_id' => ['required', 'integer', 'exists:proveedores,id'],
+        $filtros = $request->validate([
+            'proveedor_id' => ['nullable', 'integer', 'exists:proveedores,id'],
             'categoria_id' => ['nullable', 'integer', 'exists:categorias,id'], // RF-22: mismo filtro que Bajo mínimo
         ]);
 
-        // Índice (proveedor_id, existencia).
-        $pagina = Referencia::query()
-            ->where('proveedor_id', $datos['proveedor_id'])
-            ->where('existencia', 0)
-            ->when($datos['categoria_id'] ?? null, fn ($q, $v) => $q->where('categoria_id', $v))
-            ->activas() // S-26: una desactivada no es un agotado
-            ->with(['categoria:id,nombre,admite_codigo_universal', 'codigoUniversal:id,codigo'])
-            ->orderBy('codigo_referencia')
-            ->paginate(min((int) $request->query('por_pagina', 50), 200));
-
-        return ReferenciaResource::collection($pagina);
+        return AgotadoResource::collection($this->reportes->agotados($filtros, min(max((int) $request->query('por_pagina', 50), 1), 200)));
     }
 
     public function compras(Request $request): JsonResponse

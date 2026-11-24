@@ -57,7 +57,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // RF-08 / RF-22 / S-28: agotados y stock mínimo son trabajo de reposición de logística y
     // administración; mostrador recibe 403 (ve la existencia en el listado de productos).
     Route::middleware('rol:admin,logistica')->group(function () {
-        Route::get('/reportes/agotados', [ReporteController::class, 'agotados']); // RF-08
+        Route::get('/reportes/agotados', [ReporteController::class, 'agotados'])->middleware('medir:500'); // RF-08 / S-47
         Route::get('/reportes/bajo-minimo', [ReporteController::class, 'bajoMinimo'])->middleware('medir:500'); // RF-22
     });
 

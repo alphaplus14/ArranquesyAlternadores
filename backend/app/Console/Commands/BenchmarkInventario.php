@@ -124,6 +124,15 @@ class BenchmarkInventario extends Command
                 $bajoMinimo[] = $this->medir($kernel, $usuario, Request::create('/api/reportes/bajo-minimo', 'GET', $filtro), 200);
             }
 
+            // RF-08 / S-47: agotados de todos los proveedores (el relleno está en 0), con y sin filtros.
+            $agotados = [];
+            for ($i = 0; $i < $n; $i++) {
+                $filtro = match ($i % 3) {
+                    0 => [], 1 => ['proveedor_id' => $proveedor->id], default => ['categoria_id' => $categoria->id]
+                };
+                $agotados[] = $this->medir($kernel, $bodega, Request::create('/api/reportes/agotados', 'GET', $filtro), 200);
+            }
+
             // RF-15: clientes con ventas a crédito cerradas (2 ítems cada una), vencimientos repartidos
             // en los cinco rangos y abonos en la mitad de los clientes.
             $this->sembrarCartera($usuario, $codigos, (int) $this->option('clientes'), (int) $this->option('ventas-por-cliente'));
@@ -164,6 +173,7 @@ class BenchmarkInventario extends Command
                 ['GET /buscar', count($busquedas), $this->pct($busquedas, 50), $this->pct($busquedas, 95), max($busquedas), 500],
                 ['GET /ajustes/referencia (S-39)', count($referenciasAjuste), $this->pct($referenciasAjuste, 50), $this->pct($referenciasAjuste, 95), max($referenciasAjuste), 500],
                 ['GET /reportes/bajo-minimo', count($bajoMinimo), $this->pct($bajoMinimo, 50), $this->pct($bajoMinimo, 95), max($bajoMinimo), 500],
+                ['GET /reportes/agotados (S-47)', count($agotados), $this->pct($agotados, 50), $this->pct($agotados, 95), max($agotados), 500],
                 ['GET /cartera', count($cartera), $this->pct($cartera, 50), $this->pct($cartera, 95), max($cartera), 500],
                 ...$filasPanel,
             ]);

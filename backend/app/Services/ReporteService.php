@@ -9,10 +9,12 @@ use App\Enums\TipoIngreso;
 use App\Models\Cliente;
 use App\Models\IngresoItem;
 use App\Models\Proveedor;
+use App\Models\Referencia;
 use App\Support\Antiguedad;
 use App\Support\TotalesIngreso;
 use App\Support\TotalesVenta;
 use Carbon\CarbonInterface;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -27,6 +29,47 @@ class ReporteService
     private const ESCALA = 2;
 
     public function __construct(private readonly CarteraService $cartera) {}
+
+    /**
+     * RF-08 / S-47: referencias ACTIVAS (S-26) con existencia 0, de todos los proveedores salvo que
+     * se filtre por proveedor o categoría. Orden: nombre del proveedor y código (el JOIN a proveedores
+     * es solo para ordenar). Índices: (activo, existencia) sin proveedor; (proveedor_id, existencia)
+     * con él. El orden por nombre se resuelve con un filesort sobre las agotadas, no sobre la tabla.
+     * `universal_existencia` (regla 2): existencia de las demás referencias activas de cada universal
+     * de la página, en UNA consulta agregada (la agotada aporta 0 a la suma).
+     *
+     * @param  array{proveedor_id?: int|null, categoria_id?: int|null}  $filtros
+     */
+    public function agotados(array $filtros, int $porPagina): LengthAwarePaginator
+    {
+        $pagina = Referencia::query()
+            ->select('referencias.*')
+            ->join('proveedores as p', 'p.id', '=', 'referencias.proveedor_id')
+            ->where('referencias.existencia', 0)
+            ->activas()
+            ->when($filtros['proveedor_id'] ?? null, fn ($q, $v) => $q->where('referencias.proveedor_id', $v))
+            ->when($filtros['categoria_id'] ?? null, fn ($q, $v) => $q->where('referencias.categoria_id', $v))
+            ->with(['proveedor:id,nombre', 'categoria:id,nombre,admite_codigo_universal', 'codigoUniversal:id,codigo'])
+            ->orderBy('p.nombre')
+            ->orderBy('referencias.codigo_referencia')
+            ->orderBy('referencias.id')
+            ->paginate($porPagina);
+
+        $universales = $pagina->getCollection()->pluck('codigo_universal_id')->filter()->unique()->values();
+        $sumas = $universales->isEmpty() ? collect() : Referencia::query()
+            ->activas()
+            ->whereIn('codigo_universal_id', $universales)
+            ->groupBy('codigo_universal_id')
+            ->selectRaw('codigo_universal_id, SUM(existencia) as total')
+            ->pluck('total', 'codigo_universal_id');
+
+        $pagina->getCollection()->each(fn (Referencia $r) => $r->setAttribute(
+            'universal_existencia',
+            $r->codigo_universal_id === null ? null : (int) ($sumas[$r->codigo_universal_id] ?? 0),
+        ));
+
+        return $pagina;
+    }
 
     /**
      * 1. Compras por período (fecha del documento) y proveedor, de contado y a crédito. Una

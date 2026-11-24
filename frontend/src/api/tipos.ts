@@ -82,6 +82,8 @@ export interface Referencia {
   proveedor?: Opcion
   categoria?: Categoria
   codigo_universal?: { id: number; codigo: string; stock_minimo?: number | null } | null
+  /** RF-08 / S-47: solo en Agotados. Existencia de las demás referencias activas del universal (null sin universal). */
+  universal_existencia?: number | null
   unidades_disponibles?: Unidad[]
 }
 

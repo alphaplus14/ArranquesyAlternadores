@@ -19,8 +19,10 @@ const VISTAS: { valor: Vista; texto: string }[] = [
 ]
 
 /**
- * RF-08: referencias con existencia 0 de un proveedor. RF-22: productos con existencia igual o
- * menor a su stock mínimo (universales por la suma de sus referencias). Solo en pantalla.
+ * RF-08 / S-47: referencias activas con existencia 0, de todos los proveedores por defecto (proveedor
+ * y categoría acotan); una agotada cuyo universal tiene existencia en otras referencias se marca
+ * (regla 2). RF-22: productos con existencia igual o menor a su stock mínimo (universales por la suma
+ * de sus referencias). Solo en pantalla.
  */
 export default function Agotados() {
   const [params, setParams] = useSearchParams()
@@ -35,9 +37,9 @@ export default function Agotados() {
   const agotados = useListaPaginada<Referencia>({
     clave: ['agotados', proveedorId, categoriaId],
     filtros: [proveedorId, categoriaId],
-    enabled: vista === 'agotados' && proveedorId !== '',
+    enabled: vista === 'agotados',
     traer: async (pagina) => (await api.get<Pagina<Referencia>>('/reportes/agotados', {
-      params: { proveedor_id: proveedorId, categoria_id: categoriaId || undefined, page: pagina, por_pagina: 50 },
+      params: { proveedor_id: proveedorId || undefined, categoria_id: categoriaId || undefined, page: pagina, por_pagina: 50 },
     })).data,
   })
 
@@ -59,10 +61,10 @@ export default function Agotados() {
   return (
     <div className="pila">
       <div className="pagina-encabezado">
-        <h1>{vista === 'agotados' ? 'Agotados por proveedor' : 'Bajo mínimo'}</h1>
+        <h1>{vista === 'agotados' ? (proveedor ? `Agotados de ${proveedor.nombre}` : 'Agotados') : 'Bajo mínimo'}</h1>
         <p>
           {vista === 'agotados'
-            ? 'Referencias con existencia cero. El listado llega paginado desde el servidor.'
+            ? 'Referencias con existencia cero de todos los proveedores. Filtre por proveedor o categoría para acotar.'
             : 'Productos con existencia igual o menor a su stock mínimo. Los universales se evalúan por la suma de sus referencias.'}
         </p>
       </div>
@@ -70,14 +72,14 @@ export default function Agotados() {
         clave="agotados-resumen"
         compacto={(
           <>
-            <span>Proveedor <strong>{proveedor?.nombre ?? (vista === 'agotados' ? '—' : 'Todos')}</strong></span>
+            <span>Proveedor <strong>{proveedor?.nombre ?? 'Todos'}</strong></span>
             <span className={info && info.total > 0 ? 'resumen-agotados' : ''}><strong>{info ? info.total.toLocaleString('es-CO') : '—'}</strong> {vista === 'agotados' ? 'agotados' : 'bajo mínimo'}</span>
             <span>Pág. <strong>{info ? `${info.actual}/${info.ultima}` : '—'}</strong></span>
             <span>Categoría <strong>{categoria?.nombre ?? 'Todas'}</strong></span>
           </>
         )}
       >
-        <Medida etiqueta="Proveedor" valor={proveedor?.nombre ?? (vista === 'agotados' ? '—' : 'Todos')} tono="azul" icono="catalogo" />
+        <Medida etiqueta="Proveedor" valor={proveedor?.nombre ?? 'Todos'} tono="azul" icono="catalogo" />
         <Medida etiqueta={vista === 'agotados' ? 'Agotados' : 'Bajo mínimo'} valor={info ? info.total.toLocaleString('es-CO') : '—'} tono="rojo" icono="agotados" />
         <Medida etiqueta="Página" valor={info ? `${info.actual} / ${info.ultima}` : '—'} tono="amarillo" icono="auditoria" />
         {vista === 'agotados'
@@ -99,7 +101,7 @@ export default function Agotados() {
               aria-label="Proveedor"
               value={proveedorId}
               onChange={setProveedorId}
-              placeholder={vista === 'agotados' ? 'Elija un proveedor…' : 'Todos los proveedores'}
+              placeholder="Todos los proveedores"
               limpiable
             />
           </label>
@@ -113,26 +115,42 @@ export default function Agotados() {
 
         {vista === 'agotados' ? (
           <>
-            {agotados.resultado && proveedorId && (
+            {agotados.resultado && (
               <>
-                <table className="tabla-apilable">
-                  <thead><tr><th>Referencia</th><th>Universal</th><th>Calidad</th><th>Categoría</th></tr></thead>
+                <table className="tabla-apilable tabla-agotados">
+                  <caption className="solo-lector">Referencias agotadas, por proveedor y código</caption>
+                  <thead><tr><th>Código</th><th>Descripción</th><th>Proveedor</th><th>Categoría</th><th>Calidad</th><th className="col-numero">Existencia</th></tr></thead>
                   <tbody>
                     {agotados.filas.map((r) => (
                       <tr key={r.id}>
-                        <td data-etiqueta="Referencia"><span><strong>{r.codigo_referencia}</strong> <small>{r.descripcion}</small></span></td>
-                        <td data-etiqueta="Universal">{r.codigo_universal?.codigo ?? '—'}</td>
+                        <td data-etiqueta="Código">
+                          <span className="agotado-codigo">
+                            <strong>{r.codigo_referencia}</strong>
+                            {r.codigo_universal && (r.universal_existencia ?? 0) > 0 && (
+                              <small
+                                className="aviso-universal"
+                                title={`El repuesto no está agotado en conjunto: el universal ${r.codigo_universal.codigo} suma ${r.universal_existencia} en otras referencias (la existencia del universal es la suma de sus referencias).`}
+                              >
+                                Universal {r.codigo_universal.codigo}: {r.universal_existencia} en otras referencias
+                              </small>
+                            )}
+                          </span>
+                        </td>
+                        <td data-etiqueta="Descripción">{r.descripcion ?? '—'}</td>
+                        <td data-etiqueta="Proveedor">{r.proveedor?.nombre ?? '—'}</td>
+                        <td data-etiqueta="Categoría">{r.categoria?.nombre ?? '—'}</td>
                         <td data-etiqueta="Calidad"><ChipCalidad calidad={r.calidad} /></td>
-                        <td data-etiqueta="Categoría">{r.categoria?.nombre}</td>
+                        <td data-etiqueta="Existencia" className="col-numero agotado">{r.existencia}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-                {agotados.filas.length === 0 && <p className="vacio">Este proveedor no tiene agotados{categoria ? ' en esa categoría' : ''}.</p>}
+                {agotados.filas.length === 0 && (
+                  <p className="vacio">{proveedor ? 'Este proveedor no tiene agotados' : 'No hay agotados'}{categoria ? ' en esa categoría' : ''}.</p>
+                )}
                 <Paginacion pagina={agotados.resultado} onCambiar={agotados.irA} />
               </>
             )}
-            {!proveedorId && <p className="vacio">Elija un proveedor para ver sus agotados.</p>}
           </>
         ) : (
           <>
