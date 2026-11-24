@@ -36,15 +36,27 @@ class AjusteController extends Controller
         return AjusteResource::collection($this->ajustes->historial($filtros));
     }
 
-    /** Consulta previa al agregar un código al lote: misma regla y mismo mensaje que al registrar. */
+    /**
+     * Consulta previa al agregar un código al lote: misma regla y mismo mensaje que al registrar.
+     * S-34 (salidas): acepta el código del proveedor o del fabricante; referencia_id resuelve la
+     * ambigüedad y excluir[] son las unidades ya elegidas en el lote.
+     */
     public function unidad(Request $request): UnidadResource
     {
         $datos = $request->validate([
             'codigo' => ['required', 'string', 'max:32'],
             'tipo' => ['required', Rule::enum(TipoAjuste::class)],
+            'referencia_id' => ['nullable', 'integer'],
+            'excluir' => ['nullable', 'array', 'max:'.AjusteService::MAX_UNIDADES],
+            'excluir.*' => ['integer'],
         ]);
 
-        return new UnidadResource($this->ajustes->verificar(TipoAjuste::from($datos['tipo']), $datos['codigo']));
+        return new UnidadResource($this->ajustes->verificar(
+            TipoAjuste::from($datos['tipo']),
+            $datos['codigo'],
+            isset($datos['referencia_id']) ? (int) $datos['referencia_id'] : null,
+            array_map('intval', $datos['excluir'] ?? []),
+        ));
     }
 
     public function salidas(AjusteRequest $request): JsonResponse

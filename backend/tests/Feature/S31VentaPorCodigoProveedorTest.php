@@ -190,21 +190,20 @@ it('S-31 (i): reversar un ítem vendido por referencia devuelve la unidad a disp
         ->and(VentaItem::find($itemId)->unidad->estado->value)->toBe('disponible');
 });
 
-it('S-31 (j): salidas y devoluciones exigen la etiqueta del local y explican si el código es de una referencia', function () {
+it('S-31 (j) / S-34: salidas y devoluciones ya no rechazan el código de una referencia; un código que no es de nada sigue igual', function () {
     $ref = referenciaConUnidades('AJ-REF', 1, ['proveedor_id' => Proveedor::factory()->create(['nombre' => 'Prov Ajuste'])->id]);
-    $mensaje = 'Ese es el código de la referencia AJ-REF (Prov Ajuste), no una etiqueta del local. Escanee la etiqueta de la unidad.';
 
     actuarComo(Rol::Logistica);
-    $this->getJson('/api/ajustes/unidad?tipo=baja&codigo=AJ-REF')->assertUnprocessable()
-        ->assertJsonPath('message', $mensaje);
-    $this->postJson('/api/ajustes/salidas', ['motivo' => 'dano', 'codigos' => [['codigo' => 'AJ-REF', 'metodo_captura' => 'escaneado']]])
-        ->assertUnprocessable()->assertJsonPath('message', $mensaje);
+    // S-34: la salida asigna una unidad de la referencia.
+    $this->getJson('/api/ajustes/unidad?tipo=baja&codigo=AJ-REF')->assertOk()
+        ->assertJsonPath('origen_codigo', 'referencia')
+        ->assertJsonPath('referencia_id', $ref->id);
+    // S-34: la devolución pide elegir la venta (no hay ventas cerradas de esta referencia).
     $this->getJson('/api/devoluciones/consulta?codigo=AJ-REF')->assertUnprocessable()
-        ->assertJsonPath('message', $mensaje);
-    $this->postJson('/api/devoluciones', ['codigo' => 'AJ-REF', 'motivo' => 'Cliente devuelve', 'metodo_captura' => 'escaneado'])
-        ->assertUnprocessable()->assertJsonPath('message', $mensaje);
+        ->assertJsonPath('message', 'No hay ventas cerradas sin devolver de la referencia AJ-REF.');
 
-    // Un código que no es de nada sigue con el mensaje de siempre.
+    $this->getJson('/api/ajustes/unidad?tipo=baja&codigo=NADA-1')->assertUnprocessable()
+        ->assertJsonPath('message', 'No existe una unidad con el código NADA-1.');
     $this->getJson('/api/devoluciones/consulta?codigo=NADA-1')->assertNotFound()
         ->assertJsonPath('message', 'No existe una unidad con el código NADA-1.');
 

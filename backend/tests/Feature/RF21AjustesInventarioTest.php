@@ -130,7 +130,8 @@ it('RF-21: el motivo debe corresponder al tipo y un código no se repite en el l
     $codigo = unidadDe('RN-4410')->codigo_barras;
 
     retirarPorApi([$codigo], 'error_de_registro')->assertUnprocessable()->assertJsonValidationErrors('motivo');
-    retirarPorApi([$codigo, $codigo])->assertUnprocessable()->assertJsonValidationErrors('codigos.0.codigo');
+    // S-34: la misma etiqueta no entra dos veces (un código de proveedor sí: cada lectura es otra unidad).
+    retirarPorApi([$codigo, $codigo])->assertUnprocessable()->assertJsonPath('message', "El código {$codigo} está repetido en el lote.");
     expect(AjusteInventario::count())->toBe(0);
 });
 

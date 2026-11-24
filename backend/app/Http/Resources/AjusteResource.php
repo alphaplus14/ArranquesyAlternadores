@@ -28,6 +28,7 @@ class AjusteResource extends JsonResource
                 'codigo_barras' => $item->unidad->codigo_barras,
                 'estado' => $item->unidad->estado,
                 'metodo_captura' => $item->metodo_captura,
+                'origen_codigo' => $item->origen_codigo, // S-34: etiqueta | referencia
                 'reintegrable' => (bool) ($item->reintegrable ?? false),
                 'referencia' => [
                     'id' => $item->unidad->referencia->id,
