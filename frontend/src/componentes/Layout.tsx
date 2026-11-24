@@ -27,8 +27,10 @@ export default function Layout() {
     if (window.innerWidth < 960) setAbierto(false)
   }, [ubicacion.pathname])
 
-  // S-40: ventas abiertas desde un día anterior (las del usuario; el admin, todas).
-  const abiertas = useVentasAbiertas(tieneRol('mostrador'))
+  // S-40: ventas abiertas desde un día anterior, del mostrador. S-43: solo el mostrador vende; el
+  // admin no ve "Venta" ni consulta sus ventas abiertas para el punto de alerta.
+  const vende = usuario?.rol === 'mostrador'
+  const abiertas = useVentasAbiertas(vende)
   const hayVentasViejas = (abiertas.data ?? []).some(esDeDiaAnterior)
 
   // Orden: Mostrador, Productos, Logística, Administración, Consulta. Qué ve cada rol no cambia.
@@ -37,7 +39,7 @@ export default function Layout() {
       ? {
           etiqueta: 'Mostrador',
           items: [
-            { to: '/mostrador/venta', texto: 'Venta', icono: 'venta', alerta: hayVentasViejas ? 'Hay ventas abiertas de días anteriores' : undefined },
+            ...(vende ? [{ to: '/mostrador/venta', texto: 'Venta', icono: 'venta', alerta: hayVentasViejas ? 'Hay ventas abiertas de días anteriores' : undefined } as ItemMenu] : []),
             { to: RUTA_CARTERA, texto: 'Cartera', icono: 'billetera' }, // RF-15 / S-30
           ],
         }

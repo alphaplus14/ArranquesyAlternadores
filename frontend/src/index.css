@@ -488,6 +488,9 @@ tr.reversado td:has(.icono-accion) { text-decoration: none; }
 .columnas > * { grid-column: span 4; }
 .venta { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; }
 .venta > .panel, .venta > .lateral { min-width: 0; }
+/* S-43: el admin ve la venta en modo consulta, sin el panel de ventas recientes. */
+.venta.venta-consulta { grid-template-columns: minmax(0, 1fr); }
+.aviso-consulta { color: var(--suave); }
 .lateral .lista { font-size: 0.9rem; }
 .reversos { padding-left: 18px; }
 .resultado { border-bottom: 1px solid var(--borde); padding: 8px 0; }

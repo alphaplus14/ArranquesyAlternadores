@@ -39,6 +39,8 @@ class BenchmarkInventario extends Command
         try {
             $usuario = User::create(['name' => 'bench', 'usuario' => 'bench-'.uniqid(), 'password' => 'x', 'rol' => Rol::Admin, 'activo' => true]);
             Auth::login($usuario);
+            // S-43: solo el mostrador vende; los escaneos se miden con un mostrador y el resto con el admin.
+            $vendedor = User::create(['name' => 'bench-mostrador', 'usuario' => 'bench-m-'.uniqid(), 'password' => 'x', 'rol' => Rol::Mostrador, 'activo' => true]);
             $proveedor = Proveedor::create(['nombre' => 'Proveedor benchmark']);
             $categoria = Categoria::firstOrCreate(['nombre' => 'Categoría benchmark']);
 
@@ -59,11 +61,11 @@ class BenchmarkInventario extends Command
             $ingresos->confirmar($ingreso, $usuario);
 
             $codigos = Unidad::where('referencia_id', $referencia->id)->pluck('codigo_barras');
-            $venta = $ventas->abrir($usuario);
+            $venta = $ventas->abrir($vendedor);
 
             $escaneos = [];
             foreach ($codigos as $codigo) {
-                $escaneos[] = $this->medir($kernel, $usuario, Request::create("/api/ventas/{$venta->id}/escanear", 'POST',
+                $escaneos[] = $this->medir($kernel, $vendedor, Request::create("/api/ventas/{$venta->id}/escanear", 'POST',
                     ['codigo_barras' => $codigo, 'metodo_captura' => MetodoCaptura::Escaneado->value]), 201);
             }
 
@@ -77,7 +79,7 @@ class BenchmarkInventario extends Command
 
             $escaneosRef = [];
             for ($i = 0; $i < $n; $i++) {
-                $escaneosRef[] = $this->medir($kernel, $usuario, Request::create("/api/ventas/{$venta->id}/escanear", 'POST',
+                $escaneosRef[] = $this->medir($kernel, $vendedor, Request::create("/api/ventas/{$venta->id}/escanear", 'POST',
                     ['codigo_barras' => 'BX000002', 'metodo_captura' => MetodoCaptura::Escaneado->value]), 201);
             }
 
@@ -86,10 +88,10 @@ class BenchmarkInventario extends Command
             $ingresoLote = $ingresos->crearBorrador(['proveedor_id' => $proveedor->id, 'numero_documento' => 'BENCH-50', 'fecha' => now()->toDateString()], $usuario);
             $ingresos->agregarItem($ingresoLote, ['referencia_id' => $porLote->id, 'cantidad' => 500, 'costo_unitario' => 500]);
             $ingresos->confirmar($ingresoLote, $usuario);
-            $ventaLote = $ventas->abrir($usuario);
+            $ventaLote = $ventas->abrir($vendedor);
             $escaneos50 = [];
             for ($i = 0; $i < 10; $i++) {
-                $escaneos50[] = $this->medir($kernel, $usuario, Request::create("/api/ventas/{$ventaLote->id}/escanear", 'POST',
+                $escaneos50[] = $this->medir($kernel, $vendedor, Request::create("/api/ventas/{$ventaLote->id}/escanear", 'POST',
                     ['codigo_barras' => 'BX000003', 'metodo_captura' => MetodoCaptura::Escaneado->value, 'cantidad' => 50]), 201);
             }
 
@@ -221,10 +223,14 @@ class BenchmarkInventario extends Command
     {
         $request->headers->set('Accept', 'application/json');
         $request->setUserResolver(fn () => $usuario);
+        // S-43: el guard toma el usuario de la sesión; se mide como $usuario y luego se restaura.
+        $anterior = Auth::user();
+        Auth::setUser($usuario);
 
         $inicio = hrtime(true);
         $respuesta = $kernel->handle($request);
         $ms = (hrtime(true) - $inicio) / 1e6;
+        Auth::setUser($anterior);
 
         if ($respuesta->getStatusCode() !== $esperado) {
             throw new \RuntimeException("{$request->getPathInfo()} respondió {$respuesta->getStatusCode()}: {$respuesta->getContent()}");

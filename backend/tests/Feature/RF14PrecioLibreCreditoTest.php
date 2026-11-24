@@ -57,11 +57,13 @@ it('RF-14: el precio libre no tiene piso: puede quedar por debajo del precio est
     cambiarPrecio($item, '0.01')->assertOk()->assertJsonPath('items.0.precio_unitario', '0.01');
 });
 
-it('RF-14: el admin también puede cambiar el precio', function () {
-    actuarComo(Rol::Admin);
+it('RF-14 (S-43): el admin no cambia precios: solo el mostrador vende (403)', function () {
+    actuarComo(Rol::Mostrador);
     $item = itemVendido();
 
-    cambiarPrecio($item, 90000)->assertOk();
+    actuarComo(Rol::Admin);
+    cambiarPrecio($item, 90000)->assertForbidden()->assertJsonPath('message', 'Su rol no tiene acceso a este módulo.');
+    expect($item->fresh()->precio_unitario)->toBe('85000.00');
 });
 
 it('RF-14: cambiar precio en una venta de contado responde 422 y no audita', function () {

@@ -63,7 +63,7 @@ it('S-42: 422 en contado, en venta cerrada, con precio 0 y con ítems ajenos o r
         ->and(Auditoria::where('tabla', 'venta_items')->count())->toBe(0);
 });
 
-it('S-42: un mostrador ajeno recibe 403; el admin puede', function () {
+it('S-42 / S-43: un mostrador ajeno, logística y el admin reciben 403', function () {
     [$ventaId, $ids] = grupoS42();
 
     actuarComo(Rol::Mostrador);
@@ -72,6 +72,6 @@ it('S-42: un mostrador ajeno recibe 403; el admin puede', function () {
     $this->patchJson("/api/ventas/{$ventaId}/items/precio", ['ids' => $ids, 'precio_unitario' => 70000])->assertForbidden();
 
     actuarComo(Rol::Admin);
-    $this->patchJson("/api/ventas/{$ventaId}/items/precio", ['ids' => $ids, 'precio_unitario' => 70000])->assertOk();
-    expect(DB::table('venta_items')->whereIn('id', $ids)->pluck('precio_unitario')->unique()->values()->all())->toBe(['70000.00']);
+    $this->patchJson("/api/ventas/{$ventaId}/items/precio", ['ids' => $ids, 'precio_unitario' => 70000])->assertForbidden();
+    expect(DB::table('venta_items')->whereIn('id', $ids)->pluck('precio_unitario')->unique()->values()->all())->toBe(['80000.00']);
 });

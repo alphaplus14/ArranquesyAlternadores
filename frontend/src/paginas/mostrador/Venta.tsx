@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
+import { RUTA_CARTERA, rutaInicio } from '../../rutas'
 import { AxiosError } from 'axios'
 import { api, mensajeError } from '../../api/cliente'
 import { NOMBRE_CALIDAD, type Calidad, type Cliente, type MetodoCaptura, type OpcionReferenciaVenta, type Pagina, type Referencia, type RespuestaEscaneo, type Venta as TVenta, type VentaAbierta, type VentaItem } from '../../api/tipos'
@@ -63,6 +64,10 @@ export default function Venta() {
   const [params] = useSearchParams()
   const pedida = Number(params.get('venta')) || null
   const [ventaId, setVentaId] = useState<number | null>(pedida)
+  // S-43: el admin no vende. Entra solo con ?venta=ID (enlaces de Cartera) y ve la venta en modo
+  // consulta: detalle, totales y reversos con motivo; sin escanear, abrir, cerrar ni editar precios.
+  const consulta = usuario?.rol === 'admin'
+  const navegar = useNavigate()
   const [respaldo, setRespaldo] = useState(false)
   const [reverso, setReverso] = useState<ReversoPendiente | null>(null)
   const [eligiendoCliente, setEligiendoCliente] = useState(false)
@@ -85,7 +90,7 @@ export default function Venta() {
 
   // S-40: todas las ventas abiertas (las del usuario; el admin, las de todos). Sin una pedida, se
   // retoma la más antigua.
-  const abiertas = useVentasAbiertas()
+  const abiertas = useVentasAbiertas(!consulta)
   const listaAbiertas = abiertas.data ?? []
   useEffect(() => {
     if (ventaId === null && abiertas.data?.[0]) setVentaId(abiertas.data[0].id)
@@ -100,6 +105,7 @@ export default function Venta() {
   const recientes = useQuery({
     queryKey: ['ventas', 'cerradas'],
     queryFn: async () => (await api.get<Pagina<{ id: number; created_at: string; items_count: number; total: string | number; forma_pago: TVenta['forma_pago']; cliente: { id: number; nombre: string } | null }>>('/ventas', { params: { estado: 'cerrada' } })).data,
+    enabled: !consulta,
   })
 
   const enfocarLector = () => setTimeout(() => inputRef.current?.focus(), 0)
@@ -226,7 +232,7 @@ export default function Venta() {
   const credito = v?.forma_pago === 'credito'
   // S-18: el precio solo se cambia en crédito abierto y en ítems vigentes. Si la venta se cierra
   // o el ítem se reversa mientras se edita, la edición deja de contar.
-  const precioEditable = (i: VentaItem) => credito && abierta && !i.reverso_id
+  const precioEditable = (i: VentaItem) => !consulta && credito && abierta && !i.reverso_id
   const precioEnEdicion = editandoPrecio !== null && (v?.items.some((i) => i.id === editandoPrecio && precioEditable(i)) ?? false)
 
   // El input del lector recupera el foco siempre que no haya un diálogo abierto.
@@ -265,13 +271,25 @@ export default function Venta() {
   // S-41: el aviso de venta vieja solo cuando ya tiene ítems (una vacía no apura nada).
   const vieja = abierta && v ? esDeDiaAnterior(v) && vigentes.length > 0 : false
 
+  // S-43: sin una venta pedida el admin no tiene nada que hacer aquí: va a su inicio (Cartera).
+  if (consulta && pedida === null) return <Navigate to={rutaInicio('admin')} replace />
+  // "Volver" regresa al origen (la cartera del cliente); si se entró directo, a Cartera.
+  const volver = () => { if (window.history.state?.idx > 0) navegar(-1); else navegar(RUTA_CARTERA) }
+
   return (
     <div>
       <div className="pagina-encabezado">
-        <h1>Venta de mostrador</h1>
-        <p>Cada lectura descuenta la unidad al momento. Puede escanear durante el día y cerrar al final. La venta no se borra: se reversa.</p>
+        <h1>{consulta ? 'Consulta de venta' : 'Venta de mostrador'}</h1>
+        {consulta
+          ? (
+            <p className="aviso-consulta" role="note">
+              Modo consulta (administrador): puede revisar la venta y reversarla con motivo; no se escanea, cierra ni cambia precios.
+              {' '}<Link to={RUTA_CARTERA} onClick={(e) => { e.preventDefault(); volver() }}>Volver</Link>
+            </p>
+          )
+          : <p>Cada lectura descuenta la unidad al momento. Puede escanear durante el día y cerrar al final. La venta no se borra: se reversa.</p>}
       </div>
-      <div className="venta">
+      <div className={consulta ? 'venta venta-consulta' : 'venta'}>
       <section className="panel">
         <div className="fila-titulo">
           <div className="venta-titulo">
@@ -279,18 +297,22 @@ export default function Venta() {
             {v && <p className="venta-subtitulo">{v.estado} · {credito ? 'Crédito' : 'Contado'} · {formatearFecha(v.created_at)}</p>}
           </div>
           <div className="acciones">
-            <button type="button" className="secundario boton-44" onClick={nuevaContado} disabled={abrir.isPending}>
-              {abrir.isPending && !eligiendoCliente ? 'Abriendo…' : 'Nueva venta'}
-            </button>
-            <button type="button" className="secundario boton-44" onClick={() => setEligiendoCliente(true)} disabled={abrir.isPending}>Nueva venta a crédito</button>
-            {abierta && <button type="button" className="secundario boton-44" onClick={() => setRespaldo(true)}>Buscar sin escáner</button>}
+            {!consulta && (
+              <>
+                <button type="button" className="secundario boton-44" onClick={nuevaContado} disabled={abrir.isPending}>
+                  {abrir.isPending && !eligiendoCliente ? 'Abriendo…' : 'Nueva venta'}
+                </button>
+                <button type="button" className="secundario boton-44" onClick={() => setEligiendoCliente(true)} disabled={abrir.isPending}>Nueva venta a crédito</button>
+                {abierta && <button type="button" className="secundario boton-44" onClick={() => setRespaldo(true)}>Buscar sin escáner</button>}
+              </>
+            )}
             {v && !abierta && vigentes.length > 0 && (
               <button type="button" className="peligro boton-44" onClick={() => setReverso({ tipo: 'anulacion' })}>Anular venta completa</button>
             )}
           </div>
         </div>
 
-        {listaAbiertas.length > 0 && (
+        {!consulta && listaAbiertas.length > 0 && (
           <BarraVentasAbiertas ventas={listaAbiertas} activa={v?.id ?? null} conUsuario={usuario?.rol === 'admin'} onElegir={cambiarA} />
         )}
 
@@ -310,6 +332,7 @@ export default function Venta() {
           </p>
         )}
 
+        {!consulta && (
         <div className="lector-con-cantidad venta-lector">
           <div className="lector-campo">
             <input
@@ -337,6 +360,8 @@ export default function Venta() {
             />
           </div>
         </div>
+        )}
+        {consulta && venta.isError && <p className="aviso error" role="alert">{mensajeError(venta.error)}</p>}
         {v && (
           <div className="venta-cuerpo">
             {/* La tabla se desplaza por dentro: la página nunca se desborda. */}
@@ -368,7 +393,7 @@ export default function Venta() {
             {/* S-41: barra delgada con ítems y total; el desglose base / IVA va en el modal de cierre. */}
             <div className="barra-total" aria-live="polite">
               <span>{textoUnidades(vigentes)} · Total <strong>{pesos(v.totales?.total ?? 0)}</strong> (IVA incl.)</span>
-              {abierta && (
+              {abierta && !consulta && (
                 <button
                   ref={botonCerrarRef}
                   type="button"
@@ -396,6 +421,7 @@ export default function Venta() {
         )}
       </section>
 
+      {!consulta && (
       <aside className="panel lateral">
         <h3>Ventas cerradas recientes</h3>
         <ul className="lista lista-recientes">
@@ -413,6 +439,7 @@ export default function Venta() {
           ))}
         </ul>
       </aside>
+      )}
       </div>
 
       {respaldo && (

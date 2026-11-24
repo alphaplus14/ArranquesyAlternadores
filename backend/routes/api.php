@@ -162,16 +162,21 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/abonos/{abono}/anulaciones', [AbonoController::class, 'anular'])->middleware('rol:admin');
 
     // Módulo de mostrador: venta = descargue (RF-06, RF-12) y reversos (RF-07).
+    // S-43: consultar y reversar con motivo (regla 8): mostrador y admin.
     Route::middleware('rol:mostrador')->group(function () {
         Route::get('/ventas', [VentaController::class, 'index']);
-        Route::post('/ventas', [VentaController::class, 'store']);
         Route::get('/ventas/{venta}', [VentaController::class, 'show']);
-        Route::post('/ventas/{venta}/escanear', [VentaController::class, 'escanear'])->middleware('medir:300')->name('ventas.escanear');
-        Route::post('/ventas/{venta}/cerrar', [VentaController::class, 'cerrar']);
         Route::post('/ventas/{venta}/reversos', [VentaController::class, 'reversar']);
-        // RF-14 / S-18: solo el precio de un ítem de una venta a crédito abierta.
-        // S-42: precio de varios ítems (un grupo del modal de cierre). Antes de {item} para no confundirse.
-        Route::patch('/ventas/{venta}/items/precio', [VentaController::class, 'cambiarPrecioLote']);
-        Route::patch('/ventas/{venta}/items/{item}', [VentaController::class, 'cambiarPrecio'])->scopeBindings();
+
+        // S-43: solo el mostrador vende (abrir, escanear, cerrar, precios); el admin recibe 403.
+        Route::middleware('solo_rol:mostrador')->group(function () {
+            Route::post('/ventas', [VentaController::class, 'store']);
+            Route::post('/ventas/{venta}/escanear', [VentaController::class, 'escanear'])->middleware('medir:300')->name('ventas.escanear');
+            Route::post('/ventas/{venta}/cerrar', [VentaController::class, 'cerrar']);
+            // RF-14 / S-18: solo el precio de un ítem de una venta a crédito abierta.
+            // S-42: precio de varios ítems (un grupo del modal de cierre). Antes de {item} para no confundirse.
+            Route::patch('/ventas/{venta}/items/precio', [VentaController::class, 'cambiarPrecioLote']);
+            Route::patch('/ventas/{venta}/items/{item}', [VentaController::class, 'cambiarPrecio'])->scopeBindings();
+        });
     });
 });

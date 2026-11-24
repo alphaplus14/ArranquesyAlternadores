@@ -222,8 +222,9 @@ class VentaService
      */
     public function cambiarPrecioLote(Venta $venta, array $itemIds, string|int|float $precio, User $usuario): Venta
     {
-        if ($usuario->rol !== Rol::Admin && $venta->usuario_id !== $usuario->id) {
-            throw new ReglaInventarioException('Solo quien abrió la venta (o el administrador) puede cambiar sus precios.', 403);
+        // S-43: el admin no llega aquí (la ruta es solo del mostrador); cada mostrador, sus ventas.
+        if ($venta->usuario_id !== $usuario->id) {
+            throw new ReglaInventarioException('Solo quien abrió la venta puede cambiar sus precios.', 403);
         }
 
         return DB::transaction(function () use ($venta, $itemIds, $precio, $usuario) {
