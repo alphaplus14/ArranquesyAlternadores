@@ -1392,8 +1392,33 @@ input[aria-invalid='true']:not([type='checkbox']):not([type='radio']):focus-visi
 .tabla-venta { width: 100%; }
 .celda-referencia-venta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .fila-detalle-venta { color: var(--suave); font-size: 0.78rem; }
-.lector-con-cantidad { align-items: flex-end; }
-.venta-cantidad .campo-cantidad { gap: 2px; }
+/* S-42: en Venta la cantidad va en la misma línea y con la misma altura que el escáner. */
+/* Doble clase: pesa más que las reglas genéricas de .lector-con-cantidad, que van después. */
+.lector-con-cantidad.venta-lector { flex-direction: row; align-items: center; flex-wrap: nowrap; }
+.lector-con-cantidad.venta-lector .lector-campo { flex: 1 1 auto; }
+.venta-cantidad { flex: none; display: flex; }
+.campo-cantidad.compacto { flex-direction: row; align-items: center; gap: 8px; }
+.campo-cantidad.compacto .etiqueta-campo { align-self: center; font-size: 0.8rem; }
+.venta-lector .stepper button, .venta-lector .stepper input { height: 3rem; min-height: 44px; box-sizing: border-box; }
+.venta-lector .escaner { height: 3rem; box-sizing: border-box; margin: 0; }
+.venta-lector .stepper input { width: 4rem; }
+/* Con poco ancho (panel lateral a la vista) la etiqueta "Cantidad" queda para lectores de pantalla;
+   el title del selector sigue explicándolo. */
+@media (max-width: 1279px) {
+  .venta-lector .campo-cantidad.compacto .etiqueta-campo { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .venta-lector .campo-cantidad.compacto { position: relative; }
+}
+@media (max-width: 480px) {
+  .lector-con-cantidad.venta-lector { flex-direction: column; align-items: stretch; }
+  .venta-cantidad, .venta-cantidad .campo-cantidad { width: 100%; }
+  .venta-cantidad .stepper { flex: 1; }
+  .venta-lector .stepper button, .venta-lector .stepper input, .venta-lector .escaner { height: 44px; }
+}
+/* S-42: precio editable por grupo en el modal de cierre. */
+.precio-grupo { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.precio-grupo input { width: 8.5rem; min-height: 44px; box-sizing: border-box; text-align: right; }
+.cierre-resumen { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.cierre-unidades { color: var(--suave); font-size: 0.9rem; }
 .ver-todas { align-self: center; white-space: nowrap; flex: none; }
 /* Ventas cerradas recientes: dos líneas por venta y scroll propio. */
 .lateral h3 { margin-top: 0; }

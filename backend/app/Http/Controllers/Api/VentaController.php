@@ -151,6 +151,23 @@ class VentaController extends Controller
         return new VentaResource($this->cargar($this->ventas->cerrar($venta)));
     }
 
+    /**
+     * S-42: el mismo precio libre para varios ítems de la venta (un grupo del modal de cierre). Una
+     * transacción y una fila de auditoría por ítem que cambia. Responde la venta con sus totales.
+     */
+    public function cambiarPrecioLote(Request $request, Venta $venta): VentaResource
+    {
+        $datos = $request->validate([
+            'ids' => ['required', 'array', 'min:1', 'max:200'],
+            'ids.*' => ['integer'],
+            'precio_unitario' => ['required', 'numeric', 'gt:0', 'max:9999999999'],
+        ], ['precio_unitario.gt' => 'El precio debe ser mayor que 0.']);
+
+        $venta = $this->ventas->cambiarPrecioLote($venta, $datos['ids'], $datos['precio_unitario'], $request->user());
+
+        return new VentaResource($this->cargar($venta));
+    }
+
     /** RF-14 / S-18: precio libre en una venta a crédito abierta; el servicio lo audita. */
     public function cambiarPrecio(CambiarPrecioItemRequest $request, Venta $venta, VentaItem $item): VentaResource
     {

@@ -6,6 +6,7 @@ use App\Enums\EstadoVenta;
 use App\Enums\FormaPago;
 use App\Enums\MetodoCaptura;
 use App\Enums\OrigenCodigo;
+use App\Enums\Rol;
 use App\Exceptions\ReglaInventarioException;
 use App\Models\Auditoria;
 use App\Models\Cliente;
@@ -206,6 +207,67 @@ class VentaService
                 'usuario_id' => $usuario->id,
                 'created_at' => now(),
             ]);
+
+            return $venta;
+        });
+    }
+
+    /**
+     * S-42: el mismo precio libre de cambiarPrecio, para varios ítems a la vez (un grupo del modal de
+     * cierre: misma referencia y precio). Una transacción con la venta bloqueada; cada ítem que cambia
+     * deja su fila de auditoría (valor anterior, nuevo, usuario y fecha), igual que de a uno. Solo en
+     * crédito abierto, precio > 0, ítems de esta venta y sin reverso. El mostrador solo en sus ventas.
+     *
+     * @param  list<int>  $itemIds
+     */
+    public function cambiarPrecioLote(Venta $venta, array $itemIds, string|int|float $precio, User $usuario): Venta
+    {
+        if ($usuario->rol !== Rol::Admin && $venta->usuario_id !== $usuario->id) {
+            throw new ReglaInventarioException('Solo quien abrió la venta (o el administrador) puede cambiar sus precios.', 403);
+        }
+
+        return DB::transaction(function () use ($venta, $itemIds, $precio, $usuario) {
+            $venta = Venta::query()->lockForUpdate()->findOrFail($venta->id);
+
+            if (! $venta->esCredito()) {
+                throw new ReglaInventarioException('Solo en una venta a crédito se puede cambiar el precio.', 422);
+            }
+            if (! $venta->estaAbierta()) {
+                throw new ReglaInventarioException('La venta está cerrada: sus precios quedaron fijos.', 422);
+            }
+            if (! is_numeric($precio) || (float) $precio <= 0) {
+                throw new ReglaInventarioException('El precio debe ser mayor que 0.', 422, ['campo' => 'precio_unitario']);
+            }
+
+            $ids = array_values(array_unique(array_map('intval', $itemIds)));
+            $items = VentaItem::query()->where('venta_id', $venta->id)->whereKey($ids)->with('reversoItem')->orderBy('id')->lockForUpdate()->get();
+
+            if ($ids === [] || $items->count() !== count($ids)) {
+                throw new ReglaInventarioException('Algún ítem no pertenece a esta venta: no se cambió ningún precio.', 422);
+            }
+            if ($items->contains(fn (VentaItem $i) => $i->reversoItem !== null)) {
+                throw new ReglaInventarioException('Algún ítem ya fue reversado: no se cambió ningún precio.', 422);
+            }
+
+            $ahora = now();
+            foreach ($items as $item) {
+                $anterior = $item->precio_unitario;
+                $item->precio_unitario = $precio;
+                if (! $item->isDirty('precio_unitario')) {
+                    continue;
+                }
+                $item->save();
+
+                Auditoria::create([
+                    'tabla' => $item->getTable(),
+                    'registro_id' => $item->id,
+                    'campo' => 'precio_unitario',
+                    'valor_anterior' => $anterior,
+                    'valor_nuevo' => $item->precio_unitario,
+                    'usuario_id' => $usuario->id,
+                    'created_at' => $ahora,
+                ]);
+            }
 
             return $venta;
         });

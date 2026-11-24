@@ -170,6 +170,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/ventas/{venta}/cerrar', [VentaController::class, 'cerrar']);
         Route::post('/ventas/{venta}/reversos', [VentaController::class, 'reversar']);
         // RF-14 / S-18: solo el precio de un ítem de una venta a crédito abierta.
+        // S-42: precio de varios ítems (un grupo del modal de cierre). Antes de {item} para no confundirse.
+        Route::patch('/ventas/{venta}/items/precio', [VentaController::class, 'cambiarPrecioLote']);
         Route::patch('/ventas/{venta}/items/{item}', [VentaController::class, 'cambiarPrecio'])->scopeBindings();
     });
 });

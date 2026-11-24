@@ -310,7 +310,7 @@ export default function Venta() {
           </p>
         )}
 
-        <div className="lector-con-cantidad">
+        <div className="lector-con-cantidad venta-lector">
           <div className="lector-campo">
             <input
               ref={inputRef}
@@ -324,7 +324,7 @@ export default function Venta() {
               autoComplete="off"
             />
           </div>
-          <div className="venta-cantidad" title="Con el código del proveedor. Cada etiqueta es una unidad.">
+          <div className="venta-cantidad">
             <CampoCantidad
               id="venta-cantidad"
               etiqueta="Cantidad"
@@ -332,6 +332,8 @@ export default function Venta() {
               max={MAX_CANTIDAD}
               onCambio={setCantidad}
               disabled={!abierta}
+              compacto
+              ayuda="Con el código del proveedor. Cada etiqueta es una unidad."
             />
           </div>
         </div>
@@ -365,7 +367,7 @@ export default function Venta() {
 
             {/* S-41: barra delgada con ítems y total; el desglose base / IVA va en el modal de cierre. */}
             <div className="barra-total" aria-live="polite">
-              <span>{vigentes.length} {vigentes.length === 1 ? 'ítem' : 'ítems'} · Total <strong>{pesos(v.totales?.total ?? 0)}</strong> (IVA incl.)</span>
+              <span>{textoUnidades(vigentes)} · Total <strong>{pesos(v.totales?.total ?? 0)}</strong> (IVA incl.)</span>
               {abierta && (
                 <button
                   ref={botonCerrarRef}
@@ -466,6 +468,7 @@ export default function Venta() {
         <DialogoCerrarVenta
           venta={v}
           vieja={esDeDiaAnterior(v)}
+          onVentaActualizada={(nueva) => qc.setQueryData(['venta', nueva.id], nueva)}
           pendiente={cerrar.isPending}
           onCerrarVenta={() => cerrar.mutate()}
           onSeguir={() => { focoAlCerrarDialogo.current = botonCerrarRef.current; setConfirmandoCierre(false) }}
@@ -692,8 +695,15 @@ const FilaItem = memo(function FilaItem({ item: i, ventaId, abierta, editable, e
   )
 })
 
+/** S-42: "N unidades · M referencias" (cada etiqueta es una unidad). */
+function textoUnidades(items: VentaItem[], union = ' · '): string {
+  const n = items.length
+  const m = new Set(items.map((i) => i.unidad.referencia?.id ?? i.unidad.referencia_id)).size
+  return `${n} ${n === 1 ? 'unidad' : 'unidades'}${union}${m} ${m === 1 ? 'referencia' : 'referencias'}`
+}
+
 /** S-41: ítems vigentes agrupados por referencia y precio para el resumen del cierre. */
-interface GrupoCierre { clave: string; item: VentaItem; cantidad: number; precio: number }
+interface GrupoCierre { clave: string; item: VentaItem; ids: number[]; precio: number }
 
 function agruparParaCierre(items: VentaItem[]): GrupoCierre[] {
   const grupos = new Map<string, GrupoCierre>()
@@ -702,10 +712,57 @@ function agruparParaCierre(items: VentaItem[]): GrupoCierre[] {
     const precio = Number(i.precio_unitario ?? 0)
     const clave = `${i.unidad.referencia?.id ?? i.unidad.referencia_id}-${precio}`
     const g = grupos.get(clave)
-    if (g) g.cantidad += 1
-    else grupos.set(clave, { clave, item: i, cantidad: 1, precio })
+    if (g) g.ids.push(i.id)
+    else grupos.set(clave, { clave, item: i, ids: [i.id], precio })
   }
   return [...grupos.values()]
+}
+
+/**
+ * S-42: precio con IVA incluido de un grupo, editable en crédito abierto. Guarda al salir del campo o
+ * con Enter (todas las unidades del grupo a la vez); con error vuelve al valor anterior y lo dice.
+ */
+function PrecioGrupo({ ventaId, grupo, onGuardado, onEstado }: {
+  ventaId: number
+  grupo: GrupoCierre
+  onGuardado: (v: TVenta) => void
+  /** Avisa si hay una edición sin guardar o inválida (bloquea "Confirmar cierre"). */
+  onEstado: (clave: string, pendiente: boolean) => void
+}) {
+  const [texto, setTexto] = useState(formatoNumero(grupo.precio))
+  useEffect(() => { setTexto(formatoNumero(grupo.precio)) }, [grupo.precio])
+  const guardar = useMutation({
+    mutationFn: async (precio: number) =>
+      (await api.patch<TVenta>(`/ventas/${ventaId}/items/precio`, { ids: grupo.ids, precio_unitario: precio })).data,
+    onSuccess: onGuardado,
+    onError: () => setTexto(formatoNumero(grupo.precio)),
+  })
+  const error = errorPrecio(texto)
+  const n = leerNumero(texto)
+  const cambiado = n !== null && !Number.isNaN(n) && n !== grupo.precio
+  const pendiente = guardar.isPending || error !== null || cambiado
+  useEffect(() => { onEstado(grupo.clave, pendiente) }, [grupo.clave, pendiente, onEstado])
+  useEffect(() => () => onEstado(grupo.clave, false), [grupo.clave, onEstado])
+
+  const enviar = () => { if (!error && cambiado && n !== null && !guardar.isPending) guardar.mutate(n) }
+
+  return (
+    <span className="precio-grupo">
+      <input
+        inputMode="decimal"
+        value={texto}
+        aria-label={`Precio con IVA incluido de ${grupo.item.unidad.referencia?.codigo_referencia ?? 'la referencia'} (${grupo.ids.length} ${grupo.ids.length === 1 ? 'unidad' : 'unidades'})`}
+        aria-invalid={error ? true : undefined}
+        disabled={guardar.isPending}
+        onChange={(e) => { setTexto(e.target.value); guardar.reset() }}
+        onBlur={enviar}
+        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); enviar() } }}
+      />
+      {guardar.isPending && <small className="ayuda">Guardando…</small>}
+      {error && <small className="ayuda error">{error}</small>}
+      {guardar.isError && <small className="ayuda error" role="alert">{mensajeError(guardar.error)}</small>}
+    </span>
+  )
 }
 
 /**
@@ -713,19 +770,28 @@ function agruparParaCierre(items: VentaItem[]): GrupoCierre[] {
  * referencia y precio (cantidad, precio con IVA incluido, subtotal) y, en el pie, base, IVA incluido
  * y total (los calcula el backend, S-33). En crédito, el vencimiento que se fijará (hoy + plazo, S-11).
  * "Volver" o Esc no cierran la venta; mientras se cierra, el modal no se puede cerrar.
+ * S-42: en crédito abierto el precio de cada grupo se corrige aquí (todas sus unidades, auditado);
+ * en contado es de solo lectura. "Confirmar cierre" espera a que no quede una edición pendiente.
  */
-function DialogoCerrarVenta({ venta: v, vieja, pendiente, onCerrarVenta, onSeguir }: {
+function DialogoCerrarVenta({ venta: v, vieja, pendiente, onCerrarVenta, onSeguir, onVentaActualizada }: {
   venta: TVenta
   vieja: boolean
   pendiente: boolean
   onCerrarVenta: () => void
   onSeguir: () => void
+  onVentaActualizada: (v: TVenta) => void
 }) {
   const credito = v.forma_pago === 'credito'
+  const editable = credito && v.estado === 'abierta'
   const vence = credito && v.cliente ? sumarDias(hoyEnBogota(), v.cliente.plazo_dias) : null
   const grupos = useMemo(() => agruparParaCierre(v.items), [v.items])
-  const unidades = grupos.reduce((n, g) => n + g.cantidad, 0)
+  const vigentes = useMemo(() => v.items.filter((i) => !i.reverso_id), [v.items])
   const t = v.totales
+  const [ediciones, setEdiciones] = useState<Record<string, boolean>>({})
+  const marcar = useCallback((clave: string, pend: boolean) => {
+    setEdiciones((e) => (Boolean(e[clave]) === pend ? e : { ...e, [clave]: pend }))
+  }, [])
+  const hayEdicion = Object.values(ediciones).some(Boolean)
 
   return (
     <Dialogo
@@ -741,14 +807,24 @@ function DialogoCerrarVenta({ venta: v, vieja, pendiente, onCerrarVenta, onSegui
       pendiente={pendiente}
       pie={(
         <div className="cierre-pie">
-          <dl className="cierre-totales">
-            <div><dt>Base (sin IVA)</dt><dd>{pesos(t?.base ?? 0)}</dd></div>
-            <div><dt>{rotuloIvaIncluido(t?.iva_porcentajes ?? [])}</dt><dd>{pesos(t?.iva_incluido ?? 0)}</dd></div>
-            <div className="cierre-total"><dt>Total</dt><dd>{pesos(t?.total ?? 0)}</dd></div>
-          </dl>
+          <div className="cierre-resumen">
+            <span className="cierre-unidades">{textoUnidades(vigentes, ' de ')}</span>
+            <dl className="cierre-totales">
+              <div><dt>Base (sin IVA)</dt><dd>{pesos(t?.base ?? 0)}</dd></div>
+              <div><dt>{rotuloIvaIncluido(t?.iva_porcentajes ?? [])}</dt><dd>{pesos(t?.iva_incluido ?? 0)}</dd></div>
+              <div className="cierre-total"><dt>Total</dt><dd>{pesos(t?.total ?? 0)}</dd></div>
+            </dl>
+          </div>
           <div className="cierre-botones">
             <button type="button" className="secundario boton-44" disabled={pendiente} onClick={onSeguir}>Volver</button>
-            <button type="button" className="primario boton-44" autoFocus disabled={pendiente} onClick={onCerrarVenta}>{pendiente ? 'Cerrando…' : 'Confirmar cierre'}</button>
+            <button
+              type="button"
+              className="primario boton-44"
+              autoFocus
+              disabled={pendiente || hayEdicion}
+              title={hayEdicion ? 'Termine de corregir el precio (Enter o salir del campo) antes de cerrar' : undefined}
+              onClick={onCerrarVenta}
+            >{pendiente ? 'Cerrando…' : 'Confirmar cierre'}</button>
           </div>
         </div>
       )}
@@ -756,9 +832,10 @@ function DialogoCerrarVenta({ venta: v, vieja, pendiente, onCerrarVenta, onSegui
       <section className="modal-seccion cierre-cuerpo" aria-label="Ítems de la venta">
         {vieja && <p className="aviso atencion">Esta venta se abrió el {formatearFecha(v.created_at)}.{credito ? ' El vencimiento se cuenta desde el cierre.' : ''}</p>}
         {vence && <p className="ayuda">Vencerá el <strong>{fechaCorta(vence)}</strong> ({v.cliente?.plazo_dias} días).</p>}
+        {editable && <p className="ayuda">Puede corregir el precio de cada grupo (todas sus unidades); queda en la auditoría.</p>}
         <table className="tabla-cierre">
           <caption className="solo-lector">Ítems vigentes agrupados por referencia y precio</caption>
-          <thead><tr><th>Referencia</th><th className="col-numero">Cantidad</th><th className="col-numero">Precio (IVA incl.)</th><th className="col-numero">Subtotal</th></tr></thead>
+          <thead><tr><th>Referencia</th><th className="col-numero">Cantidad</th><th className="col-numero">Precio unitario (IVA incl.)</th><th className="col-numero">Subtotal</th></tr></thead>
           <tbody>
             {grupos.map((g) => (
               <tr key={g.clave}>
@@ -768,14 +845,18 @@ function DialogoCerrarVenta({ venta: v, vieja, pendiente, onCerrarVenta, onSegui
                     <small className="bloque">{g.item.unidad.referencia?.proveedor?.nombre} <ChipCalidad calidad={g.item.unidad.referencia?.calidad} /></small>
                   </span>
                 </td>
-                <td data-etiqueta="Cantidad" className="col-numero">{g.cantidad}</td>
-                <td data-etiqueta="Precio" className="col-numero">{pesos(g.precio)}</td>
-                <td data-etiqueta="Subtotal" className="col-numero"><strong>{pesos(g.precio * g.cantidad)}</strong></td>
+                <td data-etiqueta="Cantidad" className="col-numero">{g.ids.length}</td>
+                <td data-etiqueta="Precio" className="col-numero">
+                  {editable
+                    ? <PrecioGrupo ventaId={v.id} grupo={g} onGuardado={onVentaActualizada} onEstado={marcar} />
+                    : pesos(g.precio)}
+                </td>
+                <td data-etiqueta="Subtotal" className="col-numero"><strong>{pesos(g.precio * g.ids.length)}</strong></td>
               </tr>
             ))}
           </tbody>
         </table>
-        <p className="ayuda">{unidades} {unidades === 1 ? 'unidad' : 'unidades'}. Al cerrar, los precios quedan fijos y la venta no se puede editar; solo reversar.</p>
+        <p className="ayuda">Al cerrar, los precios quedan fijos y la venta no se puede editar; solo reversar.</p>
       </section>
     </Dialogo>
   )
