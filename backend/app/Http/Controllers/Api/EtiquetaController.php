@@ -23,12 +23,15 @@ class EtiquetaController extends Controller
     public function generar(Request $request, EtiquetaService $servicio): Response
     {
         $datos = $request->validate([
-            'unidad_ids' => ['required', 'array', 'min:1', 'max:500'],
+            // S-39: o las unidades de un ajuste de alta (ajuste_id), con el mismo selector de tamaño.
+            'ajuste_id' => ['nullable', 'integer'],
+            'unidad_ids' => ['required_without:ajuste_id', 'array', 'min:1', 'max:500'],
             'unidad_ids.*' => ['integer', 'distinct', 'exists:unidades,id'],
             'tamano' => ['required', Rule::in(array_keys(config('etiquetas.tamanos')))],
         ]);
 
-        $pdf = $servicio->generar($datos['unidad_ids'], $datos['tamano']);
+        $unidadIds = isset($datos['ajuste_id']) ? $servicio->unidadesDeAlta((int) $datos['ajuste_id']) : $datos['unidad_ids'];
+        $pdf = $servicio->generar($unidadIds, $datos['tamano']);
 
         return response($pdf, 200, [
             'Content-Type' => 'application/pdf',
