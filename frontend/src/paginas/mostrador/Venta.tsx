@@ -187,8 +187,11 @@ export default function Venta() {
       const nace = typeof destino === 'number' ? '' : `Venta #${r.venta_id} · `
       avisos.mostrar('ok', `✓ ${nace}${cuales}${porReferencia} · ${r.referencia.codigo_referencia} · ${[r.referencia.proveedor, r.referencia.calidad && NOMBRE_CALIDAD[r.referencia.calidad as Calidad]].filter(Boolean).join(' · ')} — quedan ${r.referencia.existencia} (${r.metodo_captura})`)
       setCantidad(1)
+      const clave = ['venta', r.venta_id]
       if (typeof destino !== 'number') {
-        // S-46: la venta acaba de nacer: pasa a ser la activa y el borrador vuelve a contado.
+        // S-46: la venta acaba de nacer y llega completa: queda en caché antes de pasar a ser la
+        // activa, así la tabla aparece de una vez, sin pedir GET /ventas/{id} y sin parpadeo.
+        if (r.venta) qc.setQueryData(clave, r.venta)
         setVentaId(r.venta_id)
         setEligioNueva(false)
         setBorrador(BORRADOR_CONTADO)
@@ -199,7 +202,6 @@ export default function Venta() {
       }
       // RF-06: una sola petición por escaneo. Los ítems llegan completos y se agregan a la venta en
       // caché, con los totales nuevos (S-33) que calcula el backend; la ficha de la venta también.
-      const clave = ['venta', r.venta_id]
       qc.setQueryData<VentaAbierta[]>(CLAVE_ABIERTAS, (lista) => lista?.map((a) => (a.id === r.venta_id
         ? { ...a, items_count: a.items_count + nuevos.length, total: r.totales?.total ?? a.total }
         : a)))

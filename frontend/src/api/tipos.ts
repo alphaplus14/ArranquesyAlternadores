@@ -525,6 +525,8 @@ export interface RespuestaEscaneo {
   totales?: TotalesVenta
   /** S-40: todos los ítems de la lectura (con cantidad > 1, varios); `item` es el último. */
   items?: VentaItem[]
+  /** S-46: solo en POST /ventas (la venta acaba de nacer): la venta completa, igual que GET /ventas/{id}. */
+  venta?: Venta
 }
 
 export interface Auditoria {
