@@ -1,15 +1,21 @@
-# HANDOFF — Módulo contable (RF-21, RF-22, RF-23, RF-17 ajuste)
+# HANDOFF — Requerimientos de César (24-nov-2026, RQ-01 a RQ-06)
 
-**Objetivo:** módulo para la auxiliar contable: cartera, cuentas por pagar, pagos a una factura elegida, avisos de vencimiento y exportación a Excel. Especificación en `docs/adenda-v1.3-modulo-contable.md`; supuestos S-27 a S-29.
+**Objetivo:** cumplir `Desktop\Requerimientos_Arranques.md`. Registrados como S-48 a S-53 en `docs/supuestos.md`.
 
-**Hecho (rama `rf-21-modulo-contable`, commitado):**
-- Backend: rol `contable`, migración `2026_11_25_000100` (enum de rol + `pagos_proveedores.ingreso_id`), `PagoService` valida el pago a una factura, `Antiguedad` aplica primero lo pagado a cada factura, `VencimientoService` + `GET /vencimientos`, `?formato=xlsx` en todos los informes (`Support\Xlsx` sin dependencias, `Support\InformeExcel`).
-- Frontend: `paginas/contable/` (Vencimientos, Cuentas por pagar, Proveedor, Cartera, Cliente, Informes), contador en el menú, rol en Usuarios.
-- Tests: 328 en verde (17 nuevos en `RF21ModuloContableTest`). `tsc`, eslint y build limpios.
-- BD de desarrollo migrada; usuario `contable` / `cambiar123`.
+**Hecho (rama `ajustes-cesar-nov`, sin commitear):**
+- S-48 menú: "Compras y remisiones" y "Movimientos" / "Historial de movimientos".
+- S-49: el nuevo ingreso (factura y remisión) abre en Crédito.
+- S-50: los avisos de acierto se cierran a los 5 s; el del ítem escaneado también cuando falta el costo.
+- S-51: descuento del documento aceptado en el borrador aun sin líneas; "≤ subtotal" solo al confirmar; `totales.descuento_excede_subtotal` y aviso.
+- Merge con `origin/cesar` reparado: tipos contables recuperados (`FilaVencimiento`, `Vencimientos`, campos de `DocumentoPendiente` y `MovimientoDinero`), imports con los nombres de César y pago a factura (RF-17) recuperado en `DialogoMovimiento`. `tsc` y build limpios.
+- S-52: `componentes/CampoMoneda.tsx` (separador de miles) en precio de venta, costo de línea, descuento $, abonos/pagos y precio a crédito.
 
-**Pendiente:** probar en navegador con datos reales tras merge de `origin/cesar`.
+**Pendiente:**
+- RQ-06 / S-53 "Saldo": esperar decisión de César.
+- Probar en el navegador.
+- Commits por RQ.
+- 3 archivos de backend modificados que no son de esta tarea (`CarteraService`, migración `ventas_descartada`, `Pest.php`).
 
-**Verificar:** `cd backend && php artisan test`; entrar como `contable`.
+**Verificar:** `cd backend && php artisan test` (539 en verde), `cd frontend && npm run build`.
 
-**Siguiente paso:** merge de `origin/cesar` y resolver conflictos (RF-21 inventario vs contable).
+**Siguiente paso:** prueba manual de ingresos y del mostrador, luego commits.
