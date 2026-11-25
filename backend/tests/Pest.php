@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Models\Venta;
 use App\Services\IngresoService;
 use App\Services\VentaService;
+use App\Support\RangoFechas;
 use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -99,7 +100,7 @@ function ingresar(Referencia $referencia, int $cantidad, ?User $usuario = null):
     $ingreso = $servicio->crearBorrador([
         'proveedor_id' => $referencia->proveedor_id,
         'numero_documento' => 'REM-T'.random_int(1000, 9999),
-        'fecha' => now()->toDateString(),
+        'fecha' => RangoFechas::hoy(),
     ], $usuario);
     $servicio->agregarItem($ingreso, ['referencia_id' => $referencia->id, 'cantidad' => $cantidad, 'costo_unitario' => 1000]);
 
@@ -198,7 +199,7 @@ function compra(Referencia $referencia, int $cantidad, int $costo, array $encabe
     $ingreso = $servicio->crearBorrador([
         'proveedor_id' => $referencia->proveedor_id,
         'numero_documento' => 'DOC-'.random_int(10000, 99999),
-        'fecha' => now()->toDateString(),
+        'fecha' => RangoFechas::hoy(),
         ...$encabezado,
     ], $usuario);
     $servicio->agregarItem($ingreso, ['referencia_id' => $referencia->id, 'cantidad' => $cantidad, 'costo_unitario' => $costo, 'iva_porcentaje' => 0]);
