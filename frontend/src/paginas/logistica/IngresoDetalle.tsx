@@ -202,6 +202,8 @@ export default function IngresoDetalle() {
       avisos.mostrar(
         sinCosto ? 'atencion' : 'ok',
         `✓ ${linea.referencia?.codigo_referencia} · ${linea.referencia?.descripcion} — cantidad ${linea.cantidad}${sinCosto ? ' · escriba el costo en la tabla' : ''}`,
+        undefined,
+        5000, // S-50: el aviso del ítem agregado se va solo a los 5 s, también si falta el costo
       )
       qc.invalidateQueries({ queryKey: ['ingreso', id] })
     },
