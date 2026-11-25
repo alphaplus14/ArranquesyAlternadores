@@ -28,19 +28,21 @@ const M = { arriba: 12, derecha: 12, abajo: 28, izquierda: 64 }
  * ancho del contenedor. Teclado: foco en el gráfico y ← → Inicio Fin recorren los días; el valor
  * del día activo se anuncia en una región viva.
  */
-export default function GraficoAreas({ datos, series, formato, resumen }: {
+export default function GraficoAreas({ datos, series, formato, resumen, alto = ALTO }: {
   datos: PuntoArea[]
   series: SerieArea[]
   formato: (n: number) => string
   /** Resumen de la serie para aria-label (p. ej. "Ventas de 30 días: total $…"). */
   resumen: string
+  /** Alto del lienzo en px. El del panel es más bajo para no dejar un bloque vacío. */
+  alto?: number
 }) {
   const { ref, ancho } = useAncho<HTMLDivElement>()
   const uid = useId().replace(/:/g, '')
   const { indice, setIndice, onKeyDown, onFocus } = useIndiceActivo(datos.length)
 
   const anchoUtil = Math.max(0, ancho - M.izquierda - M.derecha)
-  const altoUtil = ALTO - M.arriba - M.abajo
+  const altoUtil = alto - M.arriba - M.abajo
   const totales = datos.map((d) => series.reduce((s, x) => s + (d.valores[x.clave] ?? 0), 0))
   const tope = topeEje(Math.max(0, ...totales))
   const x = (i: number) => M.izquierda + (datos.length <= 1 ? anchoUtil / 2 : (i * anchoUtil) / (datos.length - 1))
@@ -79,7 +81,7 @@ export default function GraficoAreas({ datos, series, formato, resumen }: {
         {ancho > 0 && (
           <svg
             width={ancho}
-            height={ALTO}
+            height={alto}
             role="img"
             aria-label={`${resumen}. Use las flechas para recorrer los días.`}
             tabIndex={0}
@@ -110,7 +112,7 @@ export default function GraficoAreas({ datos, series, formato, resumen }: {
               </g>
             ))}
             {datos.map((d, i) => (i % cadaCuanto === 0 || i === datos.length - 1) && (
-              <text key={d.etiqueta + i} x={x(i)} y={ALTO - 8} className="grafico-eje" textAnchor="middle">{d.etiqueta}</text>
+              <text key={d.etiqueta + i} x={x(i)} y={alto - 8} className="grafico-eje" textAnchor="middle">{d.etiqueta}</text>
             ))}
             {indice !== null && (
               <g>
