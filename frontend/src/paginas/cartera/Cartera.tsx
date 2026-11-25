@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { api } from '../../api/cliente'
-import type { ListaCartera, ResumenClienteLista } from '../../api/tipos'
+import type { ListaCartera, ResumenCartera } from '../../api/tipos'
 import { useListaPaginada } from '../../hooks/useListaPaginada'
 import { useDebounce } from '../../hooks/useDebounce'
 import Medida from '../../componentes/Medida'
@@ -28,13 +28,13 @@ export default function Cartera() {
   const [soloConSaldo, setSoloConSaldo] = useState(true)
   const [soloVencidos, setSoloVencidos] = useState(false)
   const [corte, setCorte] = useState('')
-  const [abonando, setAbonando] = useState<ResumenClienteLista | null>(null)
+  const [abonando, setAbonando] = useState<ResumenCartera | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
   const disparador = useRef<HTMLButtonElement | null>(null)
   const termino = useDebounce(q.trim())
 
   const filtros = { termino, soloConSaldo, soloVencidos, corte }
-  const { filas, resultado, info, irA, cargando } = useListaPaginada<ResumenClienteLista>({
+  const { filas, resultado, info, irA, cargando } = useListaPaginada<ResumenCartera>({
     clave: ['cartera', filtros],
     filtros: { q, soloConSaldo, soloVencidos, corte },
     traer: async (page) => (await api.get<ListaCartera>('/cartera', {

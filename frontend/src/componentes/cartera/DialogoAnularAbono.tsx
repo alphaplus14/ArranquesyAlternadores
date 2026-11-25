@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { api, erroresCampo, mensajeError } from '../../api/cliente'
-import { NOMBRE_MEDIO, type MedioPago, type ResumenClienteLista } from '../../api/tipos'
+import { NOMBRE_MEDIO, type MedioPago, type ResumenCartera } from '../../api/tipos'
 import DialogoApilado from '../DialogoApilado'
 import { pesos } from '../numeros'
 import { fechaCorta } from '../fechas'
@@ -12,12 +12,12 @@ import { fechaCorta } from '../fechas'
  */
 export default function DialogoAnularAbono({ abono, onAnulado, onCerrar }: {
   abono: { id: number; fecha: string; valor: string; medio: MedioPago; referencia?: string | null }
-  onAnulado: (resumen: ResumenClienteLista) => void
+  onAnulado: (resumen: ResumenCartera) => void
   onCerrar: () => void
 }) {
   const [motivo, setMotivo] = useState('')
   const anular = useMutation({
-    mutationFn: async () => (await api.post<{ resumen: ResumenClienteLista }>(`/abonos/${abono.id}/anulaciones`, { motivo: motivo.trim() })).data,
+    mutationFn: async () => (await api.post<{ resumen: ResumenCartera }>(`/abonos/${abono.id}/anulaciones`, { motivo: motivo.trim() })).data,
     onSuccess: (d) => onAnulado(d.resumen),
   })
   const errores = anular.isError ? erroresCampo(anular.error) : {}

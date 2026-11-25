@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeError } from '../../api/cliente'
-import { NOMBRE_MEDIO, type CarteraEstadoCuenta, type DetalleCartera, type EstadoFiltroVenta, type MovimientoCuenta, type VentaCartera } from '../../api/tipos'
+import { NOMBRE_MEDIO, type EstadoCuenta, type DetalleCartera, type EstadoFiltroVenta, type MovimientoCuenta, type VentaCartera } from '../../api/tipos'
 import { useAuth } from '../../auth/AuthProvider'
 import { useDebounce } from '../../hooks/useDebounce'
 import Icono from '../../componentes/Icono'
@@ -133,7 +133,7 @@ export default function CarteraCliente() {
   const errorFechas = errorRango(rango)
   const cuenta = useQuery({
     queryKey: ['cartera-cliente', id, 'cuenta', rango.desde, rango.hasta],
-    queryFn: async () => (await api.get<CarteraEstadoCuenta>(`/clientes/${id}/estado-cuenta`, { params: { desde: rango.desde ?? undefined, hasta: rango.hasta ?? undefined } })).data,
+    queryFn: async () => (await api.get<EstadoCuenta>(`/clientes/${id}/estado-cuenta`, { params: { desde: rango.desde ?? undefined, hasta: rango.hasta ?? undefined } })).data,
     enabled: Number.isFinite(id) && seccion === 'cuenta' && errorFechas === null,
     placeholderData: (previo) => previo,
   })

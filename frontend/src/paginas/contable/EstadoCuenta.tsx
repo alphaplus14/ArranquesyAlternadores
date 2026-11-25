@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../api/cliente'
-import type { EstadoCuenta as Estado } from '../../api/tipos'
+import type { EstadoCuentaInforme as Estado } from '../../api/tipos'
 import BotonExcel from '../../componentes/BotonExcel'
 import Paginacion from '../../componentes/Paginacion'
 import { fechaCorta, hoy, sumarDias } from '../../componentes/fechas'
