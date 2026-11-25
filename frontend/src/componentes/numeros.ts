@@ -12,15 +12,19 @@ export function leerNumero(texto: string): number | null {
   return /^\d+(\.\d{1,2})?$/.test(limpio) ? Number(limpio) : Number.NaN
 }
 
+// Los formateadores se crean una sola vez: toLocaleString con opciones arma uno nuevo en cada llamada,
+// que es lo más caro de formatear, y la venta de mostrador formatea precios en cada render.
+const formatoEntero = new Intl.NumberFormat('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+const formatoDosDecimales = new Intl.NumberFormat('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const formatoPesos = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 })
+
 /** Con decimales, siempre dos cifras ("72.500,50"); sin decimales, ninguna ("85.000"). */
 export function formatoNumero(valor: string | number) {
   const n = Number(valor)
-  const decimales = Number.isInteger(n) ? 0 : 2
-  return n.toLocaleString('es-CO', { minimumFractionDigits: decimales, maximumFractionDigits: decimales })
+  return (Number.isInteger(n) ? formatoEntero : formatoDosDecimales).format(n)
 }
 
-export const pesos = (n: number | string) =>
-  Number(n).toLocaleString('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 })
+export const pesos = (n: number | string) => formatoPesos.format(Number(n))
 
 /**
  * S-52: dinero escrito en formato es-CO mientras se digita ("1.250.000,5"): punto para miles y
