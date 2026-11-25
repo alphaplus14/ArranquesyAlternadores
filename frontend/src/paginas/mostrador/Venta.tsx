@@ -142,7 +142,7 @@ export default function Venta() {
 
   const recientes = useQuery({
     queryKey: ['ventas', 'cerradas'],
-    queryFn: async () => (await api.get<Pagina<{ id: number; created_at: string; items_count: number; total: string | number; forma_pago: TVenta['forma_pago']; cliente: { id: number; nombre: string } | null }>>('/ventas', { params: { estado: 'cerrada' } })).data,
+    queryFn: async () => (await api.get<Pagina<VentaReciente>>('/ventas', { params: { estado: 'cerrada' } })).data,
     enabled: !consulta,
   })
 
@@ -529,25 +529,7 @@ export default function Venta() {
         )}
       </section>
 
-      {!consulta && (
-      <aside className="panel lateral">
-        <h3>Ventas cerradas recientes</h3>
-        <ul className="lista lista-recientes">
-          {recientes.data?.data.map((r) => (
-            <li key={r.id}>
-              <span className="reciente-linea">
-                <button className="enlace" onClick={() => setVentaId(r.id)}>#{r.id}</button>
-                {r.forma_pago === 'credito' ? <span className="chip credito">Crédito</span> : <span className="chip">Contado</span>}
-                {r.forma_pago === 'credito' && <span className="reciente-cliente">{r.cliente?.nombre}</span>}
-              </span>
-              <small className="reciente-detalle">
-                {r.items_count} {r.items_count === 1 ? 'ítem' : 'ítems'} · <span title="Total con IVA incluido">{pesos(r.total)}</span> · {formatearFechaHora(r.created_at)}
-              </small>
-            </li>
-          ))}
-        </ul>
-      </aside>
-      )}
+      {!consulta && <VentasRecientes ventas={recientes.data?.data} onElegir={setVentaId} />}
       </div>
 
       {respaldo && (
@@ -629,6 +611,45 @@ export default function Venta() {
   )
 }
 
+/** Fila de "Ventas cerradas recientes" (GET /ventas?estado=cerrada). */
+interface VentaReciente {
+  id: number
+  created_at: string
+  items_count: number
+  total: string | number
+  forma_pago: TVenta['forma_pago']
+  cliente: { id: number; nombre: string } | null
+}
+
+/**
+ * Ventas cerradas recientes, al lado. Memoizada: un escaneo vuelve a pintar la venta 2 o 3 veces y
+ * esta lista no cambia (sus props son los datos en caché y setVentaId, ambos estables).
+ */
+const VentasRecientes = memo(function VentasRecientes({ ventas, onElegir }: {
+  ventas: VentaReciente[] | undefined
+  onElegir: (id: number) => void
+}) {
+  return (
+    <aside className="panel lateral">
+      <h3>Ventas cerradas recientes</h3>
+      <ul className="lista lista-recientes">
+        {ventas?.map((r) => (
+          <li key={r.id}>
+            <span className="reciente-linea">
+              <button className="enlace" onClick={() => onElegir(r.id)}>#{r.id}</button>
+              {r.forma_pago === 'credito' ? <span className="chip credito">Crédito</span> : <span className="chip">Contado</span>}
+              {r.forma_pago === 'credito' && <span className="reciente-cliente">{r.cliente?.nombre}</span>}
+            </span>
+            <small className="reciente-detalle">
+              {r.items_count} {r.items_count === 1 ? 'ítem' : 'ítems'} · <span title="Total con IVA incluido">{pesos(r.total)}</span> · {formatearFechaHora(r.created_at)}
+            </small>
+          </li>
+        ))}
+      </ul>
+    </aside>
+  )
+})
+
 /** S-40: máximo de fichas de venta visibles en la barra (las demás, en "Ver todas"). */
 const MAX_FICHAS = 5
 
@@ -644,8 +665,10 @@ const textoOpcion = (v: VentaAbierta) =>
  * Una venta de un día anterior CON ítems vigentes lleva un punto de aviso con la fecha en el title.
  * S-46: el borrador en uso aparece como ficha activa "Nueva · …"; "Vacías (N)" queda como defensa
  * (las ventas ya nacen con su primer ítem y las vacías se descartan solas).
+ * Memoizada: solo se vuelve a pintar cuando cambian las ventas abiertas o la activa, no en cada
+ * render del escaneo (onElegir es estable).
  */
-function BarraVentasAbiertas({ ventas, activa, borrador, conUsuario, onElegir }: {
+const BarraVentasAbiertas = memo(function BarraVentasAbiertas({ ventas, activa, borrador, conUsuario, onElegir }: {
   ventas: VentaAbierta[]
   activa: number | null
   borrador: Borrador | null
@@ -749,7 +772,7 @@ function BarraVentasAbiertas({ ventas, activa, borrador, conUsuario, onElegir }:
       )}
     </div>
   )
-}
+})
 
 /** S-40: todas las ventas abiertas, con búsqueda por número o cliente, para cambiar de venta. */
 function ListadoVentasAbiertas({ ventas, titulo, activa, conUsuario, onElegir, onCerrar }: {
