@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../api/cliente'
 import { NOMBRE_RANGO, type FilaCartera, type PaginaInforme, type RangoAntiguedad, type TotalesCartera } from '../../api/tipos'
-import BotonExcel from '../../componentes/BotonExcel'
 import Paginacion from '../../componentes/Paginacion'
 import { hoy } from '../../componentes/fechas'
 import { pesos } from '../../componentes/numeros'
@@ -30,7 +29,7 @@ const TEXTOS = {
   },
 } as const
 
-/** RF-18 (3 y 4): cartera de clientes o cuentas por pagar, con antigüedad, en pantalla y en Excel (RF-31). */
+/** RF-18 (3 y 4): cartera de clientes o cuentas por pagar, con antigüedad, solo en pantalla. */
 export default function Saldos({ de }: { de: keyof typeof TEXTOS }) {
   const t = TEXTOS[de]
   const navegar = useNavigate()
@@ -54,7 +53,6 @@ export default function Saldos({ de }: { de: keyof typeof TEXTOS }) {
           <label>Corte
             <input type="date" max={hoy()} value={corte} onChange={(e) => { setCorte(e.target.value || hoy()); setPagina(1) }} />
           </label>
-          <BotonExcel ruta={t.ruta} params={{ corte }} />
         </div>
         <div className="tabla-desplazable">
           <table aria-busy={isFetching}>

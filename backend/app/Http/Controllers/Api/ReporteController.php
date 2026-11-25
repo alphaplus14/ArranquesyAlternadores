@@ -4,12 +4,11 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\AgotadoResource;
+use App\Models\Cliente;
 use App\Models\Proveedor;
 use App\Services\ReporteService;
 use App\Services\StockMinimoService;
 use App\Services\VencimientoService;
-use App\Support\InformeExcel;
-use App\Models\Cliente;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -18,13 +17,13 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
-use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 /**
  * RF-08: agotados por proveedor. RF-22: bajo mínimo. RF-18: informes de compras, ventas a crédito,
  * cartera, cuentas por pagar, estados de cuenta, remisiones pendientes y diferencias. Vencimientos
- * (RF-30) y exportación a Excel con ?formato=xlsx (RF-31). El estado de cuenta del cliente en
- * Cartera (S-30) usa el mismo cálculo; aquí el contable lo consulta con período y Excel.
+ * (RF-30). Todo en pantalla: no se exporta (se retiró la exportación a Excel de la adenda v1.3).
+ * El estado de cuenta del cliente en Cartera (S-30) usa el mismo cálculo; aquí el contable lo
+ * consulta con período.
  */
 class ReporteController extends Controller
 {
@@ -55,119 +54,98 @@ class ReporteController extends Controller
         return AgotadoResource::collection($this->reportes->agotados($filtros, min(max((int) $request->query('por_pagina', 50), 1), 200)));
     }
 
-    public function compras(Request $request): JsonResponse|BinaryFileResponse
+    public function compras(Request $request): JsonResponse
     {
         [$desde, $hasta] = $this->periodo($request, Carbon::today()->startOfMonth());
         $proveedorId = $request->validate(['proveedor_id' => ['nullable', 'integer', 'exists:proveedores,id']])['proveedor_id'] ?? null;
 
         $informe = $this->reportes->compras($desde, $hasta, $proveedorId);
 
-        return $this->responder($request, 'compras', $informe, ['totales' => $informe['totales'], ...$this->rango($desde, $hasta)], $this->sufijo($desde, $hasta));
+        return $this->paginar($request, $informe['filas'], ['totales' => $informe['totales'], ...$this->rango($desde, $hasta)]);
     }
 
-    public function ventasCredito(Request $request): JsonResponse|BinaryFileResponse
+    public function ventasCredito(Request $request): JsonResponse
     {
         [$desde, $hasta] = $this->periodo($request, Carbon::today()->startOfMonth());
         $clienteId = $request->validate(['cliente_id' => ['nullable', 'integer', 'exists:clientes,id']])['cliente_id'] ?? null;
 
         $informe = $this->reportes->ventasCredito($desde, $hasta, $clienteId);
 
-        return $this->responder($request, 'ventas-credito', $informe, ['totales' => $informe['totales'], ...$this->rango($desde, $hasta)], $this->sufijo($desde, $hasta));
+        return $this->paginar($request, $informe['filas'], ['totales' => $informe['totales'], ...$this->rango($desde, $hasta)]);
     }
 
-    public function carteraClientes(Request $request): JsonResponse|BinaryFileResponse
+    public function carteraClientes(Request $request): JsonResponse
     {
         $corte = $this->corte($request);
         $informe = $this->reportes->carteraClientes($corte);
 
-        return $this->responder($request, 'cartera-clientes', $informe, ['totales' => $informe['totales'], 'corte' => $corte->toDateString()], $corte->toDateString());
+        return $this->paginar($request, $informe['filas'], ['totales' => $informe['totales'], 'corte' => $corte->toDateString()]);
     }
 
-    public function cuentasPorPagar(Request $request): JsonResponse|BinaryFileResponse
+    public function cuentasPorPagar(Request $request): JsonResponse
     {
         $corte = $this->corte($request);
         $informe = $this->reportes->cuentasPorPagar($corte);
 
-        return $this->responder($request, 'cuentas-por-pagar', $informe, ['totales' => $informe['totales'], 'corte' => $corte->toDateString()], $corte->toDateString());
+        return $this->paginar($request, $informe['filas'], ['totales' => $informe['totales'], 'corte' => $corte->toDateString()]);
     }
 
     /** S-37: por período, con saldo anterior; sin período, los últimos días de config. */
-    public function estadoCuentaCliente(Request $request, Cliente $cliente): JsonResponse|BinaryFileResponse
+    public function estadoCuentaCliente(Request $request, Cliente $cliente): JsonResponse
     {
         [$desde, $hasta] = $this->periodo($request, Carbon::today()->subDays(config('cartera.dias_estado_cuenta')));
         $informe = $this->reportes->estadoCuentaCliente($cliente, $desde, $hasta);
 
-        return $this->responder($request, 'estado-cuenta-cliente', $informe, [
+        return $this->paginar($request, $informe['filas'], [
             'cliente' => $cliente->only('id', 'nombre', 'documento', 'telefono', 'plazo_dias', 'activo'),
             'saldo_anterior' => $informe['saldo_anterior'],
             'totales' => $informe['totales'],
             ...$this->rango($desde, $hasta),
-        ], "{$cliente->id}-".$this->sufijo($desde, $hasta));
+        ]);
     }
 
-    public function estadoCuentaProveedor(Request $request, Proveedor $proveedor): JsonResponse|BinaryFileResponse
+    public function estadoCuentaProveedor(Request $request, Proveedor $proveedor): JsonResponse
     {
         [$desde, $hasta] = $this->periodo($request, Carbon::today()->subDays(config('cartera.dias_estado_cuenta')));
         $informe = $this->reportes->estadoCuentaProveedor($proveedor, $desde, $hasta);
 
-        return $this->responder($request, 'estado-cuenta-proveedor', $informe, [
+        return $this->paginar($request, $informe['filas'], [
             'proveedor' => $proveedor->only('id', 'nombre', 'nit', 'plazo_dias'),
             'saldo_anterior' => $informe['saldo_anterior'],
             'totales' => $informe['totales'],
             ...$this->rango($desde, $hasta),
-        ], "{$proveedor->id}-".$this->sufijo($desde, $hasta));
+        ]);
     }
 
-    public function remisionesPendientes(Request $request): JsonResponse|BinaryFileResponse
+    public function remisionesPendientes(Request $request): JsonResponse
     {
         $proveedorId = $request->validate(['proveedor_id' => ['nullable', 'integer', 'exists:proveedores,id']])['proveedor_id'] ?? null;
         $informe = $this->reportes->remisionesPendientes($proveedorId);
 
-        return $this->responder($request, 'remisiones-pendientes', $informe, ['totales' => $informe['totales']], Carbon::today()->toDateString());
+        return $this->paginar($request, $informe['filas'], ['totales' => $informe['totales']]);
     }
 
-    public function diferenciasRemision(Request $request): JsonResponse|BinaryFileResponse
+    public function diferenciasRemision(Request $request): JsonResponse
     {
         $proveedorId = $request->validate(['proveedor_id' => ['nullable', 'integer', 'exists:proveedores,id']])['proveedor_id'] ?? null;
         $informe = $this->reportes->diferenciasRemision($proveedorId);
 
-        return $this->responder($request, 'diferencias-remision', $informe, ['totales' => $informe['totales']], Carbon::today()->toDateString());
+        return $this->paginar($request, $informe['filas'], ['totales' => $informe['totales']]);
     }
 
     /** RF-30: vencidas y por vencer (aviso de config('cartera.aviso_dias') días), por pagar y por cobrar. */
-    public function vencimientos(Request $request): JsonResponse|BinaryFileResponse
+    public function vencimientos(Request $request): JsonResponse
     {
         $tipo = $request->validate(['tipo' => ['nullable', Rule::in([VencimientoService::POR_PAGAR, VencimientoService::POR_COBRAR])]])['tipo'] ?? null;
         $hoy = Carbon::today();
         $dias = (int) config('cartera.aviso_dias');
         $informe = $this->vencimientos->bandeja($hoy, $dias, $tipo);
 
-        return $this->responder($request, 'vencimientos', $informe, [
+        return $this->paginar($request, $informe['filas'], [
             'totales' => $informe['totales'],
             'hoy' => $hoy->toDateString(),
             'aviso_dias' => $dias,
-        ], $hoy->toDateString());
-    }
-
-    /**
-     * RF-31: con ?formato=xlsx devuelve el Excel con todas las filas y los totales; si no, la
-     * página pedida en JSON.
-     *
-     * @param  array{filas: Collection<int, mixed>, totales: array<string, mixed>}  $informe
-     * @param  array<string, mixed>  $extra
-     */
-    private function responder(Request $request, string $nombre, array $informe, array $extra, string $sufijo): JsonResponse|BinaryFileResponse
-    {
-        if ($request->query('formato') === 'xlsx') {
-            return InformeExcel::descargar($nombre, $informe, $sufijo);
-        }
-
-        return $this->paginar($request, $informe['filas'], $extra);
-    }
-
-    private function sufijo(Carbon $desde, Carbon $hasta): string
-    {
-        return $desde->toDateString().'_'.$hasta->toDateString();
+        ]);
     }
 
     /** @return array{0: Carbon, 1: Carbon} */

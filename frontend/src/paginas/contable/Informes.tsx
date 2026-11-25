@@ -2,7 +2,6 @@ import { useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../api/cliente'
 import type { FilaCompra, FilaRemisionPendiente, FilaVentaCredito, PaginaInforme } from '../../api/tipos'
-import BotonExcel from '../../componentes/BotonExcel'
 import ControlSegmentado from '../../componentes/ControlSegmentado'
 import Paginacion from '../../componentes/Paginacion'
 import { fechaCorta, hoy } from '../../componentes/fechas'
@@ -21,7 +20,7 @@ const primeroDelMes = () => `${hoy().slice(0, 8)}01`
 
 /**
  * RF-18 (1, 2 y 6): compras, ventas a crédito y remisiones pendientes de facturar, para el
- * análisis mensual. Cada uno se exporta a Excel con los mismos filtros (RF-31).
+ * análisis mensual. Solo en pantalla.
  */
 export default function Informes() {
   const [informe, setInforme] = useState<Informe>('compras')
@@ -63,7 +62,6 @@ export default function Informes() {
               <label>Hasta<input type="date" min={desde} max={hoy()} value={hasta} onChange={(e) => reiniciar(setHasta)(e.target.value)} /></label>
             </>
           )}
-          <BotonExcel ruta={RUTA[informe]} params={params} />
         </div>
         <div className="tabla-desplazable" aria-busy={isFetching}>
           {data && informe === 'compras' && <TablaCompras datos={data as PaginaInforme<FilaCompra>} />}

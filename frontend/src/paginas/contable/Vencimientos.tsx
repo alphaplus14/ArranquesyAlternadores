@@ -4,7 +4,6 @@ import type { FilaVencimiento, TipoVencimiento } from '../../api/tipos'
 import { useVencimientos } from '../../hooks/useVencimientos'
 import { DialogoMovimiento } from '../../componentes/Cartera'
 import ControlSegmentado from '../../componentes/ControlSegmentado'
-import BotonExcel from '../../componentes/BotonExcel'
 import Medida from '../../componentes/Medida'
 import Paginacion from '../../componentes/Paginacion'
 import { fechaCorta } from '../../componentes/fechas'
@@ -63,7 +62,6 @@ export default function Vencimientos() {
               { valor: 'por_cobrar', texto: 'Por cobrar' },
             ]}
           />
-          <BotonExcel ruta="/vencimientos" params={{ tipo }} />
         </div>
 
         <div className="tabla-desplazable">

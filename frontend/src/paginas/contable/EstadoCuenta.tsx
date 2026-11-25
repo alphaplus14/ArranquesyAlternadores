@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../api/cliente'
 import type { EstadoCuentaInforme as Estado } from '../../api/tipos'
-import BotonExcel from '../../componentes/BotonExcel'
 import Paginacion from '../../componentes/Paginacion'
 import { fechaCorta, hoy, sumarDias } from '../../componentes/fechas'
 import { pesos } from '../../componentes/numeros'
@@ -26,7 +25,6 @@ export default function EstadoCuenta({ ruta }: { ruta: string }) {
       <div className="filtros-informe">
         <label>Desde<input type="date" max={hasta} value={desde} onChange={(e) => { setDesde(e.target.value); setPagina(1) }} /></label>
         <label>Hasta<input type="date" min={desde} max={hoy()} value={hasta} onChange={(e) => { setHasta(e.target.value); setPagina(1) }} /></label>
-        <BotonExcel ruta={ruta} params={{ desde, hasta }} />
       </div>
       <div className="tabla-desplazable">
         <table aria-busy={isFetching}>

@@ -2,6 +2,7 @@
 
 use App\Enums\Rol;
 use App\Models\Cliente;
+use App\Models\Proveedor;
 use Illuminate\Support\Carbon;
 
 beforeEach(fn () => sembrarDemo());
@@ -87,7 +88,7 @@ it('RF-17 ajuste: se rechaza pagar más del pendiente, a otro proveedor, de cont
     $b = compra($ref, 1, 200, aCredito());
     $contado = compra($ref, 1, 200);
     $borrador = compra($ref, 1, 200, aCredito(), confirmar: false);
-    $otro = \App\Models\Proveedor::where('id', '!=', $ref->proveedor_id)->firstOrFail();
+    $otro = Proveedor::where('id', '!=', $ref->proveedor_id)->firstOrFail();
     actuarComo(Rol::Contable);
     $url = "/api/proveedores/{$ref->proveedor_id}/pagos";
 
@@ -145,60 +146,3 @@ it('RF-30: también avisa las ventas a crédito de clientes vencidas, netas de a
         ->assertJsonPath('data.0.estado', 'vencida')
         ->assertJsonPath('data.0.pendiente', '70000.00');
 });
-
-/* ---------- RF-31: exportar a Excel ---------- */
-
-it('RF-31: el Excel de cuentas por pagar trae las mismas filas y totales que la pantalla', function () {
-    $ref = referencia('RN-4410');
-    compra($ref, 1, 500, aCredito());
-    actuarComo(Rol::Contable);
-
-    $pantalla = $this->getJson('/api/reportes/cuentas-por-pagar')->assertOk();
-    $respuesta = $this->get('/api/reportes/cuentas-por-pagar?formato=xlsx')->assertOk()
-        ->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-
-    $hoja = leerHojaXlsx($respuesta->baseResponse->getFile()->getPathname());
-
-    expect($hoja[0][0])->toBe('Proveedor')
-        ->and(count($hoja))->toBe($pantalla->json('total') + 2) // encabezado + filas + totales
-        ->and($hoja[1][0])->toBe($pantalla->json('data.0.proveedor.nombre'))
-        ->and(end($hoja)[0])->toBe('Totales')
-        ->and((float) end($hoja)[4])->toBe((float) $pantalla->json('totales.saldo'));
-});
-
-it('RF-31: cada informe y la bandeja se exportan', function (string $url) {
-    $ref = referencia('RN-4410');
-    compra($ref, 1, 500, aCredito());
-    actuarComo(Rol::Contable);
-
-    $this->get(str_replace('{proveedor}', (string) $ref->proveedor_id, $url).'?formato=xlsx')->assertOk()
-        ->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-})->with([
-    '/api/reportes/compras',
-    '/api/reportes/ventas-credito',
-    '/api/reportes/cartera-clientes',
-    '/api/reportes/remisiones-pendientes',
-    '/api/reportes/diferencias-remision',
-    '/api/proveedores/{proveedor}/estado-cuenta',
-    '/api/vencimientos',
-]);
-
-/** Lee la primera hoja de un .xlsx generado por App\Support\Xlsx como filas de texto. */
-function leerHojaXlsx(string $ruta): array
-{
-    $zip = new ZipArchive;
-    $zip->open($ruta);
-    $xml = simplexml_load_string($zip->getFromName('xl/worksheets/sheet1.xml'));
-    $zip->close();
-
-    $filas = [];
-    foreach ($xml->sheetData->row as $row) {
-        $fila = [];
-        foreach ($row->c as $c) {
-            $fila[] = isset($c->is) ? (string) $c->is->t : (string) $c->v;
-        }
-        $filas[] = $fila;
-    }
-
-    return $filas;
-}

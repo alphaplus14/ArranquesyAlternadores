@@ -139,8 +139,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/pagos/{pago}/anulaciones', [PagoController::class, 'anular']);
     });
 
-    // Módulo contable (RF-29): pagos a proveedores (RF-17), informes (RF-18), vencimientos (RF-30)
-    // y su exportación a Excel (RF-31). El admin también entra.
+    // Módulo contable (RF-29): pagos a proveedores (RF-17), informes (RF-18) y vencimientos (RF-30),
+    // solo en pantalla. El admin también entra.
     Route::middleware('rol:contable')->group(function () {
         Route::get('/proveedores/{proveedor}/saldo', [PagoController::class, 'saldo']);
         Route::post('/proveedores/{proveedor}/pagos', [PagoController::class, 'store']);

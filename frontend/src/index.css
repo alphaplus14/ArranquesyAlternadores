@@ -1312,17 +1312,18 @@ input[aria-invalid='true']:not([type='checkbox']):not([type='radio']):focus-visi
 }
 
 /* RF-15 / RF-18 (S-30): cartera de clientes. */
-.antiguedad { margin: 12px 0; display: flex; flex-direction: column; gap: 8px; }
-.antiguedad-titulo { font-size: 0.85rem; color: var(--suave); font-weight: 600; }
-.antiguedad-barra { display: flex; height: 12px; border-radius: 999px; overflow: hidden; background: var(--suave-fondo); }
-.antiguedad-barra .tramo { min-width: 4px; }
-.antiguedad-rangos { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
-.antiguedad-rangos li { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--borde); border-radius: 8px; min-width: 0; }
-.antiguedad-rangos li strong { font-size: 0.95rem; overflow-wrap: anywhere; }
-.antiguedad-rangos li:not(.con-valor) strong { color: var(--suave); font-weight: 500; }
-.rango-nombre { font-size: 0.78rem; color: var(--suave); display: inline-flex; }
-.antiguedad-rangos li { position: relative; padding-left: 22px; }
-.antiguedad-rangos .punto { position: absolute; left: 9px; top: 12px; width: 8px; height: 8px; border-radius: 50%; }
+.cartera-antiguedad { margin: 12px 0; display: flex; flex-direction: column; gap: 8px; width: 100%; min-width: 0; }
+.cartera-antiguedad-titulo { font-size: 0.85rem; color: var(--suave); font-weight: 600; }
+.cartera-antiguedad-barra { display: flex; width: 100%; height: 12px; border-radius: 999px; overflow: hidden; background: var(--suave-fondo); }
+.cartera-antiguedad-barra .tramo { min-width: 4px; }
+.cartera-antiguedad-rangos { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.cartera-antiguedad-rangos li { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--borde); border-radius: 8px; min-width: 0; }
+/* Nada se parte por palabras: nombre y monto en una línea; la fuente baja con el ancho en vez de partir. */
+.cartera-antiguedad-rangos li strong { font-size: clamp(0.8rem, 1.5vw, 0.95rem); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.cartera-antiguedad-rangos li:not(.con-valor) strong { color: var(--suave); font-weight: 500; }
+.rango-nombre { font-size: clamp(0.7rem, 1.3vw, 0.78rem); color: var(--suave); white-space: nowrap; }
+.cartera-antiguedad-rangos li { position: relative; padding-left: 22px; }
+.cartera-antiguedad-rangos .punto { position: absolute; left: 9px; top: 12px; width: 8px; height: 8px; border-radius: 50%; }
 .tramo.al_dia, .punto.al_dia { background: #2E9E5B; }
 .tramo.d1_30, .punto.d1_30 { background: #E0B400; }
 .tramo.d31_60, .punto.d31_60 { background: #E07B00; }
@@ -1540,7 +1541,7 @@ a.boton { display: inline-flex; align-items: center; justify-content: center; }
 .datos-abono { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .confirmar-exceso { margin-top: 8px; color: var(--texto); font-weight: 600; gap: 8px; min-height: 44px; }
 @media (max-width: 639px) {
-  .antiguedad-rangos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cartera-antiguedad-rangos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .filtros-cartera .busca, .filtros-cartera .campo-corte { width: 100%; }
   .filtros-cartera .busca input { min-width: 0; }
   .filtros-ventas-cartera { flex-direction: column; align-items: stretch; }

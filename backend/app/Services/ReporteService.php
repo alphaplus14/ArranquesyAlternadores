@@ -20,7 +20,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
- * RF-18: informes en pantalla (RF-31: el controlador también los exporta a Excel). Cada informe devuelve sus filas y los totales
+ * RF-18: informes en pantalla (no se exportan). Cada informe devuelve sus filas y los totales
  * de todas ellas, no solo de la página; el controlador pagina. Los totales son la suma de las
  * filas (criterio de aceptación de RF-18). Solo lectura.
  */

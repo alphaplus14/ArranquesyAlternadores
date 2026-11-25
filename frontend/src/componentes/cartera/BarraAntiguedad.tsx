@@ -12,15 +12,15 @@ export default function BarraAntiguedad({ valores, titulo = 'Antigüedad de la c
   const total = RANGOS.reduce((s, r) => s + Number(valores[r.clave]), 0)
 
   return (
-    <figure className="antiguedad">
-      <figcaption className="antiguedad-titulo">{titulo}</figcaption>
-      <div className="antiguedad-barra" aria-hidden>
+    <figure className="cartera-antiguedad">
+      <figcaption className="cartera-antiguedad-titulo">{titulo}</figcaption>
+      <div className="cartera-antiguedad-barra" aria-hidden>
         {total > 0 && RANGOS.map((r) => {
           const v = Number(valores[r.clave])
           return v > 0 ? <span key={r.clave} className={`tramo ${r.clave}`} style={{ flexGrow: v }} /> : null
         })}
       </div>
-      <ul className="antiguedad-rangos">
+      <ul className="cartera-antiguedad-rangos">
         {RANGOS.map((r) => (
           <li key={r.clave} className={Number(valores[r.clave]) > 0 ? 'con-valor' : ''}>
             <span className={`punto ${r.clave}`} aria-hidden />

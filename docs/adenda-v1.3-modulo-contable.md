@@ -1,8 +1,10 @@
-# Adenda v1.3 — Módulo contable, avisos de vencimiento y exportación a Excel
+# Adenda v1.3 — Módulo contable y avisos de vencimiento
 
 Estado: **APROBADA** (23-nov-2026) por Franklin. Complementa la adenda v1.2. Donde se contradicen, manda esta.
 
 **Renumerada al integrarla con la rama `cesar` (25-nov-2026).** En la rama de Franklin estos requerimientos se llamaban RF-21, RF-22 y RF-23, pero esos números ya eran, en `cesar`, los ajustes de inventario, el stock mínimo y el panel de gestión; y RF-24 a RF-28 eran la caja diaria, la cuenta de empleados y la corrección de ingresos. Por eso aquí pasan a **RF-29** (rol y módulo contable), **RF-30** (avisos de vencimiento) y **RF-31** (exportar a Excel). Sus supuestos S-47 a S-53 pasan a **S-62 a S-68** en `docs/supuestos.md`. El test es `RF29ModuloContableTest`.
+
+**RF-31 retirado (25-nov-2026, decisión de César).** La exportación a Excel no se necesita: se quitó del código (backend y pantallas) y los informes vuelven a ser **solo en pantalla**, como en la v1.2. El número RF-31 queda reservado y no se reutiliza.
 
 ## 1. Contexto
 
@@ -13,7 +15,7 @@ La auxiliar contable revisa la cartera de las ventas a crédito del mostrador y 
 | Tema | v1.2 | v1.3 |
 |---|---|---|
 | Roles | admin, logística, mostrador | + **contable**, acotado a lo contable |
-| Formato de salida de informes | Solo en pantalla | En pantalla **y exportables a Excel (.xlsx)** |
+| Formato de salida de informes | Solo en pantalla | Solo en pantalla (sin cambio; la exportación a Excel se retiró, ver RF-31) |
 | Pago a proveedor | Al saldo, aplicado FIFO | Al saldo (FIFO) **o a una factura elegida** |
 | Avisos | — | Vencidas y por vencer, **solo dentro del programa** |
 
@@ -26,7 +28,7 @@ Rol nuevo `contable`. Lo crea el admin en Usuarios. Ve y usa solo lo contable:
 - cartera de clientes, ventas a crédito y estado de cuenta de cada cliente (solo lectura);
 - cuentas por pagar, compras, remisiones pendientes, diferencias remisión–factura y estado de cuenta de cada proveedor;
 - registrar pagos a proveedores (RF-17);
-- la bandeja de vencimientos (RF-30) y la exportación a Excel (RF-31).
+- la bandeja de vencimientos (RF-30).
 
 No ve inventario, ingresos, ventas, etiquetas, catálogo, usuarios ni auditoría. No registra abonos ni anula abonos o pagos: eso sigue como en la v1.2 (S-27). El admin conserva todo lo anterior.
 **Aceptación.** Un usuario `contable` consulta cuentas por pagar y registra un pago; recibe 403 en `/ventas`, `/ingresos`, `/usuarios` y `/pagos/{id}/anulaciones`.
@@ -46,9 +48,8 @@ Bandeja con los documentos que tienen saldo pendiente y vencen hasta hoy + N dí
 Cada fila: titular, documento, vencimiento, días para vencer o días de mora, valor y pendiente; estado `vencida` o `por_vencer`, vencidas primero. El menú del módulo muestra cuántas hay. Desde una fila por pagar se registra el pago a esa factura. Un documento sale de la bandeja cuando su pendiente llega a 0. Solo se avisa dentro del programa.
 **Aceptación.** Con aviso de 1 día y hoy 23-nov: una factura con pendiente que venció el 20-nov sale como vencida (3 días de mora), una que vence el 24-nov como por vencer, una que vence el 26-nov no sale, y una ya pagada no sale.
 
-### RF-31. Exportar informes a Excel
-Los informes de RF-18 y la bandeja de RF-30 se exportan a `.xlsx` con `?formato=xlsx`: mismos filtros que en pantalla, todas las filas (sin paginar) y una fila final de totales. El archivo lo genera el backend (misma excepción que el PDF de etiquetas). Lo usan admin y contable.
-**Aceptación.** El Excel de cuentas por pagar a un corte trae las mismas filas y los mismos totales que la pantalla.
+### RF-31. Exportar informes a Excel — RETIRADO
+**Retirado el 25-nov-2026:** no se necesita. Los informes de RF-18 y la bandeja de RF-30 se consultan solo en pantalla; no hay `?formato=xlsx`. El número no se reutiliza.
 
 ## 4. Datos
 
@@ -59,10 +60,10 @@ Los informes de RF-18 y la bandeja de RF-30 se exportan a `.xlsx` con `?formato=
 
 | Método y ruta | Rol | RF |
 |---|---|---|
-| `GET /reportes/*` de RF-18 y estados de cuenta (`?formato=xlsx`) | admin, contable | RF-18, RF-29, RF-31 |
+| `GET /reportes/*` de RF-18 y estados de cuenta | admin, contable | RF-18, RF-29 |
 | `GET /proveedores/{id}/saldo` (incluye `documentos` pendientes) | admin, contable | RF-17, RF-29 |
 | `POST /proveedores/{id}/pagos` (`ingreso_id` opcional) | admin, contable | RF-17 ajuste |
-| `GET /vencimientos` (`?formato=xlsx`) | admin, contable | RF-30, RF-31 |
+| `GET /vencimientos` | admin, contable | RF-30 |
 | `GET /proveedores`, `GET /clientes` | admin, logística, mostrador, contable | RF-29 |
 
 ## 6. Supuestos
