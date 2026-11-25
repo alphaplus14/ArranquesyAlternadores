@@ -145,7 +145,7 @@ function DialogoNuevoIngreso({ onCerrar }: { onCerrar: () => void }) {
     proveedor_id: '',
     numero_documento: '',
     fecha: hoyEnBogota(), // S-38: el día en Colombia, no el del navegador
-    forma_pago: 'contado' as FormaPago,
+    forma_pago: 'credito' as FormaPago, // S-49: casi toda compra es a crédito
   })
   const campoNumero = useRef<HTMLInputElement>(null)
   /** null = sin tocar: se sugiere fecha + plazo del proveedor. */
