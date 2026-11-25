@@ -278,6 +278,8 @@ export default function Venta() {
     onError: (e) => { setConfirmandoCierre(false); avisos.mostrar('error', mensajeError(e)) },
   })
 
+  // mutate es estable; el objeto de la mutación cambia en cada render y rehacía leer, onCodigo y el lector.
+  const mutarEscaneo = escanear.mutate
   const cantidadRef = useRef(cantidad)
   cantidadRef.current = cantidad
   // S-46: a dónde va la lectura. Una venta abierta en pantalla recibe el ítem; sin venta, el borrador
@@ -297,8 +299,8 @@ export default function Venta() {
       }
       creandoRef.current = true
     }
-    escanear.mutate({ ...l, destino })
-  }, [escanear])
+    mutarEscaneo({ ...l, destino })
+  }, [mutarEscaneo])
   const onCodigo = useCallback(
     (codigo: string, metodo: MetodoCaptura) => {
       if (inputRef.current) inputRef.current.value = ''
@@ -905,8 +907,9 @@ function PrecioGrupo({ ventaId, grupo, onGuardado, onEstado }: {
   /** Avisa si hay una edición sin guardar o inválida (bloquea "Confirmar cierre"). */
   onEstado: (clave: string, pendiente: boolean) => void
 }) {
-  const [texto, setTexto] = useState(formatoNumero(grupo.precio))
-  useEffect(() => { setTexto(formatoNumero(grupo.precio)) }, [grupo.precio])
+  // El precio va en la clave del grupo (key de la fila): si cambia, el campo se monta de nuevo con el
+  // valor nuevo. Por eso no hace falta un efecto que copie el precio al texto.
+  const [texto, setTexto] = useState(() => formatoNumero(grupo.precio))
   const guardar = useMutation({
     mutationFn: async (precio: number) =>
       (await api.patch<TVenta>(`/ventas/${ventaId}/items/precio`, { ids: grupo.ids, precio_unitario: precio })).data,
