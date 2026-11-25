@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\Rol;
+use App\Exceptions\ReglaInventarioException;
 use App\Http\Controllers\Controller;
 use App\Models\Categoria;
 use App\Models\CodigoUniversal;
@@ -23,6 +25,8 @@ class CodigoUniversalController extends Controller
             ->conExistencia()
             ->with('categoria:id,nombre')
             ->when($q !== '', fn ($query) => $query->where('codigo', 'like', addcslashes($q, '%_\\').'%'))
+            // S-59: el selector de una referencia pide solo los universales de su categoría.
+            ->when($request->integer('categoria_id'), fn ($query, $id) => $query->where('categoria_id', $id))
             ->orderBy('codigo')
             ->paginate(min((int) $request->query('por_pagina', 25), 100));
 
@@ -85,6 +89,12 @@ class CodigoUniversalController extends Controller
     {
         $requerido = $universal ? 'sometimes' : 'required';
 
+        // S-59 / S-28: logística crea y edita universales, pero el mínimo del universal sigue siendo
+        // solo del administrador (RF-22).
+        if ($request->has('stock_minimo') && $request->user()?->rol !== Rol::Admin) {
+            throw new ReglaInventarioException('El stock mínimo del código universal lo cambia solo el administrador.', 403);
+        }
+
         $datos = $request->validate([
             'codigo' => [$requerido, 'string', 'max:60', Rule::unique('codigos_universales')->ignore($universal?->id)],
             'categoria_id' => [$requerido, 'integer', 'exists:categorias,id'],
@@ -96,6 +106,12 @@ class CodigoUniversalController extends Controller
         // RF-01: solo categorías que admiten código universal.
         if (isset($datos['categoria_id']) && ! Categoria::whereKey($datos['categoria_id'])->value('admite_codigo_universal')) {
             throw ValidationException::withMessages(['categoria_id' => 'Esta categoría no admite código universal (RF-01).']);
+        }
+
+        // RF-01 / S-59: un universal no puede quedar con referencias de otra categoría.
+        if ($universal && isset($datos['categoria_id']) && (int) $datos['categoria_id'] !== (int) $universal->categoria_id
+            && Referencia::query()->where('codigo_universal_id', $universal->id)->where('categoria_id', '!=', $datos['categoria_id'])->exists()) {
+            throw ValidationException::withMessages(['categoria_id' => 'Este código universal tiene referencias de otra categoría: cámbielas o quíteselas antes de cambiar la categoría.']);
         }
 
         return $datos;

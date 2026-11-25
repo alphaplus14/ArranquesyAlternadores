@@ -5,7 +5,10 @@ import { AxiosError } from 'axios'
 import { api, erroresCampo, mensajeError } from '../../api/cliente'
 import { useAviso, useAvisoTexto } from '../../componentes/Avisos'
 import Dialogo, { DialogoSeccion } from '../../componentes/Dialogo'
-import type { FormaPago, Ingreso, IngresoItem, Opcion, Pagina } from '../../api/tipos'
+import type { CorreccionIngreso, FormaPago, Ingreso, IngresoItem, LineaCorreccionEnvio, Opcion, Pagina, Referencia, VistaPreviaCorreccion } from '../../api/tipos'
+import SelectorUniversal from '../../componentes/SelectorUniversal'
+import DetalleCorreccion from '../../componentes/ingresos/DetalleCorreccion'
+import { formatearFechaHora } from '../../utilidades/fechas'
 import { fechaCorta, sumarDias } from '../../componentes/fechas'
 import CampoDescuento, { type ModoDescuento } from '../../componentes/CampoDescuento'
 import Medida from '../../componentes/Medida'
@@ -122,6 +125,9 @@ export default function IngresoDetalle() {
   /** S-25: el código leído coincide con varias referencias; se elige una. */
   const [ambiguo, setAmbiguo] = useState<Ambiguo | null>(null)
   const [condiciones, setCondiciones] = useState(false)
+  /** RF-28: modo corrección de un ingreso confirmado y la última corrección hecha aquí. */
+  const [corrigiendo, setCorrigiendo] = useState(false)
+  const [corregido, setCorregido] = useState<CorreccionIngreso | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const ingreso = useQuery({
@@ -311,9 +317,28 @@ export default function IngresoDetalle() {
         <Medida etiqueta="Total" valor={i.total ? pesos(i.total) : i.totales ? pesos(i.totales.total) : '—'} pie={i.total ? 'fijado al confirmar' : undefined} tono="verde" icono="etiqueta" />
         <Medida etiqueta="Sin costo" valor={lineasSinCosto} pie="líneas por completar" tono={lineasSinCosto > 0 ? 'rojo' : 'amarillo'} icono="agotados" />
       </Resumen>
-      <div className="panel">
+      {corregido && !corrigiendo && (
+        <div className="aviso ok" role="status">
+          Corrección guardada: {corregido.unidades_creadas} unidad(es) creada(s) y {corregido.unidades_retiradas} retirada(s). Total {pesos(corregido.total_nuevo)}.
+          {corregido.unidades_creadas > 0 && <> <Link to={`/logistica/etiquetas?ingreso=${i.id}&pendientes=1`}>Imprimir etiquetas pendientes</Link></>}
+        </div>
+      )}
+      {corrigiendo && (
+        <PanelCorreccion
+          ingreso={i}
+          onCancelar={() => setCorrigiendo(false)}
+          onCorregido={(r) => {
+            actualizar(r.ingreso)
+            setCorregido(r.correccion)
+            setCorrigiendo(false)
+            qc.invalidateQueries({ queryKey: ['ingresos'] })
+            qc.invalidateQueries({ queryKey: ['ingreso', String(i.id), 'unidades'] })
+          }}
+        />
+      )}
+      <div className="panel" hidden={corrigiendo}>
         <div className="fila-titulo">
-          <h2>Líneas <span className={`chip ${i.estado}`}>{i.estado}</span></h2>
+          <h2>Líneas <span className={`chip ${i.estado}`}>{i.estado}</span>{i.corregido && <span className="chip corregida">Corregida</span>}</h2>
           <span>{i.proveedor?.nombre}</span>
         </div>
 
@@ -447,10 +472,16 @@ export default function IngresoDetalle() {
               Confirmar ingreso y crear unidades
             </button>
           ) : (
-            <Link className="boton primario" to={`/logistica/etiquetas?ingreso=${i.id}`}>Imprimir etiquetas</Link>
+            <>
+              {/* RF-28: única vía para cambiar un ingreso confirmado (auditada). */}
+              <button type="button" className="secundario" onClick={() => { setCorregido(null); setCorrigiendo(true) }}>Corregir</button>
+              <Link className="boton primario" to={`/logistica/etiquetas?ingreso=${i.id}`}>Imprimir etiquetas</Link>
+            </>
           )}
         </div>
       </div>
+
+      {!borrador && (i.correcciones?.length ?? 0) > 0 && <HistorialCorrecciones correcciones={i.correcciones ?? []} />}
 
       {condiciones && (
         <DialogoCondiciones
@@ -624,12 +655,6 @@ function DialogoReferencia({ codigo, proveedor, onCreada, onCerrar }: {
   const categoria = categorias.data?.find((c) => String(c.id) === f.categoria_id)
   const admiteUniversal = categoria?.admite_codigo_universal ?? false
 
-  const universales = useQuery({
-    queryKey: ['universales', 'categoria', f.categoria_id],
-    queryFn: async () => (await api.get<Pagina<{ id: number; codigo: string; categoria_id: number }>>('/codigos-universales', { params: { por_pagina: 100 } })).data.data,
-    enabled: admiteUniversal,
-  })
-
   const crear = useMutation({
     mutationFn: async () => api.post('/referencias', {
       // Leído como código de barras: la referencia es opcional (vacía = el mismo código, S-25).
@@ -714,12 +739,13 @@ function DialogoReferencia({ codigo, proveedor, onCreada, onCerrar }: {
           </select>
         </label>
         {admiteUniversal && (
-          <label>Código universal (opcional)
-            <select {...campo('codigo_universal_id')}>
-              <option value="">Sin universal: la referencia es su código único</option>
-              {universales.data?.filter((u) => String(u.categoria_id) === f.categoria_id).map((u) => <option key={u.id} value={u.id}>{u.codigo}</option>)}
-            </select>
-          </label>
+          // S-59: logística elige o crea el universal en línea.
+          <SelectorUniversal
+            etiqueta="Código universal (opcional)"
+            categoriaId={f.categoria_id}
+            value={f.codigo_universal_id}
+            onChange={(codigo_universal_id) => setF((v) => ({ ...v, codigo_universal_id }))}
+          />
         )}
         <label>Descripción<input required maxLength={255} {...campo('descripcion')} /></label>
         <label>Precio de venta
@@ -813,5 +839,376 @@ function DialogoCondiciones({ ingreso, onGuardado, onCerrar }: {
         />
       </DialogoSeccion>
     </Dialogo>
+  )
+}
+
+/* ───────────────── RF-28 (S-58, S-60, S-61): corrección de un ingreso confirmado ───────────────── */
+
+interface LineaCorr {
+  clave: string
+  /** null = línea nueva. */
+  id: number | null
+  referencia_id: number
+  codigo: string
+  descripcion: string
+  valores: Record<Campo, string>
+  quitada: boolean
+}
+
+let secuenciaLineaNueva = 0
+
+function lineasIniciales(i: Ingreso): LineaCorr[] {
+  return i.items
+    .filter((it) => it.cantidad > 0) // las ya quitadas (cantidad 0) quedan como están
+    .map((it) => ({
+      clave: `i${it.id}`,
+      id: it.id,
+      referencia_id: it.referencia_id,
+      codigo: it.referencia?.codigo_referencia ?? '',
+      descripcion: it.referencia?.descripcion ?? '',
+      valores: valoresDe(it),
+      quitada: false,
+    }))
+}
+
+/**
+ * RF-28: modo de edición de un ingreso confirmado. Todo queda en estado local hasta confirmar:
+ * encabezado, líneas (cantidad, costo, descuento %, IVA %), agregar escaneando o buscando y quitar.
+ * "Revisar cambios" pide la vista previa (sin escritura); luego se escribe el motivo y se confirma.
+ * S-61: una remisión cubierta por una factura solo corrige número y fecha.
+ */
+function PanelCorreccion({ ingreso, onCancelar, onCorregido }: {
+  ingreso: Ingreso
+  onCancelar: () => void
+  onCorregido: (r: { ingreso: Ingreso; correccion: CorreccionIngreso }) => void
+}) {
+  const soloEncabezado = ingreso.tipo === 'remision' && ingreso.factura !== null
+  const [enc, setEnc] = useState({
+    numero_documento: ingreso.numero_documento,
+    fecha: ingreso.fecha.slice(0, 10),
+    forma_pago: ingreso.forma_pago,
+    vence_el: ingreso.vence_el?.slice(0, 10) ?? '',
+    descuento: formatoNumero(ingreso.descuento_documento),
+  })
+  const [lineas, setLineas] = useState<LineaCorr[]>(() => lineasIniciales(ingreso))
+  const [opciones, setOpciones] = useState<Referencia[] | null>(null)
+  const [avisoLector, setAvisoLector] = useState<string | null>(null)
+  const [vista, setVista] = useState<VistaPreviaCorreccion | null>(null)
+  const lector = useRef<HTMLInputElement>(null)
+
+  const credito = enc.forma_pago === 'credito'
+  const erroresLinea = (l: LineaCorr): Partial<Record<Campo, string | null>> =>
+    (l.quitada ? {} : Object.fromEntries(CAMPOS.map((c) => [c, REGLAS[c].validar(leerNumero(l.valores[c]))])))
+  const descuento = leerNumero(enc.descuento)
+  const hayErrores = lineas.some((l) => Object.values(erroresLinea(l)).some(Boolean))
+    || lineas.every((l) => l.quitada)
+    || enc.numero_documento.trim() === ''
+    || (credito && enc.vence_el === '')
+    || (!soloEncabezado && descuento !== null && Number.isNaN(descuento))
+
+  const cuerpo = (): Record<string, unknown> => {
+    const base: Record<string, unknown> = { numero_documento: enc.numero_documento.trim(), fecha: enc.fecha }
+    if (soloEncabezado) return base
+    const items: LineaCorreccionEnvio[] = lineas.filter((l) => !l.quitada).map((l) => ({
+      ...(l.id !== null ? { id: l.id } : { referencia_id: l.referencia_id }),
+      cantidad: leerNumero(l.valores.cantidad) ?? 0,
+      costo_unitario: leerNumero(l.valores.costo_unitario) ?? 0,
+      descuento_porcentaje: leerNumero(l.valores.descuento_porcentaje) ?? 0,
+      iva_porcentaje: leerNumero(l.valores.iva_porcentaje) ?? 0,
+    }))
+    return { ...base, forma_pago: enc.forma_pago, vence_el: credito ? enc.vence_el : null, descuento_documento: descuento ?? 0, items }
+  }
+
+  const revisar = useMutation({
+    mutationFn: async () => (await api.post<VistaPreviaCorreccion>(`/ingresos/${ingreso.id}/correcciones/vista-previa`, cuerpo())).data,
+    onSuccess: setVista,
+  })
+
+  const cambiarEnc = (k: keyof typeof enc, v: string) => { revisar.reset(); setEnc((e) => ({ ...e, [k]: v })) }
+  const cambiarValor = (clave: string, campo: Campo, valor: string) => {
+    revisar.reset()
+    setLineas((ls) => ls.map((l) => (l.clave === clave ? { ...l, valores: { ...l.valores, [campo]: valor } } : l)))
+  }
+  /** Una línea existente se marca quitada (se puede deshacer); una nueva se elimina de la lista. */
+  const alternarQuitada = (clave: string) => {
+    revisar.reset()
+    setLineas((ls) => ls.flatMap((l) => (l.clave !== clave ? [l] : l.id === null ? [] : [{ ...l, quitada: !l.quitada }])))
+  }
+
+  /** Agrega una referencia del proveedor: si ya hay una línea vigente suya, suma 1. */
+  const agregar = (r: Referencia) => {
+    revisar.reset()
+    setOpciones(null)
+    setAvisoLector(null)
+    setLineas((ls) => {
+      const existente = ls.find((l) => l.referencia_id === r.id && !l.quitada)
+      if (existente) {
+        const n = (leerNumero(existente.valores.cantidad) ?? 0) + 1
+        return ls.map((l) => (l === existente ? { ...l, valores: { ...l.valores, cantidad: String(n) } } : l))
+      }
+      secuenciaLineaNueva += 1
+      return [...ls, {
+        clave: `n${secuenciaLineaNueva}`,
+        id: null,
+        referencia_id: r.id,
+        codigo: r.codigo_referencia,
+        descripcion: r.descripcion,
+        valores: { cantidad: '1', costo_unitario: '', descuento_porcentaje: '0', iva_porcentaje: String(Number(r.iva_venta_porcentaje ?? 0)) },
+        quitada: false,
+      }]
+    })
+    lector.current?.focus()
+  }
+
+  /** Escaneado o escrito: busca entre las referencias activas del proveedor; exacto agrega, si no ofrece opciones. */
+  const buscar = async (codigo: string) => {
+    if (lector.current) lector.current.value = ''
+    const texto = codigo.trim()
+    if (texto === '') return
+    try {
+      const encontradas = (await api.get<Pagina<Referencia>>('/referencias', { params: { proveedor_id: ingreso.proveedor_id, q: texto, por_pagina: 10 } })).data.data
+      const exactas = encontradas.filter((r) => [r.codigo_referencia, r.codigo_fabricante ?? ''].some((c) => c.toUpperCase() === texto.toUpperCase()))
+      if (exactas.length === 1) agregar(exactas[0])
+      else if (encontradas.length > 0) { setOpciones(exactas.length > 1 ? exactas : encontradas); setAvisoLector(null) }
+      else setAvisoLector(`${texto} no es una referencia activa de ${ingreso.proveedor?.nombre ?? 'este proveedor'}.`)
+    } catch (e) {
+      setAvisoLector(mensajeError(e))
+    }
+  }
+  const scanner = useScanner((codigo) => { void buscar(codigo) })
+
+  return (
+    <div className="panel panel-correccion">
+      <div className="fila-titulo">
+        <h2>Corregir {ingreso.tipo === 'factura' ? 'factura' : 'remisión'} {ingreso.numero_documento}</h2>
+      </div>
+      <div className="aviso atencion" role="note">La corrección queda auditada y el administrador puede verla.</div>
+      {soloEncabezado && (
+        <p className="ayuda">Esta remisión está cubierta por la factura {ingreso.factura?.numero_documento}: solo se corrigen el número y la fecha. Sus cantidades y costos se corrigen en la factura.</p>
+      )}
+
+      <div className="formulario en-linea encabezado-correccion">
+        <label>Número<input required maxLength={60} value={enc.numero_documento} onChange={(e) => cambiarEnc('numero_documento', e.target.value)} /></label>
+        <label>Fecha<input type="date" required value={enc.fecha} onChange={(e) => cambiarEnc('fecha', e.target.value)} /></label>
+        {!soloEncabezado && (
+          <>
+            <label>Forma de pago
+              <select value={enc.forma_pago} onChange={(e) => cambiarEnc('forma_pago', e.target.value)}>
+                <option value="contado">Contado</option>
+                <option value="credito">Crédito</option>
+              </select>
+            </label>
+            {credito && <label>Vence el<input type="date" required min={enc.fecha} value={enc.vence_el} onChange={(e) => cambiarEnc('vence_el', e.target.value)} /></label>}
+            <label>Descuento del documento ($)<input inputMode="decimal" value={enc.descuento} onChange={(e) => cambiarEnc('descuento', e.target.value)} /></label>
+          </>
+        )}
+      </div>
+
+      {!soloEncabezado && (
+        <>
+          <input
+            ref={lector}
+            className="escaner"
+            placeholder="Agregar línea: escanee el código o escriba la referencia y pulse Enter"
+            aria-label="Agregar línea por código o búsqueda"
+            onKeyDown={scanner.onKeyDown}
+            onPaste={scanner.onPaste}
+            autoComplete="off"
+          />
+          {avisoLector && <div className="aviso error" role="alert">{avisoLector}</div>}
+          {opciones && (
+            <div className="aviso atencion eleccion-codigo" role="group" aria-label="Elija la referencia">
+              <p>Elija la referencia:</p>
+              <div className="opciones-codigo">
+                {opciones.map((r, n) => (
+                  <button key={r.id} type="button" className="secundario" autoFocus={n === 0} onClick={() => agregar(r)}>
+                    <strong>{r.codigo_referencia}</strong><small> · {r.descripcion}</small>
+                  </button>
+                ))}
+                <button type="button" className="enlace" onClick={() => setOpciones(null)}>Cancelar</button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      <div className="tabla-desplazable">
+        <table className="tabla-lineas tabla-correccion">
+          <thead><tr><th>Referencia</th><th>Cant.</th><th>Costo</th><th>Desc. %</th><th>IVA %</th><th><span className="solo-lector">Acciones</span></th></tr></thead>
+          <tbody>
+            {lineas.map((l) => {
+              const errores = erroresLinea(l)
+              return (
+                <tr key={l.clave} className={l.quitada ? 'reversado' : ''}>
+                  <td data-label="Referencia">
+                    {l.codigo} <small>{l.descripcion}</small>
+                    {l.id === null && <span className="chip corregida">Nueva</span>}
+                  </td>
+                  {CAMPOS.map((c) => (
+                    <td key={c} data-label={REGLAS[c].etiqueta}>
+                      {soloEncabezado || l.quitada ? (
+                        <span>{l.valores[c] || '—'}</span>
+                      ) : c === 'iva_porcentaje' ? (
+                        <select aria-label={`${REGLAS[c].etiqueta} de ${l.codigo}`} value={l.valores[c]} onChange={(e) => cambiarValor(l.clave, c, e.target.value)}>
+                          {[...new Set([...IVAS.map(String), l.valores[c]])].map((v) => <option key={v} value={v}>{v} %</option>)}
+                        </select>
+                      ) : (
+                        <>
+                          <input
+                            className="celda-numero"
+                            inputMode={c === 'cantidad' ? 'numeric' : 'decimal'}
+                            aria-label={`${REGLAS[c].etiqueta} de ${l.codigo}`}
+                            aria-invalid={!!errores[c]}
+                            value={l.valores[c]}
+                            onChange={(e) => cambiarValor(l.clave, c, e.target.value)}
+                          />
+                          {errores[c] && <small className="ayuda error">{errores[c]}</small>}
+                        </>
+                      )}
+                    </td>
+                  ))}
+                  <td data-label="" className="acciones-linea">
+                    {!soloEncabezado && (
+                      <button type="button" className="enlace" onClick={() => alternarQuitada(l.clave)}>{l.quitada ? 'Deshacer' : 'Quitar'}</button>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {revisar.isError && <div className="aviso error" role="alert">{mensajeError(revisar.error)}</div>}
+      <div className="acciones">
+        <button type="button" className="secundario" onClick={onCancelar}>Cancelar</button>
+        <button type="button" className="primario" disabled={hayErrores || revisar.isPending} onClick={() => revisar.mutate()}>
+          {revisar.isPending ? 'Revisando…' : 'Revisar cambios'}
+        </button>
+      </div>
+
+      {vista && (
+        <DialogoConfirmarCorreccion
+          ingresoId={ingreso.id}
+          vista={vista}
+          cuerpo={cuerpo()}
+          onCerrar={() => setVista(null)}
+          onCorregido={(r) => { setVista(null); onCorregido(r) }}
+        />
+      )}
+    </div>
+  )
+}
+
+/** RF-28: resumen de la vista previa, motivo y confirmación (con etiquetas impresas y diferencia si aplica). */
+function DialogoConfirmarCorreccion({ ingresoId, vista, cuerpo, onCerrar, onCorregido }: {
+  ingresoId: number
+  vista: VistaPreviaCorreccion
+  cuerpo: Record<string, unknown>
+  onCerrar: () => void
+  onCorregido: (r: { ingreso: Ingreso; correccion: CorreccionIngreso }) => void
+}) {
+  const [motivo, setMotivo] = useState('')
+  const [etiquetas, setEtiquetas] = useState(false)
+  const [aceptar, setAceptar] = useState(false)
+  const [motivoDiferencia, setMotivoDiferencia] = useState('')
+  const corregir = useMutation({
+    mutationFn: async () => (await api.post<{ ingreso: Ingreso; correccion: CorreccionIngreso }>(`/ingresos/${ingresoId}/correcciones`, {
+      ...cuerpo,
+      motivo: motivo.trim(),
+      ...(vista.requiere_confirmar_etiquetas ? { confirmar_etiquetas_impresas: etiquetas } : {}),
+      ...(vista.requiere_aceptar_diferencia ? { aceptar_diferencia: aceptar, diferencia_motivo: motivoDiferencia.trim() } : {}),
+    })).data,
+    onSuccess: onCorregido,
+  })
+  const errores = corregir.isError ? erroresCampo(corregir.error) : {}
+  const bloqueada = vista.errores.length > 0
+  const listo = !bloqueada
+    && motivo.trim().length >= 5
+    && (!vista.requiere_confirmar_etiquetas || etiquetas)
+    && (!vista.requiere_aceptar_diferencia || (aceptar && motivoDiferencia.trim() !== ''))
+    && !corregir.isPending
+
+  return (
+    <Dialogo
+      titulo="Revisar la corrección"
+      descripcion="Todavía no se ha guardado nada. Revise el efecto y escriba el motivo."
+      variante="ancha"
+      pendiente={corregir.isPending}
+      onCerrar={onCerrar}
+      onEnviar={() => { if (listo) corregir.mutate() }}
+      pie={(
+        <>
+          <button type="button" className="secundario" onClick={onCerrar}>Volver a editar</button>
+          <button type="submit" className="primario" disabled={!listo}>{corregir.isPending ? 'Guardando…' : 'Confirmar corrección'}</button>
+        </>
+      )}
+    >
+      <dl className="datos-fijos">
+        <div><dt>Total anterior</dt><dd>{vista.total_anterior === null ? '—' : pesos(vista.total_anterior)}</dd></div>
+        <div><dt>Total nuevo</dt><dd><strong>{pesos(vista.total_nuevo)}</strong></dd></div>
+        <div><dt>Unidades a crear</dt><dd>{vista.unidades_crear}</dd></div>
+        <div><dt>Unidades a retirar</dt><dd>{vista.unidades_retirar}</dd></div>
+      </dl>
+      {vista.por_referencia.length > 0 && (
+        <ul className="lista-cambios">
+          {vista.por_referencia.map((r) => (
+            <li key={r.referencia_id}>
+              <strong>{r.codigo_referencia}</strong>
+              {r.crear > 0 && <> · crear {r.crear}</>}
+              {r.retirar > 0 && <> · retirar {r.retirar}{r.con_etiqueta_impresa > 0 && ` (${r.con_etiqueta_impresa} con etiqueta impresa)`}</>}
+            </li>
+          ))}
+        </ul>
+      )}
+      {vista.errores.map((e, n) => <div key={`e${n}`} className="aviso error" role="alert">{e.mensaje}</div>)}
+      {vista.advertencias.map((a, n) => <div key={`a${n}`} className="aviso atencion">{a.mensaje}</div>)}
+      {vista.requiere_confirmar_etiquetas && (
+        <label className="casilla">
+          <input type="checkbox" checked={etiquetas} onChange={(e) => setEtiquetas(e.target.checked)} /> Retiraré esas etiquetas de la mercancía
+        </label>
+      )}
+      {vista.requiere_aceptar_diferencia && (
+        <>
+          <label className="casilla">
+            <input type="checkbox" checked={aceptar} onChange={(e) => setAceptar(e.target.checked)} /> Acepto la diferencia con las remisiones
+          </label>
+          <label>
+            <span className="etiqueta-campo">Motivo de la diferencia<span className="obligatorio" aria-hidden="true">*</span></span>
+            <input maxLength={500} value={motivoDiferencia} onChange={(e) => setMotivoDiferencia(e.target.value)} />
+          </label>
+        </>
+      )}
+      {!bloqueada && (
+        <label>
+          <span className="etiqueta-campo">Motivo de la corrección<span className="obligatorio" aria-hidden="true">*</span></span>
+          <textarea required autoFocus minLength={5} maxLength={500} rows={3} value={motivo} aria-invalid={!!errores.motivo} onChange={(e) => { setMotivo(e.target.value); corregir.reset() }} />
+          {errores.motivo && <small className="ayuda error">{errores.motivo}</small>}
+        </label>
+      )}
+      {corregir.isError && !errores.motivo && <div className="aviso error" role="alert">{mensajeError(corregir.error)}</div>}
+    </Dialogo>
+  )
+}
+
+/** RF-28: historial de correcciones del ingreso (más reciente primero), con lo que cambió. */
+function HistorialCorrecciones({ correcciones }: { correcciones: CorreccionIngreso[] }) {
+  return (
+    <section className="panel">
+      <h2>Correcciones</h2>
+      <ul className="historial-correcciones">
+        {correcciones.map((c) => (
+          <li key={c.id}>
+            <p>
+              <strong>{formatearFechaHora(c.created_at)}</strong> · {c.usuario?.name ?? '—'} · {c.motivo}
+              <small className="bloque">
+                Unidades +{c.unidades_creadas} / −{c.unidades_retiradas} · Total {c.total_anterior === null ? '—' : pesos(c.total_anterior)} → {pesos(c.total_nuevo)}
+              </small>
+            </p>
+            <DetalleCorreccion antes={c.antes} despues={c.despues} />
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }

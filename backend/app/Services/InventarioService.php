@@ -10,6 +10,7 @@ use App\Enums\TipoMovimiento;
 use App\Exceptions\ReglaInventarioException;
 use App\Models\AjusteInventario;
 use App\Models\Ingreso;
+use App\Models\IngresoCorreccion;
 use App\Models\IngresoItem;
 use App\Models\MovimientoInventario;
 use App\Models\Referencia;
@@ -272,6 +273,121 @@ class InventarioService
         if ($mensaje !== null) {
             throw new ReglaInventarioException($mensaje, 422, ['codigo' => $codigo]);
         }
+    }
+
+    /**
+     * RF-28 (S-60): unidades nuevas por la corrección de un ingreso confirmado (cantidad que sube o
+     * línea nueva). Como darEntrada: una unidad por código reservado, disponible y sin etiqueta
+     * impresa (queda pendiente en Etiquetas), movimiento 'ingreso' con origen la corrección, y la
+     * existencia sube por referencia en orden de id. Las referencias ya vienen bloqueadas.
+     *
+     * @param  array<int, int>  $porLinea  ingreso_item_id => unidades a crear
+     * @param  array<int, int>  $referenciaDeLinea  ingreso_item_id => referencia_id
+     * @param  list<string>  $codigos  uno por unidad, en orden
+     */
+    public function agregarUnidadesPorCorreccion(array $porLinea, array $referenciaDeLinea, array $codigos, IngresoCorreccion $correccion, int $usuarioId): int
+    {
+        $this->exigirTransaccion();
+
+        $ahora = now();
+        $filas = [];
+        $i = 0;
+        $porReferencia = [];
+        foreach ($porLinea as $itemId => $cantidad) {
+            for ($n = 0; $n < $cantidad; $n++) {
+                $filas[] = [
+                    'referencia_id' => $referenciaDeLinea[$itemId],
+                    'ingreso_item_id' => $itemId,
+                    'codigo_barras' => $codigos[$i++],
+                    'estado' => EstadoUnidad::Disponible->value,
+                    'created_at' => $ahora,
+                    'updated_at' => $ahora,
+                ];
+            }
+            if ($cantidad > 0) {
+                $porReferencia[$referenciaDeLinea[$itemId]] = ($porReferencia[$referenciaDeLinea[$itemId]] ?? 0) + $cantidad;
+            }
+        }
+
+        if ($filas === []) {
+            return 0;
+        }
+        if ($i !== count($codigos)) {
+            throw new LogicException('La cantidad de códigos reservados no coincide con las unidades a crear.');
+        }
+
+        foreach (array_chunk($filas, self::LOTE) as $lote) {
+            Unidad::insert($lote);
+        }
+
+        $creadas = Unidad::query()->whereIn('codigo_barras', $codigos)->get(['id', 'referencia_id']);
+        $movimientos = $creadas->map(fn (Unidad $u) => [
+            'tipo' => TipoMovimiento::Ingreso->value,
+            'unidad_id' => $u->id,
+            'referencia_id' => $u->referencia_id,
+            'usuario_id' => $usuarioId,
+            'metodo_captura' => null,
+            'origen_type' => IngresoCorreccion::ORIGEN,
+            'origen_id' => $correccion->id,
+            'created_at' => $ahora,
+        ])->all();
+        foreach (array_chunk($movimientos, self::LOTE) as $lote) {
+            MovimientoInventario::insert($lote);
+        }
+
+        ksort($porReferencia);
+        foreach ($porReferencia as $referenciaId => $cantidad) {
+            Referencia::whereKey($referenciaId)->increment('existencia', $cantidad);
+        }
+
+        return count($filas);
+    }
+
+    /**
+     * RF-28 (S-60): retira unidades por la corrección de un ingreso confirmado (cantidad que baja o
+     * línea quitada). Solo unidades disponibles, bloqueadas por quien llama: una vendida (y su venta)
+     * nunca se toca. Pasan a 'retirada' (no se borran), movimiento 'baja' con origen la corrección, y
+     * la existencia baja por referencia en orden de id.
+     *
+     * @param  Collection<int, Unidad>  $unidades
+     */
+    public function retirarUnidadesPorCorreccion(Collection $unidades, IngresoCorreccion $correccion, int $usuarioId): int
+    {
+        $this->exigirTransaccion();
+
+        if ($unidades->isEmpty()) {
+            return 0;
+        }
+
+        $noDisponible = $unidades->first(fn (Unidad $u) => $u->estado !== EstadoUnidad::Disponible);
+        if ($noDisponible) {
+            throw new ReglaInventarioException("La unidad {$noDisponible->codigo_barras} ya no está disponible: no se puede retirar.", 422, ['codigo' => $noDisponible->codigo_barras]);
+        }
+
+        $ahora = now();
+        foreach ($unidades->pluck('id')->chunk(self::LOTE) as $ids) {
+            Unidad::query()->whereKey($ids->all())->update(['estado' => EstadoUnidad::Retirada->value, 'updated_at' => $ahora]);
+        }
+
+        $movimientos = $unidades->map(fn (Unidad $u) => [
+            'tipo' => TipoMovimiento::Baja->value,
+            'unidad_id' => $u->id,
+            'referencia_id' => $u->referencia_id,
+            'usuario_id' => $usuarioId,
+            'metodo_captura' => null,
+            'origen_type' => IngresoCorreccion::ORIGEN,
+            'origen_id' => $correccion->id,
+            'created_at' => $ahora,
+        ])->all();
+        foreach (array_chunk($movimientos, self::LOTE) as $lote) {
+            MovimientoInventario::insert($lote);
+        }
+
+        foreach ($unidades->countBy('referencia_id')->sortKeys() as $referenciaId => $cantidad) {
+            Referencia::whereKey($referenciaId)->decrement('existencia', $cantidad);
+        }
+
+        return $unidades->count();
     }
 
     private function registrarMovimiento(

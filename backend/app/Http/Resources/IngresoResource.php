@@ -53,6 +53,9 @@ class IngresoResource extends JsonResource
                 'total' => $r->total,
                 'unidades' => (int) $r->unidades,
             ])->all()),
+            // RF-28: historial de correcciones de este ingreso confirmado.
+            'correcciones' => $this->whenLoaded('correcciones', fn () => IngresoCorreccionResource::collection($this->correcciones)->resolve()),
+            'corregido' => $this->whenLoaded('correcciones', fn () => $this->correcciones->isNotEmpty()),
             'diferencia_aceptada' => (bool) $this->diferencia_aceptada,
             'diferencia_motivo' => $this->diferencia_motivo,
             'items' => $this->whenLoaded('items', fn () => $this->items

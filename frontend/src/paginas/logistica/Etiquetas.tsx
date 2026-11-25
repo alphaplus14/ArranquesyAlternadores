@@ -30,9 +30,14 @@ export default function Etiquetas() {
     enabled: ingresoId !== '',
   })
 
+  // RF-28: con ?pendientes=1 (tras corregir un ingreso) se preseleccionan solo las disponibles sin
+  // etiqueta impresa; si no, todas, como siempre.
+  const soloPendientes = params.get('pendientes') === '1'
   useEffect(() => {
-    if (unidades.data) setSeleccion(new Set(unidades.data.map((u) => u.id)))
-  }, [unidades.data])
+    if (!unidades.data) return
+    const elegibles = soloPendientes ? unidades.data.filter((u) => u.estado === 'disponible' && u.etiqueta_impresa === false) : unidades.data
+    setSeleccion(new Set(elegibles.map((u) => u.id)))
+  }, [unidades.data, soloPendientes])
 
   const imprimir = useMutation({
     mutationFn: async () => {

@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import { api, mensajeError } from '../api/cliente'
-import type { Calidad, Opcion, Pagina, Referencia } from '../api/tipos'
+import type { Calidad, Opcion, Referencia } from '../api/tipos'
+import SelectorUniversal from './SelectorUniversal'
 import { useCategorias, useProveedores } from '../hooks/useCatalogos'
 import { useAvisoTexto } from './Avisos'
 import Dialogo, { DialogoSeccion } from './Dialogo'
@@ -63,12 +64,6 @@ export default function FichaReferencia(props: FichaReferenciaProps) {
   const categorias = useCategorias()
   const categoria = categorias.data?.find((c) => String(c.id) === f.categoria_id)
   const admiteUniversal = categoria?.admite_codigo_universal ?? false
-
-  const universales = useQuery({
-    queryKey: ['universales', 'categoria', f.categoria_id],
-    queryFn: async () => (await api.get<Pagina<{ id: number; codigo: string; categoria_id: number }>>('/codigos-universales', { params: { por_pagina: 100 } })).data.data,
-    enabled: admiteUniversal,
-  })
 
   const guardar = useMutation({
     mutationFn: async () => {
@@ -181,12 +176,8 @@ export default function FichaReferencia(props: FichaReferenciaProps) {
           </div>
           {ingreso && <p className="ayuda">Si la categoría que necesita no aparece, pídale al administrador que la cree; aquí no se crean.</p>}
           {admiteUniversal && (
-            <label>Código universal
-              <select value={f.codigo_universal_id} onChange={(e) => setCampo('codigo_universal_id', e.target.value)}>
-                <option value="">Sin universal: la referencia es su código único</option>
-                {universales.data?.filter((u) => String(u.categoria_id) === f.categoria_id).map((u) => <option key={u.id} value={u.id}>{u.codigo}</option>)}
-              </select>
-            </label>
+            // S-59: elegir o crear el universal en línea, con la categoría de la referencia.
+            <SelectorUniversal categoriaId={f.categoria_id} value={f.codigo_universal_id} onChange={(v) => setCampo('codigo_universal_id', v)} />
           )}
         </DialogoSeccion>
 

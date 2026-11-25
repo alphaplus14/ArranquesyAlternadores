@@ -3,15 +3,19 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\CorreccionIngresoRequest;
 use App\Http\Requests\IngresoEncabezadoRequest;
 use App\Http\Requests\IngresoItemRequest;
+use App\Http\Resources\IngresoCorreccionResource;
 use App\Http\Resources\IngresoItemResource;
 use App\Http\Resources\IngresoResource;
 use App\Http\Resources\UnidadResource;
 use App\Models\Ingreso;
+use App\Models\IngresoCorreccion;
 use App\Models\IngresoItem;
 use App\Models\Unidad;
 use App\Services\IngresoService;
+use App\Support\RangoFechas;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -32,10 +36,13 @@ class IngresoController extends Controller
         $pagina = Ingreso::query()
             ->with(['proveedor:id,nombre,asesor', 'usuario:id,name', 'confirmadoPor:id,name']) // S-29: asesor bajo el nombre
             ->withSum('items as unidades', 'cantidad')
+            ->withCount('correcciones') // RF-28
             ->when($request->query('proveedor_id'), fn ($q, $v) => $q->where('proveedor_id', $v))
             ->when($request->query('estado'), fn ($q, $v) => $q->where('estado', $v))
+            ->when($request->boolean('corregidos'), fn ($q) => $q->has('correcciones'))
             ->orderByDesc('id')
             ->paginate(25);
+        $pagina->getCollection()->each(fn (Ingreso $i) => $i->setAttribute('corregido', $i->correcciones_count > 0));
 
         return response()->json($pagina);
     }
@@ -149,6 +156,47 @@ class IngresoController extends Controller
         return new IngresoResource($this->cargar($this->servicio->prellenar($ingreso)));
     }
 
+    /** RF-28: vista previa de una corrección, sin escribir nada. */
+    public function vistaPreviaCorreccion(CorreccionIngresoRequest $request, Ingreso $ingreso): JsonResponse
+    {
+        return response()->json($this->servicio->vistaPreviaCorreccion($ingreso, $request->datosCorreccion()));
+    }
+
+    /** RF-28 (S-58): corrige un ingreso confirmado. Devuelve la corrección y el ingreso al día. */
+    public function corregir(CorreccionIngresoRequest $request, Ingreso $ingreso): JsonResponse
+    {
+        $correccion = $this->servicio->corregir($ingreso, $request->datosCorreccion(), $request->validated('motivo'), $request->user());
+
+        return response()->json([
+            'correccion' => new IngresoCorreccionResource($correccion->load('usuario:id,name')),
+            'ingreso' => new IngresoResource($this->cargar($ingreso->refresh())),
+        ], 201);
+    }
+
+    /** RF-28: lista de correcciones (solo admin, solo consulta), por fecha, proveedor y usuario. */
+    public function correcciones(Request $request): AnonymousResourceCollection
+    {
+        $f = $request->validate([
+            'desde' => ['nullable', 'date_format:Y-m-d'],
+            'hasta' => ['nullable', 'date_format:Y-m-d'],
+            'proveedor_id' => ['nullable', 'integer'],
+            'usuario_id' => ['nullable', 'integer'],
+            'ingreso_id' => ['nullable', 'integer'],
+        ]);
+
+        $pagina = IngresoCorreccion::query()
+            ->with('usuario:id,name', 'ingreso:id,tipo,numero_documento,proveedor_id', 'ingreso.proveedor:id,nombre')
+            ->when($f['desde'] ?? null, fn ($q, $v) => $q->where('created_at', '>=', RangoFechas::inicio($v)))
+            ->when($f['hasta'] ?? null, fn ($q, $v) => $q->where('created_at', '<', RangoFechas::finExclusivo($v)))
+            ->when($f['proveedor_id'] ?? null, fn ($q, $v) => $q->whereIn('ingreso_id', Ingreso::query()->where('proveedor_id', $v)->select('id')))
+            ->when($f['usuario_id'] ?? null, fn ($q, $v) => $q->where('usuario_id', $v))
+            ->when($f['ingreso_id'] ?? null, fn ($q, $v) => $q->where('ingreso_id', $v))
+            ->orderByDesc('id')
+            ->paginate(25);
+
+        return IngresoCorreccionResource::collection($pagina);
+    }
+
     /** RF-03: unidades creadas por el ingreso, para imprimir sus etiquetas. */
     public function unidades(Ingreso $ingreso): AnonymousResourceCollection
     {
@@ -156,7 +204,9 @@ class IngresoController extends Controller
             ->whereIn('ingreso_item_id', $ingreso->items()->select('id'))
             ->with('referencia:id,codigo_referencia,calidad,descripcion,proveedor_id', 'referencia.proveedor:id,nombre')
             ->orderBy('id')
-            ->get(['id', 'referencia_id', 'codigo_barras', 'estado']);
+            ->get(['id', 'referencia_id', 'codigo_barras', 'estado', 'etiqueta_impresa_at']);
+        // RF-28: la pantalla de Etiquetas preselecciona las pendientes (sin etiqueta impresa).
+        $unidades->each(fn (Unidad $u) => $u->setAttribute('etiqueta_impresa', $u->etiqueta_impresa_at !== null));
 
         return UnidadResource::collection($unidades);
     }
@@ -171,6 +221,7 @@ class IngresoController extends Controller
             'items.referencia:id,codigo_referencia,descripcion',
             'factura:id,numero_documento,estado', // RF-19
             'remisiones' => fn ($q) => $q->orderBy('fecha')->orderBy('id')->withSum('items as unidades', 'cantidad'),
+            'correcciones' => fn ($q) => $q->orderByDesc('id')->with('usuario:id,name'), // RF-28
         ]);
     }
 }

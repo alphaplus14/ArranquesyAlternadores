@@ -28,6 +28,9 @@ interface FilaIngreso {
   unidades: string | null
   proveedor: { nombre: string; asesor?: string | null }
   usuario: { name: string }
+  /** RF-28: el ingreso confirmado tiene correcciones. */
+  corregido?: boolean
+  correcciones_count?: number
 }
 
 const TIPO: Record<TipoIngreso, string> = { remision: 'Remisión', factura: 'Factura' }
@@ -54,9 +57,12 @@ export default function Ingresos() {
     requestAnimationFrame(() => botonNuevo.current?.focus())
   }, [])
 
+  // RF-28: "Solo corregidas" filtra en el servidor.
+  const [soloCorregidos, setSoloCorregidos] = useState(false)
   const { filas, resultado, info, irA } = useListaPaginada<FilaIngreso>({
-    clave: ['ingresos'],
-    traer: async (pagina) => (await api.get<Pagina<FilaIngreso>>('/ingresos', { params: { page: pagina } })).data,
+    clave: ['ingresos', soloCorregidos],
+    filtros: soloCorregidos,
+    traer: async (pagina) => (await api.get<Pagina<FilaIngreso>>('/ingresos', { params: { page: pagina, corregidos: soloCorregidos ? 1 : undefined } })).data,
   })
 
   const borradores = filas.filter((i) => i.estado === 'borrador').length
@@ -94,6 +100,9 @@ export default function Ingresos() {
             <span className="medida-icono rojo" aria-hidden><Icono nombre="ingreso" /></span>
             <h2>Documentos</h2>
           </div>
+          <label className="casilla">
+            <input type="checkbox" checked={soloCorregidos} onChange={(e) => setSoloCorregidos(e.target.checked)} /> Solo corregidas
+          </label>
         </div>
         <div className="tabla-desplazable">
         <table>
@@ -103,7 +112,10 @@ export default function Ingresos() {
               <tr key={i.id}>
                 <td><Link to={`/logistica/ingresos/${i.id}`}>{i.id}</Link></td>
                 <td>{TIPO[i.tipo] ?? i.tipo}</td>
-                <td>{i.numero_documento}</td>
+                <td>
+                  {i.numero_documento}
+                  {i.corregido && <span className="chip corregida" title={`${i.correcciones_count ?? 1} corrección(es) auditada(s)`}>Corregida</span>}
+                </td>
                 <td>{i.proveedor.nombre}{i.proveedor.asesor && <small className="asesor">Asesor: {i.proveedor.asesor}</small>}</td>
                 <td>{i.fecha.slice(0, 10)}</td>
                 <td>{i.forma_pago === 'credito' ? <span className="chip credito">Crédito{i.vence_el ? ` · vence ${i.vence_el.slice(0, 10)}` : ''}</span> : 'Contado'}</td>

@@ -4,20 +4,26 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeError } from '../../api/cliente'
 import { useAvisoTexto } from '../../componentes/Avisos'
 import CampoStockMinimo from '../../componentes/CampoStockMinimo'
-import { aValorMinimo, errorStockMinimo } from '../../utilidades/stockMinimo'
+import { aValorMinimo, errorStockMinimo, textoMinimo } from '../../utilidades/stockMinimo'
 import type { DesgloseUniversal } from '../../api/tipos'
 import ChipCalidad from '../../componentes/ChipCalidad'
 import Icono from '../../componentes/Icono'
 import Medida from '../../componentes/Medida'
 import Resumen from '../../componentes/Resumen'
 import { formatearFechaHora } from '../../utilidades/fechas'
+import { useAuth } from '../../auth/AuthProvider'
+import { useCategorias } from '../../hooks/useCatalogos'
 
 /**
  * RF-02 / S-23: el total del universal es la suma de sus referencias y siempre se muestra el
  * desglose por referencia (código, proveedor, calidad y existencia). Ej.: IM204 = 6 → AC-77812 2…
+ * S-59: logística también crea y edita (código, categoría, descripción y mínimo); no elimina. Los
+ * enlaces al historial de auditoría son solo del admin.
  */
 export default function UniversalDetalle() {
   const { id } = useParams()
+  const { usuario } = useAuth()
+  const esAdmin = usuario?.rol === 'admin'
   const { data: u, isError, error } = useQuery({
     queryKey: ['universal', id],
     queryFn: async () => (await api.get<DesgloseUniversal>(`/codigos-universales/${id}`)).data,
@@ -52,7 +58,11 @@ export default function UniversalDetalle() {
         <Medida etiqueta="Proveedores" valor={proveedores} tono="verde" icono="catalogo" />
         <Medida etiqueta="Agotadas" valor={agotadas} tono="rojo" icono="agotados" />
       </Resumen>
-      <MinimoUniversal id={u.id} codigo={u.codigo} guardado={u.stock_minimo ?? null} total={u.existencia_total} />
+      <EditarUniversal universal={u} />
+      {/* S-28 / S-59: el mínimo del universal lo cambia solo el admin. */}
+      {esAdmin
+        ? <MinimoUniversal id={u.id} codigo={u.codigo} guardado={u.stock_minimo ?? null} total={u.existencia_total} esAdmin={esAdmin} />
+        : <p className="ayuda">Stock mínimo: {textoMinimo(u.stock_minimo ?? null)} (lo cambia el administrador).</p>}
       <div className="panel">
         <div className="fila-titulo">
           <h2>Por referencia</h2>
@@ -70,14 +80,14 @@ export default function UniversalDetalle() {
                   <td className={r.existencia === 0 ? 'agotado' : ''}>{r.existencia}</td>
                   <td>{formatearFechaHora(r.updated_at)}</td>
                   <td className="col-accion">
-                    <Link
+                    {esAdmin && <Link
                       className="icono-accion"
                       to={`/admin/auditoria?tabla=referencias&registro_id=${r.id}`}
                       aria-label={`Historial de ${r.codigo_referencia}`}
                       title="Historial"
                     >
                       <Icono nombre="auditoria" />
-                    </Link>
+                    </Link>}
                   </td>
                 </tr>
               ))}
@@ -91,7 +101,7 @@ export default function UniversalDetalle() {
 }
 
 /** RF-22: el mínimo del universal se evalúa sobre la suma de sus referencias activas. */
-function MinimoUniversal({ id, codigo, guardado, total }: { id: number; codigo: string; guardado: number | null; total: number }) {
+function MinimoUniversal({ id, codigo, guardado, total, esAdmin }: { id: number; codigo: string; guardado: number | null; total: number; esAdmin: boolean }) {
   const qc = useQueryClient()
   const [valor, setValor] = useState(guardado == null ? '' : String(guardado))
   const [ok, setOk] = useState(false)
@@ -123,9 +133,55 @@ function MinimoUniversal({ id, codigo, guardado, total }: { id: number; codigo: 
         {ok && <div className="aviso ok" role="status">Stock mínimo guardado.</div>}
         <div className="acciones acciones-izquierda">
           <button className="primario boton-44" disabled={guardar.isPending || sinCambios || errorStockMinimo(valor) !== null}>Guardar</button>
-          <Link to={`/admin/auditoria?tabla=codigos_universales&registro_id=${id}`}>Historial</Link>
+          {esAdmin && <Link to={`/admin/auditoria?tabla=codigos_universales&registro_id=${id}`}>Historial</Link>}
         </div>
       </form>
+    </section>
+  )
+}
+
+/**
+ * S-59: código, categoría (que admita universal) y descripción. El backend rechaza un código
+ * repetido y una categoría distinta a la de sus referencias. Sin eliminar.
+ */
+function EditarUniversal({ universal }: { universal: DesgloseUniversal }) {
+  const qc = useQueryClient()
+  const categorias = useCategorias()
+  const inicial = { codigo: universal.codigo, categoria_id: String(universal.categoria.id), descripcion: universal.descripcion ?? '' }
+  const [f, setF] = useState(inicial)
+  const [ok, setOk] = useState(false)
+  useEffect(() => {
+    setF({ codigo: universal.codigo, categoria_id: String(universal.categoria.id), descripcion: universal.descripcion ?? '' })
+  }, [universal.codigo, universal.categoria.id, universal.descripcion])
+
+  const guardar = useMutation({
+    mutationFn: async () => api.put(`/codigos-universales/${universal.id}`, {
+      codigo: f.codigo.trim().toUpperCase(),
+      categoria_id: Number(f.categoria_id),
+      descripcion: f.descripcion.trim() || null,
+    }),
+    onSuccess: () => {
+      setOk(true)
+      qc.invalidateQueries({ queryKey: ['universal', String(universal.id)] })
+      qc.invalidateQueries({ queryKey: ['universales'] })
+    },
+  })
+  const sinCambios = f.codigo.trim().toUpperCase() === inicial.codigo && f.categoria_id === inicial.categoria_id && f.descripcion.trim() === inicial.descripcion
+
+  return (
+    <section className="panel">
+      <h2>Editar</h2>
+      <form className="formulario en-linea" onSubmit={(e) => { e.preventDefault(); setOk(false); guardar.mutate() }}>
+        <input required maxLength={60} aria-label="Código" placeholder="Código (ej. IM204)" value={f.codigo} onChange={(e) => { setF({ ...f, codigo: e.target.value }); setOk(false) }} />
+        <select required aria-label="Categoría" value={f.categoria_id} onChange={(e) => { setF({ ...f, categoria_id: e.target.value }); setOk(false) }}>
+          {categorias.data?.filter((c) => c.admite_codigo_universal || String(c.id) === inicial.categoria_id).map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+        </select>
+        <input maxLength={255} aria-label="Descripción" placeholder="Descripción" value={f.descripcion} onChange={(e) => { setF({ ...f, descripcion: e.target.value }); setOk(false) }} />
+        <button className="primario" disabled={guardar.isPending || sinCambios || f.codigo.trim() === ''}>Guardar</button>
+      </form>
+      <small className="ayuda">En reguladores use el código de Transpo (ej. IM204).</small>
+      {guardar.isError && <div className="aviso error" role="alert">{mensajeError(guardar.error)}</div>}
+      {ok && <div className="aviso ok" role="status">Cambios guardados.</div>}
     </section>
   )
 }

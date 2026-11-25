@@ -19,6 +19,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * Confirmado, el ingreso ya no se edita ni se borra (sus unidades y movimientos dependen de él).
  * RF-19: única excepción, el factura_id de una remisión confirmada, y solo mientras la factura
  * que se liga o se desliga está en borrador (lo hace IngresoService, auditado).
+ * RF-28 (S-58): la otra excepción es la corrección de un ingreso confirmado, que solo hace
+ * IngresoService::corregir marcando la instancia con permitirCorreccion() (auditada).
  */
 class Ingreso extends Model
 {
@@ -32,6 +34,9 @@ class Ingreso extends Model
     ];
 
     protected $attributes = ['forma_pago' => 'contado'];
+
+    /** RF-28: solo IngresoService::corregir la enciende, en la instancia que corrige. */
+    private bool $enCorreccion = false;
 
     protected function casts(): array
     {
@@ -54,7 +59,7 @@ class Ingreso extends Model
         // Solo se permite el paso de borrador a confirmado; después, nada (ni total, forma de pago
         // ni vencimiento).
         static::updating(function (Ingreso $ingreso) {
-            if ($ingreso->getOriginal('estado') === EstadoIngreso::Confirmado && ! $ingreso->esCambioDeVinculo()) {
+            if ($ingreso->getOriginal('estado') === EstadoIngreso::Confirmado && ! $ingreso->enCorreccion && ! $ingreso->esCambioDeVinculo()) {
                 throw RegistroInmutableException::para($ingreso, 'editar un ingreso confirmado');
             }
         });
@@ -85,6 +90,20 @@ class Ingreso extends Model
     public function items(): HasMany
     {
         return $this->hasMany(IngresoItem::class);
+    }
+
+    /** RF-28: correcciones hechas a este ingreso confirmado. */
+    public function correcciones(): HasMany
+    {
+        return $this->hasMany(IngresoCorreccion::class);
+    }
+
+    /** RF-28: permite editar este ingreso confirmado. Solo la llama IngresoService::corregir. */
+    public function permitirCorreccion(): static
+    {
+        $this->enCorreccion = true;
+
+        return $this;
     }
 
     /** RF-19: la factura que cubre esta remisión. */

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeError } from '../api/cliente'
 import { NOMBRE_CALIDAD, type Calidad, type MetodoCaptura, type Pagina, type Referencia } from '../api/tipos'
 import ChipCalidad from '../componentes/ChipCalidad'
@@ -10,6 +10,7 @@ import Icono from '../componentes/Icono'
 import Paginacion from '../componentes/Paginacion'
 import SelectorProveedor from '../componentes/SelectorProveedor'
 import SelectorCategoria from '../componentes/SelectorCategoria'
+import SelectorUniversal from '../componentes/SelectorUniversal'
 import AvisoCoincidencias from '../componentes/AvisoCoincidencias'
 import Resumen from '../componentes/Resumen'
 import { useCategorias } from '../hooks/useCatalogos'
@@ -454,12 +455,6 @@ function FormularioReferencia({ id, inicial, onListo, onCerrar }: { id: number |
   const categoria = categorias.data?.find((c) => String(c.id) === f.categoria_id)
   const admiteUniversal = categoria?.admite_codigo_universal ?? false
 
-  const universales = useQuery({
-    queryKey: ['universales', 'categoria', f.categoria_id],
-    queryFn: async () => (await api.get<Pagina<{ id: number; codigo: string; categoria_id: number }>>('/codigos-universales', { params: { por_pagina: 100 } })).data.data,
-    enabled: admiteUniversal,
-  })
-
   const guardar = useMutation({
     mutationFn: async () => {
       const conUniversal = admiteUniversal && f.codigo_universal_id !== ''
@@ -508,12 +503,8 @@ function FormularioReferencia({ id, inicial, onListo, onCerrar }: { id: number |
         </label>
         <SelectorCategoria value={f.categoria_id} onChange={(categoria_id) => setF((v) => ({ ...v, categoria_id }))} />
         {admiteUniversal && (
-          <label>Código universal
-            <select {...campo('codigo_universal_id')}>
-              <option value="">Sin universal: la referencia es su código único</option>
-              {universales.data?.filter((u) => String(u.categoria_id) === f.categoria_id).map((u) => <option key={u.id} value={u.id}>{u.codigo}</option>)}
-            </select>
-          </label>
+          // S-59: elegir o crear el universal en línea, con la categoría de la referencia.
+          <SelectorUniversal categoriaId={f.categoria_id} value={f.codigo_universal_id} onChange={(codigo_universal_id) => setF((v) => ({ ...v, codigo_universal_id }))} />
         )}
         <label>Precio de venta
           <input type="number" min="0.01" step="0.01" required aria-invalid={errorPrecioVenta !== null} aria-describedby="precio-venta-ayuda" {...campo('precio_venta')} />
