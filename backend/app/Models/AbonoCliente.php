@@ -22,7 +22,7 @@ class AbonoCliente extends Model
 
     protected $table = 'abonos_clientes';
 
-    protected $fillable = ['cliente_id', 'venta_id', 'fecha', 'valor', 'medio', 'referencia', 'nota', 'usuario_id'];
+    protected $fillable = ['cliente_id', 'venta_id', 'fecha', 'valor', 'medio', 'cuenta_pago_id', 'referencia', 'nota', 'usuario_id'];
 
     protected function casts(): array
     {
@@ -62,6 +62,12 @@ class AbonoCliente extends Model
         $factura = $this->relationLoaded('venta') ? $this->venta?->factura_contapyme : null;
 
         return "Venta #{$this->venta_id}".($factura ? " · {$factura}" : '');
+    }
+
+    /** RF-24 (S-48): cuenta donde entró o salió el dinero (NULL en los registros anteriores). */
+    public function cuenta(): BelongsTo
+    {
+        return $this->belongsTo(CuentaPago::class, 'cuenta_pago_id');
     }
 
     public function anulacion(): HasOne

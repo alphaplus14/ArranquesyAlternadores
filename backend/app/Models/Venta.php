@@ -77,6 +77,12 @@ class Venta extends Model
         return $this->hasMany(Reverso::class);
     }
 
+    /** RF-24 (S-48): cómo se pagó la venta de contado (vacío en crédito y en las de contado anteriores). */
+    public function pagos(): HasMany
+    {
+        return $this->hasMany(VentaPago::class);
+    }
+
     public function esCredito(): bool
     {
         return $this->forma_pago === FormaPago::Credito;

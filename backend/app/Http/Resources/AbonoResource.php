@@ -24,6 +24,8 @@ class AbonoResource extends JsonResource
             'fecha' => $this->fecha?->toDateString(),
             'valor' => $this->valor,
             'medio' => $this->medio,
+            // RF-24 (S-48): cuenta (null en registros anteriores).
+            'cuenta' => $this->whenLoaded('cuenta', fn () => $this->cuenta ? ['id' => $this->cuenta->id, 'nombre' => $this->cuenta->nombre, 'tipo' => $this->cuenta->tipo] : null),
             'referencia' => $this->referencia,
             'nota' => $this->nota,
             'created_at' => $this->created_at,

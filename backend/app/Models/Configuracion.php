@@ -19,6 +19,14 @@ class Configuracion extends Model
     /** S-45 e: días sin venta para considerar estancada una referencia (120 si no hay valor). */
     public const DIAS_SIN_MOVIMIENTO = 'dias_sin_movimiento';
 
+    /** RF-25 (S-51): meta de venta diaria en pesos (config caja.meta_venta_diaria si no hay valor). */
+    public const META_VENTA_DIARIA = 'meta_venta_diaria';
+
+    /** RF-25 (S-49): saldo de caja con que empieza el sistema y su fecha. Se fijan una sola vez. */
+    public const SALDO_CAJA_INICIAL = 'saldo_caja_inicial';
+
+    public const SALDO_CAJA_INICIAL_FECHA = 'saldo_caja_inicial_fecha';
+
     protected $table = 'configuraciones';
 
     protected $fillable = ['clave', 'valor'];

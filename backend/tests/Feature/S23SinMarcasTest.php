@@ -120,7 +120,7 @@ it('S-23: escaneo, venta, reverso e ingreso siguen funcionando sin marca', funct
         ->assertJsonMissingPath('referencia.marca');
     $this->getJson("/api/ventas/{$ventaId}")->assertOk()
         ->assertJsonPath('items.0.unidad.referencia.proveedor.nombre', 'Repuestos del Norte');
-    $this->postJson("/api/ventas/{$ventaId}/cerrar")->assertOk();
+    cerrarVenta($ventaId)->assertOk();
 
     // Reverso (RF-07): la unidad vuelve al inventario.
     $this->postJson("/api/ventas/{$ventaId}/reversos", ['tipo' => 'devolucion', 'motivo' => 'Prueba S-23'])->assertOk();

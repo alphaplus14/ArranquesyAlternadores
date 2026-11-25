@@ -3,10 +3,10 @@
 namespace Database\Seeders;
 
 use App\Enums\FormaPago;
-use App\Enums\MedioPago;
 use App\Enums\MetodoCaptura;
 use App\Enums\Rol;
 use App\Models\Cliente;
+use App\Models\CuentaPago;
 use App\Models\Unidad;
 use App\Models\User;
 use App\Services\AbonoService;
@@ -35,10 +35,10 @@ class CarteraDemoSeeder extends Seeder
         $vieja = $this->venta($ventas, $mostrador, $taller, [60000]);
         $this->venta($ventas, $mostrador, $taller, [50000]);
         $this->fechar($vieja, now()->subDays(70), now()->subDays(40)->toDateString());
-        $abonos->registrar($taller, now('America/Bogota')->toDateString(), 70000, MedioPago::Transferencia, 'TR-1001', null, $mostrador);
+        $abonos->registrar($taller, now('America/Bogota')->toDateString(), 70000, CuentaPago::query()->where('tipo', 'banco')->first() ?? CuentaPago::efectivo(), 'TR-1001', null, $mostrador);
 
         $this->venta($ventas, $mostrador, $motos, [45000]);
-        $abonos->registrar($motos, now('America/Bogota')->toDateString(), 50000, MedioPago::Efectivo, null, 'Pagó de más; queda a favor', $mostrador);
+        $abonos->registrar($motos, now('America/Bogota')->toDateString(), 50000, CuentaPago::efectivo(), null, 'Pagó de más; queda a favor', $mostrador);
 
         $vencida = $this->venta($ventas, $mostrador, $flota, [120000, 80000]);
         $this->fechar($vencida, now()->subDays(100), now()->subDays(55)->toDateString());

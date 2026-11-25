@@ -55,7 +55,7 @@ it('S-42: 422 en contado, en venta cerrada, con precio 0 y con ítems ajenos o r
     $this->patchJson("/api/ventas/{$ventaId}/items/precio", ['ids' => $ids, 'precio_unitario' => 70000])->assertUnprocessable()
         ->assertJsonPath('message', 'Algún ítem ya fue reversado: no se cambió ningún precio.');
 
-    $this->postJson("/api/ventas/{$ventaId}/cerrar")->assertOk();
+    cerrarVenta($ventaId)->assertOk();
     $this->patchJson("/api/ventas/{$ventaId}/items/precio", ['ids' => [$ids[0]], 'precio_unitario' => 70000])->assertUnprocessable()
         ->assertJsonPath('message', 'La venta está cerrada: sus precios quedaron fijos.');
 

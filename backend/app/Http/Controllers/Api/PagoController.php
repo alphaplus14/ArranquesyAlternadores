@@ -27,7 +27,7 @@ class PagoController extends Controller
     {
         $pago = $this->pagos->registrar($proveedor, $request->validated(), $request->user());
 
-        return (new PagoResource($pago->load('usuario:id,name', 'anulacion')))->response()->setStatusCode(201);
+        return (new PagoResource($pago->load('usuario:id,name', 'anulacion', 'cuenta:id,nombre,tipo')))->response()->setStatusCode(201);
     }
 
     public function anular(Request $request, PagoProveedor $pago): JsonResponse

@@ -3,7 +3,9 @@
 use App\Enums\FormaPago;
 use App\Enums\MetodoCaptura;
 use App\Enums\Rol;
+use App\Models\CategoriaCaja;
 use App\Models\Cliente;
+use App\Models\CuentaPago;
 use App\Models\Ingreso;
 use App\Models\Referencia;
 use App\Models\Unidad;
@@ -68,6 +70,42 @@ function escaneoInicial(string $codigoReferencia, string $metodo = 'escaneado'):
     return ['codigo_barras' => unidadDe($codigoReferencia)->codigo_barras, 'metodo_captura' => $metodo];
 }
 
+/** RF-24 (S-48): la cuenta "Efectivo" que crea la migración. */
+function cuentaEfectivo(): CuentaPago
+{
+    return CuentaPago::efectivo();
+}
+
+/** RF-24 (S-48): una cuenta de banco activa (la del seeder o una nueva). */
+function cuentaBanco(): CuentaPago
+{
+    return CuentaPago::firstOrCreate(['nombre' => 'Bancolombia'], ['tipo' => 'banco']);
+}
+
+/**
+ * RF-24 (S-48): pago exacto de una venta de contado (todo en una cuenta, Efectivo por defecto). Vacío
+ * en crédito: la venta a crédito no recibe pagos al cerrar.
+ */
+function pagosExactos(Venta|int $venta, ?CuentaPago $cuenta = null): array
+{
+    $venta = $venta instanceof Venta ? $venta : Venta::findOrFail($venta);
+    $total = app(VentaService::class)->totales($venta->id)->total;
+    if ($venta->esCredito() || bccomp($total, '0', 2) <= 0) {
+        return [];
+    }
+
+    return [['cuenta_pago_id' => ($cuenta ?? cuentaEfectivo())->id, 'valor' => $total]];
+}
+
+/** POST /ventas/{id}/cerrar con el pago exacto si es de contado (S-48). */
+function cerrarVenta(int $ventaId, ?array $pagos = null)
+{
+    $venta = Venta::find($ventaId);
+    $pagos ??= $venta && $venta->estaAbierta() ? pagosExactos($venta) : [];
+
+    return test()->postJson("/api/ventas/{$ventaId}/cerrar", $pagos === [] ? [] : ['pagos' => $pagos]);
+}
+
 /** Petición desde la SPA (dominio stateful): pasa por el AuthenticateSession de Sanctum. */
 function comoSpa(): array
 {
@@ -120,7 +158,7 @@ function venderComoMostrador(string $codigoReferencia, bool $cerrar = true, arra
     test()->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => $codigo, 'metodo_captura' => 'escaneado'])->assertCreated();
 
     if ($cerrar) {
-        test()->postJson("/api/ventas/{$ventaId}/cerrar")->assertOk();
+        cerrarVenta($ventaId)->assertOk();
     }
 
     if ($anterior) {
@@ -152,7 +190,7 @@ function ventaCredito(Cliente $cliente, array $precios, bool $cerrar = true): ar
         $items[] = $itemId;
     }
     if ($cerrar) {
-        test()->postJson("/api/ventas/{$ventaId}/cerrar")->assertOk();
+        cerrarVenta($ventaId)->assertOk();
     }
 
     if ($anterior) {
@@ -170,7 +208,7 @@ function fecharVenta(int $ventaId, string $cerrada, string $vence): void
 
 function abonar(Cliente $cliente, mixed $valor, array $extra = [])
 {
-    return test()->postJson("/api/clientes/{$cliente->id}/abonos", ['fecha' => now('America/Bogota')->toDateString(), 'valor' => $valor, 'medio' => 'efectivo', ...$extra]);
+    return test()->postJson("/api/clientes/{$cliente->id}/abonos", ['fecha' => now('America/Bogota')->toDateString(), 'valor' => $valor, 'cuenta_pago_id' => cuentaEfectivo()->id, ...$extra]);
 }
 
 /** RF-14: venta a crédito cerrada con las unidades de RN-4410 indicadas, cada una al precio dado. */
@@ -185,7 +223,7 @@ function ventaCreditoCerrada(Cliente $cliente, int $unidades, int $precio): Vent
         $servicio->escanear($venta, unidadDe('RN-4410')->codigo_barras, MetodoCaptura::Escaneado, $mostrador);
     }
 
-    return $servicio->cerrar($venta);
+    return $servicio->cerrar($venta, pagosExactos($venta));
 }
 
 /** RF-16: ingreso de una línea sin IVA (total = cantidad × costo); confirmado salvo que se pida borrador. */
@@ -245,11 +283,30 @@ function venderS38(array $codigos, ?Cliente $cliente = null, bool $cerrar = true
         }
     }
     if ($cerrar) {
-        test()->postJson("/api/ventas/{$ventaId}/cerrar")->assertOk();
+        cerrarVenta($ventaId)->assertOk();
     }
     if ($anterior) {
         test()->actingAs($anterior);
     }
 
     return [$ventaId, $items];
+}
+
+/* RF-26: ayudas de caja. */
+
+function categoriaCaja(string $nombre): CategoriaCaja
+{
+    return CategoriaCaja::where('nombre', $nombre)->firstOrFail();
+}
+
+/** POST /caja/movimientos con la categoría por nombre (Efectivo por defecto). */
+function movimientoCaja(string $categoria, $valor, ?CuentaPago $cuenta = null, array $extra = [])
+{
+    return test()->postJson('/api/caja/movimientos', [
+        'categoria_caja_id' => categoriaCaja($categoria)->id,
+        'concepto' => 'Concepto de prueba',
+        'valor' => $valor,
+        'cuenta_pago_id' => ($cuenta ?? cuentaEfectivo())->id,
+        ...$extra,
+    ]);
 }

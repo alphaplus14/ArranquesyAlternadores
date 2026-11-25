@@ -5,15 +5,19 @@ use App\Http\Controllers\Api\AjusteController;
 use App\Http\Controllers\Api\AuditoriaController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BusquedaController;
+use App\Http\Controllers\Api\CajaController;
 use App\Http\Controllers\Api\CarteraController;
 use App\Http\Controllers\Api\CategoriaController;
 use App\Http\Controllers\Api\ClienteController;
 use App\Http\Controllers\Api\CodigoUniversalController;
 use App\Http\Controllers\Api\ConfiguracionController;
 use App\Http\Controllers\Api\CuentaController;
+use App\Http\Controllers\Api\CuentaPagoController;
 use App\Http\Controllers\Api\DevolucionController;
+use App\Http\Controllers\Api\EmpleadoController;
 use App\Http\Controllers\Api\EtiquetaController;
 use App\Http\Controllers\Api\IngresoController;
+use App\Http\Controllers\Api\MovimientoCajaController;
 use App\Http\Controllers\Api\PagoController;
 use App\Http\Controllers\Api\PanelController;
 use App\Http\Controllers\Api\ProveedorController;
@@ -27,7 +31,8 @@ use Illuminate\Support\Facades\Route;
  * Regla 14: todo endpoint protegido por rol. Middleware "rol": el admin pasa siempre; "solo_rol"
  * (S-43, S-44): sin el pase del admin (vender es solo del mostrador; operar ajustes y devoluciones,
  * solo de logística). El admin consulta todo y tiene su panel de gestión (RF-23, S-45).
- * No hay rutas DELETE para ventas, venta_items, reversos, movimientos, abonos, pagos ni auditoría (RF-07, RF-11, RF-15, RF-17).
+ * No hay rutas DELETE para ventas, venta_items, reversos, movimientos, abonos, pagos, auditoría ni caja
+ * (cuentas, categorías, movimientos, cierres) (RF-07, RF-11, RF-15, RF-17, RF-24 a RF-26).
  */
 
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login')->name('login');
@@ -62,6 +67,9 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::middleware('rol:admin,logistica')->group(function () {
+        // S-59: logística crea y edita códigos universales (borrar sigue siendo del admin).
+        Route::post('/codigos-universales', [CodigoUniversalController::class, 'store']);
+        Route::match(['put', 'patch'], '/codigos-universales/{codigoUniversal}', [CodigoUniversalController::class, 'update']);
         Route::match(['put', 'patch'], '/referencias/{referencia}', [ReferenciaController::class, 'update']);
         Route::post('/referencias/{referencia}/desactivar', [ReferenciaController::class, 'desactivar']);
         Route::post('/referencias/{referencia}/reactivar', [ReferenciaController::class, 'reactivar']);
@@ -78,8 +86,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::apiResource('categorias', CategoriaController::class)->except(['index', 'store']);
         Route::apiResource('proveedores', ProveedorController::class)
             ->parameters(['proveedores' => 'proveedor'])->except(['index', 'store']);
-        Route::apiResource('codigos-universales', CodigoUniversalController::class)
-            ->parameters(['codigos-universales' => 'codigoUniversal'])->except(['index', 'show']);
+        // S-59: crear y editar universales también es de logística (grupo de abajo); borrar, solo admin.
+        Route::delete('/codigos-universales/{codigoUniversal}', [CodigoUniversalController::class, 'destroy']);
+
+        // RF-28: correcciones de ingresos confirmados, solo consulta. Antes de /ingresos/{ingreso}.
+        Route::get('/ingresos/correcciones', [IngresoController::class, 'correcciones'])->name('ingresos.correcciones.lista');
 
         Route::get('/usuarios', [UsuarioController::class, 'index']);
         Route::post('/usuarios', [UsuarioController::class, 'store']);
@@ -94,6 +105,15 @@ Route::middleware('auth:sanctum')->group(function () {
         // S-45 e: días sin movimiento del panel (120 por defecto, 30 a 730).
         Route::get('/configuracion/dias-sin-movimiento', [ConfiguracionController::class, 'diasSinMovimiento']);
         Route::put('/configuracion/dias-sin-movimiento', [ConfiguracionController::class, 'fijarDiasSinMovimiento']);
+        // RF-25 (S-49, S-51): meta de venta diaria y saldo inicial de caja (este se fija una vez).
+        Route::get('/configuracion/meta-venta', [ConfiguracionController::class, 'metaVenta']);
+        Route::put('/configuracion/meta-venta', [ConfiguracionController::class, 'fijarMetaVenta']);
+        Route::get('/configuracion/saldo-caja-inicial', [ConfiguracionController::class, 'saldoCajaInicial']);
+        Route::put('/configuracion/saldo-caja-inicial', [ConfiguracionController::class, 'fijarSaldoCajaInicial']);
+
+        // RF-24 (S-48): cuentas de pago; solo el admin las crea, edita y desactiva (sin DELETE).
+        Route::post('/cuentas-pago', [CuentaPagoController::class, 'store']);
+        Route::match(['put', 'patch'], '/cuentas-pago/{cuenta}', [CuentaPagoController::class, 'update']);
 
         // RF-23 / S-45: panel de gestión, solo admin y solo en pantalla (regla 16). Objetivo p95 < 800 ms.
         Route::middleware('medir:800')->prefix('panel')->group(function () {
@@ -136,6 +156,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/ingresos/{ingreso}/unidades', [IngresoController::class, 'unidades']);
         Route::post('/ingresos/{ingreso}/confirmar', [IngresoController::class, 'confirmar']);
         Route::post('/ingresos/{ingreso}/escanear', [IngresoController::class, 'escanear'])->middleware('medir:500')->name('ingresos.escanear'); // RF-20
+        // RF-28 (S-58): única vía para corregir un ingreso confirmado, con vista previa sin escritura.
+        Route::post('/ingresos/{ingreso}/correcciones/vista-previa', [IngresoController::class, 'vistaPreviaCorreccion'])->name('ingresos.correcciones.vista-previa');
+        Route::post('/ingresos/{ingreso}/correcciones', [IngresoController::class, 'corregir'])->name('ingresos.correcciones');
 
         // RF-19: vínculo remisión–factura, solo con la factura en borrador.
         Route::get('/ingresos/{ingreso}/remisiones-disponibles', [IngresoController::class, 'remisionesDisponibles']);
@@ -201,6 +224,52 @@ Route::middleware('auth:sanctum')->group(function () {
             // S-42: precio de varios ítems (un grupo del modal de cierre). Antes de {item} para no confundirse.
             Route::patch('/ventas/{venta}/items/precio', [VentaController::class, 'cambiarPrecioLote']);
             Route::patch('/ventas/{venta}/items/{item}', [VentaController::class, 'cambiarPrecio'])->scopeBindings();
+        });
+    });
+
+    // RF-24 a RF-26 (S-48 a S-54): cuentas de pago y caja diaria. Mostrador y admin; logística 403.
+    // Registrar movimientos, anularlos y cerrar el día: solo mostrador. El admin consulta, reabre un
+    // cierre (su única escritura en caja), ve el cuadre mensual y gestiona las categorías.
+    Route::middleware('rol:mostrador')->group(function () {
+        Route::get('/cuentas-pago', [CuentaPagoController::class, 'index']);
+
+        Route::middleware('medir:800')->prefix('caja')->group(function () {
+            Route::get('/movimientos', [MovimientoCajaController::class, 'index'])->name('caja.movimientos');
+            Route::get('/categorias', [MovimientoCajaController::class, 'categorias']);
+            Route::get('/dias/{fecha}', [CajaController::class, 'dia'])->name('caja.dia');
+
+            Route::middleware('solo_rol:mostrador')->group(function () {
+                Route::post('/movimientos', [MovimientoCajaController::class, 'store']);
+                Route::post('/movimientos/{movimiento}/anulaciones', [MovimientoCajaController::class, 'anular']);
+                Route::post('/cierres', [CajaController::class, 'cerrar']);
+            });
+
+            Route::middleware('solo_rol:admin')->group(function () {
+                Route::post('/cierres/{cierre}/reaperturas', [CajaController::class, 'reabrir']);
+                Route::get('/meses/{mes}', [CajaController::class, 'mes'])->name('caja.mes');
+                Route::post('/categorias', [MovimientoCajaController::class, 'crearCategoria']);
+                Route::match(['put', 'patch'], '/categorias/{categoria}', [MovimientoCajaController::class, 'actualizarCategoria']);
+            });
+        });
+    });
+
+    // RF-27 (S-55 a S-57): cuenta de empleados, independiente de la cartera de clientes. Logística 403.
+    // Mostrador: elige empleado (sin saldos) y registra préstamos y abonos. Admin: crea y edita
+    // empleados (apertura al crear), anula movimientos y consulta saldos. Sin rutas DELETE.
+    Route::middleware(['rol:mostrador', 'medir:800'])->prefix('empleados')->group(function () {
+        Route::get('/', [EmpleadoController::class, 'index'])->name('empleados.index');
+
+        Route::middleware('solo_rol:mostrador')->group(function () {
+            Route::post('/{empleado}/prestamos', [EmpleadoController::class, 'prestamo'])->name('empleados.prestamos');
+            Route::post('/{empleado}/abonos', [EmpleadoController::class, 'abono'])->name('empleados.abonos');
+        });
+
+        Route::middleware('solo_rol:admin')->group(function () {
+            Route::get('/resumen', [EmpleadoController::class, 'resumen'])->name('empleados.resumen');
+            Route::post('/', [EmpleadoController::class, 'store'])->name('empleados.crear');
+            Route::match(['put', 'patch'], '/{empleado}', [EmpleadoController::class, 'update'])->name('empleados.editar');
+            Route::get('/{empleado}/estado-cuenta', [EmpleadoController::class, 'estadoCuenta'])->name('empleados.estado-cuenta');
+            Route::post('/movimientos/{movimiento}/anulaciones', [EmpleadoController::class, 'anular'])->name('empleados.anular');
         });
     });
 });

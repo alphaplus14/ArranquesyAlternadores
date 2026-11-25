@@ -46,7 +46,7 @@ it('S-43: el admin recibe 403 al cerrar una venta', function () {
     [$ventaId] = ventaDeMostradorS43();
 
     actuarComo(Rol::Admin);
-    $this->postJson("/api/ventas/{$ventaId}/cerrar")->assertForbidden();
+    cerrarVenta($ventaId)->assertForbidden();
     $this->getJson("/api/ventas/{$ventaId}")->assertOk()->assertJsonPath('estado', 'abierta');
 });
 
@@ -89,7 +89,7 @@ it('S-43: el admin anula un ítem de una venta abierta con motivo y queda audita
 
 it('S-43: el admin devuelve una venta cerrada con motivo y queda auditado; sin motivo es 422', function () {
     [$ventaId] = ventaDeMostradorS43();
-    test()->postJson("/api/ventas/{$ventaId}/cerrar")->assertOk();
+    cerrarVenta($ventaId)->assertOk();
 
     $admin = actuarComo(Rol::Admin);
     $this->postJson("/api/ventas/{$ventaId}/reversos", ['tipo' => 'devolucion'])->assertUnprocessable()->assertJsonValidationErrors('motivo');

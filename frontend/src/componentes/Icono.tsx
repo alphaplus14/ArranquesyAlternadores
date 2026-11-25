@@ -29,6 +29,7 @@ export type IconoNombre =
   | 'agrandar'
   | 'achicar'
   | 'panel'
+  | 'caja-diaria'
 
 /** Trazos propios. No hay fuente de iconos ni librería de UI. */
 export default function Icono({ nombre }: { nombre: IconoNombre }) {
@@ -51,6 +52,7 @@ const trazos: Record<IconoNombre, ReactNode> = {
   auditoria: <path d="M8 6h11M8 12h11M8 18h11M4 6h.01M4 12h.01M4 18h.01" />,
   agotados: <path d="M12 4l8 14H4L12 4zM12 10v4M12 16.5h.01" />,
   panel: <path d="M4 20h16M6 16v-4M10 16V8M14 16v-6M18 16V5" />, // RF-23
+  'caja-diaria': <path d="M4 10h16v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9zM6 10V5h8v5M14 7h4l2 3M8 14h3M14.5 14h.01M17 14h.01M8 17h8" />, // RF-25
   buscar: <path d="M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-3.5-3.5" />,
   persona: <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4.5 20a7.5 7.5 0 0 1 15 0" />,
   salir: <path d="M15 4h3a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-3M10 16l-4-4 4-4M6 12h10" />,

@@ -82,7 +82,7 @@ it('RF-18: un ítem anulado con la venta abierta aparece como reverso justo desp
 
     actuarComo(Rol::Mostrador);
     $this->postJson("/api/ventas/{$ventaId}/reversos", ['tipo' => 'anulacion', 'motivo' => 'Se escaneó de más', 'venta_item_id' => $items[1]])->assertOk();
-    $this->postJson("/api/ventas/{$ventaId}/cerrar")->assertOk();
+    cerrarVenta($ventaId)->assertOk();
 
     $estado = $this->getJson("/api/clientes/{$cliente->id}/estado-cuenta")->assertOk();
     expect(collect($estado->json('movimientos'))->pluck('tipo')->all())->toBe(['venta', 'reverso'])

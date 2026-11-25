@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\EstadoVenta;
 use App\Enums\MetodoCaptura;
 use App\Enums\TipoReverso;
 use App\Exceptions\ReglaInventarioException;
@@ -26,7 +27,10 @@ use Illuminate\Support\Facades\DB;
  */
 class ReversoService
 {
-    public function __construct(private readonly InventarioService $inventario) {}
+    public function __construct(
+        private readonly InventarioService $inventario,
+        private readonly CajaService $caja,
+    ) {}
 
     public function reversar(
         Venta $venta,
@@ -42,6 +46,11 @@ class ReversoService
             // S-46: una venta descartada no tiene ítems vigentes ni admite movimientos nuevos.
             if ($venta->estaDescartada()) {
                 throw new ReglaInventarioException($venta->motivoNoAbierta(), 422);
+            }
+
+            // S-50 / S-53: revertir una venta de contado ya cerrada devuelve dinero de la caja de hoy.
+            if ($venta->estado === EstadoVenta::Cerrada && ! $venta->esCredito()) {
+                $this->caja->exigirDiaAbierto('registrar devoluciones de ventas de contado');
             }
 
             // Una devolución supone que el cliente ya se llevó la mercancía.

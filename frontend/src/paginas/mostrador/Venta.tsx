@@ -4,7 +4,7 @@ import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { RUTA_CARTERA, rutaInicio } from '../../rutas'
 import { AxiosError } from 'axios'
 import { api, mensajeError } from '../../api/cliente'
-import { NOMBRE_CALIDAD, type Calidad, type Cliente, type MetodoCaptura, type OpcionReferenciaVenta, type Pagina, type Referencia, type RespuestaEscaneo, type Venta as TVenta, type VentaAbierta, type VentaItem } from '../../api/tipos'
+import { NOMBRE_CALIDAD, type Calidad, type Cliente, type MetodoCaptura, type OpcionReferenciaVenta, type PagoVentaNuevo, type Pagina, type Referencia, type RespuestaEscaneo, type Venta as TVenta, type VentaAbierta, type VentaItem } from '../../api/tipos'
 import { useAviso } from '../../componentes/Avisos'
 import { useAuth } from '../../auth/AuthProvider'
 import CampoCantidad from '../../componentes/CampoCantidad'
@@ -13,6 +13,9 @@ import ChipCalidad from '../../componentes/ChipCalidad'
 import Dialogo, { DialogoSeccion } from '../../componentes/Dialogo'
 import ListaEleccion, { type FilaEleccion } from '../../componentes/ListaEleccion'
 import DialogoElegirReferencia from '../../componentes/mostrador/DialogoElegirReferencia'
+import FormaPagoVenta from '../../componentes/mostrador/FormaPagoVenta'
+import { aPagos, evaluarPago, filasIniciales, type FilaPago } from '../../utilidades/formaPago'
+import { useCuentasPago } from '../../hooks/useCatalogos'
 import Paginacion from '../../componentes/Paginacion'
 import { useScanner } from '../../hooks/useScanner'
 import { useAngosta } from '../../hooks/useAngosta'
@@ -242,7 +245,8 @@ export default function Venta() {
   })
 
   const cerrar = useMutation({
-    mutationFn: async () => (await api.post<TVenta>(`/ventas/${ventaId}/cerrar`)).data,
+    // RF-24 (S-48): de contado lleva la forma de pago; a crédito, nada.
+    mutationFn: async (pagos?: PagoVentaNuevo[]) => (await api.post<TVenta>(`/ventas/${ventaId}/cerrar`, pagos ? { pagos } : {})).data,
     onSuccess: (v) => {
       qc.setQueryData(['venta', v.id], v)
       qc.invalidateQueries({ queryKey: ['ventas'] })
@@ -586,7 +590,7 @@ export default function Venta() {
           vieja={esDeDiaAnterior(v)}
           onVentaActualizada={(nueva) => qc.setQueryData(['venta', nueva.id], nueva)}
           pendiente={cerrar.isPending}
-          onCerrarVenta={() => cerrar.mutate()}
+          onCerrarVenta={(pagos) => cerrar.mutate(pagos)}
           onSeguir={() => { focoAlCerrarDialogo.current = botonCerrarRef.current; setConfirmandoCierre(false) }}
         />
       )}
@@ -904,12 +908,14 @@ function PrecioGrupo({ ventaId, grupo, onGuardado, onEstado }: {
  * "Volver" o Esc no cierran la venta; mientras se cierra, el modal no se puede cerrar.
  * S-42: en crédito abierto el precio de cada grupo se corrige aquí (todas sus unidades, auditado);
  * en contado es de solo lectura. "Confirmar cierre" espera a que no quede una edición pendiente.
+ * RF-24 (S-48): en contado, "Forma de pago" (cuentas y valores, pago dividido); el botón se habilita
+ * solo cuando los pagos suman exactamente el total. En crédito la sección no aparece.
  */
 function DialogoCerrarVenta({ venta: v, vieja, pendiente, onCerrarVenta, onSeguir, onVentaActualizada }: {
   venta: TVenta
   vieja: boolean
   pendiente: boolean
-  onCerrarVenta: () => void
+  onCerrarVenta: (pagos?: PagoVentaNuevo[]) => void
   onSeguir: () => void
   onVentaActualizada: (v: TVenta) => void
 }) {
@@ -924,6 +930,16 @@ function DialogoCerrarVenta({ venta: v, vieja, pendiente, onCerrarVenta, onSegui
     setEdiciones((e) => (Boolean(e[clave]) === pend ? e : { ...e, [clave]: pend }))
   }, [])
   const hayEdicion = Object.values(ediciones).some(Boolean)
+
+  const cuentas = useCuentasPago()
+  const totalVenta = t?.total ?? '0'
+  const [filas, setFilas] = useState<FilaPago[] | null>(null)
+  useEffect(() => {
+    if (!credito && filas === null && cuentas.data) setFilas(filasIniciales(cuentas.data, totalVenta))
+  }, [credito, filas, cuentas.data, totalVenta])
+  const sinValor = Number(totalVenta) <= 0
+  const pago = filas ? evaluarPago(filas, totalVenta) : null
+  const pagoListo = credito || sinValor || (pago?.listo ?? false)
 
   return (
     <Dialogo
@@ -953,9 +969,9 @@ function DialogoCerrarVenta({ venta: v, vieja, pendiente, onCerrarVenta, onSegui
               type="button"
               className="primario boton-44"
               autoFocus
-              disabled={pendiente || hayEdicion}
-              title={hayEdicion ? 'Termine de corregir el precio (Enter o salir del campo) antes de cerrar' : undefined}
-              onClick={onCerrarVenta}
+              disabled={pendiente || hayEdicion || !pagoListo}
+              title={hayEdicion ? 'Termine de corregir el precio (Enter o salir del campo) antes de cerrar' : !pagoListo ? 'Los pagos deben sumar exactamente el total' : undefined}
+              onClick={() => onCerrarVenta(credito || sinValor || !filas ? undefined : aPagos(filas))}
             >{pendiente ? 'Cerrando…' : 'Confirmar cierre'}</button>
           </div>
         </div>
@@ -988,6 +1004,12 @@ function DialogoCerrarVenta({ venta: v, vieja, pendiente, onCerrarVenta, onSegui
             ))}
           </tbody>
         </table>
+        {!credito && !sinValor && (
+          cuentas.isError ? <p className="aviso error">No se pudieron cargar las cuentas de pago: {mensajeError(cuentas.error)}</p>
+            : filas && cuentas.data
+              ? <FormaPagoVenta cuentas={cuentas.data} total={totalVenta} filas={filas} deshabilitado={pendiente} onCambio={setFilas} />
+              : <p className="ayuda">Cargando las cuentas de pago…</p>
+        )}
         <p className="ayuda">Al cerrar, los precios quedan fijos y la venta no se puede editar; solo reversar.</p>
       </section>
     </Dialogo>

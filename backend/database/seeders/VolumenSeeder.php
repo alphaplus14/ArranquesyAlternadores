@@ -12,17 +12,16 @@ use App\Enums\TipoReverso;
 use App\Models\Categoria;
 use App\Models\Cliente;
 use App\Models\CodigoUniversal;
+use App\Models\CuentaPago;
 use App\Models\Proveedor;
 use App\Models\Referencia;
 use App\Models\Unidad;
 use App\Models\User;
-use App\Models\Venta;
 use App\Services\IngresoService;
 use App\Services\ReversoService;
 use App\Services\VentaService;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -238,7 +237,9 @@ class VolumenSeeder extends Seeder
 
             // Las últimas 15 quedan abiertas.
             if ($i <= 95) {
-                $cerradas->push($ventas->cerrar($venta));
+                // RF-24 (S-48): la de contado se paga con el total exacto (casi siempre en efectivo).
+                $pagos = $credito ? [] : [['cuenta_pago_id' => ($f->boolean(75) ? CuentaPago::efectivo() : CuentaPago::query()->where('tipo', '!=', 'efectivo')->inRandomOrder()->first() ?? CuentaPago::efectivo())->id, 'valor' => $ventas->totales($venta->id)->total]];
+                $cerradas->push($ventas->cerrar($venta, $pagos));
             } else {
                 $abiertas->push([$venta, $items, $vendedor]);
             }

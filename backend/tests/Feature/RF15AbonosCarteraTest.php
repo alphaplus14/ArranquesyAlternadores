@@ -27,7 +27,7 @@ it('RF-15 (a) / criterio 1: venta a crédito de 100 y abono de 40 dejan saldo 60
     ventaCredito($cliente, [100]);
 
     actuarComo(Rol::Mostrador);
-    abonar($cliente, 40, ['medio' => 'transferencia', 'referencia' => 'TR-991'])->assertCreated()
+    abonar($cliente, 40, ['cuenta_pago_id' => cuentaBanco()->id, 'referencia' => 'TR-991'])->assertCreated()
         ->assertJsonPath('abono.valor', '40.00')
         ->assertJsonPath('abono.medio', 'transferencia')
         ->assertJsonPath('abono.anulado', false)
@@ -70,7 +70,7 @@ it('RF-15 (d) / S-09: una venta a crédito abierta no cuenta; al cerrarla sí', 
     actuarComo(Rol::Mostrador);
     expect(filaCartera($cliente))->toBeNull();
 
-    $this->postJson("/api/ventas/{$ventaId}/cerrar")->assertOk();
+    cerrarVenta($ventaId)->assertOk();
     expect(filaCartera($cliente)['saldo'])->toBe('100.00');
 });
 
@@ -79,7 +79,7 @@ it('RF-15 (e): una venta de contado no cuenta en la cartera', function () {
     actuarComo(Rol::Mostrador);
     $ventaId = abrirVenta();
     $this->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => unidadDe('RN-4410')->codigo_barras, 'metodo_captura' => 'escaneado'])->assertCreated();
-    $this->postJson("/api/ventas/{$ventaId}/cerrar")->assertOk();
+    cerrarVenta($ventaId)->assertOk();
 
     expect(filaCartera($cliente))->toBeNull()
         ->and($this->getJson('/api/cartera?solo_con_saldo=0')->json('totales.cartera_total'))->toBe('0.00');
@@ -143,7 +143,7 @@ it('RF-15 (h): valor 0 o negativo, fecha futura, cliente inactivo y anular dos v
     abonar($cliente, -5)->assertUnprocessable()->assertJsonValidationErrors('valor');
     abonar($cliente, 10, ['fecha' => now('America/Bogota')->addDay()->toDateString()])
         ->assertUnprocessable()->assertJsonPath('message', 'La fecha del abono no puede ser futura.');
-    abonar($cliente, 10, ['medio' => 'cheque'])->assertUnprocessable()->assertJsonValidationErrors('medio');
+    abonar($cliente, 10, ['cuenta_pago_id' => 999999])->assertUnprocessable()->assertJsonValidationErrors('cuenta_pago_id');
 
     $inactivo = Cliente::factory()->inactivo()->create();
     abonar($inactivo, 10)->assertUnprocessable();

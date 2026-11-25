@@ -16,7 +16,7 @@ it('RF-14: la venta de contado sigue abriéndose sin cliente y sin vencimiento',
     $id = $this->postJson('/api/ventas', escaneoInicial('RN-4410'))->assertCreated()->json('venta_id');
     $this->getJson("/api/ventas/{$id}")->assertJsonPath('forma_pago', 'contado')->assertJsonPath('cliente', null);
 
-    $this->postJson("/api/ventas/{$id}/cerrar")->assertOk()->assertJsonPath('vence_el', null);
+    cerrarVenta($id)->assertOk()->assertJsonPath('vence_el', null);
 });
 
 it('RF-14: una venta a crédito sin cliente responde 422', function () {
@@ -81,7 +81,7 @@ it('RF-14: al cerrar una venta a crédito, vence_el = fecha de cierre + plazo de
 
     expect(Venta::find($id)->vence_el)->toBeNull();
 
-    $this->postJson("/api/ventas/{$id}/cerrar")->assertOk()->assertJsonPath('vence_el', '2027-01-04');
+    cerrarVenta($id)->assertOk()->assertJsonPath('vence_el', '2027-01-04');
 });
 
 it('RF-14: forma_pago, cliente y factura_contapyme no se editan después de crear la venta', function () {
@@ -106,7 +106,7 @@ it('RF-14: vence_el solo se fija en el cierre, no después', function () {
     $venta->vence_el = '2030-01-01';
     expect(fn () => $venta->save())->toThrow(RegistroInmutableException::class);
 
-    $this->postJson("/api/ventas/{$venta->id}/cerrar")->assertOk();
+    cerrarVenta($venta->id)->assertOk();
     $cerrada = Venta::find($venta->id);
     $cerrada->vence_el = '2030-01-01';
     expect(fn () => $cerrada->save())->toThrow(RegistroInmutableException::class);

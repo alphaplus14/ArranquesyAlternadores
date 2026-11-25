@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
 import { api, erroresCampo, mensajeError } from '../../api/cliente'
-import { NOMBRE_MEDIO, type Abono, type DetalleCartera, type MedioPago, type ResumenCartera, type VentaCartera } from '../../api/tipos'
+import { NOMBRE_TIPO_CUENTA, type Abono, type DetalleCartera, type ResumenCartera, type VentaCartera } from '../../api/tipos'
+import { useCuentasPago } from '../../hooks/useCatalogos'
 import DialogoApilado from '../DialogoApilado'
 import ControlSegmentado from '../ControlSegmentado'
 import Icono from '../Icono'
@@ -10,8 +11,6 @@ import { formatoNumero, leerNumero, pesos } from '../numeros'
 import { fechaCorta } from '../fechas'
 import { hoyEnBogota } from '../../utilidades/periodos'
 import { nombreVenta } from '../../utilidades/cartera'
-
-const MEDIOS = Object.keys(NOMBRE_MEDIO) as MedioPago[]
 
 type Aplicar = 'general' | 'factura'
 
@@ -21,8 +20,8 @@ const APLICAR: { valor: Aplicar; texto: string }[] = [
 ]
 
 /**
- * RF-15 (S-30, S-32): registrar un abono. Fecha (hoy por defecto, no futura), valor > 0, medio y
- * referencia/nota opcionales.
+ * RF-15 (S-30, S-32): registrar un abono. Fecha (hoy por defecto, no futura), valor > 0, cuenta donde
+ * entra (RF-24, S-48: el medio lo deriva el backend del tipo de la cuenta) y referencia/nota opcionales.
  * - "A las más antiguas" (general): se aplica FIFO. Si supera el saldo, pide confirmar el saldo a favor.
  * - "A una factura" (dirigido): se elige una venta con pendiente; el valor se prellena con su
  *   pendiente y no puede superarlo (el resto va como abono general aparte).
@@ -42,7 +41,7 @@ export default function DialogoAbono({ cliente, saldo, ventaInicial, onGuardado,
   const [f, setF] = useState({
     fecha: hoy,
     valor: ventaInicial ? formatoNumero(ventaInicial.pendiente) : '',
-    medio: 'efectivo' as MedioPago,
+    cuenta: '' as number | '',
     referencia: '',
     nota: '',
   })
@@ -50,6 +49,9 @@ export default function DialogoAbono({ cliente, saldo, ventaInicial, onGuardado,
   const [ventaId, setVentaId] = useState<number | null>(ventaInicial?.id ?? null)
   const [buscar, setBuscar] = useState('')
   const [confirmaExceso, setConfirmaExceso] = useState(false)
+  const cuentas = useCuentasPago()
+  // Efectivo por defecto, cuando llegan las cuentas.
+  const cuentaElegida = f.cuenta !== '' ? f.cuenta : (cuentas.data?.find((c) => c.tipo === 'efectivo')?.id ?? '')
 
   const detalle = useQuery({
     queryKey: ['cartera-cliente', cliente.id],
@@ -69,14 +71,14 @@ export default function DialogoAbono({ cliente, saldo, ventaInicial, onGuardado,
   const fechaFutura = f.fecha > hoy
   const superaFactura = dirigido && elegida !== undefined && valorNumero !== null && valorNumero > Number(elegida.pendiente)
   const excede = !dirigido && valorNumero !== null && valorNumero > Math.max(Number(saldo), 0)
-  const listo = valorNumero !== null && !valorInvalido && f.fecha !== '' && !fechaFutura
+  const listo = valorNumero !== null && !valorInvalido && f.fecha !== '' && !fechaFutura && cuentaElegida !== ''
     && (dirigido ? elegida !== undefined && !superaFactura : (!excede || confirmaExceso))
 
   const guardar = useMutation({
     mutationFn: async () => (await api.post<{ abono: Abono; resumen: ResumenCartera }>(`/clientes/${cliente.id}/abonos`, {
       fecha: f.fecha,
       valor: valorNumero,
-      medio: f.medio,
+      cuenta_pago_id: cuentaElegida,
       referencia: f.referencia.trim() || null,
       nota: f.nota.trim() || null,
       venta_id: dirigido ? ventaId : null,
@@ -184,10 +186,12 @@ export default function DialogoAbono({ cliente, saldo, ventaInicial, onGuardado,
         </label>
       </div>
       <label>
-        <span className="etiqueta-campo">Medio de pago<span className="obligatorio" aria-hidden="true">*</span></span>
-        <select value={f.medio} onChange={(e) => cambiar({ medio: e.target.value as MedioPago })}>
-          {MEDIOS.map((m) => <option key={m} value={m}>{NOMBRE_MEDIO[m]}</option>)}
+        <span className="etiqueta-campo">Cuenta<span className="obligatorio" aria-hidden="true">*</span></span>
+        <select value={cuentaElegida} aria-invalid={!!errores.cuenta_pago_id} onChange={(e) => cambiar({ cuenta: e.target.value === '' ? '' : Number(e.target.value) })}>
+          {cuentaElegida === '' && <option value="">{cuentas.isLoading ? 'Cargando cuentas…' : 'Elija la cuenta…'}</option>}
+          {(cuentas.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.nombre} ({NOMBRE_TIPO_CUENTA[c.tipo]})</option>)}
         </select>
+        {errores.cuenta_pago_id && <small className="ayuda error" role="alert">{errores.cuenta_pago_id}</small>}
       </label>
       <label>
         <span className="etiqueta-campo">Referencia (opcional)</span>

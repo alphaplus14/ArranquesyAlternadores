@@ -8,6 +8,7 @@ use App\Enums\TipoReverso;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\AbrirVentaRequest;
 use App\Http\Requests\CambiarPrecioItemRequest;
+use App\Http\Requests\CerrarVentaRequest;
 use App\Http\Requests\EscanearVentaRequest;
 use App\Http\Resources\VentaItemResource;
 use App\Http\Resources\VentaResource;
@@ -15,7 +16,6 @@ use App\Models\Venta;
 use App\Models\VentaItem;
 use App\Services\ReversoService;
 use App\Services\VentaService;
-use App\Support\TotalesVenta;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -131,12 +131,7 @@ class VentaController extends Controller
             'origen_codigo' => $item->origen_codigo, // S-31: etiqueta | referencia
             // S-33: totales de la venta con el ítem nuevo, para que la pantalla los actualice sin
             // volver a pedir la venta (una consulta liviana: precio, IVA y si está reversado).
-            'totales' => TotalesVenta::desglosar(DB::table('venta_items as vi')
-                ->leftJoin('reverso_items as ri', 'ri.venta_item_id', '=', 'vi.id')
-                ->where('vi.venta_id', $item->venta_id)
-                ->get(['vi.precio_unitario', 'vi.iva_porcentaje', 'ri.id as reverso'])
-                ->map(fn ($f) => ['precio' => $f->precio_unitario, 'iva' => $f->iva_porcentaje, 'vigente' => $f->reverso === null]))
-                ->aArreglo(),
+            'totales' => $this->ventas->totales($item->venta_id)->aArreglo(),
             'unidad' => [
                 'id' => $item->unidad->id,
                 'codigo_barras' => $item->unidad->codigo_barras,
@@ -153,9 +148,10 @@ class VentaController extends Controller
         ], 201);
     }
 
-    public function cerrar(Venta $venta): VentaResource
+    /** RF-24 (S-48): de contado con `pagos` que suman el total; a crédito sin pagos. */
+    public function cerrar(CerrarVentaRequest $request, Venta $venta): VentaResource
     {
-        return new VentaResource($this->cargar($this->ventas->cerrar($venta)));
+        return new VentaResource($this->cargar($this->ventas->cerrar($venta, $request->pagos())));
     }
 
     /**
@@ -217,6 +213,8 @@ class VentaController extends Controller
             'reversos' => fn ($q) => $q->orderBy('id'),
             'reversos.usuario:id,name',
             'reversos.items',
+            'pagos' => fn ($q) => $q->orderBy('id'),
+            'pagos.cuenta:id,nombre,tipo',
         ]);
     }
 }

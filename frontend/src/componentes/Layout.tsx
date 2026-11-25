@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
-import { RUTA_AJUSTES, RUTA_CARTERA, RUTA_PANEL, rutaInicio } from '../rutas'
+import { RUTA_AJUSTES, RUTA_CAJA, RUTA_CAJA_ADMIN, RUTA_CARTERA, RUTA_CORRECCIONES, RUTA_PANEL, RUTA_UNIVERSALES, rutaInicio } from '../rutas'
 import logo from '../assets/logo-la8va.jpg'
 import Icono, { type IconoNombre } from './Icono'
 import MiCuenta from './MiCuenta'
@@ -37,13 +37,18 @@ export default function Layout() {
   // Orden: Mostrador, Productos, Logística, Administración, Consulta. Qué ve cada rol no cambia.
   const grupos: { etiqueta: string; items: ItemMenu[] }[] = [
     // RF-23: el panel de gestión es lo primero del admin (y su inicio).
-    usuario?.rol === 'admin' ? { etiqueta: 'Gestión', items: [{ to: RUTA_PANEL, texto: 'Panel', icono: 'panel' }] } : null,
+    // RF-25 a RF-27: Caja del admin (día en consulta, mes, cuentas y categorías, empleados).
+    usuario?.rol === 'admin'
+      ? { etiqueta: 'Gestión', items: [{ to: RUTA_PANEL, texto: 'Panel', icono: 'panel' }, { to: RUTA_CAJA_ADMIN, texto: 'Caja', icono: 'caja-diaria' }] }
+      : null,
     tieneRol('mostrador')
       ? {
           etiqueta: 'Mostrador',
           items: [
             ...(vende ? [{ to: '/mostrador/venta', texto: 'Venta', icono: 'venta', alerta: hayVentasViejas ? 'Hay ventas abiertas de días anteriores' : undefined } as ItemMenu] : []),
             { to: RUTA_CARTERA, texto: 'Cartera', icono: 'billetera' }, // RF-15 / S-30
+            // RF-25 / RF-26: el mostrador cierra su caja; el admin la consulta desde Gestión › Caja.
+            ...(vende ? [{ to: RUTA_CAJA, texto: 'Caja', icono: 'caja-diaria' } as ItemMenu] : []),
           ],
         }
       : null,
@@ -56,6 +61,8 @@ export default function Layout() {
             { to: '/logistica/etiquetas', texto: 'Etiquetas', icono: 'etiqueta' },
             // RF-21. S-44: el admin solo consulta el historial.
             { to: RUTA_AJUSTES, texto: usuario?.rol === 'admin' ? 'Historial de ajustes' : 'Ajustes', icono: 'inventario' },
+            // S-59: logística crea y edita universales; el admin los tiene en Administración.
+            ...(usuario?.rol === 'logistica' ? [{ to: RUTA_UNIVERSALES, texto: 'Códigos universales', icono: 'universal' } as ItemMenu] : []),
           ],
         }
       : null,
@@ -63,11 +70,12 @@ export default function Layout() {
       ? {
           etiqueta: 'Administración',
           items: [
-            { to: '/admin/universales', texto: 'Universales', icono: 'universal' },
+            { to: RUTA_UNIVERSALES, texto: 'Universales', icono: 'universal' },
             { to: '/admin/catalogos', texto: 'Catálogos', icono: 'catalogo' },
             { to: '/admin/clientes', texto: 'Clientes', icono: 'persona' },
             { to: '/admin/usuarios', texto: 'Usuarios', icono: 'usuarios' },
             { to: '/admin/auditoria', texto: 'Auditoría', icono: 'auditoria' },
+            { to: RUTA_CORRECCIONES, texto: 'Correcciones de ingresos', icono: 'ingreso' }, // RF-28
             { to: '/admin/configuracion', texto: 'Configuración', icono: 'configuracion' }, // RF-22
           ],
         }

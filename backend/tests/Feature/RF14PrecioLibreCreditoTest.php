@@ -78,7 +78,7 @@ it('RF-14: cambiar precio en una venta de contado responde 422 y no audita', fun
 it('RF-14: cambiar precio en una venta a crédito cerrada responde 422', function () {
     actuarComo(Rol::Mostrador);
     $item = itemVendido();
-    $this->postJson("/api/ventas/{$item->venta_id}/cerrar")->assertOk();
+    cerrarVenta($item->venta_id)->assertOk();
 
     cambiarPrecio($item, 70000)->assertStatus(422);
     expect($item->fresh()->precio_unitario)->toBe('85000.00');
@@ -136,7 +136,7 @@ it('RF-14: fuera del precio en crédito abierto, venta_items sigue inmutable', f
     expect(fn () => $credito->delete())->toThrow(RegistroInmutableException::class);
 
     // El precio de la venta a crédito ya cerrada.
-    $this->postJson("/api/ventas/{$credito->venta_id}/cerrar")->assertOk();
+    cerrarVenta($credito->venta_id)->assertOk();
     expect(fn () => $credito->fresh()->update(['precio_unitario' => 1]))->toThrow(RegistroInmutableException::class);
     expect(Venta::findOrFail($credito->venta_id)->estaAbierta())->toBeFalse();
 });

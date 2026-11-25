@@ -21,6 +21,18 @@ export const RUTA_PANEL = '/admin/panel'
 /** RF-15 / RF-18 (S-30): cartera de clientes (mostrador y admin). */
 export const RUTA_CARTERA = '/cartera'
 
+/** RF-25 / RF-26: caja del día del mostrador (registrar movimientos y cerrar). */
+export const RUTA_CAJA = '/caja'
+
+/** RF-25 a RF-27: Caja del administrador (día en consulta, mes, cuentas y categorías, empleados). */
+export const RUTA_CAJA_ADMIN = '/admin/caja'
+
+/** RF-01 / S-59: códigos universales (admin y logística crean y editan; borrar es del admin). */
+export const RUTA_UNIVERSALES = '/universales'
+
+/** RF-28: correcciones de ingresos confirmados (solo admin, solo consulta). */
+export const RUTA_CORRECCIONES = '/admin/correcciones'
+
 export function rutaInicio(rol: Rol): string {
   return inicio[rol]
 }

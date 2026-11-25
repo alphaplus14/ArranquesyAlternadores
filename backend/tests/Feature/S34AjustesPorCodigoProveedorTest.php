@@ -46,7 +46,7 @@ function venderS34(array $codigos, bool $cerrar = true, ?Cliente $cliente = null
         test()->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => $c, 'metodo_captura' => 'escaneado'])->assertCreated();
     }
     if ($cerrar) {
-        test()->postJson("/api/ventas/{$ventaId}/cerrar")->assertOk();
+        cerrarVenta($ventaId)->assertOk();
     }
     if ($anterior) {
         test()->actingAs($anterior);

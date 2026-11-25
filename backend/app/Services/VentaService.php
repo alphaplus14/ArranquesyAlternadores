@@ -9,11 +9,14 @@ use App\Enums\OrigenCodigo;
 use App\Exceptions\ReglaInventarioException;
 use App\Models\Auditoria;
 use App\Models\Cliente;
+use App\Models\CuentaPago;
 use App\Models\Unidad;
 use App\Models\User;
 use App\Models\Venta;
 use App\Models\VentaItem;
+use App\Models\VentaPago;
 use App\Support\RangoFechas;
+use App\Support\TotalesVenta;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -32,6 +35,7 @@ class VentaService
     public function __construct(
         private readonly InventarioService $inventario,
         private readonly ResolverCodigoService $resolver,
+        private readonly CajaService $caja,
     ) {}
 
     /**
@@ -375,14 +379,44 @@ class VentaService
         });
     }
 
-    public function cerrar(Venta $venta): Venta
+    /**
+     * S-33: totales de la venta (ítems vigentes, IVA incluido). Una consulta liviana; la usan el cierre
+     * y la respuesta del escaneo.
+     */
+    public function totales(int $ventaId): TotalesVenta
     {
-        return DB::transaction(function () use ($venta) {
+        return TotalesVenta::desglosar(DB::table('venta_items as vi')
+            ->leftJoin('reverso_items as ri', 'ri.venta_item_id', '=', 'vi.id')
+            ->where('vi.venta_id', $ventaId)
+            ->get(['vi.precio_unitario', 'vi.iva_porcentaje', 'ri.id as reverso'])
+            ->map(fn ($f) => ['precio' => $f->precio_unitario, 'iva' => $f->iva_porcentaje, 'vigente' => $f->reverso === null]));
+    }
+
+    /**
+     * RF-24 (S-48): de contado exige `pagos` (cuenta activa, valor > 0, referencia opcional) cuya suma
+     * sea EXACTAMENTE el total con IVA incluido (S-33); se guardan en la misma transacción del cierre.
+     * A crédito no recibe pagos (el cliente abona en Cartera). S-53: no cierra si la caja de hoy ya
+     * está cerrada.
+     *
+     * @param  list<array{cuenta_pago_id: int|string, valor: int|float|string, referencia?: ?string}>  $pagos
+     */
+    public function cerrar(Venta $venta, array $pagos = []): Venta
+    {
+        return DB::transaction(function () use ($venta, $pagos) {
             $venta = Venta::query()->lockForUpdate()->findOrFail($venta->id);
 
             if (! $venta->estaAbierta()) {
                 throw new ReglaInventarioException($venta->motivoNoAbierta('La venta ya está cerrada.'));
             }
+
+            if ($venta->esCredito() && $pagos !== []) {
+                throw new ReglaInventarioException('Una venta a crédito no recibe pagos al cerrarla: el cliente abona después en Cartera.', 422, ['campo' => 'pagos']);
+            }
+            if (! $venta->esCredito()) {
+                $this->validarPagos($venta, $pagos);
+            }
+
+            $this->caja->exigirDiaAbierto('cerrar ventas');
 
             $venta->estado = EstadoVenta::Cerrada;
             $venta->cerrada_at = now();
@@ -395,7 +429,63 @@ class VentaService
 
             $venta->save();
 
+            foreach ($pagos as $p) {
+                $referencia = trim((string) ($p['referencia'] ?? ''));
+                VentaPago::create([
+                    'venta_id' => $venta->id,
+                    'cuenta_pago_id' => (int) $p['cuenta_pago_id'],
+                    'valor' => CajaService::dinero((string) $p['valor']),
+                    'referencia' => $referencia === '' ? null : $referencia,
+                ]);
+            }
+
             return $venta;
         });
+    }
+
+    /**
+     * S-48: mínimo un pago, cuentas activas, valores > 0 y suma igual al total. Una venta sin valor
+     * por cobrar (sin ítems vigentes) se cierra sin pagos, como antes.
+     */
+    private function validarPagos(Venta $venta, array $pagos): void
+    {
+        $total = $this->totales($venta->id)->total;
+
+        if (bccomp($total, '0', 2) <= 0) {
+            if ($pagos !== []) {
+                throw new ReglaInventarioException('La venta no tiene valor por cobrar: se cierra sin pagos.', 422, ['campo' => 'pagos']);
+            }
+
+            return;
+        }
+        if ($pagos === []) {
+            throw new ReglaInventarioException('Indique la forma de pago: al menos una cuenta con su valor.', 422, ['campo' => 'pagos']);
+        }
+
+        $ids = array_map(fn ($p) => (int) ($p['cuenta_pago_id'] ?? 0), $pagos);
+        $activas = CuentaPago::query()->activas()->whereKey($ids)->pluck('id')->all();
+        $suma = '0.00';
+        foreach ($pagos as $i => $p) {
+            if (! in_array($ids[$i], $activas, true)) {
+                throw new ReglaInventarioException('Alguna cuenta del pago no existe o está inactiva.', 422, ['campo' => "pagos.{$i}.cuenta_pago_id"]);
+            }
+            $valor = (string) ($p['valor'] ?? '');
+            if (! is_numeric($valor) || bccomp($valor, '0', 2) <= 0) {
+                throw new ReglaInventarioException('Cada valor del pago debe ser mayor que 0.', 422, ['campo' => "pagos.{$i}.valor"]);
+            }
+            $suma = bcadd($suma, $valor, 2);
+        }
+
+        if (bccomp($suma, $total, 2) !== 0) {
+            $diferencia = bcsub($total, $suma, 2);
+            $texto = number_format(abs((float) $diferencia), 0, ',', '.');
+            throw new ReglaInventarioException(
+                bccomp($diferencia, '0', 2) > 0
+                    ? "Los pagos suman menos que el total de la venta: faltan \${$texto}."
+                    : "Los pagos suman más que el total de la venta: sobran \${$texto}.",
+                422,
+                ['campo' => 'pagos', 'total' => $total, 'suma' => $suma],
+            );
+        }
     }
 }

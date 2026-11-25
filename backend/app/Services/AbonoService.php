@@ -9,6 +9,7 @@ use App\Exceptions\ReglaInventarioException;
 use App\Models\AbonoAnulacion;
 use App\Models\AbonoCliente;
 use App\Models\Cliente;
+use App\Models\CuentaPago;
 use App\Models\User;
 use App\Models\Venta;
 use App\Support\RangoFechas;
@@ -23,18 +24,27 @@ use Illuminate\Support\Facades\DB;
  */
 class AbonoService
 {
-    public function __construct(private readonly CarteraService $cartera) {}
+    public function __construct(
+        private readonly CarteraService $cartera,
+        private readonly CajaService $caja,
+    ) {}
 
     public function registrar(
         Cliente $cliente,
         string $fecha,
         string|int|float $valor,
-        MedioPago $medio,
+        CuentaPago $cuenta,
         ?string $referencia,
         ?string $nota,
         User $usuario,
         ?int $ventaId = null,
     ): AbonoCliente {
+        if (! $cuenta->activa) {
+            throw new ReglaInventarioException('La cuenta elegida está inactiva.', 422, ['campo' => 'cuenta_pago_id']);
+        }
+        // RF-24 (S-48): el medio se deriva del tipo de la cuenta; el usuario ya no lo elige.
+        $medio = MedioPago::from($cuenta->tipo->medio());
+
         if (! $cliente->activo) {
             throw new ReglaInventarioException('El cliente está inactivo: actívelo para registrarle abonos.', 422);
         }
@@ -48,12 +58,12 @@ class AbonoService
         }
 
         if ($ventaId === null) {
-            return $this->crear($cliente, null, $fecha, $valor, $medio, $referencia, $nota, $usuario);
+            return DB::transaction(fn () => $this->crear($cliente, null, $fecha, $valor, $medio, $cuenta, $referencia, $nota, $usuario));
         }
 
         // Dirigido: el bloqueo de la venta serializa dos abonos a la misma venta, para que entre los
         // dos no superen su pendiente.
-        return DB::transaction(function () use ($cliente, $ventaId, $fecha, $valor, $medio, $referencia, $nota, $usuario) {
+        return DB::transaction(function () use ($cliente, $ventaId, $fecha, $valor, $medio, $cuenta, $referencia, $nota, $usuario) {
             $venta = Venta::query()->lockForUpdate()->find($ventaId);
 
             if (! $venta || (int) $venta->cliente_id !== (int) $cliente->id) {
@@ -82,7 +92,7 @@ class AbonoService
                 );
             }
 
-            return $this->crear($cliente, $venta->id, $fecha, $valor, $medio, $referencia, $nota, $usuario);
+            return $this->crear($cliente, $venta->id, $fecha, $valor, $medio, $cuenta, $referencia, $nota, $usuario);
         });
     }
 
@@ -92,16 +102,21 @@ class AbonoService
         string $fecha,
         string|int|float $valor,
         MedioPago $medio,
+        CuentaPago $cuenta,
         ?string $referencia,
         ?string $nota,
         User $usuario,
     ): AbonoCliente {
+        // S-53: el abono entra a la caja de hoy (día de registro).
+        $this->caja->exigirDiaAbierto('registrar abonos');
+
         return AbonoCliente::create([
             'cliente_id' => $cliente->id,
             'venta_id' => $ventaId,
             'fecha' => $fecha,
             'valor' => $valor,
             'medio' => $medio,
+            'cuenta_pago_id' => $cuenta->id,
             'referencia' => self::textoOpcional($referencia),
             'nota' => self::textoOpcional($nota),
             'usuario_id' => $usuario->id,
@@ -117,6 +132,8 @@ class AbonoService
             if (AbonoAnulacion::where('abono_id', $abono->id)->exists()) {
                 throw new ReglaInventarioException('Este abono ya fue anulado.', 422);
             }
+            // S-53: la anulación resta en la caja de hoy.
+            $this->caja->exigirDiaAbierto('anular abonos');
 
             return AbonoAnulacion::create([
                 'abono_id' => $abono->id,

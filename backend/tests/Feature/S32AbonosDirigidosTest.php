@@ -81,7 +81,7 @@ it('S-32 (c): dirigido mayor al pendiente, a una venta de otro cliente, abierta 
 
     actuarComo(Rol::Mostrador);
     $contado = abrirVenta();
-    $this->postJson("/api/ventas/{$contado}/cerrar")->assertOk();
+    cerrarVenta($contado)->assertOk();
 
     abonar($cliente, 51, ['venta_id' => $nueva])->assertUnprocessable()
         ->assertJsonPath('message', "El abono supera lo pendiente de la venta #{$nueva} (\$50). Registre hasta \$50 a esta venta y el resto como abono general.")

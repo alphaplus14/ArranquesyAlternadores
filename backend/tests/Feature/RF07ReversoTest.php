@@ -17,7 +17,7 @@ function venderUnidad(string $codigoReferencia, bool $cerrar = true): array
     ])->json('venta_item_id');
 
     if ($cerrar) {
-        test()->postJson("/api/ventas/{$ventaId}/cerrar");
+        cerrarVenta($ventaId);
     }
 
     return [$ventaId, $itemId];
@@ -72,7 +72,7 @@ it('RF-07: la anulación completa reversa todos los ítems pendientes en un solo
     foreach (['RN-4410', 'AC-77812'] as $ref) {
         $this->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => unidadDe($ref)->codigo_barras, 'metodo_captura' => 'escaneado']);
     }
-    $this->postJson("/api/ventas/{$ventaId}/cerrar");
+    cerrarVenta($ventaId);
 
     $this->postJson("/api/ventas/{$ventaId}/reversos", ['tipo' => 'anulacion', 'motivo' => 'Venta registrada por error'])
         ->assertOk()->assertJsonCount(1, 'reversos')->assertJsonCount(2, 'reversos.0.venta_item_ids');

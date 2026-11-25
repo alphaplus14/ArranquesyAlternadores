@@ -1551,3 +1551,81 @@ a.boton { display: inline-flex; align-items: center; justify-content: center; }
   .tabla-cartera td.celda-accion .acciones-fila > * { flex: 1; }
   .datos-abono { grid-template-columns: 1fr; }
 }
+
+/* RF-27: pestaña Empleados de la Caja del admin (dos medidas en una fila). */
+.medidas-empleados { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.medidas-empleados .medida { grid-column: auto; }
+.tabla-empleados th.col-numero, .tabla-empleados td.col-numero { text-align: right; white-space: nowrap; }
+
+/* RF-24 (S-48): forma de pago en el modal de cierre de una venta de contado. */
+.forma-pago { border: 1px solid var(--borde); border-radius: 8px; padding: 10px 12px; margin: 12px 0 0; display: grid; gap: 8px; }
+.forma-pago legend { padding: 0 4px; }
+.fila-pago { display: grid; grid-template-columns: minmax(150px, 1.3fr) minmax(110px, 1fr) minmax(120px, 1fr) auto; gap: 8px; align-items: center; }
+.fila-pago select, .fila-pago input { width: 100%; box-sizing: border-box; }
+.forma-pago-pie { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.cuadre { font-weight: 700; }
+.cuadre.ok { color: var(--ok); }
+.cuadre.pendiente { color: var(--peligro); }
+@media (max-width: 639px) {
+  .fila-pago { grid-template-columns: 1fr 1fr; }
+  .fila-pago > label:nth-child(3) { grid-column: 1 / -1; }
+}
+
+/* RF-25 / RF-26: caja diaria (mostrador y consulta del admin) y cuadre mensual. */
+.caja .medidas { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.caja .medidas .medida { grid-column: auto; }
+.caja-barra { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+.caja-fecha { display: flex; flex-direction: column; gap: 4px; }
+.caja-estado { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 6px; }
+.caja-columnas { display: grid; grid-template-columns: minmax(0, 3fr) minmax(280px, 2fr); gap: 16px; align-items: start; }
+.tabla-contenedor-simple { overflow-x: auto; }
+.tabla-caja th.col-numero, .tabla-caja td.col-numero { text-align: right; white-space: nowrap; }
+.tabla-caja td, .tabla-caja th { padding: 9px 10px; }
+.desglose-efectivo { margin: 8px 0 0; display: grid; gap: 4px; }
+.desglose-efectivo > div { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; border-bottom: 1px dashed var(--borde); }
+.desglose-efectivo dt { color: var(--suave); }
+.desglose-efectivo dd { margin: 0; font-variant-numeric: tabular-nums; text-align: right; }
+.desglose-efectivo .total { border-bottom: none; font-weight: 700; }
+.desglose-efectivo .total dt { color: var(--texto); }
+.desglose-efectivo .diferencia dd { color: var(--peligro); }
+.cierre-guardado { margin-top: 16px; padding-top: 8px; border-top: 2px solid var(--borde); }
+.cierre-dia { margin-top: 16px; padding-top: 12px; border-top: 2px solid var(--borde); display: grid; gap: 10px; }
+.caja-historial { margin-top: 12px; color: var(--suave); }
+.caja-historial ul { padding-left: 18px; margin: 8px 0 0; }
+.tabla-mes-scroll { overflow: auto; max-height: calc(100vh - 16rem); }
+.tabla-mes th, .tabla-mes td { white-space: nowrap; }
+.tabla-mes thead th { position: sticky; top: 0; z-index: 1; }
+.tabla-mes tr.sin-cerrar td:first-child .chip { margin-left: 6px; }
+.tabla-mes tfoot td { font-weight: 700; background: #E7EDF8; }
+.alta-en-linea { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.alta-en-linea label { flex: 1 1 160px; }
+.alta-en-linea input, .alta-en-linea select { width: 100%; box-sizing: border-box; }
+.grupo-categorias { margin-top: 10px; }
+.grupo-categorias summary { cursor: pointer; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.tabla-caja tr.inactiva td:first-child { color: var(--suave); }
+@media (max-width: 959px) {
+  .caja-columnas { grid-template-columns: 1fr; }
+}
+
+/* S-59: selector de código universal con creación en línea. */
+.selector-universal { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.selector-universal > button.enlace { align-self: flex-start; }
+.fila-crear-universal { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.fila-crear-universal input { flex: 1 1 160px; min-width: 0; }
+
+/* RF-28: corrección de ingresos confirmados. */
+.chip.corregida { margin-left: 6px; background: var(--aviso-fondo); color: var(--aviso); font-weight: 600; }
+.casilla { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.panel-correccion { display: flex; flex-direction: column; gap: 12px; }
+.encabezado-correccion label { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tabla-correccion td { vertical-align: top; }
+.tabla-correccion .celda-numero { width: 100%; max-width: 120px; text-align: right; }
+.tabla-correccion select { max-width: 90px; }
+.lista-cambios { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 2px; }
+.detalle-correccion { display: flex; flex-direction: column; gap: 8px; }
+.historial-correcciones { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.historial-correcciones > li { border-top: 1px solid var(--borde); padding-top: 10px; }
+.historial-correcciones > li:first-child { border-top: none; padding-top: 0; }
+.tabla-correcciones .col-numero { text-align: right; white-space: nowrap; }
+.filtros-correcciones { margin-bottom: 12px; }
+.filtros-correcciones label { display: flex; flex-direction: column; gap: 2px; }

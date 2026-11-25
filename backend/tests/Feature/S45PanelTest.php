@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Models\Venta;
 use App\Services\ReversoService;
 use App\Services\VentaService;
+use App\Support\RangoFechas;
 use Illuminate\Support\Facades\DB;
 
 /*
@@ -25,7 +26,8 @@ function refPanel(array $attrs = [], int $unidades = 0, int $costo = 50000, arra
 {
     $ref = Referencia::factory()->create(['precio_venta' => 119000, 'iva_venta_porcentaje' => 19, ...$attrs]);
     if ($unidades > 0) {
-        compra($ref, $unidades, $costo, $encabezado);
+        // El panel filtra por el día de Bogotá: con la fecha UTC, de noche la compra caía en "mañana".
+        compra($ref, $unidades, $costo, ['fecha' => RangoFechas::hoy(), ...$encabezado]);
     }
 
     return $ref->refresh();
@@ -54,7 +56,7 @@ function venderPanel(array $lineas, array $opc = []): Venta
     }
 
     if ($opc['cerrar'] ?? true) {
-        $venta = $servicio->cerrar($venta);
+        $venta = $servicio->cerrar($venta, pagosExactos($venta));
         if (isset($opc['cerrada_at'])) {
             DB::table('ventas')->where('id', $venta->id)->update(['cerrada_at' => $opc['cerrada_at']]);
         }
@@ -101,7 +103,7 @@ it('S-45 (2): más vendidos ordena por unidades, valor y margen; un reverso no c
     $d = refPanel(['precio_venta' => 11900], 1, 5000);     // base 10.000, margen 5.000
     $venta = venderPanel([[$a, 5], [$b, 2], [$c, 4], [$d, 1]], ['cerrar' => false]);
     reversarItem($venta, TipoReverso::Anulacion, $venta->items()->whereHas('unidad', fn ($q) => $q->where('referencia_id', $c->id))->value('id'));
-    app(VentaService::class)->cerrar($venta);
+    app(VentaService::class)->cerrar($venta, pagosExactos($venta));
 
     $porUnidades = panel('mas-vendidos', ['orden' => 'unidades'])->assertOk();
     expect(collect($porUnidades->json('filas'))->pluck('referencia.id')->all())->toBe([$a->id, $c->id, $b->id, $d->id])

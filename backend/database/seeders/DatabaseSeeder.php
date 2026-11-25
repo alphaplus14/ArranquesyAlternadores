@@ -37,6 +37,9 @@ class DatabaseSeeder extends Seeder
             Categoria::firstOrCreate(['nombre' => $nombre], ['admite_codigo_universal' => $admite]);
         }
 
+        // RF-24 / RF-26: cuentas de pago y categorías de caja.
+        $this->call(CajaSeeder::class);
+
         $this->call(DemoSeeder::class);
     }
 }

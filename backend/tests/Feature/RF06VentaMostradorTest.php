@@ -103,7 +103,7 @@ it('RF-06: un código inexistente responde 404', function () {
 it('RF-06: una venta cerrada no admite más escaneos', function () {
     actuarComo(Rol::Mostrador);
     $ventaId = abrirVenta();
-    $this->postJson("/api/ventas/{$ventaId}/cerrar")->assertOk()->assertJsonPath('estado', 'cerrada');
+    cerrarVenta($ventaId)->assertOk()->assertJsonPath('estado', 'cerrada');
 
     $this->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => unidadDe('RN-4410')->codigo_barras, 'metodo_captura' => 'escaneado'])
         ->assertStatus(409);

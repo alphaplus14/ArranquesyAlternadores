@@ -50,6 +50,8 @@ export interface Unidad {
   referencia?: Referencia
   /** S-34: en la verificación de una salida, 'referencia' si el sistema asignó la unidad. */
   origen_codigo?: OrigenCodigo
+  /** RF-28: en las unidades de un ingreso, si ya se imprimió su etiqueta. */
+  etiqueta_impresa?: boolean
 }
 
 /** S-23: calidad opcional de una referencia. */
@@ -163,6 +165,9 @@ export interface Ingreso {
   remisiones: RemisionLigada[]
   diferencia_aceptada: boolean
   diferencia_motivo: string | null
+  /** RF-28: historial de correcciones (más reciente primero) y si tiene alguna. */
+  correcciones?: CorreccionIngreso[]
+  corregido?: boolean
 }
 
 export interface RemisionLigada {
@@ -237,6 +242,33 @@ export interface Venta {
   reversos: Reverso[]
   /** S-33 / S-15: precios con IVA incluido; total de los ítems vigentes y su desglose. */
   totales?: TotalesVenta
+  /** RF-24 (S-48): forma de pago de la venta de contado (vacía en crédito y en las anteriores). */
+  pagos?: VentaPago[]
+}
+
+/* RF-24 (S-48): cuentas de pago. */
+export type TipoCuentaPago = 'efectivo' | 'banco' | 'datafono' | 'billetera'
+export const NOMBRE_TIPO_CUENTA: Record<TipoCuentaPago, string> = { efectivo: 'Efectivo', banco: 'Banco', datafono: 'Datáfono', billetera: 'Billetera' }
+
+export interface CuentaPago {
+  id: number
+  nombre: string
+  tipo: TipoCuentaPago
+  activa: boolean
+}
+
+export interface VentaPago {
+  id: number
+  cuenta: { id: number; nombre: string; tipo: TipoCuentaPago } | null
+  valor: string
+  referencia: string | null
+}
+
+/** Lo que se envía al cerrar una venta de contado: la suma debe ser el total exacto (S-48). */
+export interface PagoVentaNuevo {
+  cuenta_pago_id: number
+  valor: number
+  referencia: string | null
 }
 
 /** S-33: total = suma de ítems vigentes (con IVA); base e IVA incluido extraídos por ítem. */
@@ -428,6 +460,8 @@ export interface Abono {
   fecha: string
   valor: string
   medio: MedioPago
+  /** RF-24 (S-48): cuenta donde entró (null en abonos anteriores). */
+  cuenta?: { id: number; nombre: string; tipo: TipoCuentaPago } | null
   referencia: string | null
   nota: string | null
   created_at: string
@@ -565,6 +599,8 @@ export interface MovimientoDinero {
   fecha: string
   valor: string
   medio: MedioDinero
+  /** RF-24 (S-48): cuenta (null en registros anteriores). */
+  cuenta?: { id: number; nombre: string; tipo: TipoCuentaPago } | null
   referencia: string | null
   nota: string | null
   usuario: { id: number; name: string } | null
@@ -831,4 +867,243 @@ export interface PanelControl extends PanelGenerado, PanelRango {
   cambios_precio_credito: number
   dias_sin_ventas: number
   dias: number
+}
+
+/* RF-25 / RF-26 (S-49 a S-54): caja diaria. Montos en pesos como texto con 2 decimales. */
+export type GrupoCaja = 'vario' | 'fijo' | 'financiero' | 'ingreso_externo' | 'otro_ingreso'
+export const NOMBRE_GRUPO_CAJA: Record<GrupoCaja, string> = {
+  vario: 'Gasto',
+  fijo: 'Gasto fijo',
+  financiero: 'Cuota bancaria',
+  ingreso_externo: 'Ingreso externo',
+  otro_ingreso: 'Otro ingreso',
+}
+export const GRUPOS_CAJA: GrupoCaja[] = ['vario', 'fijo', 'financiero', 'ingreso_externo', 'otro_ingreso']
+/** S-52: todos los grupos salvo "otro ingreso" van solo en efectivo. */
+export const soloEfectivo = (g: GrupoCaja) => g !== 'otro_ingreso'
+
+export interface CategoriaCaja {
+  id: number
+  nombre: string
+  grupo: GrupoCaja
+  activa: boolean
+}
+
+export interface MovimientoCaja {
+  id: number
+  fecha: string
+  grupo: GrupoCaja
+  grupo_nombre: string
+  categoria: { id: number; nombre: string }
+  concepto: string
+  valor: string
+  cuenta: { id: number; nombre: string; tipo: TipoCuentaPago }
+  referencia: string | null
+  usuario: { id: number; name: string }
+  created_at: string
+  anulacion: { motivo: string; created_at: string; usuario: { id: number; name: string } | null } | null
+}
+
+export interface FilaCuentaCaja {
+  cuenta_pago_id: number | null
+  nombre: string
+  tipo: TipoCuentaPago | null
+  activa: boolean
+  ventas: string
+  ventas_sin_detalle?: string
+  recaudo: string
+  pagos_proveedores: string
+  otros_ingresos: string
+  ingresos_externos: string
+  egresos: string
+  devoluciones: string
+  neto: string
+}
+
+export interface ResumenCaja {
+  fecha: string
+  cuentas: FilaCuentaCaja[]
+  ventas_contado: string
+  ventas_sin_detalle: string
+  ventas_credito: string
+  devoluciones: string
+  recaudo_cartera: string
+  pagos_proveedores: string
+  otros_ingresos: string
+  ingresos_externos: string
+  egresos: { vario: string; fijo: string; financiero: string; total: string }
+  /** RF-27: abonos y préstamos de empleados en efectivo (si existen). */
+  efectivo: { ventas: string; recaudo: string; otros_ingresos: string; ingresos_externos: string; devoluciones: string; pagos_proveedores: string; egresos: string; abonos_empleados?: string; prestamos_empleados?: string; neto: string }
+  total_ingreso_dia: string
+  efectivo_neto_dia: string
+  saldo_anterior: string
+  saldo_anterior_origen: { tipo: 'cierre' | 'inicial' | 'ninguno'; fecha: string | null; dias_sin_cerrar?: boolean }
+  saldo_acumulado: string
+  saldo_inicial: { valor: string; fecha: string } | null
+  meta_venta_diaria: string
+  faltante_meta: string
+}
+
+export interface CierreCaja {
+  id: number
+  fecha: string
+  efectivo_contado: string
+  efectivo_esperado: string
+  diferencia: string
+  saldo_anterior: string
+  saldo_acumulado: string
+  observacion: string | null
+  cerrado_at: string
+  usuario: { id: number; name: string } | null
+  reapertura: { motivo: string; created_at: string; usuario: { id: number; name: string } | null } | null
+}
+
+export interface DiaCaja {
+  fecha: string
+  hoy: string
+  resumen: ResumenCaja
+  movimientos: MovimientoCaja[]
+  cierre: CierreCaja | null
+  cierres_reabiertos: CierreCaja[]
+  ventas_abiertas: { id: number; forma_pago: FormaPago; items_count: number; usuario: string | null }[]
+}
+
+export interface FilaMesCaja {
+  fecha: string
+  ventas_efectivo: string
+  ventas_banco: string
+  ventas_datafono: string
+  ventas_billetera: string
+  ventas_credito: string
+  otros_ingresos: string
+  total_ingreso_dia: string
+  egresos: string
+  efectivo_neto_dia: string
+  saldo_acumulado: string
+  meta: string
+  faltante_meta: string
+  efectivo_contado: string | null
+  arqueo: string | null
+  observacion: string | null
+  cerrado: boolean
+  antes_del_inicio: boolean
+}
+
+export interface MesCaja {
+  mes: string
+  saldo_anterior: string
+  meta_venta_diaria: string
+  dias: FilaMesCaja[]
+  totales: Omit<FilaMesCaja, 'fecha' | 'efectivo_contado' | 'observacion' | 'cerrado' | 'antes_del_inicio'> & { dias_cerrados: number; dias_sin_cerrar: number }
+}
+
+/* ───────────── RF-27 (S-55 a S-57): cuenta de empleados ───────────── */
+
+/** Fila del resumen del admin: saldo vigente y fecha del último movimiento. */
+export interface EmpleadoResumen {
+  id: number
+  nombre: string
+  documento: string | null
+  activo: boolean
+  saldo: string
+  ultimo_movimiento: string | null
+}
+
+export interface ResumenEmpleados extends Pagina<EmpleadoResumen> {
+  totales: { total_pendiente: string; empleados_con_saldo: number }
+}
+
+export type TipoFilaEmpleado = 'prestamo' | 'abono' | 'anulacion'
+
+/** Fila del estado de cuenta: un préstamo, un abono o la anulación de uno de ellos, con saldo corrido. */
+export interface FilaEstadoEmpleado {
+  clave: string
+  tipo: TipoFilaEmpleado
+  movimiento_id: number
+  anula?: 'prestamo' | 'abono'
+  fecha: string
+  registrado_at: string | null
+  prestamo: string | null
+  abono: string | null
+  forma?: 'caja' | 'nomina' | null
+  cuenta?: string | null
+  apertura?: boolean
+  nota?: string | null
+  motivo?: string
+  usuario: string | null
+  anulado?: boolean
+  anulacion?: { motivo: string; fecha: string; usuario: string | null } | null
+  saldo: string
+}
+
+export interface EstadoCuentaEmpleado {
+  empleado: { id: number; nombre: string; documento: string | null; activo: boolean }
+  saldo: string
+  movimientos: FilaEstadoEmpleado[]
+}
+
+/* ───────────── RF-28 (S-58, S-60, S-61): corrección de un ingreso confirmado ───────────── */
+
+export interface LineaCorreccionFoto {
+  id: number | null
+  referencia_id: number
+  codigo_referencia: string | null
+  cantidad: number
+  costo_unitario: string
+  descuento_porcentaje: string
+  iva_porcentaje: string
+  cantidad_cubierta: number
+}
+
+export interface FotoCorreccion {
+  encabezado: {
+    numero_documento: string
+    fecha: string
+    forma_pago: FormaPago
+    vence_el: string | null
+    descuento_documento: string
+    total: string | null
+  }
+  lineas: LineaCorreccionFoto[]
+}
+
+export interface CorreccionIngreso {
+  id: number
+  created_at: string
+  usuario?: { id: number; name: string }
+  ingreso?: { id: number; tipo: TipoIngreso; numero_documento: string; proveedor: { id: number; nombre: string } | null }
+  motivo: string
+  unidades_creadas: number
+  unidades_retiradas: number
+  total_anterior: string | null
+  total_nuevo: string
+  antes: FotoCorreccion
+  despues: FotoCorreccion
+}
+
+/** Línea del cuerpo de la corrección: con id = existente; sin id = nueva (referencia_id). */
+export interface LineaCorreccionEnvio {
+  id?: number
+  referencia_id?: number
+  cantidad: number
+  costo_unitario: number
+  descuento_porcentaje: number
+  iva_porcentaje: number
+}
+
+export interface VistaPreviaCorreccion {
+  total_anterior: string | null
+  total_nuevo: string
+  totales: { subtotal_neto: string; descuento_documento: string; iva: string; total: string }
+  unidades_crear: number
+  unidades_retirar: number
+  con_etiqueta_impresa: number
+  requiere_confirmar_etiquetas: boolean
+  requiere_aceptar_diferencia: boolean
+  diferencias: Array<{ referencia_id: number; codigo_referencia: string | null; recibido: number; facturado: number }>
+  por_referencia: Array<{ referencia_id: number; codigo_referencia: string | null; crear: number; retirar: number; con_etiqueta_impresa: number }>
+  advertencias: Array<{ tipo: string; mensaje: string; cantidad?: number }>
+  errores: Array<{ tipo: string; mensaje: string; referencia_id?: number; codigo_referencia?: string | null; vendidas?: number }>
+  antes: FotoCorreccion
+  despues: FotoCorreccion
 }

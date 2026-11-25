@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { api, erroresCampo, mensajeError } from '../api/cliente'
-import { NOMBRE_MEDIO_DINERO, NOMBRE_RANGO, type MedioDinero, type MovimientoDinero, type RangoAntiguedad, type ResumenSaldo } from '../api/tipos'
+import { NOMBRE_MEDIO_DINERO, NOMBRE_RANGO, NOMBRE_TIPO_CUENTA, type MovimientoDinero, type RangoAntiguedad, type ResumenSaldo } from '../api/tipos'
+import { useCuentasPago } from '../hooks/useCatalogos'
 import { useAvisoTexto } from './Avisos'
 import Dialogo, { DialogoSeccion } from './Dialogo'
 import { fechaCorta, hoy } from './fechas'
@@ -48,7 +49,7 @@ export function TablaMovimientos({ movimientos, vacio, onAnular }: {
             <tr key={m.id} className={m.anulacion ? 'reversado' : ''}>
               <td>{fechaCorta(m.fecha)}</td>
               <td className="cifra">{pesos(m.valor)}</td>
-              <td>{NOMBRE_MEDIO_DINERO[m.medio] ?? m.medio}</td>
+              <td>{m.cuenta?.nombre ?? NOMBRE_MEDIO_DINERO[m.medio] ?? m.medio}</td>
               <td>{m.referencia ?? '—'}{m.nota && <><br /><small>{m.nota}</small></>}</td>
               <td>{m.usuario?.name ?? '—'}</td>
               <td>
@@ -72,7 +73,8 @@ export function TablaMovimientos({ movimientos, vacio, onAnular }: {
 
 /**
  * RF-15 / RF-17: registrar un abono o un pago. Fecha de hoy por defecto, editable hacia atrás,
- * nunca futura; valor en pesos enteros > 0; medio de una lista fija. El backend vuelve a validar.
+ * nunca futura; valor en pesos enteros > 0; cuenta activa (RF-24, S-48: el medio lo deriva el
+ * backend del tipo de la cuenta). El backend vuelve a validar.
  */
 export function DialogoMovimiento({ titulo, titular, saldo, ruta, onGuardado, onCerrar }: {
   titulo: string
@@ -85,7 +87,9 @@ export function DialogoMovimiento({ titulo, titular, saldo, ruta, onGuardado, on
 }) {
   const [fecha, setFecha] = useState(hoy())
   const [valor, setValor] = useState('')
-  const [medio, setMedio] = useState<MedioDinero>('efectivo')
+  const [cuenta, setCuenta] = useState<number | ''>('')
+  const cuentas = useCuentasPago()
+  const cuentaElegida = cuenta !== '' ? cuenta : (cuentas.data?.find((c) => c.tipo === 'efectivo')?.id ?? '')
   const [referencia, setReferencia] = useState('')
   const [nota, setNota] = useState('')
 
@@ -98,7 +102,7 @@ export function DialogoMovimiento({ titulo, titular, saldo, ruta, onGuardado, on
     mutationFn: async () => (await api.post<MovimientoDinero>(ruta, {
       fecha,
       valor: numero,
-      medio,
+      cuenta_pago_id: cuentaElegida,
       referencia: referencia.trim() || null,
       nota: nota.trim() || null,
     })).data,
@@ -118,7 +122,7 @@ export function DialogoMovimiento({ titulo, titular, saldo, ruta, onGuardado, on
       pie={(
         <>
           <button type="button" className="secundario" disabled={guardar.isPending} onClick={onCerrar}>Cancelar</button>
-          <button type="submit" className="primario" disabled={guardar.isPending || numero === null || errorValor !== null}>
+          <button type="submit" className="primario" disabled={guardar.isPending || numero === null || errorValor !== null || cuentaElegida === ''}>
             {guardar.isPending ? 'Guardando…' : 'Registrar'}
           </button>
         </>
@@ -145,10 +149,12 @@ export function DialogoMovimiento({ titulo, titular, saldo, ruta, onGuardado, on
             <input type="date" required max={hoy()} aria-invalid={!!errores.fecha} value={fecha} onChange={(e) => setFecha(e.target.value)} />
             {errores.fecha && <small className="ayuda error">{errores.fecha}</small>}
           </label>
-          <label>Medio
-            <select value={medio} onChange={(e) => setMedio(e.target.value as MedioDinero)}>
-              {(Object.keys(NOMBRE_MEDIO_DINERO) as MedioDinero[]).map((m) => <option key={m} value={m}>{NOMBRE_MEDIO_DINERO[m]}</option>)}
+          <label>Cuenta
+            <select value={cuentaElegida} aria-invalid={!!errores.cuenta_pago_id} onChange={(e) => setCuenta(e.target.value === '' ? '' : Number(e.target.value))}>
+              {cuentaElegida === '' && <option value="">{cuentas.isLoading ? 'Cargando cuentas…' : 'Elija la cuenta…'}</option>}
+              {(cuentas.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.nombre} ({NOMBRE_TIPO_CUENTA[c.tipo]})</option>)}
             </select>
+            {errores.cuenta_pago_id && <small className="ayuda error">{errores.cuenta_pago_id}</small>}
           </label>
         </div>
         <label>Referencia (opcional)

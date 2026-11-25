@@ -200,7 +200,7 @@ it('S-46 (7): escanear, cerrar, cambiar precio y reversar sobre una descartada s
 
     // Escanear y cerrar responden 409 como con una venta cerrada (conflicto de estado); el resto, 422.
     $this->postJson("/api/ventas/{$venta->id}/escanear", escaneoInicial('ARR-12V-9D'))->assertConflict()->assertJsonPath('message', $descartada);
-    $this->postJson("/api/ventas/{$venta->id}/cerrar")->assertConflict()->assertJsonPath('message', $descartada);
+    cerrarVenta($venta->id)->assertConflict()->assertJsonPath('message', $descartada);
     $this->patchJson("/api/ventas/{$venta->id}/items/{$item->id}", ['precio_unitario' => 1000])->assertUnprocessable()->assertJsonPath('message', $descartada);
     $this->patchJson("/api/ventas/{$venta->id}/items/precio", ['ids' => [$item->id], 'precio_unitario' => 1000])->assertUnprocessable()->assertJsonPath('message', $descartada);
     $this->postJson("/api/ventas/{$venta->id}/reversos", ['tipo' => 'anulacion', 'motivo' => 'Prueba'])->assertUnprocessable()->assertJsonPath('message', $descartada);

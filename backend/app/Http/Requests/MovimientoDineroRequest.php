@@ -7,7 +7,8 @@ use Illuminate\Validation\Rule;
 
 /**
  * RF-15 / RF-17: un abono de cliente o un pago a proveedor. Pesos enteros mayores que 0; la fecha
- * es hoy si no se envía, puede ser anterior y nunca futura; el medio sale de config('cartera.medios').
+ * es hoy si no se envía, puede ser anterior y nunca futura. RF-24 (S-48): se elige la cuenta activa
+ * (el medio se deriva de su tipo en el servicio).
  */
 class MovimientoDineroRequest extends FormRequest
 {
@@ -21,7 +22,7 @@ class MovimientoDineroRequest extends FormRequest
         return [
             'fecha' => ['sometimes', 'date_format:Y-m-d', 'before_or_equal:today'],
             'valor' => ['required', 'integer', 'min:1', 'max:999999999999'],
-            'medio' => ['required', Rule::in(array_keys(config('cartera.medios')))],
+            'cuenta_pago_id' => ['required', 'integer', Rule::exists('cuentas_pago', 'id')->where('activa', true)],
             'referencia' => ['nullable', 'string', 'max:60'],
             'nota' => ['nullable', 'string', 'max:255'],
         ];
@@ -33,7 +34,8 @@ class MovimientoDineroRequest extends FormRequest
             'fecha.before_or_equal' => 'La fecha no puede ser futura.',
             'valor.integer' => 'El valor va en pesos enteros, sin centavos.',
             'valor.min' => 'El valor debe ser mayor que 0.',
-            'medio.in' => 'Elija un medio de pago de la lista.',
+            'cuenta_pago_id.required' => 'Elija la cuenta de donde sale el pago.',
+            'cuenta_pago_id.exists' => 'Elija una cuenta activa de la lista.',
         ];
     }
 }

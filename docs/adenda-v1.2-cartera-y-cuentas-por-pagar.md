@@ -118,6 +118,92 @@ En un ingreso en borrador (factura o remisión) los ítems se agregan escaneando
 4. Crear una referencia con el mismo código para el mismo proveedor se rechaza.
 5. Confirmar con una línea sin costo se rechaza.
 
+### RF-24. Cuentas de pago y pago de la venta de contado (24-nov-2026)
+La caja diaria necesita saber por dónde entra cada peso. Hay un catálogo de **cuentas de pago** (nombre único, tipo `efectivo`, `banco`, `datafono` o `billetera`, activa) que solo el admin crea, edita y desactiva; nunca se borra. La migración crea *Efectivo* y el seeder agrega Bancolombia, Caja Social, Datáfono, Nequi, Daviplata, Llave Dahianna y Llave Evelin (S-48).
+
+- **Venta de contado.** Al cerrarla, el mostrador indica la **forma de pago**: una o varias filas cuenta + valor (+ referencia opcional). La suma debe ser **exactamente** el total con IVA incluido (S-33); se guarda en `venta_pagos` en la misma transacción del cierre. La primera fila es Efectivo con el total prellenado; "Agregar otra cuenta" divide el pago; la pantalla muestra en vivo cuánto falta o sobra y no deja cerrar hasta que cuadre.
+- **Venta a crédito.** No recibe pagos al cerrar (422): el cliente abona después en Cartera.
+- **Abonos (RF-15) y pagos a proveedores (RF-17).** Se elige la **cuenta**, no el medio; `medio` se deriva del tipo de la cuenta (efectivo → `efectivo`; lo demás → `transferencia`).
+- **Registros anteriores.** Las ventas de contado cerradas antes de este cambio cuentan como efectivo "sin detalle de pago"; los abonos y pagos sin cuenta, como Efectivo si su medio era `efectivo` y como "sin cuenta" si no.
+
+**Aceptación.**
+1. Una venta de contado se cierra con un pago exacto y con un pago dividido entre dos cuentas; queda guardado cómo se pagó.
+2. Si los pagos no suman el total, falta la forma de pago o una cuenta está inactiva, la venta no se cierra (422) y queda abierta.
+3. Una venta a crédito con pagos se rechaza; sin ellos se cierra.
+4. Un abono y un pago a proveedor guardan la cuenta y el medio derivado.
+5. El mostrador ve solo las cuentas activas; solo el admin crea, edita y desactiva cuentas, y siempre queda una de efectivo activa.
+
+**Datos:** `cuentas_pago` (`nombre` 60 único, `tipo`, `activa`; Auditable), `venta_pagos` (`venta_id` FK restrict, `cuenta_pago_id` FK, `valor` decimal(14,2) > 0, `referencia` 60 nullable, `created_at`; Inmutable; índices `(venta_id)` y `(cuenta_pago_id, created_at)`); `abonos_clientes` y `pagos_proveedores` + `cuenta_pago_id` nullable. **Endpoints:** `GET /cuentas-pago` (admin y mostrador), `POST` y `PUT /cuentas-pago` (admin), `POST /ventas/{venta}/cerrar` con `pagos[]`.
+
+### RF-25. Cierre del día y cuadre mensual (24-nov-2026)
+Al final del día el mostrador cuadra la caja. El sistema calcula, en hora de Bogotá, el **resumen del día** por cuenta: ventas de contado (por cuenta), ventas a crédito, devoluciones de contado, recaudo de cartera, pagos a proveedores, otros ingresos, ingresos externos y egresos (S-49 a S-51).
+
+- `total_ingreso_dia` = ventas de contado + ventas a crédito + otros ingresos. El recaudo de cartera no cuenta para la meta (S-51).
+- `efectivo_neto_dia` = ventas en efectivo + recaudo en efectivo + otros ingresos en efectivo + ingresos externos − devoluciones de contado − pagos a proveedores en efectivo − egresos (S-49). Las devoluciones salen del efectivo y no se digitan como gasto (S-50).
+- `saldo_acumulado` = saldo anterior + efectivo neto del día. El saldo anterior es el del último cierre vigente (o el saldo inicial, que el admin fija una vez) más los días intermedios sin cerrar.
+- **Arqueo:** `diferencia` = efectivo contado − efectivo neto del día. **Meta:** `faltante_meta` = meta diaria − total del día (meta por defecto 10.900.000, editable por el admin).
+- **Cierre** (solo mostrador): fecha, efectivo contado y observación. Se rechaza si el día ya tiene cierre vigente, si es futuro, si falta el saldo inicial o si hay ventas abiertas con ítems. Guarda los valores calculados; el día queda en solo lectura y, mientras la caja de hoy esté cerrada, no entran ventas cerradas, abonos, pagos ni devoluciones de contado (S-53).
+- **Reapertura** (solo admin, motivo obligatorio, del más reciente hacia atrás): es la única escritura del admin en la caja (S-54). El cierre reabierto queda en el historial y el mostrador vuelve a cerrar.
+- **Cuadre mensual** (solo admin, en pantalla): una fila por día con ventas en efectivo, por banco, datáfono y billetera, crédito, otros ingresos, total, egresos, saldo acumulado, meta, faltante, arqueo y observación; fila de totales y saldo anterior. Los días sin cierre se calculan en vivo y se marcan "sin cerrar".
+
+**Aceptación.**
+1. Con una venta de contado (efectivo y dividida), una a crédito, una devolución, un abono, un pago a proveedor, un gasto, otros ingresos y un ingreso externo, el resumen da el total del día, el efectivo neto y el saldo esperados, y el cierre guarda el arqueo.
+2. Un segundo cierre del mismo día, un día futuro o un cierre con ventas abiertas con ítems se rechazan.
+3. El admin reabre con motivo y el mostrador vuelve a cerrar; los cierres se reabren del más reciente hacia atrás.
+4. El cuadre mensual trae los días cerrados con sus valores guardados y los demás marcados "sin cerrar", con totales.
+
+**Datos:** `cierres_caja` (`fecha`, `efectivo_contado`, `efectivo_esperado`, `diferencia`, `saldo_anterior`, `saldo_acumulado`, `observacion` 255, `usuario_id`, `cerrado_at`; Inmutable; índice por fecha), `cierre_reaperturas` (`cierre_id` único, `motivo` 500, `usuario_id`, `created_at`); `configuraciones`: `meta_venta_diaria`, `saldo_caja_inicial` y su fecha. **Endpoints** (bajo `medir:800`): `GET /caja/dias/{fecha}` (mostrador y admin), `POST /caja/cierres` (mostrador), `POST /caja/cierres/{id}/reaperturas` (admin), `GET /caja/meses/{aaaa-mm}` (admin), `GET`/`PUT /configuracion/meta-venta` y `/configuracion/saldo-caja-inicial` (admin).
+
+### RF-26. Movimientos de caja (24-nov-2026)
+El mostrador registra lo que entra o sale del cajón y no es venta, abono ni pago a proveedor: **gasto** (`vario`), **gasto fijo** (`fijo`), **cuota bancaria** (`financiero`), **ingreso externo** (`ingreso_externo`) y **otro ingreso** (`otro_ingreso`). Cada movimiento lleva fecha (hoy o anterior, sin cierre vigente ese día ni después), categoría, concepto, valor > 0, cuenta y referencia opcional (p. ej. el FVE). Los cuatro primeros grupos solo admiten la cuenta de efectivo; otro ingreso, cualquier cuenta activa (S-52). Las categorías son un catálogo del admin por grupo (sin DELETE); el seeder carga las de la planilla del local, sin DCTO NEVERA ni nada que mezcle la SAS con cuentas personales. Un movimiento nunca se edita ni se borra: se anula con motivo mientras su día no esté cerrado (S-53). La caja diaria solo **registra**: no calcula nómina, no concilia bancos ni hace balances (contabilidad general, fuera de alcance).
+
+**Aceptación.**
+1. El mostrador registra un gasto en efectivo; un gasto, gasto fijo, cuota o ingreso externo en otra cuenta se rechaza; un otro ingreso en Nequi se acepta.
+2. Un movimiento no se edita ni se borra; se anula con motivo una sola vez y sigue visible; con el día cerrado no se registra ni se anula.
+3. Logística recibe 403 en toda la caja; el admin consulta pero no registra, no anula ni cierra, y gestiona las categorías.
+4. No hay rutas DELETE de caja.
+
+**Datos:** `categorias_caja` (`nombre` 100, `grupo`, `activa`; único `(nombre, grupo)`; Auditable), `movimientos_caja` (`fecha`, `categoria_caja_id`, `grupo` copiado de la categoría, `concepto` 150, `valor` decimal(14,2) > 0, `cuenta_pago_id`, `referencia` 60, `usuario_id`, `created_at`; Inmutable; índice `(fecha, grupo)`), `movimiento_caja_anulaciones` (`movimiento_id` único, `motivo` 500, `usuario_id`, `created_at`). **Endpoints:** `GET /caja/movimientos?fecha=` y `GET /caja/categorias` (mostrador y admin), `POST /caja/movimientos` y `POST /caja/movimientos/{id}/anulaciones` (solo mostrador), `POST` y `PUT /caja/categorias` (solo admin).
+
+### RF-27. Cuenta de empleados (24-nov-2026; requiere la caja diaria, RF-24 a RF-26)
+El local presta dinero a sus empleados y ellos lo pagan con abonos. Es una cartera **independiente** de la de clientes: no entra en `CarteraService`, en sus informes, en su saldo ni en el panel de ventas. No se calcula nómina ni prestaciones: el descuento de nómina solo se **registra** como forma de abono.
+
+- **Empleados** (solo admin): nombre único, documento opcional único, activo. No se borran: se desactivan, y no con saldo distinto de 0 (422 con el saldo en el mensaje). No se enlazan con `users`. Toda edición queda auditada (regla 9).
+- **Apertura** (S-55): al crear el empleado el admin puede indicar un saldo inicial y su fecha. Crea un préstamo `apertura` que **no** afecta la caja ni el cierre (la plata salió antes del sistema). Una vez, al crear.
+- **Préstamo** (solo mostrador, S-56): sale siempre de la cuenta Efectivo, con fecha de hoy. Entra a la caja del día como salida de efectivo.
+- **Abono** (solo mostrador, S-56): por `caja` (a una cuenta de pago activa, obligatoria; entra a la caja del día) o por `nomina` (sin cuenta y sin efecto en la caja). No puede superar la deuda (S-57: no hay saldo a favor).
+- **Saldo** = préstamos no anulados − abonos no anulados. El mostrador no ve saldos (S-57).
+- **Anulación** (solo admin, regla 8): movimiento nuevo con motivo, usuario y fecha; el original queda visible. Una sola vez. Cuenta en la caja del día en que se hace, como la de un abono de cliente. Anular un préstamo cuyos abonos dejarían el saldo negativo se rechaza.
+- **Caja** (RF-25): el resumen del día suma `abonos_empleados` en efectivo y resta `prestamos_empleados` del efectivo neto (y por eso del cierre). No son venta ni cuentan para la meta. Con la caja de hoy cerrada no entran préstamos, abonos por caja ni anulaciones que muevan efectivo.
+- **Pantalla** (admin): en Caja, pestaña "Empleados": tabla con nombre, saldo y último movimiento (buscador, activos primero), total prestado pendiente, "Nuevo empleado" y el estado de cuenta con saldo corrido y la acción "Anular". Todo en pantalla, sin exportar ni imprimir.
+
+**Criterios de aceptación:** préstamo y abono felices; saldo correcto; abono mayor que la deuda rechazado; abono por nómina sin cuenta y sin efecto en la caja; abono por caja exige cuenta; apertura sin efecto en la caja; anular préstamo y abono devuelve el saldo y el movimiento sigue visible; préstamos, abonos y anulaciones inmutables, sin rutas DELETE; no se desactiva un empleado con saldo; el mostrador no ve saldos; logística 403; el admin no registra préstamos ni abonos; el resumen del día refleja préstamos y abonos en efectivo.
+
+**Datos:** `empleados` (`nombre` 120 único, `documento` 30 nullable único, `activo`; Auditable), `movimientos_empleado` (`empleado_id` FK restrict, `tipo` prestamo|abono, `fecha`, `valor` > 0, `forma` caja|nomina solo en abonos, `cuenta_pago_id` nullable, `apertura`, `nota`, `usuario_id`, `created_at`; Inmutable; índices `(empleado_id, fecha)` y `(fecha, tipo)`) y `movimiento_empleado_anulaciones` (`movimiento_id` único, `motivo` 500, `usuario_id`, `created_at`; Inmutable). La categoría de caja `PRESTAMO` (grupo vario) se desactiva (S-55).
+
+**Endpoints:** `GET /empleados` (mostrador y admin: activos, sin saldo), `POST /empleados` y `PUT /empleados/{id}` (admin; `saldo_apertura` y `fecha_apertura` solo al crear), `POST /empleados/{id}/prestamos` y `POST /empleados/{id}/abonos` (solo mostrador), `POST /empleados/movimientos/{id}/anulaciones` (admin, motivo obligatorio), `GET /empleados/{id}/estado-cuenta` y `GET /empleados/resumen` (admin). Logística 403. Medición `medir:800`.
+
+### RF-28. Corrección de un ingreso confirmado, factura o remisión (24-nov-2026; S-58 a S-61)
+Un ingreso confirmado sigue sin editarse por las rutas del borrador. Se agrega **una sola vía de excepción**, auditada: `IngresoService::corregir(Ingreso, datos, motivo, usuario)`, con una **vista previa** que no escribe nada. La usan logística y el admin (que opera Ingresos como logística).
+
+- **Qué se corrige (S-58):** número y fecha del documento, forma de pago, vencimiento, descuento del documento y las líneas (cantidad, costo, descuento %, IVA %, agregar y quitar). **No** se corrigen proveedor, tipo ni id (422 con mensaje claro). La referencia de una línea existente no cambia: se quita la línea y se agrega otra. Las referencias nuevas son activas y del mismo proveedor. Una línea quitada queda con cantidad 0, porque sus unidades la siguen citando. El mismo número de otro documento del proveedor se rechaza. Sin cambios: 422 "No hay cambios.". Motivo obligatorio (5 a 500 caracteres).
+- **Inventario (S-60), en UNA transacción** con bloqueo del ingreso y de sus referencias en orden de id, solo vía `InventarioService` (`agregarUnidadesPorCorreccion` / `retirarUnidadesPorCorreccion`):
+  - Cantidad que sube o línea nueva: unidades nuevas con códigos reservados, disponibles y sin etiqueta impresa, que quedan pendientes en Etiquetas. Movimiento `ingreso` con origen `correccion_ingreso`. Sube la existencia.
+  - Cantidad que baja o línea quitada: se retiran unidades disponibles, primero las que no tienen etiqueta impresa. Pasan a `retirada` (no se borran), con movimiento `baja` y origen la corrección. Baja la existencia.
+  - Retirar unidades con la etiqueta impresa se permite, pero la vista previa lo advierte (`con_etiqueta_impresa`) y la corrección exige `confirmar_etiquetas_impresas=true`.
+  - Una unidad vendida (o que salió por ajuste) nunca se toca: no se baja de lo vendido ni se quita una línea con unidades vendidas (422). Ventas, reversos y abonos no cambian.
+- **Totales y deuda:** el total se recalcula con `TotalesIngreso` y queda guardado; el saldo del proveedor lo toma de ahí.
+- **Remisiones y facturas (S-61):** una remisión cubierta por una factura solo admite número y fecha. En una factura con remisiones ligadas se recalcula `cantidad_cubierta` con la lógica de RF-19. Las unidades a crear o retirar por línea son la diferencia de `cantidad − cantidad_cubierta` antes y después. Si la factura cubre menos de lo recibido, se exige aceptar la diferencia con motivo, como al confirmar.
+- **Registro:** tabla `ingreso_correcciones` (inmutable, sin DELETE) con motivo, foto del antes y el después, unidades creadas y retiradas y totales. Cada campo cambiado queda además en la auditoría general (RF-11).
+- **Pantallas:**
+  - En el detalle de un ingreso confirmado aparece "Corregir": edición local, "Revisar cambios" (vista previa), motivo y confirmación. Si se crearon unidades, acceso a "Imprimir etiquetas pendientes". Debajo, la sección "Correcciones" con el historial.
+  - En la lista de Ingresos, la marca "Corregida" y el filtro "Solo corregidas".
+  - Para el admin, "Correcciones de ingresos" junto a Auditoría: solo consulta, con filtros de fecha, proveedor y usuario.
+
+**Endpoints:** `POST /ingresos/{id}/correcciones/vista-previa` y `POST /ingresos/{id}/correcciones` (logística y admin); `GET /ingresos?corregidos=1` (cada fila trae `corregido` y `correcciones_count`); `GET /ingresos/correcciones?desde&hasta&proveedor_id&usuario_id` (solo admin). Mostrador 403. Sin rutas DELETE.
+
+**S-59 (24-nov-2026):** logística también crea y edita códigos universales (`POST` y `PUT/PATCH /codigos-universales`); borrarlos sigue siendo del admin, y el mostrador recibe 403. Logística tiene su ítem de menú "Códigos universales" con las mismas pantallas, sin eliminar. Los formularios de referencia ofrecen "Crear código universal" en línea.
+
 ### Criterios transversales de interfaz (21-nov-2026)
 1. **Selector de proveedor con búsqueda.** Todos los campos de proveedor (nuevo ingreso, formulario y filtro de productos, agotados) se pueden filtrar escribiendo el NIT o el nombre, sin importar mayúsculas, tildes, puntos ni guiones del NIT. Se usa la lista de proveedores que ya se carga, sin búsqueda en el servidor. *Estado: pendiente de construir.*
 2. **Inicio de sesión.** Se entra con nombre de usuario. Un fallo responde siempre el mismo mensaje, "Usuario o contraseña incorrectos.", tanto si el usuario no existe, como si la contraseña es mala o el usuario está inactivo; el bloqueo por demasiados intentos (429) muestra su propio mensaje con cuenta regresiva. Tras un fallo se vacía la contraseña y recibe el foco.

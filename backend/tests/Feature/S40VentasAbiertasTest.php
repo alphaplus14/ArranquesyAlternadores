@@ -38,7 +38,7 @@ it('S-40 (a): el listado de abiertas trae contado y crédito con ítems vigentes
     $credito = abrirS40(['forma_pago' => 'credito', 'cliente_id' => $cliente->id]);
     escanearS40($credito, $c3)->assertCreated();
     $cerrada = abrirS40();
-    $this->postJson("/api/ventas/{$cerrada}/cerrar")->assertOk();
+    cerrarVenta($cerrada)->assertOk();
 
     $r = $this->getJson('/api/ventas?estado=abierta')->assertOk();
     $filas = collect($r->json('data'));
@@ -119,6 +119,6 @@ it('S-40 (e): una venta abierta de un día anterior se cierra igual; a crédito 
     escanearS40($venta, $a)->assertCreated();
     DB::table('ventas')->where('id', $venta)->update(['created_at' => now()->subDays(2)]);
 
-    $r = $this->postJson("/api/ventas/{$venta}/cerrar")->assertOk()->assertJsonPath('estado', 'cerrada');
+    $r = cerrarVenta($venta)->assertOk()->assertJsonPath('estado', 'cerrada');
     expect($r->json('vence_el'))->toBe(Venta::find($venta)->cerrada_at->copy()->startOfDay()->addDays(30)->toDateString());
 });

@@ -15,7 +15,7 @@ it('RF-17: ingreso a crédito de 500 y pago de 200 dejan saldo 300; anular el pa
     compra($ref, 1, 500, aCredito());
     actuarComo(Rol::Admin);
 
-    $pago = $this->postJson("/api/proveedores/{$ref->proveedor_id}/pagos", ['valor' => 200, 'medio' => 'transferencia'])
+    $pago = $this->postJson("/api/proveedores/{$ref->proveedor_id}/pagos", ['valor' => 200, 'cuenta_pago_id' => cuentaBanco()->id])
         ->assertCreated()->json('id');
     $this->getJson("/api/proveedores/{$ref->proveedor_id}/saldo")->assertOk()
         ->assertJsonPath('cargos', '500.00')
@@ -57,7 +57,7 @@ it('RF-17 / S-14: los pagos y el saldo del proveedor son solo del admin', functi
     $ref = referencia('RN-4410');
     actuarComo($rol);
 
-    $this->postJson("/api/proveedores/{$ref->proveedor_id}/pagos", ['valor' => 10, 'medio' => 'efectivo'])->assertForbidden();
+    $this->postJson("/api/proveedores/{$ref->proveedor_id}/pagos", ['valor' => 10, 'cuenta_pago_id' => cuentaEfectivo()->id])->assertForbidden();
     $this->getJson("/api/proveedores/{$ref->proveedor_id}/saldo")->assertForbidden();
 })->with([Rol::Logistica, Rol::Mostrador]);
 
@@ -67,11 +67,11 @@ it('RF-17: un pago no se anula dos veces, es inmutable y valida valor, medio y f
     actuarComo(Rol::Admin);
     $url = "/api/proveedores/{$ref->proveedor_id}/pagos";
 
-    $this->postJson($url, ['valor' => 0, 'medio' => 'efectivo'])->assertJsonValidationErrors('valor');
-    $this->postJson($url, ['valor' => 10, 'medio' => 'canje'])->assertJsonValidationErrors('medio');
-    $this->postJson($url, ['valor' => 10, 'medio' => 'efectivo', 'fecha' => '2026-11-22'])->assertJsonValidationErrors('fecha');
+    $this->postJson($url, ['valor' => 0, 'cuenta_pago_id' => cuentaEfectivo()->id])->assertJsonValidationErrors('valor');
+    $this->postJson($url, ['valor' => 10, 'cuenta_pago_id' => 999999])->assertJsonValidationErrors('cuenta_pago_id');
+    $this->postJson($url, ['valor' => 10, 'cuenta_pago_id' => cuentaEfectivo()->id, 'fecha' => '2026-11-22'])->assertJsonValidationErrors('fecha');
 
-    $id = $this->postJson($url, ['valor' => 10, 'medio' => 'cheque', 'fecha' => '2026-11-01', 'referencia' => 'CH-77'])->assertCreated()
+    $id = $this->postJson($url, ['valor' => 10, 'cuenta_pago_id' => cuentaBanco()->id, 'fecha' => '2026-11-01', 'referencia' => 'CH-77'])->assertCreated()
         ->assertJsonPath('fecha', '2026-11-01')->json('id');
     $this->postJson("/api/pagos/{$id}/anulaciones", ['motivo' => 'Cheque sin fondos'])->assertCreated();
     $this->postJson("/api/pagos/{$id}/anulaciones", ['motivo' => 'Otra vez'])->assertUnprocessable();
@@ -91,7 +91,7 @@ it('RF-17 / S-12 / S-13: el pago se aplica FIFO y lo pendiente cae en su rango d
     Carbon::setTestNow('2026-11-21 10:00:00');
     actuarComo(Rol::Admin);
 
-    $this->postJson("/api/proveedores/{$ref->proveedor_id}/pagos", ['valor' => 100, 'medio' => 'efectivo'])->assertCreated();
+    $this->postJson("/api/proveedores/{$ref->proveedor_id}/pagos", ['valor' => 100, 'cuenta_pago_id' => cuentaEfectivo()->id])->assertCreated();
 
     $this->getJson("/api/proveedores/{$ref->proveedor_id}/saldo")
         ->assertJsonPath('saldo', '400.00')

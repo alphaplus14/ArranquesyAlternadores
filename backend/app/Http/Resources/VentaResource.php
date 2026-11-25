@@ -36,6 +36,13 @@ class VentaResource extends JsonResource
                 'iva' => $item->iva_porcentaje,
                 'vigente' => $item->reversoItem === null,
             ]))->aArreglo()),
+            // RF-24 (S-48): forma de pago de la venta de contado (vacía en crédito y en las anteriores).
+            'pagos' => $this->whenLoaded('pagos', fn () => $this->pagos->map(fn ($p) => [
+                'id' => $p->id,
+                'cuenta' => $p->cuenta ? ['id' => $p->cuenta->id, 'nombre' => $p->cuenta->nombre, 'tipo' => $p->cuenta->tipo] : null,
+                'valor' => $p->valor,
+                'referencia' => $p->referencia,
+            ])),
             'reversos' => $this->whenLoaded('reversos', fn () => $this->reversos->map(fn ($r) => [
                 'id' => $r->id,
                 'tipo' => $r->tipo,

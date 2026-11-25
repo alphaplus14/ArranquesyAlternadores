@@ -16,7 +16,7 @@ class PagoProveedor extends Model
 
     protected $table = 'pagos_proveedores';
 
-    protected $fillable = ['proveedor_id', 'fecha', 'valor', 'medio', 'referencia', 'nota', 'usuario_id'];
+    protected $fillable = ['proveedor_id', 'fecha', 'valor', 'medio', 'cuenta_pago_id', 'referencia', 'nota', 'usuario_id'];
 
     protected function casts(): array
     {
@@ -34,6 +34,12 @@ class PagoProveedor extends Model
     public function usuario(): BelongsTo
     {
         return $this->belongsTo(User::class, 'usuario_id');
+    }
+
+    /** RF-24 (S-48): cuenta donde entró o salió el dinero (NULL en los registros anteriores). */
+    public function cuenta(): BelongsTo
+    {
+        return $this->belongsTo(CuentaPago::class, 'cuenta_pago_id');
     }
 
     public function anulacion(): HasOne

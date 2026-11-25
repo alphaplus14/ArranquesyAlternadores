@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Enums\MedioPago;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\AbonoResource;
 use App\Models\AbonoCliente;
 use App\Models\Cliente;
+use App\Models\CuentaPago;
 use App\Services\AbonoService;
 use App\Services\CarteraService;
 use App\Support\RangoFechas;
@@ -31,20 +31,23 @@ class AbonoController extends Controller
             // S-36 (antes S-25 de Frank): hoy por defecto; puede ser anterior, nunca futura.
             'fecha' => ['nullable', 'date_format:Y-m-d'],
             'valor' => ['required', 'numeric', 'gt:0', 'max:999999999999'],
-            'medio' => ['required', Rule::enum(MedioPago::class)],
+            // RF-24 (S-48): se elige la cuenta; el medio se deriva de su tipo.
+            'cuenta_pago_id' => ['required', 'integer', Rule::exists('cuentas_pago', 'id')->where('activa', true)],
             'referencia' => ['nullable', 'string', 'max:60'],
             'nota' => ['nullable', 'string', 'max:255'],
             // S-32: null = abono general (FIFO); con número, dirigido a esa venta.
             'venta_id' => ['nullable', 'integer'],
         ], [
             'valor.gt' => 'El valor del abono debe ser mayor que 0.',
+            'cuenta_pago_id.required' => 'Elija la cuenta donde entra el abono.',
+            'cuenta_pago_id.exists' => 'Elija una cuenta activa de la lista.',
         ]);
 
         $abono = $this->abonos->registrar(
             $cliente,
             $datos['fecha'] ?? RangoFechas::hoy(),
             $datos['valor'],
-            MedioPago::from($datos['medio']),
+            CuentaPago::findOrFail($datos['cuenta_pago_id']),
             $datos['referencia'] ?? null,
             $datos['nota'] ?? null,
             $request->user(),
@@ -53,7 +56,7 @@ class AbonoController extends Controller
 
         // El saldo nuevo va en la misma respuesta: la pantalla no recarga todo.
         return response()->json([
-            'abono' => new AbonoResource($abono->load('usuario:id,name', 'anulacion', 'venta:id,factura_contapyme')),
+            'abono' => new AbonoResource($abono->load('usuario:id,name', 'anulacion', 'venta:id,factura_contapyme', 'cuenta:id,nombre,tipo')),
             'resumen' => $this->cartera->resumenDe($cliente),
         ], 201);
     }
