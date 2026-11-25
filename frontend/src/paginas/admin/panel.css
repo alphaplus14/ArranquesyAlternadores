@@ -159,3 +159,5 @@
   .panel-filtros .filtro { min-width: 0; width: 100%; }
   .ayuda-burbuja { left: auto; right: -4rem; transform: none; width: min(16rem, calc(100vw - 48px)); }
 }
+/* Ventas por día: la leyenda va arriba del gráfico, junto al subtítulo, y nunca queda cortada al pie. */
+.panel-leyenda-arriba { margin: 0 0 6px; }

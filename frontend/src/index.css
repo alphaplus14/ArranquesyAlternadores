@@ -1655,3 +1655,15 @@ a.boton { display: inline-flex; align-items: center; justify-content: center; }
 @media (max-width: 639px) {
   .condiciones-documento > button { width: 100%; justify-content: center; }
 }
+
+/* Menú del admin: el título de cada grupo es un botón que lo pliega (el de la ruta activa queda abierto). */
+.menu-grupo-boton {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: calc(100% - 20px); padding: 4px 0; border: 0; border-radius: 6px;
+  background: none; font-family: inherit; cursor: pointer; text-align: left;
+}
+.menu-grupo-boton:hover { color: var(--texto); }
+.menu-grupo-boton:focus-visible { outline: 2px solid var(--primario); outline-offset: 2px; }
+.menu-grupo-boton svg { width: 14px; height: 14px; flex: none; transition: transform 0.15s ease; }
+.menu-grupo-boton[aria-expanded="false"] svg { transform: rotate(-90deg); }
+@media (prefers-reduced-motion: reduce) { .menu-grupo-boton svg { transition: none; } }

@@ -25,6 +25,8 @@ export default function Layout() {
   const ubicacion = useLocation()
   const [abierto, setAbierto] = useState(true)
   const [editandoCuenta, setEditandoCuenta] = useState(false)
+  // Admin: grupos del menú desplegados a mano. Solo en memoria del componente (no se guarda en el navegador).
+  const [gruposAbiertos, setGruposAbiertos] = useState<Record<string, boolean>>({})
 
   const esContable = tieneRol('contable')
   const vencimientos = useVencimientos({ enabled: esContable })
@@ -102,6 +104,11 @@ export default function Layout() {
     tieneRol('logistica') ? { etiqueta: 'Consulta', items: [{ to: '/agotados', texto: 'Agotados y mínimos', icono: 'agotados' }] } : null,
   ].filter((g): g is { etiqueta: string; items: ItemMenu[] } => g !== null)
 
+  const plegable = usuario?.rol === 'admin'
+  const esRutaActiva = (item: ItemMenu) => (item.fin
+    ? ubicacion.pathname === item.to
+    : ubicacion.pathname === item.to || ubicacion.pathname.startsWith(`${item.to}/`))
+
   return (
     <div className={abierto ? 'marco menu-abierto' : 'marco'}>
       <header className="barra-superior">
@@ -124,9 +131,30 @@ export default function Layout() {
       <div className="cuerpo">
         <nav className="menu" aria-label="Módulos">
           <div className="menu-interior">
-            {grupos.map((grupo) => (
+            {grupos.map((grupo) => {
+              // Admin: cada grupo se pliega con un clic en su título; el de la ruta activa siempre queda
+              // abierto. Así su menú (el más largo) no necesita scroll. Los demás roles no cambian.
+              const activo = grupo.items.some(esRutaActiva)
+              const desplegado = !plegable || activo || !!gruposAbiertos[grupo.etiqueta]
+              const idLista = `menu-grupo-${grupo.etiqueta.toLowerCase().normalize('NFD').replace(/[^a-z]/g, '')}`
+              return (
               <div key={grupo.etiqueta}>
-                <div className="menu-grupo">{grupo.etiqueta}</div>
+                {plegable ? (
+                  <button
+                    type="button"
+                    className="menu-grupo menu-grupo-boton"
+                    aria-expanded={desplegado}
+                    aria-controls={idLista}
+                    title={activo ? 'Contiene la pantalla actual' : undefined}
+                    onClick={() => { if (!activo) setGruposAbiertos((g) => ({ ...g, [grupo.etiqueta]: !g[grupo.etiqueta] })) }}
+                  >
+                    <span>{grupo.etiqueta}</span>
+                    <Icono nombre="chevron" />
+                  </button>
+                ) : (
+                  <div className="menu-grupo">{grupo.etiqueta}</div>
+                )}
+                <div id={idLista} hidden={!desplegado}>
                 {grupo.items.map((item) => (
                   <NavLink key={item.to} to={item.to} end={item.fin}>
                     <Icono nombre={item.icono} />
@@ -137,8 +165,10 @@ export default function Layout() {
                     )}
                   </NavLink>
                 ))}
+                </div>
               </div>
-            ))}
+              )
+            })}
           </div>
         </nav>
         <button type="button" className="velo" aria-label="Cerrar el menú" tabIndex={-1} onClick={() => setAbierto(false)} />

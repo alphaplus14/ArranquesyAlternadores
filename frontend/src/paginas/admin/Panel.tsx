@@ -63,7 +63,10 @@ type Filtros = { desde?: string; hasta?: string; categoria_id?: string; proveedo
 
 const pct = (n: number | null | undefined) => (n === null || n === undefined ? '—' : `${n.toLocaleString('es-CO', { maximumFractionDigits: 1 })} %`)
 const miles = (n: number) => n.toLocaleString('es-CO')
-const unidades = (n: number) => `${miles(n)} ${n === 1 ? 'unidad' : 'unidades'}`
+/** Conteo con su sustantivo en singular o plural: "1 venta", "3 ventas". */
+const cuenta = (n: number, singular: string, plural: string) => `${miles(n)} ${n === 1 ? singular : plural}`
+const unidades = (n: number) => cuenta(n, 'unidad', 'unidades')
+const textoDias = (n: number) => cuenta(n, 'día', 'días')
 const diaCorto = (dia: string) => `${dia.slice(8, 10)}/${dia.slice(5, 7)}`
 
 function usePanel<T>(informe: string, filtros: Filtros, extra: Record<string, string | number>, forzar: { current: boolean }, activo: boolean) {
@@ -221,7 +224,7 @@ export default function Panel() {
         {(r) => (
           <div className="panel-medidas">
             <Tarjeta tono="azul" icono="venta" etiqueta="Ventas" valor={pesos(r.ventas.total)} variacion={r.ventas.variacion_total}
-              lineas={[`${miles(r.ventas.ventas)} ventas · ticket ${pesos(r.ventas.ticket_promedio)}`, `Contado ${pesos(r.ventas.contado)} · crédito ${pesos(r.ventas.credito)}`]} />
+              lineas={[`${cuenta(r.ventas.ventas, 'venta', 'ventas')} · ticket ${pesos(r.ventas.ticket_promedio)}`, `Contado ${pesos(r.ventas.contado)} · crédito ${pesos(r.ventas.credito)}`]} />
             <Tarjeta
               tono="naranja" icono="panel"
               etiqueta="Margen estimado"
@@ -252,6 +255,7 @@ export default function Panel() {
             <p className="ayuda">Total {pesos(d.totales.total)}: contado {pesos(d.totales.contado)}, crédito {pesos(d.totales.credito)} · {unidades(d.totales.unidades)}.</p>
             <GraficoAreas
               alto={180}
+              leyendaArriba
               datos={d.serie.map((x) => ({ etiqueta: diaCorto(x.dia), detalle: formatearFecha(x.dia), valores: { contado: Number(x.contado), credito: Number(x.credito) } }))}
               series={[
                 { clave: 'contado', nombre: 'Contado', color: 'var(--grafico-contado)' },
@@ -271,7 +275,7 @@ export default function Panel() {
                   <li key={f.referencia.id}>
                     {celdaRef(f.referencia)}
                     <span className={`chip motivo-${f.motivo}`}>{NOMBRE_REABASTECER[f.motivo]}</span>
-                    <span className="panel-reponer-dato">{miles(f.existencia)} en stock · {miles(f.vendidas)} vendidas · {f.existencia === 0 ? '0 días' : `${miles(Math.round(f.cobertura_dias))} días`}</span>
+                    <span className="panel-reponer-dato">{miles(f.existencia)} en stock · {cuenta(f.vendidas, 'vendida', 'vendidas')} · {f.existencia === 0 ? textoDias(0) : textoDias(Math.round(f.cobertura_dias))}</span>
                   </li>
                 ))}
               </ul>
@@ -343,7 +347,7 @@ export default function Panel() {
         <EstadoConsulta consulta={estancado} vacio="Ninguna referencia con existencia lleva tanto tiempo sin venderse." esVacio={(d) => d.total === 0} alto={60} anidado>
           {(d) => (
             <p className="panel-total-estancado">
-              <strong>{miles(d.totales.referencias)}</strong> referencias · <strong>{unidades(d.totales.unidades)}</strong> · <strong>{pesos(d.totales.valor_costo)}</strong> a costo
+              <strong>{miles(d.totales.referencias)}</strong> {d.totales.referencias === 1 ? 'referencia' : 'referencias'} · <strong>{unidades(d.totales.unidades)}</strong> · <strong>{pesos(d.totales.valor_costo)}</strong> a costo
               {d.totales.unidades_sin_costo > 0 && <> · {miles(d.totales.unidades_sin_costo)} sin costo</>}
               <small> (sin venta desde el {formatearFecha(d.desde_limite)})</small>
             </p>
@@ -359,7 +363,7 @@ export default function Panel() {
                   etiqueta: NOMBRE_RANGO[x.rango] ?? x.rango,
                   valor: x.unidades,
                   texto: miles(x.unidades),
-                  detalle: `${NOMBRE_RANGO[x.rango] ?? x.rango}: ${unidades(x.unidades)}, ${pesos(x.valor_costo)} a costo, ${miles(x.referencias)} referencias${x.unidades_sin_costo ? `, ${x.unidades_sin_costo} sin costo` : ''}`,
+                  detalle: `${NOMBRE_RANGO[x.rango] ?? x.rango}: ${unidades(x.unidades)}, ${pesos(x.valor_costo)} a costo, ${cuenta(x.referencias, 'referencia', 'referencias')}${x.unidades_sin_costo ? `, ${x.unidades_sin_costo} sin costo` : ''}`,
                 }))}
               />
             </>
@@ -433,7 +437,7 @@ export default function Panel() {
                       <td data-etiqueta="Existencia" className="col-numero">{miles(f.existencia)}</td>
                       <td data-etiqueta="Valor a costo" className="col-numero">{pesos(f.valor_costo)}</td>
                       <td data-etiqueta="Cobertura" className="col-numero">
-                        {f.cobertura_dias === null ? 'Sin rotación' : `${miles(Math.round(f.cobertura_dias))} días`}
+                        {f.cobertura_dias === null ? 'Sin rotación' : textoDias(Math.round(f.cobertura_dias))}
                         {f.sobrestock && <> <span className="chip marca-grafico">Sobrestock</span></>}
                       </td>
                       {agrupar === 'proveedor' && <td data-etiqueta="Compras" className="col-numero">{pesos(f.compras ?? 0)}</td>}
@@ -493,20 +497,20 @@ function BloqueControl({ c }: { c: PanelControl }) {
       </article>
       <article className="panel-control-tarjeta tono-rojo">
         <h3><span className="panel-medida-icono tono-rojo"><Icono nombre="reactivar" /></span>Reversos</h3>
-        <p className="panel-control-cifra">{miles(c.reversos.devolucion.reversos)} devoluciones · {pesos(c.reversos.devolucion.valor)}</p>
-        <p>{miles(c.reversos.anulacion.reversos)} anulaciones · {pesos(c.reversos.anulacion.valor)} ({unidades(c.reversos.anulacion.items)})</p>
+        <p className="panel-control-cifra">{cuenta(c.reversos.devolucion.reversos, 'devolución', 'devoluciones')} · {pesos(c.reversos.devolucion.valor)}</p>
+        <p>{cuenta(c.reversos.anulacion.reversos, 'anulación', 'anulaciones')} · {pesos(c.reversos.anulacion.valor)} ({unidades(c.reversos.anulacion.items)})</p>
         <Link to="/admin/auditoria">Auditoría</Link>
       </article>
       <article className="panel-control-tarjeta tono-teal">
         <h3><span className="panel-medida-icono tono-teal"><Icono nombre="etiqueta" /></span>Capturas digitadas</h3>
         <p className="panel-control-cifra">{pct(c.capturas.porcentaje_digitado)}</p>
-        <p>{miles(c.capturas.digitadas)} de {unidades(c.capturas.total)} vendidas se digitaron en vez de escanearse.</p>
+        <p>{miles(c.capturas.digitadas)} de {unidades(c.capturas.total)} {c.capturas.total === 1 ? 'vendida' : 'vendidas'} {c.capturas.digitadas === 1 ? 'se digitó' : 'se digitaron'} en vez de escanearse.</p>
       </article>
       <article className="panel-control-tarjeta tono-azul">
         <h3><span className="panel-medida-icono tono-azul"><Icono nombre="usuarios" /></span>Ventas por usuario</h3>
         {c.ventas_por_usuario.length === 0 ? <p className="vacio">Sin ventas en el período.</p> : (
           <ul className="lista">
-            {c.ventas_por_usuario.map((u) => <li key={u.usuario.id}><strong>{u.usuario.nombre}</strong>: {miles(u.ventas)} ventas · {pesos(u.total)}</li>)}
+            {c.ventas_por_usuario.map((u) => <li key={u.usuario.id}><strong>{u.usuario.nombre}</strong>: {cuenta(u.ventas, 'venta', 'ventas')} · {pesos(u.total)}</li>)}
           </ul>
         )}
       </article>
