@@ -259,7 +259,7 @@ export default function Productos() {
   return (
     <div>
       <div className="pagina-encabezado">
-        <h1>Productos</h1>
+        <h1>Inventario</h1>
         <p>El catálogo llega por páginas. El escáner localiza la unidad en el momento.</p>
       </div>
 

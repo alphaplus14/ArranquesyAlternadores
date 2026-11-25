@@ -59,12 +59,12 @@ export default function Layout() {
           ],
         }
       : null,
-    { etiqueta: 'Productos', items: [{ to: '/productos', texto: 'Listado', icono: 'caja', fin: true }] },
+    { etiqueta: 'Productos', items: [{ to: '/productos', texto: 'Inventario', icono: 'caja', fin: true }] },
     tieneRol('logistica')
       ? {
           etiqueta: 'Logística',
           items: [
-            { to: '/logistica/ingresos', texto: 'Compras y remisiones', icono: 'ingreso', fin: true },
+            { to: '/logistica/ingresos', texto: 'Compras', icono: 'ingreso', fin: true },
             { to: '/logistica/etiquetas', texto: 'Etiquetas', icono: 'etiqueta' },
             // RF-21. S-44: el admin solo consulta el historial. S-63: "Ajustes" se llama "Movimientos".
             { to: RUTA_AJUSTES, texto: usuario?.rol === 'admin' ? 'Historial de movimientos' : 'Movimientos', icono: 'inventario' },

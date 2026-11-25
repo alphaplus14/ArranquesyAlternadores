@@ -71,7 +71,7 @@ export default function Ingresos() {
     <div className="pila">
       <div className="pagina-encabezado encabezado-con-accion">
         <div>
-          <h1>Compras y remisiones</h1>
+          <h1>Compras</h1>
           <p>Remisiones y facturas se crean a mano; los ítems se agregan escaneándolos. Un documento no entra dos veces.</p>
         </div>
         <button ref={botonNuevo} type="button" className="primario" onClick={() => setCreando(true)}>Nuevo ingreso</button>
@@ -106,11 +106,11 @@ export default function Ingresos() {
         </div>
         <div className="tabla-desplazable">
         <table>
-          <thead><tr><th>#</th><th>Tipo</th><th>Documento</th><th>Proveedor</th><th>Fecha</th><th>Pago</th><th>Unidades</th><th>Estado</th><th>Usuario</th></tr></thead>
+          <thead><tr><th>#</th><th>Tipo</th><th>Documento</th><th>Proveedor</th><th>Fecha</th><th>Pago</th><th>Unidades</th><th>Estado</th><th>Usuario</th><th className="col-accion"><span className="solo-lector">Acciones</span></th></tr></thead>
           <tbody>
             {filas.map((i) => (
               <tr key={i.id}>
-                <td><Link to={`/logistica/ingresos/${i.id}`}>{i.id}</Link></td>
+                <td>{i.id}</td>
                 <td>{TIPO[i.tipo] ?? i.tipo}</td>
                 <td>
                   {i.numero_documento}
@@ -122,6 +122,10 @@ export default function Ingresos() {
                 <td>{i.unidades ?? 0}</td>
                 <td><span className={`chip ${i.estado}`}>{i.estado}</span></td>
                 <td>{i.usuario.name}</td>
+                {/* S-69: la compra se abre con un botón, no con el número. */}
+                <td className="col-accion">
+                  <Link className="boton secundario boton-abrir" to={`/logistica/ingresos/${i.id}`} aria-label={`Abrir ${TIPO[i.tipo] ?? 'documento'} ${i.numero_documento}`}>Abrir</Link>
+                </td>
               </tr>
             ))}
           </tbody>
