@@ -5,29 +5,32 @@ import { useAuth } from './auth/AuthProvider'
 import { RUTA_AJUSTES, RUTA_CARTERA, RUTA_PANEL, rutaInicio } from './rutas'
 import Layout from './componentes/Layout'
 import Login from './paginas/Login'
-import Agotados from './paginas/Agotados'
-import Venta from './paginas/mostrador/Venta'
-import Cartera from './paginas/cartera/Cartera'
-import CarteraCliente from './paginas/cartera/CarteraCliente'
-import Ingresos from './paginas/logistica/Ingresos'
-import IngresoDetalle from './paginas/logistica/IngresoDetalle'
-import Etiquetas from './paginas/logistica/Etiquetas'
-import Ajustes from './paginas/logistica/Ajustes'
-import Productos from './paginas/Productos'
-import Universales from './paginas/admin/Universales'
-import UniversalDetalle from './paginas/admin/UniversalDetalle'
-import Catalogos from './paginas/admin/Catalogos'
-import Usuarios from './paginas/admin/Usuarios'
-import Clientes from './paginas/admin/Clientes'
-import Auditoria from './paginas/admin/Auditoria'
-import Configuracion from './paginas/admin/Configuracion'
-import Vencimientos from './paginas/contable/Vencimientos'
-import Saldos from './paginas/contable/Saldos'
-import ProveedorCuenta from './paginas/contable/ProveedorCuenta'
-import ClienteCuenta from './paginas/contable/ClienteCuenta'
-import Informes from './paginas/contable/Informes'
 
-// RF-23: el panel (con sus gráficos) va en su propio paquete; no engorda la carga de los demás roles.
+// Cada pantalla va en su propio paquete: cada rol descarga solo lo que abre (el mostrador no baja
+// logística, administración ni contabilidad). Layout las espera con un Suspense; main.tsx recarga
+// si, tras un despliegue, el paquete de una pantalla ya no existe.
+const Agotados = lazy(() => import('./paginas/Agotados'))
+const Venta = lazy(() => import('./paginas/mostrador/Venta'))
+const Cartera = lazy(() => import('./paginas/cartera/Cartera'))
+const CarteraCliente = lazy(() => import('./paginas/cartera/CarteraCliente'))
+const Ingresos = lazy(() => import('./paginas/logistica/Ingresos'))
+const IngresoDetalle = lazy(() => import('./paginas/logistica/IngresoDetalle'))
+const Etiquetas = lazy(() => import('./paginas/logistica/Etiquetas'))
+const Ajustes = lazy(() => import('./paginas/logistica/Ajustes'))
+const Productos = lazy(() => import('./paginas/Productos'))
+const Universales = lazy(() => import('./paginas/admin/Universales'))
+const UniversalDetalle = lazy(() => import('./paginas/admin/UniversalDetalle'))
+const Catalogos = lazy(() => import('./paginas/admin/Catalogos'))
+const Usuarios = lazy(() => import('./paginas/admin/Usuarios'))
+const Clientes = lazy(() => import('./paginas/admin/Clientes'))
+const Auditoria = lazy(() => import('./paginas/admin/Auditoria'))
+const Configuracion = lazy(() => import('./paginas/admin/Configuracion'))
+const Vencimientos = lazy(() => import('./paginas/contable/Vencimientos'))
+const Saldos = lazy(() => import('./paginas/contable/Saldos'))
+const ProveedorCuenta = lazy(() => import('./paginas/contable/ProveedorCuenta'))
+const ClienteCuenta = lazy(() => import('./paginas/contable/ClienteCuenta'))
+const Informes = lazy(() => import('./paginas/contable/Informes'))
+// RF-23: el panel (con sus gráficos) también; tiene su propio aviso de carga.
 const Panel = lazy(() => import('./paginas/admin/Panel'))
 
 /** Protege un grupo de rutas por rol (el backend vuelve a validar cada endpoint). */

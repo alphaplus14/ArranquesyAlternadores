@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
 import { useVencimientos } from '../hooks/useVencimientos'
@@ -135,7 +135,10 @@ export default function Layout() {
         </nav>
         <button type="button" className="velo" aria-label="Cerrar el menú" tabIndex={-1} onClick={() => setAbierto(false)} />
         <main className="contenido">
-          <Outlet />
+          {/* Cada pantalla llega en su propio paquete (App.tsx): el menú se queda mientras carga. */}
+          <Suspense fallback={<div className="cargando">Cargando…</div>}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
       {editandoCuenta && <MiCuenta onCerrar={() => setEditandoCuenta(false)} />}
