@@ -65,7 +65,7 @@ export default function Ingresos() {
     <div className="pila">
       <div className="pagina-encabezado encabezado-con-accion">
         <div>
-          <h1>Ingresos</h1>
+          <h1>Compras y remisiones</h1>
           <p>Remisiones y facturas se crean a mano; los ítems se agregan escaneándolos. Un documento no entra dos veces.</p>
         </div>
         <button ref={botonNuevo} type="button" className="primario" onClick={() => setCreando(true)}>Nuevo ingreso</button>

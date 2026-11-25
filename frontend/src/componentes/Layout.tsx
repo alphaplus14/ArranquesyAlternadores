@@ -59,10 +59,10 @@ export default function Layout() {
       ? {
           etiqueta: 'Logística',
           items: [
-            { to: '/logistica/ingresos', texto: 'Ingresos', icono: 'ingreso', fin: true },
+            { to: '/logistica/ingresos', texto: 'Compras y remisiones', icono: 'ingreso', fin: true },
             { to: '/logistica/etiquetas', texto: 'Etiquetas', icono: 'etiqueta' },
-            // RF-21. S-44: el admin solo consulta el historial.
-            { to: RUTA_AJUSTES, texto: usuario?.rol === 'admin' ? 'Historial de ajustes' : 'Ajustes', icono: 'inventario' },
+            // RF-21. S-44: el admin solo consulta el historial. S-48: "Ajustes" se llama "Movimientos".
+            { to: RUTA_AJUSTES, texto: usuario?.rol === 'admin' ? 'Historial de movimientos' : 'Movimientos', icono: 'inventario' },
           ],
         }
       : null,

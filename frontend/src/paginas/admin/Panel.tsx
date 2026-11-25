@@ -500,7 +500,7 @@ function BloqueControl({ c }: { c: PanelControl }) {
             ))}
           </ul>
         )}
-        <Link to={RUTA_AJUSTES}>Historial de ajustes</Link>
+        <Link to={RUTA_AJUSTES}>Historial de movimientos</Link>
       </article>
       <article className="panel-control-tarjeta">
         <h3>Reversos</h3>
