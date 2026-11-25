@@ -26,6 +26,7 @@ import { rotuloIvaIncluido } from '../../utilidades/cartera'
 import { useDebounce } from '../../hooks/useDebounce'
 import { useListaPaginada } from '../../hooks/useListaPaginada'
 import { formatoNumero, leerNumero, pesos } from '../../componentes/numeros'
+import CampoMoneda from '../../componentes/CampoMoneda' // S-67
 
 interface ReversoPendiente { item?: VentaItem; tipo: 'devolucion' | 'anulacion' }
 interface DatosCredito { cliente_id: number; factura_contapyme: string | null; cliente: { id: number; nombre: string; documento: string | null } }
@@ -62,6 +63,24 @@ interface Duplicada { existente: VentaAbierta; abrirOtra: () => void }
 
 /** "Nueva · Contado" / "Nueva · Crédito · Cliente" (ficha y título del borrador, S-46). */
 const textoBorrador = (b: Borrador) => (b.forma_pago === 'credito' ? `Nueva · Crédito · ${b.credito.cliente.nombre}` : 'Nueva · Contado')
+
+/**
+ * RF-06 / S-33: agrega a la venta en caché los ítems de una lectura, con los totales del backend.
+ * Dos lecturas casi seguidas (p. ej. las de la cola de S-46) pueden responder en otro orden. El
+ * backend las atiende de a una (bloquea la venta, igual que los reversos), así que la respuesta con
+ * el ítem de id más alto trae el total más nuevo, que ya incluye los anteriores. Una respuesta
+ * atrasada agrega su ítem en su lugar (por id), pero no pisa ese total.
+ */
+function agregarItems(venta: TVenta, nuevos: VentaItem[], totales: RespuestaEscaneo['totales']): TVenta {
+  const yaEstan = new Set(venta.items.map((i) => i.id))
+  const faltan = nuevos.filter((n) => !yaEstan.has(n.id))
+  if (faltan.length === 0) return venta
+  const ultimoEnVenta = venta.items.reduce((max, i) => Math.max(max, i.id), 0)
+  if (faltan.some((n) => n.id > ultimoEnVenta)) {
+    return { ...venta, items: [...venta.items, ...faltan], totales: totales ?? venta.totales }
+  }
+  return { ...venta, items: [...venta.items, ...faltan].sort((a, b) => a.id - b.id) }
+}
 
 /**
  * RF-06: venta de mostrador. Cada escaneo descuenta de inmediato (no al cerrar).
@@ -126,7 +145,7 @@ export default function Venta() {
 
   const recientes = useQuery({
     queryKey: ['ventas', 'cerradas'],
-    queryFn: async () => (await api.get<Pagina<{ id: number; created_at: string; items_count: number; total: string | number; forma_pago: TVenta['forma_pago']; cliente: { id: number; nombre: string } | null }>>('/ventas', { params: { estado: 'cerrada' } })).data,
+    queryFn: async () => (await api.get<Pagina<VentaReciente>>('/ventas', { params: { estado: 'cerrada' } })).data,
     enabled: !consulta,
   })
 
@@ -189,8 +208,11 @@ export default function Venta() {
       const nace = typeof destino === 'number' ? '' : `Venta #${r.venta_id} · `
       avisos.mostrar('ok', `✓ ${nace}${cuales}${porReferencia} · ${r.referencia.codigo_referencia} · ${[r.referencia.proveedor, r.referencia.calidad && NOMBRE_CALIDAD[r.referencia.calidad as Calidad]].filter(Boolean).join(' · ')} — quedan ${r.referencia.existencia} (${r.metodo_captura})`)
       setCantidad(1)
+      const clave = ['venta', r.venta_id]
       if (typeof destino !== 'number') {
-        // S-46: la venta acaba de nacer: pasa a ser la activa y el borrador vuelve a contado.
+        // S-46: la venta acaba de nacer y llega completa: queda en caché antes de pasar a ser la
+        // activa, así la tabla aparece de una vez, sin pedir GET /ventas/{id} y sin parpadeo.
+        if (r.venta) qc.setQueryData(clave, r.venta)
         setVentaId(r.venta_id)
         setEligioNueva(false)
         setBorrador(BORRADOR_CONTADO)
@@ -201,20 +223,19 @@ export default function Venta() {
       }
       // RF-06: una sola petición por escaneo. Los ítems llegan completos y se agregan a la venta en
       // caché, con los totales nuevos (S-33) que calcula el backend; la ficha de la venta también.
-      const clave = ['venta', r.venta_id]
-      qc.setQueryData<VentaAbierta[]>(CLAVE_ABIERTAS, (lista) => lista?.map((a) => (a.id === r.venta_id
-        ? { ...a, items_count: a.items_count + nuevos.length, total: r.totales?.total ?? a.total }
-        : a)))
       if (!qc.getQueryData<TVenta>(clave)) {
         qc.invalidateQueries({ queryKey: clave })
+        qc.setQueryData<VentaAbierta[]>(CLAVE_ABIERTAS, (lista) => lista?.map((a) => (a.id === r.venta_id
+          ? { ...a, items_count: a.items_count + nuevos.length, total: r.totales?.total ?? a.total }
+          : a)))
         return
       }
       void qc.cancelQueries({ queryKey: clave })
-      qc.setQueryData<TVenta>(clave, (actual) => {
-        if (!actual) return actual
-        const faltan = nuevos.filter((n) => !actual.items.some((i) => i.id === n.id))
-        return faltan.length ? { ...actual, items: [...actual.items, ...faltan], totales: r.totales ?? actual.totales } : actual
-      })
+      const actualizada = qc.setQueryData<TVenta>(clave, (actual) => (actual ? agregarItems(actual, nuevos, r.totales) : actual))
+      // La ficha copia la venta ya actualizada: una respuesta atrasada tampoco le pisa el total.
+      qc.setQueryData<VentaAbierta[]>(CLAVE_ABIERTAS, (lista) => lista?.map((a) => (a.id === r.venta_id && actualizada
+        ? { ...a, items_count: actualizada.items.filter((i) => !i.reverso_id).length, total: actualizada.totales?.total ?? a.total }
+        : a)))
     },
     onError: (e, { codigo, metodo, referenciaId, cantidad: n, destino }) => {
       const datos = e instanceof AxiosError ? e.response?.data as { tipo?: string; message?: string; referencias?: OpcionReferenciaVenta[] } | undefined : undefined
@@ -261,6 +282,8 @@ export default function Venta() {
     onError: (e) => { setConfirmandoCierre(false); avisos.mostrar('error', mensajeError(e)) },
   })
 
+  // mutate es estable; el objeto de la mutación cambia en cada render y rehacía leer, onCodigo y el lector.
+  const mutarEscaneo = escanear.mutate
   const cantidadRef = useRef(cantidad)
   cantidadRef.current = cantidad
   // S-46: a dónde va la lectura. Una venta abierta en pantalla recibe el ítem; sin venta, el borrador
@@ -280,8 +303,8 @@ export default function Venta() {
       }
       creandoRef.current = true
     }
-    escanear.mutate({ ...l, destino })
-  }, [escanear])
+    mutarEscaneo({ ...l, destino })
+  }, [mutarEscaneo])
   const onCodigo = useCallback(
     (codigo: string, metodo: MetodoCaptura) => {
       if (inputRef.current) inputRef.current.value = ''
@@ -512,25 +535,7 @@ export default function Venta() {
         )}
       </section>
 
-      {!consulta && (
-      <aside className="panel lateral">
-        <h3>Ventas cerradas recientes</h3>
-        <ul className="lista lista-recientes">
-          {recientes.data?.data.map((r) => (
-            <li key={r.id}>
-              <span className="reciente-linea">
-                <button className="enlace" onClick={() => setVentaId(r.id)}>#{r.id}</button>
-                {r.forma_pago === 'credito' ? <span className="chip credito">Crédito</span> : <span className="chip">Contado</span>}
-                {r.forma_pago === 'credito' && <span className="reciente-cliente">{r.cliente?.nombre}</span>}
-              </span>
-              <small className="reciente-detalle">
-                {r.items_count} {r.items_count === 1 ? 'ítem' : 'ítems'} · <span title="Total con IVA incluido">{pesos(r.total)}</span> · {formatearFechaHora(r.created_at)}
-              </small>
-            </li>
-          ))}
-        </ul>
-      </aside>
-      )}
+      {!consulta && <VentasRecientes ventas={recientes.data?.data} onElegir={setVentaId} />}
       </div>
 
       {respaldo && (
@@ -612,6 +617,45 @@ export default function Venta() {
   )
 }
 
+/** Fila de "Ventas cerradas recientes" (GET /ventas?estado=cerrada). */
+interface VentaReciente {
+  id: number
+  created_at: string
+  items_count: number
+  total: string | number
+  forma_pago: TVenta['forma_pago']
+  cliente: { id: number; nombre: string } | null
+}
+
+/**
+ * Ventas cerradas recientes, al lado. Memoizada: un escaneo vuelve a pintar la venta 2 o 3 veces y
+ * esta lista no cambia (sus props son los datos en caché y setVentaId, ambos estables).
+ */
+const VentasRecientes = memo(function VentasRecientes({ ventas, onElegir }: {
+  ventas: VentaReciente[] | undefined
+  onElegir: (id: number) => void
+}) {
+  return (
+    <aside className="panel lateral">
+      <h3>Ventas cerradas recientes</h3>
+      <ul className="lista lista-recientes">
+        {ventas?.map((r) => (
+          <li key={r.id}>
+            <span className="reciente-linea">
+              <button className="enlace" onClick={() => onElegir(r.id)}>#{r.id}</button>
+              {r.forma_pago === 'credito' ? <span className="chip credito">Crédito</span> : <span className="chip">Contado</span>}
+              {r.forma_pago === 'credito' && <span className="reciente-cliente">{r.cliente?.nombre}</span>}
+            </span>
+            <small className="reciente-detalle">
+              {r.items_count} {r.items_count === 1 ? 'ítem' : 'ítems'} · <span title="Total con IVA incluido">{pesos(r.total)}</span> · {formatearFechaHora(r.created_at)}
+            </small>
+          </li>
+        ))}
+      </ul>
+    </aside>
+  )
+})
+
 /** S-40: máximo de fichas de venta visibles en la barra (las demás, en "Ver todas"). */
 const MAX_FICHAS = 5
 
@@ -627,8 +671,10 @@ const textoOpcion = (v: VentaAbierta) =>
  * Una venta de un día anterior CON ítems vigentes lleva un punto de aviso con la fecha en el title.
  * S-46: el borrador en uso aparece como ficha activa "Nueva · …"; "Vacías (N)" queda como defensa
  * (las ventas ya nacen con su primer ítem y las vacías se descartan solas).
+ * Memoizada: solo se vuelve a pintar cuando cambian las ventas abiertas o la activa, no en cada
+ * render del escaneo (onElegir es estable).
  */
-function BarraVentasAbiertas({ ventas, activa, borrador, conUsuario, onElegir }: {
+const BarraVentasAbiertas = memo(function BarraVentasAbiertas({ ventas, activa, borrador, conUsuario, onElegir }: {
   ventas: VentaAbierta[]
   activa: number | null
   borrador: Borrador | null
@@ -732,7 +778,7 @@ function BarraVentasAbiertas({ ventas, activa, borrador, conUsuario, onElegir }:
       )}
     </div>
   )
-}
+})
 
 /** S-40: todas las ventas abiertas, con búsqueda por número o cliente, para cambiar de venta. */
 function ListadoVentasAbiertas({ ventas, titulo, activa, conUsuario, onElegir, onCerrar }: {
@@ -865,8 +911,9 @@ function PrecioGrupo({ ventaId, grupo, onGuardado, onEstado }: {
   /** Avisa si hay una edición sin guardar o inválida (bloquea "Confirmar cierre"). */
   onEstado: (clave: string, pendiente: boolean) => void
 }) {
-  const [texto, setTexto] = useState(formatoNumero(grupo.precio))
-  useEffect(() => { setTexto(formatoNumero(grupo.precio)) }, [grupo.precio])
+  // El precio va en la clave del grupo (key de la fila): si cambia, el campo se monta de nuevo con el
+  // valor nuevo. Por eso no hace falta un efecto que copie el precio al texto.
+  const [texto, setTexto] = useState(() => formatoNumero(grupo.precio))
   const guardar = useMutation({
     mutationFn: async (precio: number) =>
       (await api.patch<TVenta>(`/ventas/${ventaId}/items/precio`, { ids: grupo.ids, precio_unitario: precio })).data,
@@ -884,8 +931,7 @@ function PrecioGrupo({ ventaId, grupo, onGuardado, onEstado }: {
 
   return (
     <span className="precio-grupo">
-      <input
-        inputMode="decimal"
+      <CampoMoneda
         value={texto}
         aria-label={`Precio con IVA incluido de ${grupo.item.unidad.referencia?.codigo_referencia ?? 'la referencia'} (${grupo.ids.length} ${grupo.ids.length === 1 ? 'unidad' : 'unidades'})`}
         aria-invalid={error ? true : undefined}
@@ -1292,11 +1338,9 @@ function CeldaPrecio({ ventaId, item, onGuardado, onTerminar }: {
 
   return (
     <div className="precio-editable">
-      <input
+      <CampoMoneda
         ref={campoRef}
         autoFocus
-        inputMode="decimal"
-        autoComplete="off"
         aria-label={`Precio de ${item.unidad.codigo_barras}`}
         aria-invalid={error !== null}
         aria-describedby={`precio-${item.id}-ayuda`}

@@ -244,23 +244,58 @@ describe('por la API', function () {
         ])->assertUnprocessable()->assertJsonValidationErrors(['descuento_documento', 'descuento_documento_porcentaje']);
     });
 
-    it('S-22 (e): un descuento del documento mayor que el subtotal neto responde 422 al editar y al confirmar', function () {
+    it('S-22 (e) / S-66: un descuento mayor que el subtotal neto se acepta en el borrador y responde 422 al confirmar', function () {
         actuarComo(Rol::Logistica);
         $id = ingresoCon([[1, 100000, 10], [1, 50000]]);
 
-        // Subtotal neto 140.000 (el bruto es 150.000).
+        // Subtotal neto 140.000 (el bruto es 150.000). El borrador lo acepta y avisa.
         $this->patchJson("/api/ingresos/{$id}", ['descuento_documento' => 140000.01])
-            ->assertStatus(422)
-            ->assertJsonValidationErrors('descuento_documento');
+            ->assertOk()
+            ->assertJsonPath('totales.descuento_excede_subtotal', true);
         $this->patchJson("/api/ingresos/{$id}", ['descuento_documento_porcentaje' => 100.01])->assertJsonValidationErrors('descuento_documento_porcentaje');
 
+        $this->postJson("/api/ingresos/{$id}/confirmar")->assertStatus(422)->assertJsonValidationErrors('descuento_documento');
+
         // Quitar líneas puede dejar el descuento por encima: confirmar lo vuelve a revisar.
-        $this->patchJson("/api/ingresos/{$id}", ['descuento_documento' => 100000])->assertOk();
+        $this->patchJson("/api/ingresos/{$id}", ['descuento_documento' => 100000])
+            ->assertOk()
+            ->assertJsonPath('totales.descuento_excede_subtotal', false);
         $mayor = IngresoItem::where('ingreso_id', $id)->orderByDesc('costo_unitario')->value('id');
         $this->deleteJson("/api/ingresos/{$id}/items/{$mayor}")->assertOk();
 
         $this->postJson("/api/ingresos/{$id}/confirmar")->assertStatus(422)->assertJsonValidationErrors('descuento_documento');
         expect(Ingreso::find($id)->estado->value)->toBe('borrador');
+    });
+
+    it('S-66: el descuento se fija con la factura vacía y los totales se recalculan al agregar, editar y quitar líneas', function () {
+        actuarComo(Rol::Logistica);
+        $id = ingresoCon([]);
+
+        // Vacía: el descuento en % y en pesos se guardan.
+        $this->patchJson("/api/ingresos/{$id}", ['descuento_documento_porcentaje' => 10])
+            ->assertOk()
+            ->assertJsonPath('descuento_documento_porcentaje', '10.00');
+        $this->patchJson("/api/ingresos/{$id}", ['descuento_documento' => 5000])
+            ->assertOk()
+            ->assertJsonPath('descuento_documento', '5000.00')
+            ->assertJsonPath('totales.descuento_excede_subtotal', true);
+
+        // En % se recalcula con cada cambio de las líneas (IVA 0 para leer el total directo).
+        $this->patchJson("/api/ingresos/{$id}", ['descuento_documento_porcentaje' => 10])->assertOk();
+        $proveedor = Ingreso::find($id)->proveedor_id;
+        $this->postJson("/api/ingresos/{$id}/items", [
+            'referencia_id' => referenciaDePrueba("S51-{$id}", $proveedor)->id,
+            'cantidad' => 1, 'costo_unitario' => 100000, 'descuento_porcentaje' => 0, 'iva_porcentaje' => 0,
+        ])->assertOk();
+        $linea = IngresoItem::where('ingreso_id', $id)->value('id');
+        expect($this->getJson("/api/ingresos/{$id}")->json('totales.total'))->toBe('90000.00');
+
+        $this->patchJson("/api/ingresos/{$id}/items/{$linea}", ['costo_unitario' => 200000])->assertOk();
+        expect($this->getJson("/api/ingresos/{$id}")->json('totales'))
+            ->toMatchArray(['descuento_documento' => '20000.00', 'total' => '180000.00', 'descuento_excede_subtotal' => false]);
+
+        $this->deleteJson("/api/ingresos/{$id}/items/{$linea}")->assertOk();
+        expect($this->getJson("/api/ingresos/{$id}")->json('totales.total'))->toBe('0.00');
     });
 
     it('S-22 (e): un descuento de línea mayor que 100 % o negativo responde 422', function () {

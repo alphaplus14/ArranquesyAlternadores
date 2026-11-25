@@ -39,21 +39,25 @@ Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:lo
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
-    Route::get('/me', [AuthController::class, 'me'])->middleware('rol:admin,logistica,mostrador');
+    Route::get('/me', [AuthController::class, 'me'])->middleware('rol:admin,logistica,mostrador,contable');
 
     // S-25: aviso de que un código ya existe con otro proveedor. Antes de /referencias/{referencia}.
     Route::get('/referencias/coincidencias', [ReferenciaController::class, 'coincidencias'])->middleware('rol:admin,logistica');
 
-    // Lectura común a los tres módulos.
+    // Listas de proveedores y clientes: también las usa el módulo contable (RF-29).
+    Route::middleware('rol:admin,logistica,mostrador,contable')->group(function () {
+        Route::get('/proveedores', [ProveedorController::class, 'index']);
+        Route::get('/clientes', [ClienteController::class, 'index']); // RF-13
+    });
+
+    // Lectura común a los tres módulos de operación.
     Route::middleware('rol:admin,logistica,mostrador')->group(function () {
         Route::get('/categorias', [CategoriaController::class, 'index']);
-        Route::get('/proveedores', [ProveedorController::class, 'index']);
         Route::get('/referencias', [ReferenciaController::class, 'index']);
         Route::get('/referencias/{referencia}', [ReferenciaController::class, 'show']);
         Route::get('/codigos-universales', [CodigoUniversalController::class, 'index']);
         Route::get('/codigos-universales/{codigoUniversal}', [CodigoUniversalController::class, 'show']); // RF-02
         Route::get('/buscar', BusquedaController::class)->middleware('medir:500')->name('buscar'); // RF-12
-        Route::get('/clientes', [ClienteController::class, 'index']); // RF-13
     });
 
     // RF-20: logística crea la referencia que no existe al escanear un ingreso.
@@ -129,20 +133,27 @@ Route::middleware('auth:sanctum')->group(function () {
 
         Route::match(['put', 'patch'], '/clientes/{cliente}', [ClienteController::class, 'update']); // RF-13
 
-        // RF-17 / S-14: pagos a proveedores, solo admin.
+        Route::post('/abonos/{abono}/anulaciones', [AbonoController::class, 'anular']); // RF-15
+
+        // RF-17 / S-27: anular un pago sigue siendo solo del admin.
+        Route::post('/pagos/{pago}/anulaciones', [PagoController::class, 'anular']);
+    });
+
+    // Módulo contable (RF-29): pagos a proveedores (RF-17), informes (RF-18), vencimientos (RF-30)
+    // y su exportación a Excel (RF-31). El admin también entra.
+    Route::middleware('rol:contable')->group(function () {
         Route::get('/proveedores/{proveedor}/saldo', [PagoController::class, 'saldo']);
         Route::post('/proveedores/{proveedor}/pagos', [PagoController::class, 'store']);
-        Route::post('/pagos/{pago}/anulaciones', [PagoController::class, 'anular']);
 
-        // RF-18 / S-14: informes en pantalla, solo admin. El estado de cuenta del cliente está en la
-        // cartera (S-30: admin y mostrador) y usa el mismo cálculo.
         Route::middleware('medir:500')->group(function () {
+            Route::get('/vencimientos', [ReporteController::class, 'vencimientos']);
             Route::get('/reportes/compras', [ReporteController::class, 'compras']);
             Route::get('/reportes/ventas-credito', [ReporteController::class, 'ventasCredito']);
             Route::get('/reportes/cartera-clientes', [ReporteController::class, 'carteraClientes']);
             Route::get('/reportes/cuentas-por-pagar', [ReporteController::class, 'cuentasPorPagar']);
             Route::get('/reportes/remisiones-pendientes', [ReporteController::class, 'remisionesPendientes']);
             Route::get('/reportes/diferencias-remision', [ReporteController::class, 'diferenciasRemision']);
+            Route::get('/clientes/{cliente}/estado-cuenta', [ReporteController::class, 'estadoCuentaCliente']);
             Route::get('/proveedores/{proveedor}/estado-cuenta', [ReporteController::class, 'estadoCuentaProveedor']);
         });
     });
@@ -227,11 +238,14 @@ Route::middleware('auth:sanctum')->group(function () {
         });
     });
 
+    // RF-24 (S-48): cuentas de pago activas. Mostrador (ventas, abonos), admin y contable (pagos a
+    // proveedores, RF-29). Logística 403.
+    Route::get('/cuentas-pago', [CuentaPagoController::class, 'index'])->middleware('rol:mostrador,contable');
+
     // RF-24 a RF-26 (S-48 a S-54): cuentas de pago y caja diaria. Mostrador y admin; logística 403.
     // Registrar movimientos, anularlos y cerrar el día: solo mostrador. El admin consulta, reabre un
     // cierre (su única escritura en caja), ve el cuadre mensual y gestiona las categorías.
     Route::middleware('rol:mostrador')->group(function () {
-        Route::get('/cuentas-pago', [CuentaPagoController::class, 'index']);
 
         Route::middleware('medir:800')->prefix('caja')->group(function () {
             Route::get('/movimientos', [MovimientoCajaController::class, 'index'])->name('caja.movimientos');

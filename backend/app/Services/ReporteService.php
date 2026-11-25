@@ -20,7 +20,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
- * RF-18: informes en pantalla (no se exportan). Cada informe devuelve sus filas y los totales
+ * RF-18: informes en pantalla (RF-31: el controlador también los exporta a Excel). Cada informe devuelve sus filas y los totales
  * de todas ellas, no solo de la página; el controlador pagina. Los totales son la suma de las
  * filas (criterio de aceptación de RF-18). Solo lectura.
  */
@@ -369,13 +369,20 @@ class ReporteService
         $medios = config('cartera.medios');
         $etiqueta = $tipo === 'abono' ? 'Abono' : 'Pago';
 
+        $esPago = $tipo === 'pago';
         $movimientos = DB::table($tabla)
-            ->where($titular, $titularId)
-            ->where('fecha', '<=', $fin->toDateString())
-            ->get(['id', 'fecha', 'created_at', 'valor', 'medio', 'referencia'])
-            ->map(fn ($m) => $this->movimiento($m->fecha, $tipo, trim("{$etiqueta} · ".($medios[$m->medio] ?? $m->medio).' '.($m->referencia ?? '')), '0', $m->valor, [
-                "{$tipo}_id" => (int) $m->id,
-            ], $m->created_at));
+            ->when($esPago, fn ($q) => $q->leftJoin('ingresos', 'ingresos.id', '=', "{$tabla}.ingreso_id"))
+            ->where("{$tabla}.{$titular}", $titularId)
+            ->where("{$tabla}.fecha", '<=', $fin->toDateString())
+            ->get([
+                "{$tabla}.id", "{$tabla}.fecha", "{$tabla}.created_at", "{$tabla}.valor", "{$tabla}.medio", "{$tabla}.referencia",
+                ...($esPago ? ['ingresos.tipo as doc_tipo', 'ingresos.numero_documento as doc_numero'] : []),
+            ])
+            ->map(fn ($m) => $this->movimiento($m->fecha, $tipo, trim("{$etiqueta} · ".($medios[$m->medio] ?? $m->medio).' '.($m->referencia ?? ''))
+                // RF-17 (ajuste): el pago aplicado a una factura lo dice.
+                .(isset($m->doc_numero) ? ' → '.$this->nombreDocumento($m->doc_tipo, $m->doc_numero) : ''), '0', $m->valor, [
+                    "{$tipo}_id" => (int) $m->id,
+                ], $m->created_at));
 
         $anulados = DB::table($anulaciones)
             ->join($tabla, "{$tabla}.id", '=', "{$anulaciones}.{$llave}")

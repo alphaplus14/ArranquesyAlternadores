@@ -11,6 +11,8 @@ import Paginacion from '../componentes/Paginacion'
 import SelectorProveedor from '../componentes/SelectorProveedor'
 import SelectorCategoria from '../componentes/SelectorCategoria'
 import SelectorUniversal from '../componentes/SelectorUniversal'
+import CampoMoneda from '../componentes/CampoMoneda'
+import { formatoNumero, leerNumero } from '../componentes/numeros'
 import AvisoCoincidencias from '../componentes/AvisoCoincidencias'
 import Resumen from '../componentes/Resumen'
 import { useCategorias } from '../hooks/useCatalogos'
@@ -230,7 +232,7 @@ export default function Productos() {
       categoria_id: String(r.categoria_id),
       codigo_universal_id: r.codigo_universal_id ? String(r.codigo_universal_id) : '',
       descripcion: r.descripcion,
-      precio_venta: r.precio_venta,
+      precio_venta: formatoNumero(r.precio_venta), // S-67: se edita con separador de miles
       stock_minimo: r.stock_minimo == null ? '' : String(r.stock_minimo),
     },
   })
@@ -460,6 +462,7 @@ function FormularioReferencia({ id, inicial, onListo, onCerrar }: { id: number |
       const conUniversal = admiteUniversal && f.codigo_universal_id !== ''
       const datos = {
         ...f,
+        precio_venta: leerNumero(f.precio_venta), // S-67: sin el formato
         codigo_fabricante: f.codigo_fabricante.trim() || null,
         calidad: f.calidad || null,
         codigo_universal_id: conUniversal ? Number(f.codigo_universal_id) : null,
@@ -471,7 +474,7 @@ function FormularioReferencia({ id, inicial, onListo, onCerrar }: { id: number |
     onSuccess: onListo,
   })
 
-  const errorPrecioVenta = f.precio_venta === '' ? null : Number(f.precio_venta) > 0 ? null : 'El precio de venta debe ser mayor que 0.'
+  const errorPrecioVenta = f.precio_venta === '' ? null : (leerNumero(f.precio_venta) ?? 0) > 0 ? null : 'El precio de venta debe ser mayor que 0.'
   const universalElegido = admiteUniversal && f.codigo_universal_id !== ''
   const errorMinimo = errorStockMinimo(f.stock_minimo)
   const campo = (k: keyof Formulario) => ({ value: f[k], onChange: (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value }) })
@@ -507,7 +510,7 @@ function FormularioReferencia({ id, inicial, onListo, onCerrar }: { id: number |
           <SelectorUniversal categoriaId={f.categoria_id} value={f.codigo_universal_id} onChange={(codigo_universal_id) => setF((v) => ({ ...v, codigo_universal_id }))} />
         )}
         <label>Precio de venta
-          <input type="number" min="0.01" step="0.01" required aria-invalid={errorPrecioVenta !== null} aria-describedby="precio-venta-ayuda" {...campo('precio_venta')} />
+          <CampoMoneda required aria-invalid={errorPrecioVenta !== null} aria-describedby="precio-venta-ayuda" {...campo('precio_venta')} />
         </label>
         <p id="precio-venta-ayuda" className={errorPrecioVenta ? 'ayuda error' : 'ayuda'}>
           {errorPrecioVenta ?? 'Con IVA incluido. Mayor que 0: una referencia sin precio no se puede vender.'}

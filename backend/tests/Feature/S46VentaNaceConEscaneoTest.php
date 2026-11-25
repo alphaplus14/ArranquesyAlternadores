@@ -284,3 +284,20 @@ it('S-46 (10): admin y logística reciben 403 en POST /ventas; la venta es siemp
     expect(fn () => $vacia->fresh()->delete())->toThrow(RegistroInmutableException::class);
     expect(Venta::whereKey($vacia->id)->exists())->toBeTrue();
 });
+
+it('RF-06 / S-46: POST /ventas responde además la venta completa, igual que GET /ventas/{id}; escanear sigue liviano', function () {
+    actuarComo(Rol::Mostrador);
+
+    $r = $this->postJson('/api/ventas', escaneoInicial('RN-4410'))->assertCreated();
+    $id = $r->json('venta_id');
+
+    // La pantalla la guarda en caché tal cual: misma forma y mismos datos que GET /ventas/{id}.
+    expect($r->json('venta'))->toBe($this->getJson("/api/ventas/{$id}")->assertOk()->json())
+        ->and($r->json('venta.estado'))->toBe('abierta')
+        ->and($r->json('venta.items'))->toHaveCount(1)
+        ->and($r->json('venta.items.0.id'))->toBe($r->json('venta_item_id'))
+        ->and($r->json('venta.totales'))->toBe($r->json('totales'));
+
+    // Las lecturas siguientes no la repiten: una sola petición liviana por escaneo.
+    $this->postJson("/api/ventas/{$id}/escanear", escaneoInicial('ARR-12V-9D'))->assertCreated()->assertJsonMissingPath('venta');
+});

@@ -108,7 +108,7 @@ export default function Ajustes() {
     return (
       <div className="pila ajustes">
         <div className="pagina-encabezado">
-          <h1>Historial de ajustes</h1>
+          <h1>Historial de movimientos</h1>
           <p>Solo consulta: las salidas, entradas y devoluciones las registra logística.</p>
         </div>
         <section className="panel">
@@ -121,7 +121,7 @@ export default function Ajustes() {
   return (
     <div className="pila ajustes">
       <div className="pagina-encabezado">
-        <h1>Ajustes de inventario</h1>
+        <h1>Movimientos de inventario</h1>
         <p>Salidas por garantía, devolución a proveedor, daño, pérdida o faltante; entradas por inventario físico; devoluciones de clientes y reintegros. Nada se borra.</p>
       </div>
       <section className="panel">
@@ -1061,7 +1061,7 @@ function Historial({ puedeReintegrar }: { puedeReintegrar: boolean }) {
         <p className="vacio">{cargando ? 'Cargando…' : 'No hay ajustes con esos filtros.'}</p>
       ) : (
         <table className={cargando ? 'tabla-apilable actualizando' : 'tabla-apilable'}>
-          <caption className="solo-lector">Historial de ajustes de inventario</caption>
+          <caption className="solo-lector">Historial de movimientos de inventario</caption>
           <thead><tr><th>Fecha</th><th>Tipo y motivo</th><th>Usuario</th><th>Unidades</th><th><span className="solo-lector">Acciones</span></th></tr></thead>
           <tbody>
             {filas.map((a) => {

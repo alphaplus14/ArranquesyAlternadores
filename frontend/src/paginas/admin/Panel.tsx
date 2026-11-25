@@ -8,11 +8,11 @@ import {
   type PanelReferencia, type PanelResumen, type PanelRotacion, type PanelSinMovimiento, type PanelVentasPorDia, type Referencia,
 } from '../../api/tipos'
 import ControlSegmentado from '../../componentes/ControlSegmentado'
+import Icono, { type IconoNombre } from '../../componentes/Icono'
 import FichaReferencia from '../../componentes/FichaReferencia'
 import FiltroPeriodo, { type ValorPeriodo } from '../../componentes/FiltroPeriodo'
 import Paginacion from '../../componentes/Paginacion'
 import SelectorProveedor from '../../componentes/SelectorProveedor'
-import BarrasHorizontales from '../../componentes/graficos/BarrasHorizontales'
 import Columnas from '../../componentes/graficos/Columnas'
 import GraficoAreas from '../../componentes/graficos/GraficoAreas'
 import { pesos } from '../../componentes/numeros'
@@ -43,6 +43,19 @@ const AGRUPACIONES: { valor: 'categoria' | 'proveedor'; texto: string }[] = [
   { valor: 'proveedor', texto: 'Por proveedor' },
 ]
 const DIAS_ESTANCADO = [30, 60, 90, 120, 180, 365]
+const DIAS_MIN = 30
+const DIAS_MAX = 730
+
+function esOrden(valor: string | null): valor is OrdenMasVendidos {
+  return valor === 'unidades' || valor === 'valor' || valor === 'margen'
+}
+
+/** Entero dentro de un rango, o null si la URL trae otra cosa. */
+function leerEntero(raw: string | null, min: number, max: number): number | null {
+  if (!raw || !/^\d+$/.test(raw)) return null
+  const n = Number(raw)
+  return n >= min && n <= max ? n : null
+}
 const NOMBRE_RANGO: Record<string, string> = { '0-30': '0-30 d', '31-90': '31-90 d', '91-180': '91-180 d', '181-365': '181-365 d', 'mas-365': '> 365 d' }
 const NOMBRE_REABASTECER = { agotada: 'Agotada', bajo_minimo: 'Bajo mínimo', cobertura_corta: 'Cobertura corta' } as const
 
@@ -85,6 +98,14 @@ export default function Panel() {
     proveedor_id: proveedorId || undefined,
   }), [rango.desde, rango.hasta, categoriaId, proveedorId])
 
+  // Orden, agrupación, días y página van en la misma URL que el período. El valor por
+  // defecto no se escribe: así el enlace compartido solo lleva lo que el usuario cambió.
+  const ordenParam = params.get('orden')
+  const orden: OrdenMasVendidos = esOrden(ordenParam) ? ordenParam : 'unidades'
+  const agrupar = params.get('agrupar') === 'proveedor' ? 'proveedor' : 'categoria'
+  const diasUrl = leerEntero(params.get('dias'), DIAS_MIN, DIAS_MAX)
+  const paginaEstancado = leerEntero(params.get('page'), 2, 10_000) ?? 1
+
   const cambiar = (cambios: Record<string, string | null>) => setParams((actual) => {
     const siguiente = new URLSearchParams(actual)
     for (const [k, v] of Object.entries(cambios)) {
@@ -97,12 +118,9 @@ export default function Panel() {
     periodo: v.periodo,
     desde: v.periodo === 'personalizado' ? v.desde : null,
     hasta: v.periodo === 'personalizado' ? v.hasta : null,
+    page: null,
   })
 
-  const [orden, setOrden] = useState<OrdenMasVendidos>('unidades')
-  const [agrupar, setAgrupar] = useState<'categoria' | 'proveedor'>('categoria')
-  const [diasElegidos, setDiasElegidos] = useState<number | null>(null)
-  const [paginaEstancado, setPaginaEstancado] = useState(1)
   const [fichaId, setFichaId] = useState<number | null>(null)
 
   // "Actualizar": las consultas activas se repiten con refrescar=1 (saltan la caché del servidor).
@@ -125,7 +143,7 @@ export default function Panel() {
     queryFn: async () => (await api.get<{ valor: number }>('/configuracion/dias-sin-movimiento')).data.valor,
     staleTime: CINCO_MINUTOS,
   })
-  const dias = diasElegidos ?? configurados.data ?? null
+  const dias = diasUrl ?? configurados.data ?? null
 
   const resumen = usePanel<PanelResumen>('resumen', filtros, {}, forzar, activo)
   const porDia = usePanel<PanelVentasPorDia>('ventas-por-dia', filtros, {}, forzar, activo)
@@ -135,9 +153,6 @@ export default function Panel() {
   const antiguedad = usePanel<PanelAntiguedad>('antiguedad-stock', filtros, {}, forzar, activo)
   const rotacion = usePanel<PanelRotacion>('rotacion', filtros, { agrupar }, forzar, activo)
   const control = usePanel<PanelControl>('control', filtros, {}, forzar, activo)
-
-  // Los filtros cambian la página del estancado.
-  useEffect(() => { setPaginaEstancado(1) }, [filtros, dias])
 
   const ficha = useQuery({
     queryKey: ['referencia', fichaId],
@@ -153,7 +168,7 @@ export default function Panel() {
     const { etiqueta, detalle } = etiquetaRef(r)
     return (
       <span className="panel-ref">
-        <button type="button" className="enlace" onClick={() => setFichaId(r.id)} title={r.descripcion}>{etiqueta}</button>
+        <button type="button" className="enlace" translate="no" onClick={() => setFichaId(r.id)} title={r.descripcion}>{etiqueta}</button>
         <small>{detalle}</small>
       </span>
     )
@@ -163,14 +178,14 @@ export default function Panel() {
     <div className="pila panel-gestion">
       <div className="pagina-encabezado">
         <h1>Panel de gestión</h1>
-        <p>Ventas, margen estimado, inventario, cartera y control del negocio. Solo en pantalla.</p>
+        <p>Lo vendido, lo que hay que reponer y lo que lleva tiempo quieto.</p>
       </div>
 
       <section className="tarjeta-pagina panel-filtros-caja" aria-label="Filtros del panel">
         <div className="formulario en-linea panel-filtros">
           <FiltroPeriodo id="panel-periodo" valor={periodo} onCambio={cambiarPeriodo} periodos={PERIODOS_PANEL} />
           <label>Categoría
-            <select value={categoriaId} onChange={(e) => cambiar({ categoria: e.target.value || null })}>
+            <select name="categoria" autoComplete="off" value={categoriaId} onChange={(e) => cambiar({ categoria: e.target.value || null, page: null })}>
               <option value="">Todas</option>
               {categorias.data?.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
             </select>
@@ -180,7 +195,7 @@ export default function Panel() {
               className="filtro"
               aria-label="Proveedor"
               value={proveedorId}
-              onChange={(v) => cambiar({ proveedor: v || null })}
+              onChange={(v) => cambiar({ proveedor: v || null, page: null })}
               placeholder="Todos los proveedores"
               limpiable
             />
@@ -202,39 +217,41 @@ export default function Panel() {
       </section>
 
       {/* (1) Medidas */}
-      <Bloque titulo="Resumen" consulta={resumen} sinTitulo alto={140}>
+      <Bloque titulo="Resumen" consulta={resumen} plano tituloOculto alto={120}>
         {(r) => (
           <div className="panel-medidas">
-            <Tarjeta etiqueta="Ventas" valor={pesos(r.ventas.total)} variacion={r.ventas.variacion_total}
-              lineas={[`${miles(r.ventas.ventas)} ventas · ${unidades(r.ventas.unidades)}`, `Ticket promedio ${pesos(r.ventas.ticket_promedio)}`, `Contado ${pesos(r.ventas.contado)} · Crédito ${pesos(r.ventas.credito)}`]} />
+            <Tarjeta tono="azul" icono="venta" etiqueta="Ventas" valor={pesos(r.ventas.total)} variacion={r.ventas.variacion_total}
+              lineas={[`${miles(r.ventas.ventas)} ventas · ticket ${pesos(r.ventas.ticket_promedio)}`, `Contado ${pesos(r.ventas.contado)} · crédito ${pesos(r.ventas.credito)}`]} />
             <Tarjeta
+              tono="naranja" icono="panel"
               etiqueta="Margen estimado"
               ayuda={<AyudaMargen />}
               valor={r.margen.margen === null ? '—' : `${pesos(r.margen.margen)}`}
               etiquetaValor={r.margen.margen === null ? 'Margen estimado sin datos de costo' : `Margen estimado ${pesos(r.margen.margen)}, ${pct(r.margen.margen_porcentaje)}`}
               sufijo="estimado"
+              negativo={r.margen.margen !== null && Number(r.margen.margen) < 0}
               variacion={r.margen.variacion}
-              lineas={[
-                `${pct(r.margen.margen_porcentaje)} de la venta sin IVA`,
-                r.margen.cobertura_costo === null ? 'Sin unidades vendidas' : `sobre el ${pct(r.margen.cobertura_costo)} de las unidades vendidas (el resto no tiene costo)`,
-              ]}
+              lineas={[`${pct(r.margen.margen_porcentaje)} sin IVA`]}
             />
-            <Tarjeta etiqueta="Valor del inventario" valor={pesos(r.inventario.valor_costo)} sufijo="a costo"
-              lineas={[`${pesos(r.inventario.valor_venta_sin_iva)} a precio de venta sin IVA`, `${unidades(r.inventario.unidades)}${r.inventario.unidades_sin_costo ? ` · ${miles(r.inventario.unidades_sin_costo)} sin costo` : ''}`]} />
-            <Tarjeta etiqueta="Cartera por cobrar" valor={pesos(r.cartera.por_cobrar)} lineas={[`Vencida ${pesos(r.cartera.vencida)}`]} enlace={{ a: RUTA_CARTERA, texto: 'Ver cartera' }} />
-            <Tarjeta etiqueta="Cuentas por pagar" valor={pesos(r.cuentas_por_pagar.por_pagar)} lineas={[`Vencidas ${pesos(r.cuentas_por_pagar.vencidas)}`]} />
-            <Tarjeta etiqueta="Compras del período" valor={pesos(r.compras.total)} lineas={['Facturas y remisiones confirmadas']} />
-            <Tarjeta etiqueta="Agotados / bajo mínimo" valor={`${miles(r.agotados)} / ${miles(r.bajo_minimo)}`} lineas={['Referencias activas']} enlace={{ a: '/agotados', texto: 'Ver informe' }} />
+            <Tarjeta tono="teal" icono="inventario" etiqueta="Inventario" valor={pesos(r.inventario.valor_costo)} sufijo="a costo"
+              lineas={[unidades(r.inventario.unidades)]} />
+            <Tarjeta tono="violeta" icono="ingreso" etiqueta="Compras" valor={pesos(r.compras.total)} lineas={['Del período']} />
+            <Tarjeta tono="verde" icono="billetera" etiqueta="Por cobrar" valor={pesos(r.cartera.por_cobrar)} lineas={[`Vencida ${pesos(r.cartera.vencida)}`]} enlace={{ a: RUTA_CARTERA, texto: 'Abrir cartera' }} />
+            <Tarjeta tono="rosa" icono="caja" etiqueta="Por pagar" valor={pesos(r.cuentas_por_pagar.por_pagar)} lineas={[`Vencidas ${pesos(r.cuentas_por_pagar.vencidas)}`]} />
+            <Tarjeta tono="rojo" icono="agotados" etiqueta="Agotadas" valor={miles(r.agotados)} lineas={['Activas en cero']} enlace={{ a: '/agotados', texto: 'Ver agotados' }} />
+            <Tarjeta tono="ambar" icono="configuracion" etiqueta="Bajo mínimo" valor={miles(r.bajo_minimo)} lineas={['En el mínimo o por debajo']} enlace={{ a: '/agotados', texto: 'Ver mínimos' }} />
           </div>
         )}
       </Bloque>
 
       {/* (2) Ventas por día */}
-      <Bloque titulo="Ventas por día" consulta={porDia} esVacio={(d) => d.totales.ventas === 0} vacio="Sin ventas en el período." alto={260}>
+      <div className="panel-duo">
+      <Bloque titulo="Ventas por día" consulta={porDia} esVacio={(d) => d.totales.ventas === 0} vacio="Sin ventas en el período." alto={200}>
         {(d) => (
           <>
             <p className="ayuda">Total {pesos(d.totales.total)}: contado {pesos(d.totales.contado)}, crédito {pesos(d.totales.credito)} · {unidades(d.totales.unidades)}.</p>
             <GraficoAreas
+              alto={180}
               datos={d.serie.map((x) => ({ etiqueta: diaCorto(x.dia), detalle: formatearFecha(x.dia), valores: { contado: Number(x.contado), credito: Number(x.credito) } }))}
               series={[
                 { clave: 'contado', nombre: 'Contado', color: 'var(--grafico-contado)' },
@@ -246,34 +263,35 @@ export default function Panel() {
           </>
         )}
       </Bloque>
+        <Bloque titulo="Reabastecer" consulta={reabastecer} esVacio={(d) => d.filas.length === 0} vacio="Nada urgente: ninguna referencia que rote está agotada, bajo mínimo o por acabarse.">
+          {(d) => (
+            <>
+              <ul className="panel-reponer">
+                {d.filas.map((f) => (
+                  <li key={f.referencia.id}>
+                    {celdaRef(f.referencia)}
+                    <span className={`chip motivo-${f.motivo}`}>{NOMBRE_REABASTECER[f.motivo]}</span>
+                    <span className="panel-reponer-dato">{miles(f.existencia)} en stock · {miles(f.vendidas)} vendidas · {f.existencia === 0 ? '0 días' : `${miles(Math.round(f.cobertura_dias))} días`}</span>
+                  </li>
+                ))}
+              </ul>
+              {d.total > d.filas.length && <p className="ayuda">Se muestran {d.filas.length} de {d.total}.</p>}
+            </>
+          )}
+        </Bloque>
+      </div>
 
-      {/* (3) Más vendidos y Reabastecer */}
-      <div className="panel-dos">
-        <Bloque
+      <Bloque
           titulo="Más vendidos"
           consulta={masVendidos}
+          diferido
           esVacio={(d) => d.filas.length === 0}
           vacio="Sin ventas en el período."
-          acciones={<ControlSegmentado id="panel-orden" etiqueta="Ordenar por" opciones={ORDENES} valor={orden} onCambio={setOrden} />}
+          acciones={<ControlSegmentado id="panel-orden" etiqueta="Ordenar por" opciones={ORDENES} valor={orden} onCambio={(v) => cambiar({ orden: v === 'unidades' ? null : v })} />}
           ayuda={orden === 'margen' ? <AyudaMargen /> : undefined}
         >
           {(d) => (
             <>
-              <BarrasHorizontales
-                resumen={`Diez más vendidos por ${orden}`}
-                filas={d.filas.map((f) => {
-                  const valor = orden === 'unidades' ? f.unidades : orden === 'valor' ? Number(f.valor) : Number(f.margen ?? 0)
-                  const texto = orden === 'unidades' ? unidades(f.unidades) : orden === 'valor' ? pesos(f.valor) : (f.margen === null ? '— (sin costo)' : `${pesos(f.margen)} estimado`)
-                  return {
-                    id: f.referencia.id,
-                    ...etiquetaRef(f.referencia),
-                    valor,
-                    texto,
-                    extra: f.clase ? <span className={`chip clase-abc clase-${f.clase}`} title={`Clase ${f.clase} por valor de venta`}>{f.clase}</span> : undefined,
-                    onElegir: () => setFichaId(f.referencia.id),
-                  }
-                })}
-              />
               <div className="panel-tabla">
                 <table className="tabla-apilable">
                   <caption className="solo-lector">Más vendidos, con margen estimado</caption>
@@ -303,38 +321,17 @@ export default function Panel() {
           )}
         </Bloque>
 
-        <Bloque titulo="Reabastecer" consulta={reabastecer} esVacio={(d) => d.filas.length === 0} vacio="Nada urgente: ninguna referencia que rote está agotada, bajo mínimo o por acabarse.">
-          {(d) => (
-            <div className="panel-tabla">
-              <table className="tabla-apilable">
-                <caption className="solo-lector">Referencias para reabastecer</caption>
-                <thead><tr><th>Referencia</th><th>Motivo</th><th className="col-numero">Vendidas</th><th className="col-numero">Existencia</th><th className="col-numero">Cobertura</th></tr></thead>
-                <tbody>
-                  {d.filas.map((f) => (
-                    <tr key={f.referencia.id}>
-                      <td data-etiqueta="Referencia">{celdaRef(f.referencia)}</td>
-                      <td data-etiqueta="Motivo"><span className={`chip motivo-${f.motivo}`}>{NOMBRE_REABASTECER[f.motivo]}</span></td>
-                      <td data-etiqueta="Vendidas" className="col-numero">{miles(f.vendidas)}</td>
-                      <td data-etiqueta="Existencia" className="col-numero">{miles(f.existencia)}{f.minimo_efectivo !== null && <small> (mín. {f.minimo_efectivo})</small>}</td>
-                      <td data-etiqueta="Cobertura" className="col-numero">{f.existencia === 0 ? '0 días' : `${miles(Math.round(f.cobertura_dias))} días`}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {d.total > d.filas.length && <p className="ayuda">Se muestran {d.filas.length} de {d.total}.</p>}
-            </div>
-          )}
-        </Bloque>
-      </div>
-
       {/* (4) Stock estancado */}
-      <section className="panel-bloque" aria-labelledby="panel-estancado">
+      <section className="panel-bloque panel-diferido" aria-labelledby="panel-estancado">
         <div className="panel-bloque-cabeza">
           <h2 id="panel-estancado">Stock estancado</h2>
           <div className="panel-acciones">
             <label className="panel-dias">Sin vender en
-              <select value={dias ?? ''} onChange={(e) => setDiasElegidos(Number(e.target.value))} disabled={dias === null}>
-                {[...new Set([...DIAS_ESTANCADO, ...(configurados.data ? [configurados.data] : [])])].sort((a, b) => a - b).map((n) => (
+              <select name="dias_sin_vender" autoComplete="off" value={dias ?? ''} onChange={(e) => {
+                const n = Number(e.target.value)
+                cambiar({ dias: n === configurados.data ? null : String(n), page: null })
+              }} disabled={dias === null}>
+                {[...new Set([...DIAS_ESTANCADO, ...(configurados.data ? [configurados.data] : []), ...(diasUrl ? [diasUrl] : [])])].sort((a, b) => a - b).map((n) => (
                   <option key={n} value={n}>{n} días{n === configurados.data ? ' (por defecto)' : ''}</option>
                 ))}
               </select>
@@ -342,6 +339,7 @@ export default function Panel() {
             <Link to="/admin/configuracion#panel-gestion">Cambiar valor por defecto</Link>
           </div>
         </div>
+        <div className="panel-stock">
         <EstadoConsulta consulta={estancado} vacio="Ninguna referencia con existencia lleva tanto tiempo sin venderse." esVacio={(d) => d.total === 0} alto={60} anidado>
           {(d) => (
             <p className="panel-total-estancado">
@@ -351,7 +349,7 @@ export default function Panel() {
             </p>
           )}
         </EstadoConsulta>
-        <EstadoConsulta consulta={antiguedad} anidado alto={200}>
+        <EstadoConsulta consulta={antiguedad} anidado alto={160}>
           {(a) => (
             <>
               <h3 className="panel-subtitulo">Antigüedad del stock disponible</h3>
@@ -367,6 +365,7 @@ export default function Panel() {
             </>
           )}
         </EstadoConsulta>
+        </div>
         <EstadoConsulta consulta={estancado} anidado esVacio={(d) => d.total === 0} vacio="">
           {(d) => (
             <>
@@ -394,7 +393,7 @@ export default function Panel() {
                   </tbody>
                 </table>
               </div>
-              <Paginacion pagina={d} onCambiar={setPaginaEstancado} />
+              <Paginacion pagina={d} onCambiar={(n) => cambiar({ page: n <= 1 ? null : String(n) })} />
             </>
           )}
         </EstadoConsulta>
@@ -404,24 +403,14 @@ export default function Panel() {
       <Bloque
         titulo="Rotación"
         consulta={rotacion}
+        diferido
         esVacio={(d) => d.filas.length === 0}
         vacio="Sin ventas ni existencias para mostrar."
-        acciones={<ControlSegmentado id="panel-agrupar" etiqueta="Agrupar" opciones={AGRUPACIONES} valor={agrupar} onCambio={setAgrupar} />}
+        acciones={<ControlSegmentado id="panel-agrupar" etiqueta="Agrupar" opciones={AGRUPACIONES} valor={agrupar} onCambio={(v) => cambiar({ agrupar: v === 'categoria' ? null : v })} />}
         ayuda={<AyudaMargen />}
       >
         {(d) => (
           <>
-            <BarrasHorizontales
-              resumen={`Cobertura en días ${agrupar === 'proveedor' ? 'por proveedor' : 'por categoría'}`}
-              filas={d.filas.slice(0, 12).map((f) => ({
-                id: f.id,
-                etiqueta: f.nombre,
-                detalle: `${unidades(f.unidades_vendidas)} vendidas · ${pesos(f.ventas)}`,
-                valor: f.cobertura_dias ?? 0,
-                texto: f.cobertura_dias === null ? 'Sin rotación' : `${miles(Math.round(f.cobertura_dias))} días`,
-                marca: f.sobrestock ? 'Sobrestock' : undefined,
-              }))}
-            />
             <div className="panel-tabla">
               <table className="tabla-apilable">
                 <caption className="solo-lector">Rotación con margen estimado</caption>
@@ -458,7 +447,7 @@ export default function Panel() {
       </Bloque>
 
       {/* (6) Control */}
-      <Bloque titulo="Control" consulta={control}>
+      <Bloque titulo="Control" consulta={control} plano diferido>
         {(c) => <BloqueControl c={c} />}
       </Bloque>
 
@@ -482,8 +471,8 @@ function BloqueControl({ c }: { c: PanelControl }) {
 
   return (
     <div className="panel-control">
-      <article className="panel-control-tarjeta">
-        <h3>Bajas de inventario</h3>
+      <article className="panel-control-tarjeta tono-naranja">
+        <h3><span className="panel-medida-icono tono-naranja"><Icono nombre="caja" /></span>Bajas de inventario</h3>
         <p className="panel-control-cifra">{unidades(bajas.reduce((s, a) => s + a.unidades, 0))} · {pesos(sumar(bajas))} a costo</p>
         {bajas.length > 0 && (
           <ul className="lista">
@@ -500,39 +489,39 @@ function BloqueControl({ c }: { c: PanelControl }) {
             ))}
           </ul>
         )}
-        <Link to={RUTA_AJUSTES}>Historial de ajustes</Link>
+        <Link to={RUTA_AJUSTES}>Historial de movimientos</Link>
       </article>
-      <article className="panel-control-tarjeta">
-        <h3>Reversos</h3>
+      <article className="panel-control-tarjeta tono-rojo">
+        <h3><span className="panel-medida-icono tono-rojo"><Icono nombre="reactivar" /></span>Reversos</h3>
         <p className="panel-control-cifra">{miles(c.reversos.devolucion.reversos)} devoluciones · {pesos(c.reversos.devolucion.valor)}</p>
         <p>{miles(c.reversos.anulacion.reversos)} anulaciones · {pesos(c.reversos.anulacion.valor)} ({unidades(c.reversos.anulacion.items)})</p>
         <Link to="/admin/auditoria">Auditoría</Link>
       </article>
-      <article className="panel-control-tarjeta">
-        <h3>Capturas digitadas</h3>
+      <article className="panel-control-tarjeta tono-teal">
+        <h3><span className="panel-medida-icono tono-teal"><Icono nombre="etiqueta" /></span>Capturas digitadas</h3>
         <p className="panel-control-cifra">{pct(c.capturas.porcentaje_digitado)}</p>
         <p>{miles(c.capturas.digitadas)} de {unidades(c.capturas.total)} vendidas se digitaron en vez de escanearse.</p>
       </article>
-      <article className="panel-control-tarjeta">
-        <h3>Ventas por usuario</h3>
+      <article className="panel-control-tarjeta tono-azul">
+        <h3><span className="panel-medida-icono tono-azul"><Icono nombre="usuarios" /></span>Ventas por usuario</h3>
         {c.ventas_por_usuario.length === 0 ? <p className="vacio">Sin ventas en el período.</p> : (
           <ul className="lista">
             {c.ventas_por_usuario.map((u) => <li key={u.usuario.id}><strong>{u.usuario.nombre}</strong>: {miles(u.ventas)} ventas · {pesos(u.total)}</li>)}
           </ul>
         )}
       </article>
-      <article className="panel-control-tarjeta">
-        <h3>Ventas abiertas de días anteriores</h3>
+      <article className="panel-control-tarjeta tono-ambar">
+        <h3><span className="panel-medida-icono tono-ambar"><Icono nombre="venta" /></span>Ventas abiertas de días anteriores</h3>
         <p className="panel-control-cifra">{miles(c.ventas_abiertas_viejas)}</p>
         <p>Abiertas desde antes de hoy (ahora, sin importar el período).</p>
       </article>
-      <article className="panel-control-tarjeta">
-        <h3>Cambios de precio a crédito</h3>
+      <article className="panel-control-tarjeta tono-violeta">
+        <h3><span className="panel-medida-icono tono-violeta"><Icono nombre="editar" /></span>Cambios de precio a crédito</h3>
         <p className="panel-control-cifra">{miles(c.cambios_precio_credito)}</p>
         <Link to="/admin/auditoria?tabla=venta_items">Ver en la auditoría</Link>
       </article>
-      <article className="panel-control-tarjeta">
-        <h3>Días sin ventas</h3>
+      <article className="panel-control-tarjeta tono-rosa">
+        <h3><span className="panel-medida-icono tono-rosa"><Icono nombre="panel" /></span>Días sin ventas</h3>
         <p className="panel-control-cifra">{miles(c.dias_sin_ventas)} de {miles(c.dias)}</p>
         <Link to={RUTA_CARTERA}>Cartera</Link>
       </article>
@@ -540,7 +529,11 @@ function BloqueControl({ c }: { c: PanelControl }) {
   )
 }
 
-function Tarjeta({ etiqueta, valor, lineas = [], variacion, ayuda, sufijo, etiquetaValor, enlace }: {
+type Tono = 'azul' | 'naranja' | 'teal' | 'violeta' | 'verde' | 'rosa' | 'rojo' | 'ambar'
+
+function Tarjeta({ tono, icono, etiqueta, valor, lineas = [], variacion, ayuda, sufijo, etiquetaValor, enlace, negativo = false }: {
+  tono: Tono
+  icono: IconoNombre
   etiqueta: string
   valor: string
   lineas?: string[]
@@ -551,22 +544,28 @@ function Tarjeta({ etiqueta, valor, lineas = [], variacion, ayuda, sufijo, etiqu
   sufijo?: string
   etiquetaValor?: string
   enlace?: { a: string; texto: string }
+  /** La cifra en sí es negativa: va en rojo y un «sube» no se pinta de verde. */
+  negativo?: boolean
 }) {
   return (
-    <article className="panel-medida">
-      <span className="panel-medida-etiqueta">{etiqueta}{ayuda}</span>
-      <strong className="panel-medida-valor" aria-label={etiquetaValor}>{valor}{sufijo && <small> {sufijo}</small>}</strong>
-      {variacion !== undefined && <Variacion valor={variacion} />}
-      {lineas.map((l) => <span key={l} className="panel-medida-linea">{l}</span>)}
-      {enlace && <Link to={enlace.a} className="panel-medida-enlace">{enlace.texto}</Link>}
+    <article className={`panel-medida tono-${tono}`}>
+      <span className={`panel-medida-icono tono-${tono}`}><Icono nombre={icono} /></span>
+      <div className="panel-medida-cuerpo">
+        <span className="panel-medida-etiqueta">{etiqueta}{ayuda}</span>
+        <strong className={negativo ? 'panel-medida-valor negativo' : 'panel-medida-valor'} aria-label={etiquetaValor}>{valor}{sufijo ? <small> {sufijo}</small> : null}</strong>
+        {variacion !== undefined ? <Variacion valor={variacion} sinSubida={negativo} /> : null}
+        {lineas[0] ? <span className="panel-medida-linea">{lineas[0]}</span> : null}
+        {lineas[1] ? <span className="panel-medida-linea">{lineas[1]}</span> : null}
+        {enlace ? <Link to={enlace.a} className="panel-medida-enlace">{enlace.texto}</Link> : null}
+      </div>
     </article>
   )
 }
 
 /** Variación con flecha y texto (no solo color). */
-function Variacion({ valor }: { valor: number | null }) {
+function Variacion({ valor, sinSubida = false }: { valor: number | null; sinSubida?: boolean }) {
   if (valor === null) return <span className="panel-variacion neutra">Sin base para comparar</span>
-  const clase = valor > 0 ? 'sube' : valor < 0 ? 'baja' : 'neutra'
+  const clase = valor < 0 ? 'baja' : valor > 0 && !sinSubida ? 'sube' : 'neutra'
   const flecha = valor > 0 ? '▲' : valor < 0 ? '▼' : '='
   return <span className={`panel-variacion ${clase}`}><span aria-hidden>{flecha}</span> {valor > 0 ? 'Sube' : valor < 0 ? 'Baja' : 'Igual'} {pct(Math.abs(valor))} vs. período anterior</span>
 }
@@ -593,7 +592,7 @@ function Actualizado({ generado }: { generado?: string }) {
 }
 
 /** Bloque con título, acciones, esqueleto de carga, vacío y error aislado (los demás bloques siguen). */
-function Bloque<T>({ titulo, consulta, children, esVacio, vacio = 'Sin datos en el período.', acciones, ayuda, sinTitulo = false, alto = 180 }: {
+function Bloque<T>({ titulo, consulta, children, esVacio, vacio = 'Sin datos en el período.', acciones, ayuda, plano = false, tituloOculto = false, diferido = false, alto = 180 }: {
   titulo: string
   consulta: UseQueryResult<T>
   children: (datos: T) => ReactNode
@@ -601,13 +600,19 @@ function Bloque<T>({ titulo, consulta, children, esVacio, vacio = 'Sin datos en 
   vacio?: string
   acciones?: ReactNode
   ayuda?: ReactNode
-  sinTitulo?: boolean
+  /** Sin caja propia: las tarjetas hijas son la superficie. */
+  plano?: boolean
+  /** El título queda para el lector de pantalla. Las tarjetas ya se nombran solas. */
+  tituloOculto?: boolean
+  /** Debajo del pliegue: el navegador aplaza el layout hasta que el bloque se acerca. */
+  diferido?: boolean
   alto?: number
 }) {
   const id = useId()
+  const clase = [plano ? 'panel-bloque sin-caja' : 'panel-bloque', diferido ? 'panel-diferido' : ''].filter(Boolean).join(' ')
   return (
-    <section className={sinTitulo ? 'panel-bloque sin-caja' : 'panel-bloque'} aria-labelledby={id}>
-      <div className={sinTitulo ? 'solo-lector' : 'panel-bloque-cabeza'}>
+    <section className={clase} aria-labelledby={id}>
+      <div className={tituloOculto ? 'solo-lector' : 'panel-bloque-cabeza'}>
         <div className="panel-titulo"><h2 id={id}>{titulo}</h2>{ayuda}</div>
         {acciones && <div className="panel-acciones">{acciones}</div>}
       </div>

@@ -14,6 +14,13 @@ class PagoResource extends JsonResource
         return [
             'id' => $this->id,
             'proveedor_id' => $this->proveedor_id,
+            // RF-17 (ajuste): la factura a la que se aplicó; null = FIFO.
+            'ingreso_id' => $this->ingreso_id,
+            'ingreso' => $this->whenLoaded('ingreso', fn () => $this->ingreso ? [
+                'id' => $this->ingreso->id,
+                'tipo' => $this->ingreso->tipo,
+                'numero_documento' => $this->ingreso->numero_documento,
+            ] : null),
             'fecha' => $this->fecha->toDateString(),
             'valor' => $this->valor,
             'medio' => $this->medio,

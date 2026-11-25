@@ -8,6 +8,8 @@ enum Rol: string
     case Admin = 'admin';
     case Logistica = 'logistica';
     case Mostrador = 'mostrador';
+    // RF-29: auxiliar contable, acotado a cartera, cuentas por pagar, pagos e informes.
+    case Contable = 'contable';
 
     /** @return list<string> */
     public static function valores(): array

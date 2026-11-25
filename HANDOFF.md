@@ -1,17 +1,21 @@
-# HANDOFF — RF-04: diferencia contra el QR registrada (backend)
+# HANDOFF — Requerimientos de César (24-nov-2026, RQ-01 a RQ-06)
 
-**Objetivo:** al confirmar una factura por QR, registrar la diferencia contra el total del QR, quién la aceptó y por qué.
+**Objetivo:** cumplir `Desktop\Requerimientos_Arranques.md`. Registrados como S-63 a S-68 en `docs/supuestos.md`.
 
-**Hecho (backend, sin commit):**
-- Migración `2026_11_21_000100`: `ingresos.confirmado_por`, `diferencia_qr`, `diferencia_aceptada`, `diferencia_motivo`.
-- `POST /api/ingresos/{id}/confirmar` acepta `diferencia_motivo` (máx. 500). Si la diferencia supera la tolerancia: sin `aceptar_diferencia` → 422 `message`; con `aceptar_diferencia` y sin motivo → 422 `errors.diferencia_motivo`.
-- `IngresoResource`: `qr.diferencia_aceptada`, `qr.diferencia_motivo`, `confirmado_por {id,name}`. Confirmado, `qr.diferencia` es la guardada.
-- `GET /api/ingresos?con_diferencia=1`.
-- Ingreso confirmado inmutable (modelo). Ediciones del borrador con `lockForUpdate` (carrera agregar ítem vs confirmar).
-- Tests: 86 en verde (7 nuevos en RF04 + concurrencia `RF05IngresoConcurrenteTest`).
+**Hecho (rama `ajustes-cesar-nov`, sin commitear):**
+- S-63 menú: "Compras y remisiones" y "Movimientos" / "Historial de movimientos".
+- S-64: el nuevo ingreso (factura y remisión) abre en Crédito.
+- S-65: los avisos de acierto se cierran a los 5 s; el del ítem escaneado también cuando falta el costo.
+- S-66: descuento del documento aceptado en el borrador aun sin líneas; "≤ subtotal" solo al confirmar; `totales.descuento_excede_subtotal` y aviso.
+- Merge con `origin/cesar` reparado: tipos contables recuperados (`FilaVencimiento`, `Vencimientos`, campos de `DocumentoPendiente` y `MovimientoDinero`), imports con los nombres de César y pago a factura (RF-17) recuperado en `DialogoMovimiento`. `tsc` y build limpios.
+- S-67: `componentes/CampoMoneda.tsx` (separador de miles) en precio de venta, costo de línea, descuento $, abonos/pagos y precio a crédito.
 
-**Pendiente (frontend):** en `IngresoDetalle.tsx`, pedir el motivo al aceptar la diferencia y mostrar diferencia/motivo/confirmado_por; filtro "con diferencia" en `Ingresos.tsx`; tipos en `api/tipos.ts`.
+**Pendiente:**
+- RQ-06 / S-68 "Saldo": esperar decisión de César.
+- Probar en el navegador.
+- Commits por RQ.
+- 3 archivos de backend modificados que no son de esta tarea (`CarteraService`, migración `ventas_descartada`, `Pest.php`).
 
-**Verificar:** `cd backend && php artisan test`.
+**Verificar:** `cd backend && php artisan test` (539 en verde), `cd frontend && npm run build`.
 
-**Siguiente paso:** frontend; luego commits `feat(RF-04): ...` en una rama.
+**Siguiente paso:** prueba manual de ingresos y del mostrador, luego commits.

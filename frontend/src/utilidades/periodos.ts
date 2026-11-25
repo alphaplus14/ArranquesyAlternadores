@@ -47,10 +47,13 @@ export function esFecha(valor: unknown): valor is string {
   return m >= 1 && m <= 12 && d >= 1 && d <= diasDelMes(a, m)
 }
 
+// en-CA da el formato aaaa-mm-dd. Se crea una sola vez: armar un Intl.DateTimeFormat es caro y "hoy"
+// se pide en cada render (p. ej. el aviso de venta de un día anterior en cada ficha, S-40).
+const formatoDiaBogota = new Intl.DateTimeFormat('en-CA', { timeZone: ZONA_LOCAL, year: 'numeric', month: '2-digit', day: '2-digit' })
+
 /** "Hoy" en Bogotá como 'YYYY-MM-DD'. De noche no salta al día siguiente como pasaría con UTC. */
 export function hoyEnBogota(ahora: Date = new Date()): string {
-  // en-CA da el formato aaaa-mm-dd.
-  return new Intl.DateTimeFormat('en-CA', { timeZone: ZONA_LOCAL, year: 'numeric', month: '2-digit', day: '2-digit' }).format(ahora)
+  return formatoDiaBogota.format(ahora)
 }
 
 /**

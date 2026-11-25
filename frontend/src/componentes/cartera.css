@@ -17,3 +17,8 @@ tr.fila-anterior td { color: var(--suave); font-style: italic; }
 @media (max-width: 800px) {
   .antiguedad { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+/* RF-30: estado de un vencimiento y contador del menú. */
+.chip.vencida { background: var(--error-fondo); color: var(--peligro); font-weight: 600; }
+.chip.por-vencer { background: var(--aviso-fondo); color: var(--aviso); font-weight: 600; }
+.menu-contador { margin-left: auto; min-width: 22px; padding: 1px 7px; border-radius: 999px; background: var(--peligro); color: #fff; font-size: 0.75rem; font-weight: 700; text-align: center; }
+.documentos-pendientes td .enlace { white-space: nowrap; }

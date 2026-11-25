@@ -1,4 +1,5 @@
-export type Rol = 'admin' | 'logistica' | 'mostrador'
+/** RF-29: contable = auxiliar contable, acotado a cartera, cuentas por pagar, pagos e informes. */
+export type Rol = 'admin' | 'logistica' | 'mostrador' | 'contable'
 export type MetodoCaptura = 'escaneado' | 'digitado'
 
 export interface Usuario {
@@ -159,6 +160,8 @@ export interface Ingreso {
     iva: string
     lineas_sin_iva: number
     total: string
+    /** S-66: el borrador lo acepta; con true el backend no deja confirmar. */
+    descuento_excede_subtotal: boolean
   } | null
   /** RF-19: en una remisión, la factura que la cubre; en una factura, sus remisiones ligadas. */
   factura: { id: number; numero_documento: string; estado: Ingreso['estado'] } | null
@@ -558,6 +561,8 @@ export interface RespuestaEscaneo {
   totales?: TotalesVenta
   /** S-40: todos los ítems de la lectura (con cantidad > 1, varios); `item` es el último. */
   items?: VentaItem[]
+  /** S-46: solo en POST /ventas (la venta acaba de nacer): la venta completa, igual que GET /ventas/{id}. */
+  venta?: Venta
 }
 
 export interface Auditoria {
@@ -596,6 +601,9 @@ export interface MovimientoDinero {
   id: number
   cliente_id?: number
   proveedor_id?: number
+  /** RF-17 (ajuste): factura a la que se aplicó el pago; null = FIFO. */
+  ingreso_id?: number | null
+  ingreso?: { id: number; tipo: TipoIngreso; numero_documento: string } | null
   fecha: string
   valor: string
   medio: MedioDinero
@@ -633,7 +641,11 @@ export interface DocumentoPendiente {
   valor: string
   pendiente: string
   dias_vencido: number
+  dias_para_vencer: number
   rango: RangoAntiguedad
+  /** Solo en documentos de proveedor. */
+  tipo?: TipoIngreso
+  numero_documento?: string
 }
 
 export interface SaldoCliente extends ResumenSaldo {
@@ -1106,4 +1118,28 @@ export interface VistaPreviaCorreccion {
   errores: Array<{ tipo: string; mensaje: string; referencia_id?: number; codigo_referencia?: string | null; vendidas?: number }>
   antes: FotoCorreccion
   despues: FotoCorreccion
+}
+
+/** RF-30: documento con saldo vencido o que vence dentro del aviso (config cartera.aviso_dias). */
+export type TipoVencimiento = 'por_pagar' | 'por_cobrar'
+
+export interface FilaVencimiento {
+  tipo: TipoVencimiento
+  estado: 'vencida' | 'por_vencer'
+  titular: { id: number; nombre: string }
+  documento_id: number
+  documento: string
+  fecha: string
+  vence_el: string
+  dias_vencido: number
+  dias_para_vencer: number
+  valor: string
+  pendiente: string
+}
+
+type GrupoVencimiento = { cantidad: number; pendiente: string }
+
+export interface Vencimientos extends PaginaInforme<FilaVencimiento, { vencidas: GrupoVencimiento; por_vencer: GrupoVencimiento; todas: GrupoVencimiento }> {
+  hoy: string
+  aviso_dias: number
 }

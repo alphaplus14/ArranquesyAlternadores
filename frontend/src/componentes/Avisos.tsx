@@ -11,11 +11,13 @@ interface Mensaje {
   tono: TonoAviso
   texto: string
   enlace?: EnlaceAviso
+  /** ms hasta cerrarse solo; sin valor manda el tono (SE_VA_SOLO). */
+  espera?: number
 }
 
 interface Avisos {
-  /** Reemplaza al aviso anterior. Devuelve el id para poder cerrar solo ese. */
-  mostrar: (tono: TonoAviso, texto: string, enlace?: EnlaceAviso) => number
+  /** Reemplaza al aviso anterior. Devuelve el id para poder cerrar solo ese. `espera` (ms) lo cierra solo aunque el tono no lo haga. */
+  mostrar: (tono: TonoAviso, texto: string, enlace?: EnlaceAviso, espera?: number) => number
   /** Sin id cierra el que esté. Con id, solo si sigue siendo ese. */
   limpiar: (id?: number) => void
   /** Cierra el aviso solo si es de ese tono. Un acierto no borra un error, ni al revés. */
@@ -25,7 +27,7 @@ interface Avisos {
 const Contexto = createContext<Avisos | null>(null)
 
 /** El acierto se va solo. El error y la atención se quedan hasta que otro aviso los reemplace o se cierren. */
-const SE_VA_SOLO: Partial<Record<TonoAviso, number>> = { ok: 8000 }
+const SE_VA_SOLO: Partial<Record<TonoAviso, number>> = { ok: 5000 } // S-65: 5 s
 
 let secuencia = 0
 
@@ -36,9 +38,9 @@ let secuencia = 0
 export function AvisosProvider({ children }: { children: ReactNode }) {
   const [mensaje, setMensaje] = useState<Mensaje | null>(null)
 
-  const mostrar = useCallback((tono: TonoAviso, texto: string, enlace?: EnlaceAviso) => {
+  const mostrar = useCallback((tono: TonoAviso, texto: string, enlace?: EnlaceAviso, espera?: number) => {
     const id = ++secuencia
-    setMensaje({ id, tono, texto, enlace })
+    setMensaje({ id, tono, texto, enlace, espera })
     return id
   }, [])
 
@@ -51,7 +53,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
-    const espera = mensaje ? SE_VA_SOLO[mensaje.tono] : undefined
+    const espera = mensaje ? (mensaje.espera ?? SE_VA_SOLO[mensaje.tono]) : undefined
     if (!mensaje || espera === undefined) return
     const id = mensaje.id
     const t = window.setTimeout(() => limpiar(id), espera)

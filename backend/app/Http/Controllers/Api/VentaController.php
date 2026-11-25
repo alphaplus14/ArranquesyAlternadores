@@ -64,7 +64,8 @@ class VentaController extends Controller
     /**
      * RF-14: de contado o a crédito. S-46: la venta nace con su primer escaneo, en una transacción;
      * si la lectura falla (incluido "hay que elegir referencia") no queda ninguna venta. Responde
-     * igual que escanear.
+     * igual que escanear y, además, con la venta completa (la misma forma que GET /ventas/{id}):
+     * la pantalla la guarda en caché y la muestra sin pedirla otra vez (RF-06).
      */
     public function store(AbrirVentaRequest $request): JsonResponse
     {
@@ -79,7 +80,10 @@ class VentaController extends Controller
             $request->cantidad(),
         );
 
-        return $this->respuestaEscaneo($request, $items);
+        return response()->json([
+            ...$this->datosEscaneo($request, $items),
+            'venta' => new VentaResource($this->cargar($items->last()->venta)),
+        ], 201);
     }
 
     public function show(Venta $venta): VentaResource
@@ -98,7 +102,7 @@ class VentaController extends Controller
             $request->cantidad(),
         );
 
-        return $this->respuestaEscaneo($request, $items);
+        return response()->json($this->datosEscaneo($request, $items), 201);
     }
 
     /**
@@ -108,8 +112,9 @@ class VentaController extends Controller
      * S-46: la usan escanear y POST /ventas (primer escaneo).
      *
      * @param  Collection<int, VentaItem>  $items
+     * @return array<string, mixed>
      */
-    private function respuestaEscaneo(Request $request, Collection $items): JsonResponse
+    private function datosEscaneo(Request $request, Collection $items): array
     {
         $item = $items->last();
 
@@ -121,7 +126,7 @@ class VentaController extends Controller
         $items->each(fn (VentaItem $i) => $i->setRelation('usuario', $request->user())->setRelation('reversoItem', null)
             ->unidad->setRelation('referencia', $referencia));
 
-        return response()->json([
+        return [
             'venta_id' => $item->venta_id,
             'item' => new VentaItemResource($item),
             // S-40: todos los ítems de la lectura (con cantidad > 1, varios).
@@ -145,7 +150,7 @@ class VentaController extends Controller
                 'proveedor' => $item->unidad->referencia->proveedor->nombre, // S-23: en lugar de la marca
                 'existencia' => $item->unidad->referencia->existencia,
             ],
-        ], 201);
+        ];
     }
 
     /** RF-24 (S-48): de contado con `pagos` que suman el total; a crédito sin pagos. */

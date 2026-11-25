@@ -13,6 +13,7 @@ import { fechaCorta, sumarDias } from '../../componentes/fechas'
 import CampoDescuento, { type ModoDescuento } from '../../componentes/CampoDescuento'
 import Medida from '../../componentes/Medida'
 import { formatoNumero, leerNumero, pesos } from '../../componentes/numeros'
+import CampoMoneda from '../../componentes/CampoMoneda'
 import { useCategorias } from '../../hooks/useCatalogos'
 import SelectorCategoria from '../../componentes/SelectorCategoria'
 import ControlSegmentado, { type OpcionSegmento } from '../../componentes/ControlSegmentado'
@@ -208,6 +209,8 @@ export default function IngresoDetalle() {
       avisos.mostrar(
         sinCosto ? 'atencion' : 'ok',
         `✓ ${linea.referencia?.codigo_referencia} · ${linea.referencia?.descripcion} — cantidad ${linea.cantidad}${sinCosto ? ' · escriba el costo en la tabla' : ''}`,
+        undefined,
+        5000, // S-65: el aviso del ítem agregado se va solo a los 5 s, también si falta el costo
       )
       qc.invalidateQueries({ queryKey: ['ingreso', id] })
     },
@@ -465,6 +468,12 @@ export default function IngresoDetalle() {
             {i.total && <><dt>Total guardado al confirmar</dt><dd><strong>{pesos(i.total)}</strong></dd></>}
           </dl>
         )}
+        {borrador && i.totales?.descuento_excede_subtotal && (
+          <p className="aviso atencion" role="status">
+            El descuento del documento ({pesos(i.totales.descuento_documento)}) supera el subtotal neto de las líneas
+            ({pesos(i.totales.subtotal_neto)}). Agregue las líneas que faltan o corrija el descuento antes de confirmar.
+          </p>
+        )}
 
         <div className="acciones">
           {borrador ? (
@@ -555,20 +564,20 @@ function FilaEnEdicion({ it, fila, onCambiar, onGuardar, onCancelar, onSalir }: 
 
   const numero = (c: Campo, modo: 'numeric' | 'decimal') => {
     const error = mostrar(c)
+    const comunes = {
+      ref: (el: HTMLInputElement | null) => { campos.current[c] = el },
+      'aria-label': `${REGLAS[c].etiqueta} de ${fila.codigo}`,
+      'aria-invalid': error !== null,
+      'aria-describedby': error ? `${base}-${c}-error` : undefined,
+      value: fila.valores[c],
+      disabled: fila.guardando,
+      onFocus: (e: { target: HTMLInputElement }) => e.target.select(),
+      onChange: (e: { target: { value: string } }) => onCambiar(c, e.target.value),
+    }
     return (
       <div className="campo-linea">
-        <input
-          ref={(el) => { campos.current[c] = el }}
-          inputMode={modo}
-          autoComplete="off"
-          aria-label={`${REGLAS[c].etiqueta} de ${fila.codigo}`}
-          aria-invalid={error !== null}
-          aria-describedby={error ? `${base}-${c}-error` : undefined}
-          value={fila.valores[c]}
-          disabled={fila.guardando}
-          onFocus={(e) => e.target.select()}
-          onChange={(e) => onCambiar(c, e.target.value)}
-        />
+        {/* S-67: el costo se escribe con separador de miles. */}
+        {c === 'costo_unitario' ? <CampoMoneda {...comunes} /> : <input inputMode={modo} autoComplete="off" {...comunes} />}
         {error && <small id={`${base}-${c}-error`} className="ayuda error">{error}</small>}
       </div>
     )
@@ -664,13 +673,13 @@ function DialogoReferencia({ codigo, proveedor, onCreada, onCerrar }: {
       calidad: f.calidad || null,
       categoria_id: Number(f.categoria_id),
       descripcion: f.descripcion.trim(),
-      precio_venta: Number(f.precio_venta),
+      precio_venta: leerNumero(f.precio_venta), // S-67: sin el formato
       codigo_universal_id: admiteUniversal && f.codigo_universal_id ? Number(f.codigo_universal_id) : null,
     }),
     onSuccess: onCreada,
   })
 
-  const errorPrecio = f.precio_venta === '' ? null : Number(f.precio_venta) > 0 ? null : 'El precio de venta debe ser mayor que 0.'
+  const errorPrecio = f.precio_venta === '' ? null : (leerNumero(f.precio_venta) ?? 0) > 0 ? null : 'El precio de venta debe ser mayor que 0.'
   const completo = f.categoria_id !== '' && f.descripcion.trim() !== '' && f.precio_venta !== '' && errorPrecio === null
   const campo = (k: keyof typeof f) => ({ value: f[k], onChange: (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value }) })
 
@@ -749,7 +758,7 @@ function DialogoReferencia({ codigo, proveedor, onCreada, onCerrar }: {
         )}
         <label>Descripción<input required maxLength={255} {...campo('descripcion')} /></label>
         <label>Precio de venta
-          <input type="number" min="0.01" step="0.01" required aria-invalid={errorPrecio !== null} {...campo('precio_venta')} />
+          <CampoMoneda required aria-invalid={errorPrecio !== null} {...campo('precio_venta')} />
         </label>
         <p className={errorPrecio ? 'ayuda error' : 'ayuda'}>{errorPrecio ?? 'Con IVA incluido. Mayor que 0. Si no lo conoce, consúltelo con el administrador antes de crearla.'}</p>
         {crear.isError && <div className="aviso error">{mensajeError(crear.error)}</div>}
@@ -778,7 +787,14 @@ function DialogoCondiciones({ ingreso, onGuardado, onCerrar }: {
   const [vence, setVence] = useState(ingreso.vence_el ?? '')
   const porcentaje = ingreso.descuento_documento_porcentaje
   const [modo, setModo] = useState<ModoDescuento>(porcentaje !== null ? '%' : '$')
-  const [descuento, setDescuento] = useState(String(Number(porcentaje ?? ingreso.descuento_documento)))
+  // S-67: en pesos se escribe con separador de miles; en % queda como número simple.
+  const [descuento, setDescuento] = useState(porcentaje !== null ? String(Number(porcentaje)) : formatoNumero(ingreso.descuento_documento))
+  const cambiarModo = (nuevo: ModoDescuento) => {
+    if (nuevo === modo) return
+    const n = nuevo === '%' ? leerNumero(descuento) : (descuento.trim() === '' ? null : Number(descuento))
+    setModo(nuevo)
+    setDescuento(n === null || Number.isNaN(n) ? '' : nuevo === '%' ? String(n) : formatoNumero(n))
+  }
 
   const cambiarForma = (nueva: FormaPago) => {
     setForma(nueva)
@@ -791,7 +807,7 @@ function DialogoCondiciones({ ingreso, onGuardado, onCerrar }: {
       forma_pago: forma,
       vence_el: forma === 'credito' ? vence || null : null,
       // S-22: uno u otro, nunca los dos.
-      [modo === '%' ? 'descuento_documento_porcentaje' : 'descuento_documento']: descuento === '' ? 0 : descuento,
+      [modo === '%' ? 'descuento_documento_porcentaje' : 'descuento_documento']: descuento === '' ? 0 : modo === '$' ? leerNumero(descuento) : descuento,
     })).data,
     onSuccess: onGuardado,
   })
@@ -834,7 +850,7 @@ function DialogoCondiciones({ ingreso, onGuardado, onCerrar }: {
           modo={modo}
           valor={descuento}
           error={errores.descuento_documento ?? errores.descuento_documento_porcentaje}
-          onModo={setModo}
+          onModo={cambiarModo}
           onValor={setDescuento}
         />
       </DialogoSeccion>

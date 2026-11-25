@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
+import { useVencimientos } from '../hooks/useVencimientos'
 import { RUTA_AJUSTES, RUTA_CAJA, RUTA_CAJA_ADMIN, RUTA_CARTERA, RUTA_CORRECCIONES, RUTA_PANEL, RUTA_UNIVERSALES, rutaInicio } from '../rutas'
 import logo from '../assets/logo-la8va.jpg'
 import Icono, { type IconoNombre } from './Icono'
@@ -15,6 +16,8 @@ interface ItemMenu {
   fin?: boolean
   /** S-40: punto de aviso con su texto accesible. */
   alerta?: string
+  /** RF-30: vencidas y por vencer (contable). */
+  contador?: number
 }
 
 export default function Layout() {
@@ -22,6 +25,10 @@ export default function Layout() {
   const ubicacion = useLocation()
   const [abierto, setAbierto] = useState(true)
   const [editandoCuenta, setEditandoCuenta] = useState(false)
+
+  const esContable = tieneRol('contable')
+  const vencimientos = useVencimientos({ enabled: esContable })
+  const avisos = vencimientos.data?.totales.todas.cantidad
 
   useEffect(() => {
     if (window.innerWidth < 960) setAbierto(false)
@@ -57,10 +64,10 @@ export default function Layout() {
       ? {
           etiqueta: 'Logística',
           items: [
-            { to: '/logistica/ingresos', texto: 'Ingresos', icono: 'ingreso', fin: true },
+            { to: '/logistica/ingresos', texto: 'Compras y remisiones', icono: 'ingreso', fin: true },
             { to: '/logistica/etiquetas', texto: 'Etiquetas', icono: 'etiqueta' },
-            // RF-21. S-44: el admin solo consulta el historial.
-            { to: RUTA_AJUSTES, texto: usuario?.rol === 'admin' ? 'Historial de ajustes' : 'Ajustes', icono: 'inventario' },
+            // RF-21. S-44: el admin solo consulta el historial. S-63: "Ajustes" se llama "Movimientos".
+            { to: RUTA_AJUSTES, texto: usuario?.rol === 'admin' ? 'Historial de movimientos' : 'Movimientos', icono: 'inventario' },
             // S-59: logística crea y edita universales; el admin los tiene en Administración.
             ...(usuario?.rol === 'logistica' ? [{ to: RUTA_UNIVERSALES, texto: 'Códigos universales', icono: 'universal' } as ItemMenu] : []),
           ],
@@ -77,6 +84,17 @@ export default function Layout() {
             { to: '/admin/auditoria', texto: 'Auditoría', icono: 'auditoria' },
             { to: RUTA_CORRECCIONES, texto: 'Correcciones de ingresos', icono: 'ingreso' }, // RF-28
             { to: '/admin/configuracion', texto: 'Configuración', icono: 'configuracion' }, // RF-22
+          ],
+        }
+      : null,
+    esContable
+      ? {
+          etiqueta: 'Contable',
+          items: [
+            { to: '/contable/vencimientos', texto: 'Vencimientos', icono: 'agotados', contador: avisos },
+            { to: '/contable/cuentas-por-pagar', texto: 'Cuentas por pagar', icono: 'ingreso' },
+            { to: '/contable/cartera', texto: 'Cartera de clientes', icono: 'persona' },
+            { to: '/contable/informes', texto: 'Informes', icono: 'auditoria' },
           ],
         }
       : null,
@@ -114,6 +132,9 @@ export default function Layout() {
                     <Icono nombre={item.icono} />
                     <span>{item.texto}</span>
                     {item.alerta && <span className="punto-alerta" title={item.alerta}><span className="solo-lector">{item.alerta}</span></span>}
+                    {item.contador != null && item.contador > 0 && (
+                      <span className="menu-contador" title={`${item.contador} avisos`}>{item.contador}</span>
+                    )}
                   </NavLink>
                 ))}
               </div>
@@ -122,7 +143,10 @@ export default function Layout() {
         </nav>
         <button type="button" className="velo" aria-label="Cerrar el menú" tabIndex={-1} onClick={() => setAbierto(false)} />
         <main className="contenido">
-          <Outlet />
+          {/* Cada pantalla llega en su propio paquete (App.tsx): el menú se queda mientras carga. */}
+          <Suspense fallback={<div className="cargando">Cargando…</div>}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
       {editandoCuenta && <MiCuenta onCerrar={() => setEditandoCuenta(false)} />}

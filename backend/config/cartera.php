@@ -26,4 +26,7 @@ return [
     // Estado de cuenta sin período: los últimos días indicados.
     'dias_estado_cuenta' => 90,
 
+    // RF-30 / S-28: la bandeja de vencimientos avisa lo vencido y lo que vence en estos días.
+    'aviso_dias' => (int) env('CARTERA_AVISO_DIAS', 1),
+
 ];

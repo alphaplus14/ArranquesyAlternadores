@@ -10,6 +10,7 @@ const inicio: Record<Rol, string> = {
   admin: '/admin/panel',
   mostrador: '/mostrador/venta',
   logistica: '/logistica/ingresos',
+  contable: '/contable/vencimientos',
 }
 
 /** RF-21: salidas, reintegros y devoluciones de clientes (logística y admin). */

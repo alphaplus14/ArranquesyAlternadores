@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Models\Venta;
 use App\Services\IngresoService;
 use App\Services\VentaService;
+use App\Support\RangoFechas;
 use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -137,7 +138,7 @@ function ingresar(Referencia $referencia, int $cantidad, ?User $usuario = null):
     $ingreso = $servicio->crearBorrador([
         'proveedor_id' => $referencia->proveedor_id,
         'numero_documento' => 'REM-T'.random_int(1000, 9999),
-        'fecha' => now()->toDateString(),
+        'fecha' => RangoFechas::hoy(),
     ], $usuario);
     $servicio->agregarItem($ingreso, ['referencia_id' => $referencia->id, 'cantidad' => $cantidad, 'costo_unitario' => 1000]);
 
@@ -206,6 +207,7 @@ function fecharVenta(int $ventaId, string $cerrada, string $vence): void
     DB::table('ventas')->where('id', $ventaId)->update(['cerrada_at' => $cerrada.' 15:00:00', 'vence_el' => $vence]);
 }
 
+/** RF-15: respuesta HTTP del abono (cesar/cartera). */
 function abonar(Cliente $cliente, mixed $valor, array $extra = [])
 {
     return test()->postJson("/api/clientes/{$cliente->id}/abonos", ['fecha' => now('America/Bogota')->toDateString(), 'valor' => $valor, 'cuenta_pago_id' => cuentaEfectivo()->id, ...$extra]);
@@ -235,7 +237,7 @@ function compra(Referencia $referencia, int $cantidad, int $costo, array $encabe
     $ingreso = $servicio->crearBorrador([
         'proveedor_id' => $referencia->proveedor_id,
         'numero_documento' => 'DOC-'.random_int(10000, 99999),
-        'fecha' => now()->toDateString(),
+        'fecha' => RangoFechas::hoy(),
         ...$encabezado,
     ], $usuario);
     $servicio->agregarItem($ingreso, ['referencia_id' => $referencia->id, 'cantidad' => $cantidad, 'costo_unitario' => $costo, 'iva_porcentaje' => 0]);

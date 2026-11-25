@@ -5,27 +5,35 @@ import { useAuth } from './auth/AuthProvider'
 import { RUTA_AJUSTES, RUTA_CAJA, RUTA_CAJA_ADMIN, RUTA_CARTERA, RUTA_CORRECCIONES, RUTA_PANEL, RUTA_UNIVERSALES, rutaInicio } from './rutas'
 import Layout from './componentes/Layout'
 import Login from './paginas/Login'
-import Agotados from './paginas/Agotados'
-import Venta from './paginas/mostrador/Venta'
-import CierreDia from './paginas/mostrador/CierreDia'
-import Cartera from './paginas/cartera/Cartera'
-import CarteraCliente from './paginas/cartera/CarteraCliente'
-import Ingresos from './paginas/logistica/Ingresos'
-import IngresoDetalle from './paginas/logistica/IngresoDetalle'
-import Etiquetas from './paginas/logistica/Etiquetas'
-import Ajustes from './paginas/logistica/Ajustes'
-import Productos from './paginas/Productos'
-import Universales from './paginas/admin/Universales'
-import UniversalDetalle from './paginas/admin/UniversalDetalle'
-import Catalogos from './paginas/admin/Catalogos'
-import Usuarios from './paginas/admin/Usuarios'
-import Clientes from './paginas/admin/Clientes'
-import Auditoria from './paginas/admin/Auditoria'
-import Configuracion from './paginas/admin/Configuracion'
-import Caja from './paginas/admin/Caja'
-import CorreccionesIngreso from './paginas/admin/CorreccionesIngreso'
 
-// RF-23: el panel (con sus gráficos) va en su propio paquete; no engorda la carga de los demás roles.
+// Cada pantalla va en su propio paquete: cada rol descarga solo lo que abre (el mostrador no baja
+// logística, administración ni contabilidad). Layout las espera con un Suspense; main.tsx recarga
+// si, tras un despliegue, el paquete de una pantalla ya no existe.
+const Agotados = lazy(() => import('./paginas/Agotados'))
+const Venta = lazy(() => import('./paginas/mostrador/Venta'))
+const CierreDia = lazy(() => import('./paginas/mostrador/CierreDia'))
+const Cartera = lazy(() => import('./paginas/cartera/Cartera'))
+const CarteraCliente = lazy(() => import('./paginas/cartera/CarteraCliente'))
+const Ingresos = lazy(() => import('./paginas/logistica/Ingresos'))
+const IngresoDetalle = lazy(() => import('./paginas/logistica/IngresoDetalle'))
+const Etiquetas = lazy(() => import('./paginas/logistica/Etiquetas'))
+const Ajustes = lazy(() => import('./paginas/logistica/Ajustes'))
+const Productos = lazy(() => import('./paginas/Productos'))
+const Universales = lazy(() => import('./paginas/admin/Universales'))
+const UniversalDetalle = lazy(() => import('./paginas/admin/UniversalDetalle'))
+const Catalogos = lazy(() => import('./paginas/admin/Catalogos'))
+const Usuarios = lazy(() => import('./paginas/admin/Usuarios'))
+const Clientes = lazy(() => import('./paginas/admin/Clientes'))
+const Auditoria = lazy(() => import('./paginas/admin/Auditoria'))
+const Configuracion = lazy(() => import('./paginas/admin/Configuracion'))
+const Caja = lazy(() => import('./paginas/admin/Caja'))
+const CorreccionesIngreso = lazy(() => import('./paginas/admin/CorreccionesIngreso'))
+const Vencimientos = lazy(() => import('./paginas/contable/Vencimientos'))
+const Saldos = lazy(() => import('./paginas/contable/Saldos'))
+const ProveedorCuenta = lazy(() => import('./paginas/contable/ProveedorCuenta'))
+const ClienteCuenta = lazy(() => import('./paginas/contable/ClienteCuenta'))
+const Informes = lazy(() => import('./paginas/contable/Informes'))
+// RF-23: el panel (con sus gráficos) también; tiene su propio aviso de carga.
 const Panel = lazy(() => import('./paginas/admin/Panel'))
 
 /** Protege un grupo de rutas por rol (el backend vuelve a validar cada endpoint). */
@@ -43,13 +51,19 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route element={usuario ? <Layout /> : <Navigate to="/login" replace />}>
-        {/* "/" lleva a la pantalla de inicio del rol (rutas.ts). */}
         <Route path="/" element={<Navigate to={usuario ? rutaInicio(usuario.rol) : '/login'} replace />} />
         <Route path="/productos" element={<Productos />} />
+        <Route element={<ConRol roles={['contable']} />}>
+          <Route path="/contable/vencimientos" element={<Vencimientos />} />
+          <Route path="/contable/cuentas-por-pagar" element={<Saldos de="proveedores" />} />
+          <Route path="/contable/proveedores/:id" element={<ProveedorCuenta />} />
+          <Route path="/contable/cartera" element={<Saldos de="clientes" />} />
+          <Route path="/contable/clientes/:id" element={<ClienteCuenta />} />
+          <Route path="/contable/informes" element={<Informes />} />
+        </Route>
         <Route element={<ConRol roles={['mostrador']} />}>
           <Route path="/mostrador/venta" element={<Venta />} />
         </Route>
-        {/* RF-15 / RF-18 (S-30): mostrador y admin; logística va a su inicio. */}
         <Route element={<ConRol roles={['mostrador', 'admin']} />}>
           <Route path={RUTA_CARTERA} element={<Cartera />} />
           <Route path={`${RUTA_CARTERA}/:clienteId`} element={<CarteraCliente />} />
@@ -63,7 +77,6 @@ export default function App() {
         </Route>
         <Route element={<ConRol roles={['logistica', 'admin']} />}>
           <Route path={RUTA_AJUSTES} element={<Ajustes />} />
-          {/* RF-08 / RF-22 / S-28: agotados y bajo mínimo, sin mostrador. */}
           <Route path="/agotados" element={<Agotados />} />
           {/* S-59: logística crea y edita códigos universales (mismas pantallas del admin, sin eliminar). */}
           <Route path={RUTA_UNIVERSALES} element={<Universales />} />

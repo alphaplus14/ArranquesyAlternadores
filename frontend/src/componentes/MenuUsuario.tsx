@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom'
 import type { Rol, Usuario } from '../api/tipos'
 import Icono from './Icono'
 
-const ROL_LEGIBLE: Record<Rol, string> = { admin: 'Administrador', logistica: 'Logística', mostrador: 'Mostrador' }
+const ROL_LEGIBLE: Record<Rol, string> = { admin: 'Administrador', logistica: 'Logística', mostrador: 'Mostrador', contable: 'Contable' }
 
 /** Hasta 2 iniciales en mayúscula: primera y última palabra del nombre (o la primera letra si es una sola). */
 function iniciales(nombre: string): string {
