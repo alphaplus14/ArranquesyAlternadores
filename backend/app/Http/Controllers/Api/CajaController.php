@@ -15,8 +15,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 
 /**
- * RF-25 (S-49 a S-54): día de caja, cierre, reapertura y cuadre mensual. Solo en pantalla.
- * Roles (rutas): consultar el día, mostrador y admin; cerrar, solo mostrador; reabrir y el mes, solo
+ * RF-25 (S-49 a S-54): día de caja, apertura, cierre, reapertura y cuadre mensual. Solo en pantalla.
+ * Roles (rutas): consultar el día, mostrador y admin; abrir y cerrar, solo mostrador; reabrir y el mes, solo
  * admin. Logística 403. Sin rutas DELETE.
  */
 class CajaController extends Controller
@@ -76,6 +76,27 @@ class CajaController extends Controller
         $cierre = $this->cierres->cerrar($datos['fecha'], (string) $datos['efectivo_contado'], $datos['observacion'] ?? null, $request->user());
 
         return (new CierreCajaResource($cierre->load('usuario:id,name', 'reapertura')))->response()->setStatusCode(201);
+    }
+
+    /**
+     * S-49: el mostrador registra o corrige el efectivo con que abre la caja de ese día (solo mientras
+     * no esté cerrado). Responde la apertura; el resumen del día la trae también.
+     */
+    public function fijarApertura(Request $request, string $fecha): JsonResponse
+    {
+        $this->validarFecha($fecha);
+        $datos = $request->validate([
+            'valor' => ['required', 'numeric', 'min:0', 'max:999999999999', 'decimal:0,2'],
+        ], [
+            'valor.required' => 'Escriba el efectivo con que abre la caja (puede ser 0).',
+            'valor.numeric' => 'La apertura debe ser un número.',
+            'valor.min' => 'La apertura no puede ser negativa.',
+            'valor.decimal' => 'La apertura admite máximo 2 decimales.',
+        ]);
+
+        $this->caja->fijarApertura($fecha, (string) $datos['valor'], $request->user());
+
+        return response()->json(['apertura' => $this->caja->aperturaDelDia($fecha)]);
     }
 
     /** S-53 / S-54: la única escritura del admin en caja. */

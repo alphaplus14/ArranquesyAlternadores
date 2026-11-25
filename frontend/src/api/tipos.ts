@@ -162,6 +162,12 @@ export interface Ingreso {
     total: string
     /** S-66: el borrador lo acepta; con true el backend no deja confirmar. */
     descuento_excede_subtotal: boolean
+    /** S-66 (ajuste): min(descuento del documento, subtotal neto). Solo para mostrar el borrador. */
+    descuento_aplicado: string
+    /** S-66 (ajuste): lo que falta por aplicar hasta que haya líneas que lo cubran (0 si nada). */
+    descuento_pendiente: string
+    /** S-66 (ajuste): max(total, 0); el borrador nunca muestra un total negativo. */
+    total_visible: string
   } | null
   /** RF-19: en una remisión, la factura que la cubre; en una factura, sus remisiones ligadas. */
   factura: { id: number; numero_documento: string; estado: Ingreso['estado'] } | null
@@ -948,20 +954,34 @@ export interface ResumenCaja {
   efectivo: { ventas: string; recaudo: string; otros_ingresos: string; ingresos_externos: string; devoluciones: string; pagos_proveedores: string; egresos: string; abonos_empleados?: string; prestamos_empleados?: string; neto: string }
   total_ingreso_dia: string
   efectivo_neto_dia: string
-  saldo_anterior: string
-  saldo_anterior_origen: { tipo: 'cierre' | 'inicial' | 'ninguno'; fecha: string | null; dias_sin_cerrar?: boolean }
-  saldo_acumulado: string
-  saldo_inicial: { valor: string; fecha: string } | null
+  /** S-49: efectivo con que abrió la caja ese día (null mientras no se registre). */
+  apertura: AperturaCaja | null
+  /** Efectivo contado del último cierre vigente anterior (null si no hay): precarga la apertura. */
+  apertura_sugerida: string | null
+  /** Se registra o corrige mientras el día no tenga cierre vigente. */
+  apertura_editable: boolean
+  /** Apertura + efectivo neto del día; null sin apertura (y sin apertura no se cierra). */
+  efectivo_esperado: string | null
   meta_venta_diaria: string
   faltante_meta: string
+}
+
+/** S-49: apertura diaria de la caja. */
+export interface AperturaCaja {
+  valor: string
+  fijado_por: { id: number; name: string } | null
+  fijado_at: string
 }
 
 export interface CierreCaja {
   id: number
   fecha: string
+  /** S-49: null en los cierres anteriores a la apertura diaria. */
+  apertura: string | null
   efectivo_contado: string
   efectivo_esperado: string
   diferencia: string
+  /** Columnas del modelo anterior (saldo encadenado). En los cierres nuevos repiten apertura y esperado. */
   saldo_anterior: string
   saldo_acumulado: string
   observacion: string | null
@@ -982,6 +1002,7 @@ export interface DiaCaja {
 
 export interface FilaMesCaja {
   fecha: string
+  apertura: string | null
   ventas_efectivo: string
   ventas_banco: string
   ventas_datafono: string
@@ -991,22 +1012,23 @@ export interface FilaMesCaja {
   total_ingreso_dia: string
   egresos: string
   efectivo_neto_dia: string
-  saldo_acumulado: string
+  efectivo_esperado: string | null
+  efectivo_contado: string | null
+  diferencia: string | null
+  /** Informativo: suma del efectivo neto desde el primer día del mes (empieza en 0). */
+  neto_acumulado_mes: string
   meta: string
   faltante_meta: string
-  efectivo_contado: string | null
-  arqueo: string | null
   observacion: string | null
   cerrado: boolean
-  antes_del_inicio: boolean
 }
 
 export interface MesCaja {
   mes: string
-  saldo_anterior: string
   meta_venta_diaria: string
   dias: FilaMesCaja[]
-  totales: Omit<FilaMesCaja, 'fecha' | 'efectivo_contado' | 'observacion' | 'cerrado' | 'antes_del_inicio'> & { dias_cerrados: number; dias_sin_cerrar: number }
+  totales: Pick<FilaMesCaja, 'ventas_efectivo' | 'ventas_banco' | 'ventas_datafono' | 'ventas_billetera' | 'ventas_credito' | 'otros_ingresos'
+    | 'total_ingreso_dia' | 'egresos' | 'efectivo_neto_dia' | 'neto_acumulado_mes' | 'meta' | 'faltante_meta'> & { diferencia: string; dias_cerrados: number; dias_sin_cerrar: number }
 }
 
 /* ───────────── RF-27 (S-55 a S-57): cuenta de empleados ───────────── */

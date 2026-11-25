@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\DB;
 /**
  * RF-25 (S-49, S-53, S-54): cierre del día (mostrador) y reapertura (admin). El vigente de una fecha
  * es el cierre sin reapertura; se impone con la transacción y el bloqueo exclusivo de la caja.
+ * S-49: el cierre exige la apertura del día y guarda efectivo_esperado = apertura + neto del día.
  */
 class CierreCajaService
 {
@@ -44,12 +45,14 @@ class CierreCajaService
                 );
             }
 
-            if ($this->caja->saldoInicial() === null) {
-                throw new ReglaInventarioException('Falta el saldo inicial de caja: el administrador debe fijarlo en Configuración antes del primer cierre.', 422);
-            }
-
-            // Mismas reglas de fecha que los movimientos (saldo inicial, cierre posterior).
+            // Mismas reglas de fecha que los movimientos (no antes de un cierre posterior).
             $this->movimientos->exigirFechaEditable($fecha, 'cerrarlo');
+
+            // S-49: sin apertura registrada (puede ser 0) el día no se cierra.
+            $apertura = $this->caja->aperturaDelDia($fecha);
+            if ($apertura === null) {
+                throw new ReglaInventarioException('Registre primero la apertura de la caja de ese día (el efectivo con que abrió; puede ser 0).', 422, ['campo' => 'apertura']);
+            }
 
             $abiertas = $this->ventasAbiertas($fecha);
             if ($abiertas->isNotEmpty()) {
@@ -63,15 +66,19 @@ class CierreCajaService
 
             $r = $this->caja->resumenDia($fecha);
             $contado = CajaService::dinero((string) $efectivoContado);
+            $esperado = bcadd($apertura['valor'], $r['efectivo_neto_dia'], 2);
             $observacion = trim((string) $observacion);
 
             return CierreCaja::create([
                 'fecha' => $fecha,
+                'apertura' => $apertura['valor'],
                 'efectivo_contado' => $contado,
-                'efectivo_esperado' => $r['efectivo_neto_dia'],
-                'diferencia' => bcsub($contado, $r['efectivo_neto_dia'], 2),
-                'saldo_anterior' => $r['saldo_anterior'],
-                'saldo_acumulado' => $r['saldo_acumulado'],
+                'efectivo_esperado' => $esperado,
+                'diferencia' => bcsub($contado, $esperado, 2),
+                // Columnas del modelo anterior (saldo encadenado), que se conservan para no romper
+                // la lectura de los cierres viejos: en los nuevos repiten apertura y esperado.
+                'saldo_anterior' => $apertura['valor'],
+                'saldo_acumulado' => $esperado,
                 'observacion' => $observacion === '' ? null : $observacion,
                 'usuario_id' => $usuario->id,
                 'cerrado_at' => now(),
@@ -81,7 +88,8 @@ class CierreCajaService
 
     /**
      * S-53: solo admin, motivo obligatorio, una vez por cierre. Se reabre del más reciente hacia
-     * atrás: con un cierre vigente posterior, su saldo quedaría calculado sobre un día que cambia.
+     * atrás (los días ya no se encadenan, pero se mantiene el orden para que la caja se corrija como
+     * se cerró).
      */
     public function reabrir(CierreCaja $cierre, string $motivo, User $usuario): CierreReapertura
     {

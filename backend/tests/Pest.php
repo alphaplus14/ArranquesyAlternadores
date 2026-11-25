@@ -11,6 +11,7 @@ use App\Models\Referencia;
 use App\Models\Unidad;
 use App\Models\User;
 use App\Models\Venta;
+use App\Services\CajaService;
 use App\Services\IngresoService;
 use App\Services\VentaService;
 use App\Support\RangoFechas;
@@ -311,4 +312,10 @@ function movimientoCaja(string $categoria, $valor, ?CuentaPago $cuenta = null, a
         'cuenta_pago_id' => ($cuenta ?? cuentaEfectivo())->id,
         ...$extra,
     ]);
+}
+
+/** RF-25 (S-49): registra la apertura de caja de ese día (como un mostrador), sin tocar la sesión. */
+function abrirCaja(string $fecha, int|string $valor = 0): void
+{
+    app(CajaService::class)->fijarApertura($fecha, (string) $valor, User::factory()->rol(Rol::Mostrador)->create());
 }

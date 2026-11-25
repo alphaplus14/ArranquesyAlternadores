@@ -4,7 +4,6 @@ use App\Enums\Rol;
 use App\Models\Empleado;
 use App\Models\MovimientoEmpleado;
 use App\Models\User;
-use App\Services\CajaService;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Route;
 
@@ -308,7 +307,7 @@ it('RF-27 (S-55): el resumen del día refleja préstamos y abonos en efectivo; l
 
 it('RF-27 (S-55): con la caja de hoy cerrada no entran préstamos ni abonos por caja; por nómina sí', function () {
     $e = empCrear('Jhon', ['saldo_apertura' => 50000]);
-    app(CajaService::class)->fijarSaldoInicial('0', '2026-11-01');
+    abrirCaja('2026-11-20', 0);
     actuarComo(Rol::Mostrador);
     $this->postJson('/api/caja/cierres', ['fecha' => '2026-11-20', 'efectivo_contado' => 0])->assertCreated();
 

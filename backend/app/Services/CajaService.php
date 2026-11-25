@@ -5,23 +5,25 @@ namespace App\Services;
 use App\Enums\GrupoCaja;
 use App\Enums\TipoCuentaPago;
 use App\Exceptions\ReglaInventarioException;
+use App\Models\AperturaCaja;
 use App\Models\CierreCaja;
 use App\Models\Configuracion;
 use App\Models\CuentaPago;
+use App\Models\User;
 use App\Support\RangoFechas;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
- * RF-25 (S-49 a S-51, S-53): cálculo de la caja diaria y del cuadre mensual, configuración (meta y
- * saldo inicial) y la regla "día cerrado". Solo lee y calcula; las escrituras de caja están en
- * MovimientoCajaService y CierreCajaService.
+ * RF-25 (S-49 a S-51, S-53): cálculo de la caja diaria y del cuadre mensual, configuración (meta),
+ * apertura diaria de la caja y la regla "día cerrado". Las escrituras de movimientos y cierres
+ * están en MovimientoCajaService y CierreCajaService.
  *
  * Días en hora de Bogotá (RangoFechas). Cada origen es UNA consulta agrupada por día y cuenta, para
  * cualquier rango (un día o un mes): ventas pagadas, ventas al cierre (crédito y contado sin detalle),
  * devoluciones, recaudo de cartera, pagos a proveedores, movimientos de caja y préstamos y abonos de
- * empleados (RF-27).
+ * empleados (RF-27). Las aperturas, una consulta más por el índice único de fecha.
  *
  * Fórmulas (S-49, S-51):
  * - total_ingreso_dia = ventas de contado + ventas a crédito + otros ingresos. El recaudo de cartera
@@ -30,8 +32,10 @@ use Illuminate\Support\Facades\DB;
  *   ingresos externos + abonos de empleados en efectivo − devoluciones de contado − pagos a
  *   proveedores en efectivo − egresos − préstamos a empleados (RF-27, S-55: ni la apertura ni el
  *   abono por nómina cuentan; no son venta ni cuentan para la meta).
- * - saldo_acumulado = saldo_anterior + efectivo_neto_dia.
- * - diferencia (arqueo) = efectivo_contado − efectivo_neto_dia; faltante_meta = meta − total.
+ * - efectivo_esperado = apertura del día + efectivo_neto_dia. La apertura es el efectivo físico que ya
+ *   estaba en la caja al empezar; lo que llega durante el día desde la Caja General es ingreso
+ *   externo (RF-26), así no se cuenta dos veces. No hay saldo acumulado encadenado entre días.
+ * - diferencia (arqueo) = efectivo_contado − efectivo_esperado; faltante_meta = meta − total.
  */
 class CajaService
 {
@@ -57,42 +61,59 @@ class CajaService
         return self::dinero($valor);
     }
 
-    /** @return array{valor: string, fecha: string}|null */
-    public function saldoInicial(): ?array
-    {
-        $filas = Configuracion::whereIn('clave', [Configuracion::SALDO_CAJA_INICIAL, Configuracion::SALDO_CAJA_INICIAL_FECHA])
-            ->pluck('valor', 'clave');
-        $valor = $filas[Configuracion::SALDO_CAJA_INICIAL] ?? null;
-        $fecha = $filas[Configuracion::SALDO_CAJA_INICIAL_FECHA] ?? null;
+    /* ───────────────────────── Apertura diaria (S-49) ───────────────────────── */
 
-        return $valor === null || $fecha === null ? null : ['valor' => self::dinero($valor), 'fecha' => $fecha];
+    /** @return array{valor: string, fijado_por: ?array{id: int, name: string}, fijado_at: string}|null */
+    public function aperturaDelDia(string $fecha): ?array
+    {
+        $apertura = AperturaCaja::query()->where('fecha', $fecha)->with('usuario:id,name')->first();
+
+        return $apertura ? [
+            'valor' => self::dinero($apertura->valor),
+            'fijado_por' => $apertura->usuario ? ['id' => $apertura->usuario->id, 'name' => $apertura->usuario->name] : null,
+            'fijado_at' => $apertura->updated_at->toIso8601String(),
+        ] : null;
+    }
+
+    /** Sugerencia para abrir: el efectivo contado del último cierre vigente anterior (null si no hay). */
+    public function aperturaSugerida(string $fecha): ?string
+    {
+        $cierre = $this->ultimoCierreVigente($fecha);
+
+        return $cierre ? self::dinero($cierre->efectivo_contado) : null;
     }
 
     /**
-     * S-49: el saldo inicial y su fecha se fijan UNA vez (solo admin). Corregirlo después cambiaría
-     * los saldos de todos los cierres ya guardados. Auditable deja la creación en la auditoría.
-     *
-     * @return array{valor: string, fecha: string}
+     * S-49: el mostrador registra o corrige el efectivo con que abre la caja de un día (hoy o antes),
+     * solo mientras ese día no tenga cierre vigente. Valor >= 0 con máximo 2 decimales. Auditable deja
+     * la creación y cada corrección (valor anterior y nuevo, usuario y fecha).
      */
-    public function fijarSaldoInicial(string|int $valor, string $fecha): array
+    public function fijarApertura(string $fecha, string|int|float $valor, User $usuario): AperturaCaja
     {
-        return DB::transaction(function () use ($valor, $fecha) {
+        $valor = (string) $valor;
+        if (! preg_match('/^\d+(\.\d{1,2})?$/', $valor)) {
+            throw new ReglaInventarioException('La apertura debe ser un valor en pesos, 0 o mayor, con máximo 2 decimales.', 422, ['campo' => 'valor']);
+        }
+        if ($fecha > RangoFechas::hoy()) {
+            throw new ReglaInventarioException('No se puede abrir la caja de un día futuro.', 422, ['campo' => 'fecha']);
+        }
+
+        return DB::transaction(function () use ($fecha, $valor, $usuario) {
             $this->bloquearCaja();
 
-            if ($this->saldoInicial() !== null) {
-                throw new ReglaInventarioException('El saldo inicial de caja ya se fijó y no se puede cambiar.', 422);
-            }
-            if ($fecha > RangoFechas::hoy()) {
-                throw new ReglaInventarioException('La fecha del saldo inicial no puede ser futura.', 422, ['campo' => 'fecha']);
+            if ($this->cierreVigente($fecha)) {
+                throw new ReglaInventarioException('El día ya está cerrado: no se puede cambiar la apertura.', 422, ['campo' => 'fecha']);
             }
 
-            foreach ([Configuracion::SALDO_CAJA_INICIAL => self::dinero($valor), Configuracion::SALDO_CAJA_INICIAL_FECHA => $fecha] as $clave => $v) {
-                $fila = Configuracion::firstOrNew(['clave' => $clave]);
-                $fila->valor = $v;
-                $fila->save();
+            $apertura = AperturaCaja::query()->where('fecha', $fecha)->lockForUpdate()->first()
+                ?? new AperturaCaja(['fecha' => $fecha]);
+            $apertura->valor = self::dinero($valor);
+            $apertura->usuario_id = $usuario->id;
+            if (! $apertura->exists || $apertura->isDirty('valor')) {
+                $apertura->save();
             }
 
-            return $this->saldoInicial();
+            return $apertura->load('usuario:id,name');
         });
     }
 
@@ -130,7 +151,7 @@ class CajaService
         }
     }
 
-    /** Bloqueo exclusivo de la caja: cierres, reaperturas, movimientos y saldo inicial se serializan. */
+    /** Bloqueo exclusivo de la caja: cierres, reaperturas, movimientos y aperturas se serializan. */
     public function bloquearCaja(): void
     {
         DB::table('secuencias')->insertOrIgnore(['nombre' => 'caja', 'valor' => 0]);
@@ -140,7 +161,8 @@ class CajaService
     /* ───────────────────────── Resumen del día (RF-25) ───────────────────────── */
 
     /**
-     * Resumen calculado en vivo de un día: por cuenta, totales, efectivo neto, saldo y meta.
+     * Resumen calculado en vivo de un día: por cuenta, totales, efectivo neto, apertura, efectivo
+     * esperado (null mientras no haya apertura: sin ella el día no se cierra) y meta.
      *
      * @return array<string, mixed>
      */
@@ -148,54 +170,24 @@ class CajaService
     {
         $cuentas = $this->cuentas();
         $agregados = $this->agregados($fecha, $fecha, $cuentas);
-        $saldo = $this->saldoAnterior($fecha, $cuentas);
+        $apertura = $this->aperturaDelDia($fecha);
+        $r = $this->componer($fecha, $agregados[$fecha] ?? $this->vacio(), $cuentas, $this->metaVentaDiaria());
 
-        return $this->componer($fecha, $agregados[$fecha] ?? $this->vacio(), $cuentas, $saldo['valor'], $this->metaVentaDiaria())
-            + ['saldo_anterior_origen' => $saldo['origen'], 'saldo_inicial' => $this->saldoInicial()];
-    }
-
-    /**
-     * S-49: saldo con que empieza el día. Es el saldo_acumulado del último cierre vigente anterior
-     * (o, si no hay, el saldo inicial desde su fecha) más el efectivo neto, calculado en vivo, de los
-     * días intermedios que no se cerraron (sin eso, un día sin cerrar desaparecería del saldo).
-     *
-     * @return array{valor: string, origen: array{tipo: string, fecha: ?string}}
-     */
-    public function saldoAnterior(string $fecha, ?Collection $cuentas = null): array
-    {
-        $ultimo = $this->ultimoCierreVigente($fecha);
-        $inicial = $this->saldoInicial();
-
-        if ($ultimo) {
-            $base = self::dinero($ultimo->saldo_acumulado);
-            $desde = $ultimo->fecha->copy()->addDay()->toDateString();
-            $origen = ['tipo' => 'cierre', 'fecha' => $ultimo->fecha->toDateString()];
-        } elseif ($inicial && $inicial['fecha'] <= $fecha) {
-            $base = $inicial['valor'];
-            $desde = $inicial['fecha'];
-            $origen = ['tipo' => 'inicial', 'fecha' => $inicial['fecha']];
-        } else {
-            return ['valor' => '0.00', 'origen' => ['tipo' => 'ninguno', 'fecha' => null]];
-        }
-
-        $hasta = Carbon::parse($fecha)->subDay()->toDateString();
-        if ($desde <= $hasta) {
-            $cuentas ??= $this->cuentas();
-            foreach ($this->agregados($desde, $hasta, $cuentas) as $dia => $a) {
-                $base = bcadd($base, $this->efectivoNeto($a, $cuentas), 2);
-            }
-            $origen['dias_sin_cerrar'] = true;
-        }
-
-        return ['valor' => $base, 'origen' => $origen];
+        return $r + [
+            'apertura' => $apertura,
+            'apertura_sugerida' => $this->aperturaSugerida($fecha),
+            'apertura_editable' => $fecha <= RangoFechas::hoy() && $this->cierreVigente($fecha) === null,
+            'efectivo_esperado' => $apertura ? bcadd($apertura['valor'], $r['efectivo_neto_dia'], 2) : null,
+        ];
     }
 
     /* ───────────────────────── Cuadre mensual (RF-25) ───────────────────────── */
 
     /**
      * Una fila por día del mes (hasta hoy) al estilo de la planilla, con fila de totales. Los días con
-     * cierre vigente usan lo guardado (saldo, efectivo contado, arqueo, observación); los demás se
-     * calculan en vivo y se marcan "sin cerrar". El saldo se encadena día a día.
+     * cierre vigente usan lo guardado (apertura, efectivo esperado y contado, diferencia, observación);
+     * los demás se calculan en vivo y se marcan "sin cerrar". `neto_acumulado_mes` es informativo: la
+     * suma del efectivo neto desde el primer día del mes, empezando en 0. No hay saldo encadenado.
      *
      * @return array<string, mixed>
      */
@@ -203,40 +195,35 @@ class CajaService
     {
         $primero = Carbon::createFromFormat('Y-m-d', $mes.'-01')->startOfDay();
         $ultimo = $primero->copy()->endOfMonth();
-        $hoy = RangoFechas::hoy();
-        $hasta = min($ultimo->toDateString(), $hoy);
+        $hasta = min($ultimo->toDateString(), RangoFechas::hoy());
         $desde = $primero->toDateString();
 
         $cuentas = $this->cuentas();
         $meta = $this->metaVentaDiaria();
         $filas = [];
-        $saldoAnteriorMes = '0.00';
+        $acumulado = '0.00';
 
         if ($desde <= $hasta) {
             $agregados = $this->agregados($desde, $hasta, $cuentas);
             $cierres = CierreCaja::vigentes()->whereBetween('fecha', [$desde, $hasta])->get()->keyBy(fn (CierreCaja $c) => $c->fecha->toDateString());
-            $anterior = $this->saldoAnterior($desde, $cuentas);
-            $saldoAnteriorMes = $anterior['valor'];
-            $saldo = $saldoAnteriorMes;
-            $inicial = $this->saldoInicial();
+            $aperturas = AperturaCaja::query()->whereBetween('fecha', [$desde, $hasta])->get(['fecha', 'valor'])
+                ->mapWithKeys(fn (AperturaCaja $a) => [$a->fecha->toDateString() => self::dinero($a->valor)]);
 
             for ($d = $primero->copy(); $d->toDateString() <= $hasta; $d->addDay()) {
                 $dia = $d->toDateString();
-                // El mes empieza antes del saldo inicial: el saldo arranca ese día.
-                if ($anterior['origen']['tipo'] === 'ninguno' && $inicial !== null && $dia === $inicial['fecha']) {
-                    $saldo = $inicial['valor'];
-                }
-                $r = $this->componer($dia, $agregados[$dia] ?? $this->vacio(), $cuentas, $saldo, $meta);
+                $r = $this->componer($dia, $agregados[$dia] ?? $this->vacio(), $cuentas, $meta);
                 $cierre = $cierres[$dia] ?? null;
-                $antesDelInicio = $inicial !== null && $dia < $inicial['fecha'];
+                $acumulado = bcadd($acumulado, $r['efectivo_neto_dia'], 2);
 
+                // Cerrado: lo guardado (un cierre anterior a la apertura diaria no tiene apertura).
+                // Sin cerrar: en vivo, con la apertura registrada si la hay.
                 if ($cierre) {
-                    $r['saldo_anterior'] = self::dinero($cierre->saldo_anterior);
-                    $r['saldo_acumulado'] = self::dinero($cierre->saldo_acumulado);
-                } elseif ($antesDelInicio) {
-                    $r['saldo_acumulado'] = $saldo;
+                    $apertura = $cierre->apertura !== null ? self::dinero($cierre->apertura) : null;
+                    $esperado = self::dinero($cierre->efectivo_esperado);
+                } else {
+                    $apertura = $aperturas[$dia] ?? null;
+                    $esperado = $apertura !== null ? bcadd($apertura, $r['efectivo_neto_dia'], 2) : null;
                 }
-                $saldo = $r['saldo_acumulado'];
 
                 $porTipo = array_fill_keys(TipoCuentaPago::valores(), '0.00');
                 foreach ($r['cuentas'] as $c) {
@@ -246,6 +233,7 @@ class CajaService
 
                 $filas[] = [
                     'fecha' => $dia,
+                    'apertura' => $apertura,
                     'ventas_efectivo' => $porTipo['efectivo'],
                     'ventas_banco' => $porTipo['banco'],
                     'ventas_datafono' => $porTipo['datafono'],
@@ -255,29 +243,28 @@ class CajaService
                     'total_ingreso_dia' => $r['total_ingreso_dia'],
                     'egresos' => $r['egresos']['total'],
                     'efectivo_neto_dia' => $r['efectivo_neto_dia'],
-                    'saldo_acumulado' => $r['saldo_acumulado'],
+                    'efectivo_esperado' => $esperado,
+                    'efectivo_contado' => $cierre ? self::dinero($cierre->efectivo_contado) : null,
+                    'diferencia' => $cierre ? self::dinero($cierre->diferencia) : null,
+                    'neto_acumulado_mes' => $acumulado,
                     'meta' => $meta,
                     'faltante_meta' => $r['faltante_meta'],
-                    'efectivo_contado' => $cierre ? self::dinero($cierre->efectivo_contado) : null,
-                    'arqueo' => $cierre ? self::dinero($cierre->diferencia) : null,
                     'observacion' => $cierre?->observacion,
                     'cerrado' => $cierre !== null,
-                    'antes_del_inicio' => $antesDelInicio,
                 ];
             }
         }
 
         $sumar = fn (string $col) => array_reduce($filas, fn ($t, $f) => $f[$col] === null ? $t : bcadd($t, $f[$col], 2), '0.00');
         $columnas = ['ventas_efectivo', 'ventas_banco', 'ventas_datafono', 'ventas_billetera', 'ventas_credito', 'otros_ingresos',
-            'total_ingreso_dia', 'egresos', 'efectivo_neto_dia', 'meta', 'faltante_meta', 'arqueo'];
+            'total_ingreso_dia', 'egresos', 'efectivo_neto_dia', 'meta', 'faltante_meta', 'diferencia'];
 
         return [
             'mes' => $mes,
-            'saldo_anterior' => $saldoAnteriorMes,
             'meta_venta_diaria' => $meta,
             'dias' => $filas,
             'totales' => array_combine($columnas, array_map($sumar, $columnas)) + [
-                'saldo_acumulado' => $filas === [] ? $saldoAnteriorMes : end($filas)['saldo_acumulado'],
+                'neto_acumulado_mes' => $acumulado,
                 'dias_cerrados' => count(array_filter($filas, fn ($f) => $f['cerrado'])),
                 'dias_sin_cerrar' => count(array_filter($filas, fn ($f) => ! $f['cerrado'])),
             ],
@@ -417,18 +404,12 @@ class CajaService
         ];
     }
 
-    /** Efectivo neto de un día a partir de sus agregados (S-49). */
-    private function efectivoNeto(array $a, Collection $cuentas): string
-    {
-        return $this->componer('', $a, $cuentas, '0.00', '0.00')['efectivo_neto_dia'];
-    }
-
     /**
      * Arma el resumen de un día (S-49 a S-51).
      *
      * @return array<string, mixed>
      */
-    private function componer(string $fecha, array $a, Collection $cuentas, string $saldoAnterior, string $meta): array
+    private function componer(string $fecha, array $a, Collection $cuentas, string $meta): array
     {
         $esEfectivo = fn ($id) => $id !== self::SIN_CUENTA && ($cuentas[$id] ?? null)?->tipo === TipoCuentaPago::Efectivo;
         $sumarSi = fn (array $porCuenta, callable $cond) => array_reduce(array_keys($porCuenta), fn ($t, $id) => $cond($id) ? bcadd($t, $porCuenta[$id], 2) : $t, '0.00');
@@ -534,8 +515,6 @@ class CajaService
             'efectivo' => $efectivo,
             'total_ingreso_dia' => $total,
             'efectivo_neto_dia' => $neto,
-            'saldo_anterior' => $saldoAnterior,
-            'saldo_acumulado' => bcadd($saldoAnterior, $neto, 2),
             'meta_venta_diaria' => $meta,
             'faltante_meta' => bcsub($meta, $total, 2),
         ];

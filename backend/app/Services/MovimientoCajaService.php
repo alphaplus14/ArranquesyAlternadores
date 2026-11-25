@@ -17,8 +17,8 @@ use Illuminate\Support\Facades\DB;
  *
  * - S-52: vario, fijo, financiero e ingreso_externo solo en una cuenta de tipo efectivo; otro_ingreso
  *   en cualquier cuenta activa.
- * - La fecha es hoy o anterior, no antes del saldo inicial, y solo si ese día no tiene cierre vigente
- *   ni hay un cierre vigente posterior (cambiaría un saldo ya encadenado, S-53).
+ * - La fecha es hoy o anterior, y solo si ese día no tiene cierre vigente ni hay un cierre vigente
+ *   posterior (S-53).
  */
 class MovimientoCajaService
 {
@@ -87,16 +87,11 @@ class MovimientoCajaService
         });
     }
 
-    /** Hoy o antes, desde el saldo inicial, sin cierre vigente ese día ni después. */
+    /** Hoy o antes, sin cierre vigente ese día ni después. */
     public function exigirFechaEditable(string $fecha, string $accion): void
     {
         if ($fecha > RangoFechas::hoy()) {
             throw new ReglaInventarioException('La fecha no puede ser futura.', 422, ['campo' => 'fecha']);
-        }
-
-        $inicial = $this->caja->saldoInicial();
-        if ($inicial && $fecha < $inicial['fecha']) {
-            throw new ReglaInventarioException("La caja empieza el {$inicial['fecha']} (saldo inicial): no se puede {$accion} antes.", 422, ['campo' => 'fecha']);
         }
 
         if ($this->caja->cierreVigente($fecha)) {

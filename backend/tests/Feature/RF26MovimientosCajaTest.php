@@ -5,7 +5,6 @@ use App\Exceptions\RegistroInmutableException;
 use App\Models\CategoriaCaja;
 use App\Models\CuentaPago;
 use App\Models\MovimientoCaja;
-use App\Services\CajaService;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Route;
 
@@ -17,7 +16,7 @@ use Illuminate\Support\Facades\Route;
 beforeEach(function () {
     sembrarDemo();
     Carbon::setTestNow('2026-11-20 15:00:00'); // 10:00 en Bogotá
-    app(CajaService::class)->fijarSaldoInicial('100000', '2026-11-01');
+    abrirCaja('2026-11-20', 100000);
 });
 
 it('RF-26: el seeder crea las categorías de caja por grupo, sin DCTO NEVERA', function () {
@@ -59,7 +58,6 @@ it('RF-26: valida valor, concepto, categoría activa y fecha no futura', functio
     movimientoCaja('EMPRESA', 0)->assertUnprocessable()->assertJsonValidationErrors('valor');
     movimientoCaja('EMPRESA', 1000, extra: ['concepto' => ''])->assertUnprocessable()->assertJsonValidationErrors('concepto');
     movimientoCaja('EMPRESA', 1000, extra: ['fecha' => '2026-11-21'])->assertUnprocessable()->assertJsonPath('message', 'La fecha no puede ser futura.');
-    movimientoCaja('EMPRESA', 1000, extra: ['fecha' => '2026-10-31'])->assertUnprocessable(); // antes del saldo inicial
     movimientoCaja('EMPRESA', 1000, extra: ['fecha' => '2026-11-19'])->assertCreated(); // un día anterior sin cierre
 
     categoriaCaja('ENCOMIENDAS')->update(['activa' => false]);

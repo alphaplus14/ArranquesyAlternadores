@@ -1630,3 +1630,28 @@ a.boton { display: inline-flex; align-items: center; justify-content: center; }
 .tabla-correcciones .col-numero { text-align: right; white-space: nowrap; }
 .filtros-correcciones { margin-bottom: 12px; }
 .filtros-correcciones label { display: flex; flex-direction: column; gap: 2px; }
+
+/* S-69: botón "Abrir" de cada compra en la tabla Documentos (compacto; 44 px de toque en móvil). */
+.boton.boton-abrir { padding: 4px 12px; font-size: 0.85rem; white-space: nowrap; min-height: 34px; }
+@media (max-width: 639px) {
+  .boton.boton-abrir { min-height: 44px; }
+}
+
+/* RF-25 (S-49): apertura diaria de la caja. */
+.apertura-linea { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0; color: var(--suave); }
+.apertura-linea strong { color: var(--texto); }
+.apertura-caja .formulario { display: grid; gap: 6px; max-width: 420px; }
+.apertura-caja input { width: 100%; box-sizing: border-box; min-height: 44px; }
+.desglose-efectivo .subtotal { font-weight: 600; border-bottom-style: solid; }
+
+/* RF-09 / RF-16 / S-66 (ajuste): condiciones del documento de un ingreso, en chips, y aviso informativo. */
+.condiciones-documento { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 0 0 12px; }
+.condiciones-chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.condiciones-chips .chip { font-size: 0.85rem; padding: 4px 10px; }
+.condiciones-documento > button { display: inline-flex; align-items: center; gap: 6px; }
+.condiciones-documento > button svg { width: 18px; height: 18px; }
+.chip.atencion { background: var(--aviso-fondo); color: var(--aviso); font-weight: 600; }
+.aviso.info { background: var(--suave-fondo); color: var(--texto); font-weight: 500; }
+@media (max-width: 639px) {
+  .condiciones-documento > button { width: 100%; justify-content: center; }
+}

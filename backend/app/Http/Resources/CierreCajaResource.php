@@ -14,6 +14,8 @@ class CierreCajaResource extends JsonResource
         return [
             'id' => $this->id,
             'fecha' => $this->fecha->toDateString(),
+            // S-49: null en los cierres anteriores a la apertura diaria.
+            'apertura' => $this->apertura,
             'efectivo_contado' => $this->efectivo_contado,
             'efectivo_esperado' => $this->efectivo_esperado,
             'diferencia' => $this->diferencia,

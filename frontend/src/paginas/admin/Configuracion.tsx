@@ -4,11 +4,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeError } from '../../api/cliente'
 import CampoStockMinimo from '../../componentes/CampoStockMinimo'
 import { aValorMinimo, errorStockMinimo } from '../../utilidades/stockMinimo'
-import Confirmar from '../../componentes/Confirmar'
 import { leerNumero, pesos } from '../../componentes/numeros'
-import { hoyEnBogota } from '../../utilidades/periodos'
 
-/** RF-22 (S-28), S-45 y RF-25 (S-49, S-51): parámetros que fija el administrador. Cada cambio queda auditado. */
+/** RF-22 (S-28), S-45 y RF-25 (S-51): parámetros que fija el administrador. Cada cambio queda auditado. */
 export default function Configuracion() {
   const qc = useQueryClient()
   const general = useQuery({
@@ -66,7 +64,6 @@ export default function Configuracion() {
       </section>
       <DiasSinMovimiento />
       <MetaVentaDiaria />
-      <SaldoCajaInicial />
     </div>
   )
 }
@@ -180,70 +177,6 @@ function MetaVentaDiaria() {
           <Link to="/admin/auditoria?tabla=configuraciones">Ver cambios anteriores</Link>
         </div>
       </form>
-    </section>
-  )
-}
-
-/**
- * RF-25 (S-49): saldo de caja con que empieza el sistema y su fecha. Se fija UNA sola vez (luego es
- * de solo lectura): todos los saldos acumulados de la caja parten de él.
- */
-function SaldoCajaInicial() {
-  const qc = useQueryClient()
-  const hoy = hoyEnBogota()
-  const actual = useQuery({
-    queryKey: ['configuracion', 'saldo-caja-inicial'],
-    queryFn: async () => (await api.get<{ saldo: { valor: string; fecha: string } | null }>('/configuracion/saldo-caja-inicial')).data.saldo,
-  })
-  const [valor, setValor] = useState('')
-  const [fecha, setFecha] = useState(hoy)
-  const [confirmando, setConfirmando] = useState(false)
-  const n = leerNumero(valor)
-  const error = valor.trim() === '' ? null : n === null || Number.isNaN(n) ? 'Escriba un valor en pesos, 0 o mayor.' : null
-  const guardar = useMutation({
-    mutationFn: async () => (await api.put('/configuracion/saldo-caja-inicial', { valor: n, fecha })).data,
-    onSuccess: () => {
-      setConfirmando(false)
-      qc.invalidateQueries({ queryKey: ['configuracion', 'saldo-caja-inicial'] })
-      qc.invalidateQueries({ queryKey: ['caja'] })
-    },
-  })
-
-  return (
-    <section className="tarjeta-pagina" id="saldo-caja-inicial">
-      <h2>Saldo inicial de caja</h2>
-      {actual.isLoading && <p className="cargando">Cargando…</p>}
-      {actual.isError && <div className="aviso error">{mensajeError(actual.error)}</div>}
-      {actual.data ? (
-        <p>Fijado en <strong>{pesos(actual.data.valor)}</strong> desde el <strong>{actual.data.fecha}</strong>. Ya no se puede cambiar.</p>
-      ) : actual.data === null && (
-        <form className="formulario campo-configuracion" onSubmit={(e) => { e.preventDefault(); if (n !== null && !error) setConfirmando(true) }}>
-          <div className="campos-dos">
-            <label>Saldo (pesos)
-              <input inputMode="decimal" value={valor} aria-invalid={error !== null} onChange={(e) => setValor(e.target.value)} />
-            </label>
-            <label>Desde el día
-              <input type="date" max={hoy} value={fecha} onChange={(e) => setFecha(e.target.value)} />
-            </label>
-          </div>
-          <p className={error ? 'ayuda error' : 'ayuda'}>{error ?? 'Efectivo que había en la caja al empezar ese día. Se fija una sola vez; el mostrador no puede cerrar la caja sin él.'}</p>
-          {guardar.isError && !confirmando && <div className="aviso error">{mensajeError(guardar.error)}</div>}
-          <div className="acciones acciones-izquierda">
-            <button className="primario boton-44" disabled={n === null || error !== null || !fecha || guardar.isPending}>Fijar saldo inicial</button>
-          </div>
-        </form>
-      )}
-      {confirmando && (
-        <Confirmar
-          titulo="Fijar el saldo inicial de caja"
-          texto={`${pesos(n ?? 0)} desde el ${fecha}. Después no se puede cambiar.`}
-          accion="Fijar"
-          pendiente={guardar.isPending}
-          error={guardar.isError ? mensajeError(guardar.error) : null}
-          onConfirmar={() => guardar.mutate()}
-          onCancelar={() => setConfirmando(false)}
-        />
-      )}
     </section>
   )
 }

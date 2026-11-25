@@ -10,6 +10,9 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
  * RF-25 (S-49, S-53): cierre de caja de un día, con los valores calculados al cerrarlo. Inmutable.
+ * Desde la apertura diaria: efectivo_esperado = apertura + efectivo neto del día; saldo_anterior
+ * repite la apertura y saldo_acumulado el efectivo esperado (columnas viejas, que en los cierres
+ * anteriores guardan el saldo encadenado de antes y no se reescriben; apertura es NULL en esos).
  * El vigente de una fecha es el que no tiene reapertura (scope vigentes).
  */
 class CierreCaja extends Model
@@ -21,7 +24,7 @@ class CierreCaja extends Model
     protected $table = 'cierres_caja';
 
     protected $fillable = [
-        'fecha', 'efectivo_contado', 'efectivo_esperado', 'diferencia', 'saldo_anterior',
+        'fecha', 'apertura', 'efectivo_contado', 'efectivo_esperado', 'diferencia', 'saldo_anterior',
         'saldo_acumulado', 'observacion', 'usuario_id', 'cerrado_at',
     ];
 
@@ -29,6 +32,7 @@ class CierreCaja extends Model
     {
         return [
             'fecha' => 'date:Y-m-d',
+            'apertura' => 'decimal:2',
             'efectivo_contado' => 'decimal:2',
             'efectivo_esperado' => 'decimal:2',
             'diferencia' => 'decimal:2',

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Navigate, useSearchParams } from 'react-router-dom'
 import { api, erroresCampo, mensajeError } from '../../api/cliente'
-import { GRUPOS_CAJA, NOMBRE_GRUPO_CAJA, soloEfectivo, type CierreCaja, type DiaCaja, type GrupoCaja, type MovimientoCaja } from '../../api/tipos'
+import { GRUPOS_CAJA, NOMBRE_GRUPO_CAJA, soloEfectivo, type CierreCaja, type DiaCaja, type GrupoCaja, type MovimientoCaja, type ResumenCaja } from '../../api/tipos'
 import { useAuth } from '../../auth/AuthProvider'
 import { useAviso } from '../../componentes/Avisos'
 import Confirmar from '../../componentes/Confirmar'
@@ -10,7 +10,8 @@ import Dialogo, { DialogoSeccion } from '../../componentes/Dialogo'
 import ControlSegmentado from '../../componentes/ControlSegmentado'
 import { DialogoAnular } from '../../componentes/Cartera'
 import Medida from '../../componentes/Medida'
-import { leerNumero, pesos } from '../../componentes/numeros'
+import CampoMoneda from '../../componentes/CampoMoneda'
+import { formatoNumero, leerNumero, pesos } from '../../componentes/numeros'
 import { useCategoriasCaja, useCuentasPago } from '../../hooks/useCatalogos'
 import { hoyEnBogota } from '../../utilidades/periodos'
 import { formatearFecha, formatearFechaHora } from '../../utilidades/fechas'
@@ -89,7 +90,13 @@ export function VistaDia({ soloConsulta }: { soloConsulta: boolean }) {
 
       {d && r && (
         <>
-          {!r.saldo_inicial && <div className="aviso atencion">Falta el saldo inicial de caja: el administrador lo fija una sola vez en Configuración. Sin él no se puede cerrar el día.</div>}
+          <AperturaDia
+            fecha={fecha}
+            resumen={r}
+            cierre={d.cierre}
+            soloConsulta={soloConsulta}
+            onGuardada={(valor) => { refrescar(); avisos.mostrar('ok', `Caja del ${formatearFecha(fecha)} abierta con ${pesos(valor)}.`) }}
+          />
           {d.ventas_abiertas.length > 0 && (
             <div className="aviso atencion" role="status">
               Hay ventas abiertas con ítems: {d.ventas_abiertas.map((v) => `#${v.id}${v.usuario ? ` (${v.usuario})` : ''}`).join(', ')}. Ciérrelas o anule sus ítems antes de cerrar el día.
@@ -104,13 +111,12 @@ export function VistaDia({ soloConsulta }: { soloConsulta: boolean }) {
               tono={Number(r.faltante_meta) > 0 ? 'amarillo' : 'verde'}
               icono="agotados"
             />
-            <Medida etiqueta="Efectivo esperado del día" valor={pesos(r.efectivo_neto_dia)} pie="Efectivo neto (ver desglose)" tono="verde" icono="billetera" />
             <Medida
-              etiqueta="Saldo acumulado"
-              valor={pesos(r.saldo_acumulado)}
-              pie={`Anterior ${pesos(r.saldo_anterior)}${r.saldo_anterior_origen.tipo === 'cierre' ? ` (cierre del ${formatearFecha(r.saldo_anterior_origen.fecha)})` : r.saldo_anterior_origen.tipo === 'inicial' ? ' (saldo inicial)' : ''}`}
-              tono="azul"
-              icono="caja"
+              etiqueta="Efectivo esperado"
+              valor={r.efectivo_esperado !== null ? pesos(r.efectivo_esperado) : '—'}
+              pie={r.apertura ? `Apertura ${pesos(r.apertura.valor)} + neto ${pesos(r.efectivo_neto_dia)}` : `Falta la apertura · neto ${pesos(r.efectivo_neto_dia)}`}
+              tono="verde"
+              icono="billetera"
             />
           </section>
 
@@ -167,11 +173,13 @@ export function VistaDia({ soloConsulta }: { soloConsulta: boolean }) {
                 <div><dt>− Pagos a proveedores en efectivo</dt><dd>{pesos(r.efectivo.pagos_proveedores)}</dd></div>
                 <div><dt>− Egresos (gastos, fijos y cuotas)</dt><dd>{pesos(r.efectivo.egresos)}</dd></div>
                 {r.efectivo.prestamos_empleados !== undefined && <div><dt>− Préstamos a empleados</dt><dd>{pesos(r.efectivo.prestamos_empleados)}</dd></div>}
-                <div className="total"><dt>Efectivo esperado</dt><dd>{pesos(r.efectivo.neto)}</dd></div>
+                <div className="subtotal"><dt>Efectivo neto del día</dt><dd>{pesos(r.efectivo.neto)}</dd></div>
+                <div><dt>+ Apertura de la caja</dt><dd>{r.apertura ? pesos(r.apertura.valor) : 'Sin registrar'}</dd></div>
+                <div className="total"><dt>Efectivo esperado</dt><dd>{r.efectivo_esperado !== null ? pesos(r.efectivo_esperado) : '—'}</dd></div>
               </dl>
               {cerrado
                 ? <CierreGuardado cierre={d.cierre!} />
-                : !soloConsulta && <FormularioCierre fecha={fecha} esperado={r.efectivo_neto_dia} bloqueado={d.ventas_abiertas.length > 0 || !r.saldo_inicial} onCerrado={() => { refrescar(); avisos.mostrar('ok', `Caja del ${formatearFecha(fecha)} cerrada.`) }} />}
+                : !soloConsulta && <FormularioCierre fecha={fecha} esperado={r.efectivo_esperado ?? '0'} bloqueado={d.ventas_abiertas.length > 0 || !r.apertura} onCerrado={() => { refrescar(); avisos.mostrar('ok', `Caja del ${formatearFecha(fecha)} cerrada.`) }} />}
               {d.cierres_reabiertos.length > 0 && (
                 <details className="caja-historial">
                   <summary>Cierres reabiertos ({d.cierres_reabiertos.length})</summary>
@@ -213,6 +221,114 @@ export function VistaDia({ soloConsulta }: { soloConsulta: boolean }) {
   )
 }
 
+/**
+ * S-49: apertura diaria de la caja. Sin apertura, el mostrador ve la tarjeta "Abrir la caja" con el
+ * efectivo precargado desde el último cierre; registrada, queda una línea "Abrió con $X" y, mientras
+ * el día no esté cerrado, el enlace "Corregir". El admin y un día cerrado la ven solo como texto.
+ */
+function AperturaDia({ fecha, resumen: r, cierre, soloConsulta, onGuardada }: {
+  fecha: string
+  resumen: ResumenCaja
+  cierre: CierreCaja | null
+  soloConsulta: boolean
+  onGuardada: (valor: number) => void
+}) {
+  const [corrigiendo, setCorrigiendo] = useState(false)
+  const puede = !soloConsulta && r.apertura_editable
+
+  if (r.apertura && !(corrigiendo && puede)) {
+    return (
+      <p className="apertura-linea">
+        Abrió con <strong>{pesos(r.apertura.valor)}</strong>
+        {r.apertura.fijado_por && <small> · {r.apertura.fijado_por.name}, {formatearFechaHora(r.apertura.fijado_at)}</small>}
+        {puede && <button type="button" className="enlace boton-44" onClick={() => setCorrigiendo(true)}>Corregir</button>}
+      </p>
+    )
+  }
+  if (!r.apertura && !puede) {
+    return (
+      <p className="apertura-linea">
+        {cierre ? 'Este cierre es anterior a la apertura diaria: no tiene apertura registrada.' : 'La caja de este día no tiene apertura registrada.'}
+      </p>
+    )
+  }
+
+  return (
+    <FormularioApertura
+      fecha={fecha}
+      actual={r.apertura?.valor ?? null}
+      sugerida={r.apertura_sugerida}
+      onCancelar={r.apertura ? () => setCorrigiendo(false) : undefined}
+      onGuardada={(valor) => { setCorrigiendo(false); onGuardada(valor) }}
+    />
+  )
+}
+
+function FormularioApertura({ fecha, actual, sugerida, onCancelar, onGuardada }: {
+  fecha: string
+  actual: string | null
+  sugerida: string | null
+  onCancelar?: () => void
+  onGuardada: (valor: number) => void
+}) {
+  const inicial = actual ?? sugerida
+  const [valor, setValor] = useState(inicial !== null ? formatoNumero(inicial) : '')
+  const [confirmando, setConfirmando] = useState(false)
+  const n = leerNumero(valor)
+  const valido = n !== null && !Number.isNaN(n) && n >= 0
+  const corrigiendo = actual !== null
+
+  const guardar = useMutation({
+    mutationFn: async () => (await api.put(`/caja/dias/${fecha}/apertura`, { valor: n })).data,
+    onSuccess: () => { setConfirmando(false); onGuardada(n ?? 0) },
+  })
+  const errores = guardar.isError ? erroresCampo(guardar.error) : {}
+
+  return (
+    <section className="tarjeta-pagina apertura-caja">
+      <h2>{corrigiendo ? 'Corregir la apertura' : 'Abrir la caja'}</h2>
+      <form className="formulario" onSubmit={(e) => { e.preventDefault(); if (valido) setConfirmando(true) }}>
+        <label htmlFor="apertura-valor">
+          <span className="etiqueta-campo">Efectivo con que abre la caja<span className="obligatorio" aria-hidden="true">*</span></span>
+        </label>
+        <CampoMoneda
+          id="apertura-valor"
+          className="boton-44"
+          autoFocus={!corrigiendo}
+          placeholder="Ej: 200.000"
+          value={valor}
+          aria-invalid={(valor.trim() !== '' && !valido) || !!errores.valor}
+          aria-describedby="apertura-ayuda"
+          onChange={(e) => { setValor(e.target.value); guardar.reset() }}
+        />
+        <small id="apertura-ayuda" className={(valor.trim() !== '' && !valido) || errores.valor ? 'ayuda error' : 'ayuda'}>
+          {errores.valor ?? (valor.trim() !== '' && !valido
+            ? 'Escriba un valor en pesos, 0 o mayor.'
+            : sugerida !== null ? `Efectivo contado del último cierre: ${pesos(sugerida)}.` : 'Solo el efectivo que ya está en la caja al empezar (puede ser 0). Lo que llegue durante el día desde la Caja General se registra como ingreso externo.')}
+        </small>
+        {guardar.isError && !confirmando && !errores.valor && <div className="aviso error" role="alert">{mensajeError(guardar.error)}</div>}
+        <div className="acciones acciones-izquierda">
+          <button type="submit" className="primario boton-44" disabled={!valido || guardar.isPending}>{corrigiendo ? 'Guardar apertura' : 'Abrir caja'}</button>
+          {onCancelar && <button type="button" className="secundario boton-44" disabled={guardar.isPending} onClick={onCancelar}>Cancelar</button>}
+        </div>
+      </form>
+      {confirmando && (
+        <Confirmar
+          titulo={corrigiendo ? `Corregir la apertura del ${formatearFecha(fecha)}` : `Abrir la caja del ${formatearFecha(fecha)}`}
+          texto={corrigiendo
+            ? `La apertura pasa de ${pesos(actual ?? 0)} a ${pesos(n ?? 0)}. El cambio queda en la auditoría.`
+            : `La caja abre con ${pesos(n ?? 0)} en efectivo. Se puede corregir mientras el día no esté cerrado.`}
+          accion={corrigiendo ? 'Guardar apertura' : 'Abrir caja'}
+          pendiente={guardar.isPending}
+          error={guardar.isError ? mensajeError(guardar.error) : null}
+          onConfirmar={() => guardar.mutate()}
+          onCancelar={() => setConfirmando(false)}
+        />
+      )}
+    </section>
+  )
+}
+
 function ListaMovimientos({ movimientos, onAnular }: { movimientos: MovimientoCaja[]; onAnular?: (m: MovimientoCaja) => void }) {
   if (movimientos.length === 0) return <p className="vacio">No hay movimientos este día.</p>
   return (
@@ -242,10 +358,10 @@ function CierreGuardado({ cierre }: { cierre: CierreCaja }) {
   const dif = Number(cierre.diferencia)
   return (
     <dl className="desglose-efectivo cierre-guardado">
+      {cierre.apertura !== null && <div><dt>Apertura</dt><dd>{pesos(cierre.apertura)}</dd></div>}
       <div><dt>Efectivo contado</dt><dd>{pesos(cierre.efectivo_contado)}</dd></div>
       <div><dt>Efectivo esperado</dt><dd>{pesos(cierre.efectivo_esperado)}</dd></div>
       <div className={dif === 0 ? 'total' : 'total diferencia'}><dt>Diferencia</dt><dd>{dif > 0 ? '+' : ''}{pesos(cierre.diferencia)}</dd></div>
-      <div><dt>Saldo acumulado</dt><dd>{pesos(cierre.saldo_acumulado)}</dd></div>
       {cierre.observacion && <div><dt>Observación</dt><dd>{cierre.observacion}</dd></div>}
     </dl>
   )

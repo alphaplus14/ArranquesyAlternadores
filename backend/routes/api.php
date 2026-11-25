@@ -109,11 +109,9 @@ Route::middleware('auth:sanctum')->group(function () {
         // S-45 e: días sin movimiento del panel (120 por defecto, 30 a 730).
         Route::get('/configuracion/dias-sin-movimiento', [ConfiguracionController::class, 'diasSinMovimiento']);
         Route::put('/configuracion/dias-sin-movimiento', [ConfiguracionController::class, 'fijarDiasSinMovimiento']);
-        // RF-25 (S-49, S-51): meta de venta diaria y saldo inicial de caja (este se fija una vez).
+        // RF-25 (S-51): meta de venta diaria.
         Route::get('/configuracion/meta-venta', [ConfiguracionController::class, 'metaVenta']);
         Route::put('/configuracion/meta-venta', [ConfiguracionController::class, 'fijarMetaVenta']);
-        Route::get('/configuracion/saldo-caja-inicial', [ConfiguracionController::class, 'saldoCajaInicial']);
-        Route::put('/configuracion/saldo-caja-inicial', [ConfiguracionController::class, 'fijarSaldoCajaInicial']);
 
         // RF-24 (S-48): cuentas de pago; solo el admin las crea, edita y desactiva (sin DELETE).
         Route::post('/cuentas-pago', [CuentaPagoController::class, 'store']);
@@ -256,6 +254,8 @@ Route::middleware('auth:sanctum')->group(function () {
                 Route::post('/movimientos', [MovimientoCajaController::class, 'store']);
                 Route::post('/movimientos/{movimiento}/anulaciones', [MovimientoCajaController::class, 'anular']);
                 Route::post('/cierres', [CajaController::class, 'cerrar']);
+                // S-49: apertura diaria de la caja (crear o corregir mientras el día no esté cerrado).
+                Route::put('/dias/{fecha}/apertura', [CajaController::class, 'fijarApertura'])->where('fecha', '\d{4}-\d{2}-\d{2}');
             });
 
             Route::middleware('solo_rol:admin')->group(function () {
