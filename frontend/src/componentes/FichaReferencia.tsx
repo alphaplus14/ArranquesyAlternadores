@@ -6,6 +6,8 @@ import { useCategorias, useProveedores } from '../hooks/useCatalogos'
 import { useAvisoTexto } from './Avisos'
 import Dialogo, { DialogoSeccion } from './Dialogo'
 import Icono from './Icono'
+import CampoMoneda from './CampoMoneda'
+import { formatoNumero, leerNumero } from './numeros'
 
 /**
  * RF-01, RF-14, RF-20, S-15, S-18, S-20, S-23.
@@ -49,7 +51,7 @@ function valoresIniciales(props: FichaReferenciaProps): Valores {
     categoria_id: String(r.categoria_id),
     codigo_universal_id: r.codigo_universal_id ? String(r.codigo_universal_id) : '',
     descripcion: r.descripcion,
-    precio_venta: r.precio_venta,
+    precio_venta: formatoNumero(r.precio_venta), // S-52
     iva_venta_porcentaje: Number(r.iva_venta_porcentaje) === 0 ? '0' : '19',
   }
 }
@@ -78,7 +80,7 @@ export default function FichaReferencia(props: FichaReferenciaProps) {
         categoria_id: Number(f.categoria_id),
         calidad: f.calidad || null,
         descripcion: f.descripcion.trim(),
-        precio_venta: Number(f.precio_venta),
+        precio_venta: leerNumero(f.precio_venta), // S-52: sin el formato
         iva_venta_porcentaje: Number(f.iva_venta_porcentaje),
         codigo_universal_id: admiteUniversal && f.codigo_universal_id ? Number(f.codigo_universal_id) : null,
       }
@@ -95,7 +97,7 @@ export default function FichaReferencia(props: FichaReferenciaProps) {
     })
   }
 
-  const errorPrecio = f.precio_venta === '' ? null : Number(f.precio_venta) > 0 ? null : 'El precio de venta debe ser mayor que 0.'
+  const errorPrecio = f.precio_venta === '' ? null : (leerNumero(f.precio_venta) ?? 0) > 0 ? null : 'El precio de venta debe ser mayor que 0.'
   const sinCategorias = categorias.data?.length === 0
   const completo = f.codigo_referencia.trim() !== ''
     && f.proveedor_id !== ''
@@ -193,10 +195,7 @@ export default function FichaReferencia(props: FichaReferenciaProps) {
         <DialogoSeccion titulo="Venta">
           <div className="campos-dos">
             <label>Precio de venta
-              <input
-                type="number"
-                min="0.01"
-                step="0.01"
+              <CampoMoneda
                 required
                 aria-invalid={errorPrecio !== null}
                 aria-describedby="ficha-precio-ayuda"

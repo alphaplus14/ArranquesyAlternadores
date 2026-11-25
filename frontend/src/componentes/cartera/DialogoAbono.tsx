@@ -10,6 +10,7 @@ import { formatoNumero, leerNumero, pesos } from '../numeros'
 import { fechaCorta } from '../fechas'
 import { hoyEnBogota } from '../../utilidades/periodos'
 import { nombreVenta } from '../../utilidades/cartera'
+import CampoMoneda from '../CampoMoneda'
 
 const MEDIOS = Object.keys(NOMBRE_MEDIO) as MedioPago[]
 
@@ -179,7 +180,7 @@ export default function DialogoAbono({ cliente, saldo, ventaInicial, onGuardado,
         </label>
         <label>
           <span className="etiqueta-campo">Valor<span className="obligatorio" aria-hidden="true">*</span></span>
-          <input required inputMode="decimal" autoFocus placeholder="Ej: 50.000" aria-invalid={valorConError} aria-describedby="abono-valor-ayuda" {...campo('valor')} />
+          <CampoMoneda required autoFocus placeholder="Ej: 50.000" aria-invalid={valorConError} aria-describedby="abono-valor-ayuda" {...campo('valor')} />
           <small id="abono-valor-ayuda" className={valorConError ? 'ayuda error' : 'ayuda'}>{ayudaValor}</small>
         </label>
       </div>

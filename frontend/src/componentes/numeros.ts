@@ -5,6 +5,7 @@
  */
 export function leerNumero(texto: string): number | null {
   let limpio = texto.trim().replace(/[\s$]/g, '')
+  limpio = limpio.replace(/,$/, '') // "1.250," a medio escribir (S-52) vale 1250
   if (!limpio.includes(',') && /\.\d{1,2}$/.test(limpio)) limpio = limpio.replace(/\.(?=\d{1,2}$)/, ',')
   limpio = limpio.replace(/\./g, '').replace(',', '.')
   if (limpio === '') return null
@@ -20,3 +21,20 @@ export function formatoNumero(valor: string | number) {
 
 export const pesos = (n: number | string) =>
   Number(n).toLocaleString('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 })
+
+/**
+ * S-52: dinero escrito en formato es-CO mientras se digita ("1.250.000,5"): punto para miles y
+ * coma para decimales, máximo 2. Se conservan solo dígitos y la primera coma; un punto escrito
+ * al final (tecla decimal del teclado numérico) se toma como coma. El texto resultante lo lee
+ * `leerNumero`, que entrega el número sin formato que va al backend.
+ */
+export function formatearDinero(texto: string): string {
+  let crudo = texto
+  if (!crudo.includes(',') && crudo.endsWith('.')) crudo = `${crudo.slice(0, -1)},`
+  const limpio = crudo.replace(/[^\d,]/g, '')
+  const coma = limpio.indexOf(',')
+  const entero = (coma === -1 ? limpio : limpio.slice(0, coma)).replace(/^0+(?=\d)/, '')
+  const miles = entero.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+  if (coma === -1) return miles
+  return `${miles || '0'},${limpio.slice(coma + 1).replace(/,/g, '').slice(0, 2)}`
+}

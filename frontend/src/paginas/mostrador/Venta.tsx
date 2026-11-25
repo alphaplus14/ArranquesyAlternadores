@@ -23,6 +23,7 @@ import { rotuloIvaIncluido } from '../../utilidades/cartera'
 import { useDebounce } from '../../hooks/useDebounce'
 import { useListaPaginada } from '../../hooks/useListaPaginada'
 import { formatoNumero, leerNumero, pesos } from '../../componentes/numeros'
+import CampoMoneda from '../../componentes/CampoMoneda' // S-52
 
 interface ReversoPendiente { item?: VentaItem; tipo: 'devolucion' | 'anulacion' }
 interface DatosCredito { cliente_id: number; factura_contapyme: string | null; cliente: { id: number; nombre: string; documento: string | null } }
@@ -880,8 +881,7 @@ function PrecioGrupo({ ventaId, grupo, onGuardado, onEstado }: {
 
   return (
     <span className="precio-grupo">
-      <input
-        inputMode="decimal"
+      <CampoMoneda
         value={texto}
         aria-label={`Precio con IVA incluido de ${grupo.item.unidad.referencia?.codigo_referencia ?? 'la referencia'} (${grupo.ids.length} ${grupo.ids.length === 1 ? 'unidad' : 'unidades'})`}
         aria-invalid={error ? true : undefined}
@@ -1270,11 +1270,9 @@ function CeldaPrecio({ ventaId, item, onGuardado, onTerminar }: {
 
   return (
     <div className="precio-editable">
-      <input
+      <CampoMoneda
         ref={campoRef}
         autoFocus
-        inputMode="decimal"
-        autoComplete="off"
         aria-label={`Precio de ${item.unidad.codigo_barras}`}
         aria-invalid={error !== null}
         aria-describedby={`precio-${item.id}-ayuda`}
