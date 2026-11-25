@@ -62,6 +62,24 @@ interface Duplicada { existente: VentaAbierta; abrirOtra: () => void }
 const textoBorrador = (b: Borrador) => (b.forma_pago === 'credito' ? `Nueva · Crédito · ${b.credito.cliente.nombre}` : 'Nueva · Contado')
 
 /**
+ * RF-06 / S-33: agrega a la venta en caché los ítems de una lectura, con los totales del backend.
+ * Dos lecturas casi seguidas (p. ej. las de la cola de S-46) pueden responder en otro orden. El
+ * backend las atiende de a una (bloquea la venta, igual que los reversos), así que la respuesta con
+ * el ítem de id más alto trae el total más nuevo, que ya incluye los anteriores. Una respuesta
+ * atrasada agrega su ítem en su lugar (por id), pero no pisa ese total.
+ */
+function agregarItems(venta: TVenta, nuevos: VentaItem[], totales: RespuestaEscaneo['totales']): TVenta {
+  const yaEstan = new Set(venta.items.map((i) => i.id))
+  const faltan = nuevos.filter((n) => !yaEstan.has(n.id))
+  if (faltan.length === 0) return venta
+  const ultimoEnVenta = venta.items.reduce((max, i) => Math.max(max, i.id), 0)
+  if (faltan.some((n) => n.id > ultimoEnVenta)) {
+    return { ...venta, items: [...venta.items, ...faltan], totales: totales ?? venta.totales }
+  }
+  return { ...venta, items: [...venta.items, ...faltan].sort((a, b) => a.id - b.id) }
+}
+
+/**
  * RF-06: venta de mostrador. Cada escaneo descuenta de inmediato (no al cerrar).
  * RF-12: input siempre enfocado para el lector, y búsqueda manual de respaldo (queda "digitado").
  * RF-07: reversos con motivo obligatorio; nada se borra.
@@ -202,19 +220,19 @@ export default function Venta() {
       }
       // RF-06: una sola petición por escaneo. Los ítems llegan completos y se agregan a la venta en
       // caché, con los totales nuevos (S-33) que calcula el backend; la ficha de la venta también.
-      qc.setQueryData<VentaAbierta[]>(CLAVE_ABIERTAS, (lista) => lista?.map((a) => (a.id === r.venta_id
-        ? { ...a, items_count: a.items_count + nuevos.length, total: r.totales?.total ?? a.total }
-        : a)))
       if (!qc.getQueryData<TVenta>(clave)) {
         qc.invalidateQueries({ queryKey: clave })
+        qc.setQueryData<VentaAbierta[]>(CLAVE_ABIERTAS, (lista) => lista?.map((a) => (a.id === r.venta_id
+          ? { ...a, items_count: a.items_count + nuevos.length, total: r.totales?.total ?? a.total }
+          : a)))
         return
       }
       void qc.cancelQueries({ queryKey: clave })
-      qc.setQueryData<TVenta>(clave, (actual) => {
-        if (!actual) return actual
-        const faltan = nuevos.filter((n) => !actual.items.some((i) => i.id === n.id))
-        return faltan.length ? { ...actual, items: [...actual.items, ...faltan], totales: r.totales ?? actual.totales } : actual
-      })
+      const actualizada = qc.setQueryData<TVenta>(clave, (actual) => (actual ? agregarItems(actual, nuevos, r.totales) : actual))
+      // La ficha copia la venta ya actualizada: una respuesta atrasada tampoco le pisa el total.
+      qc.setQueryData<VentaAbierta[]>(CLAVE_ABIERTAS, (lista) => lista?.map((a) => (a.id === r.venta_id && actualizada
+        ? { ...a, items_count: actualizada.items.filter((i) => !i.reverso_id).length, total: actualizada.totales?.total ?? a.total }
+        : a)))
     },
     onError: (e, { codigo, metodo, referenciaId, cantidad: n, destino }) => {
       const datos = e instanceof AxiosError ? e.response?.data as { tipo?: string; message?: string; referencias?: OpcionReferenciaVenta[] } | undefined : undefined
