@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\Venta;
+use App\Support\TotalesVenta;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -25,8 +26,16 @@ class VentaResource extends JsonResource
             'usuario' => $this->whenLoaded('usuario', fn () => ['id' => $this->usuario->id, 'name' => $this->usuario->name]),
             'created_at' => $this->created_at,
             'cerrada_at' => $this->cerrada_at,
+            'descartada_at' => $this->descartada_at, // S-46: solo en ventas descartadas por el sistema
             'vence_el' => $this->vence_el?->toDateString(),
             'items' => VentaItemResource::collection($this->whenLoaded('items')),
+            // S-33 / S-15: precios con IVA incluido. Total = suma de los ítems vigentes; base e IVA
+            // incluido se extraen (TotalesVenta, único lugar del cálculo). Usa los ítems ya cargados.
+            'totales' => $this->whenLoaded('items', fn () => TotalesVenta::desglosar($this->items->map(fn ($item) => [
+                'precio' => $item->precio_unitario,
+                'iva' => $item->iva_porcentaje,
+                'vigente' => $item->reversoItem === null,
+            ]))->aArreglo()),
             'reversos' => $this->whenLoaded('reversos', fn () => $this->reversos->map(fn ($r) => [
                 'id' => $r->id,
                 'tipo' => $r->tipo,

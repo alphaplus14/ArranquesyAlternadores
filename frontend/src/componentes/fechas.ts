@@ -1,3 +1,6 @@
+import { formatearFecha } from '../utilidades/fechas'
+import { hoyEnBogota } from '../utilidades/periodos'
+
 /**
  * RF-16: prellenado del vencimiento = fecha del documento + plazo del proveedor. Solo sugiere el
  * valor en pantalla; el usuario lo corrige con la fecha que trae el documento y el backend valida.
@@ -9,13 +12,12 @@ export function sumarDias(fecha: string, dias: number): string {
   return new Date(a, m - 1, d + dias).toLocaleDateString('en-CA')
 }
 
-/** Hoy en hora local (aaaa-mm-dd). */
+/** Hoy en hora de Colombia (aaaa-mm-dd), no en la zona del navegador. */
 export function hoy(): string {
-  return new Date().toLocaleDateString('en-CA')
+  return hoyEnBogota()
 }
 
-/** aaaa-mm-dd → dd/mm/aaaa (es-CO). */
-export function fechaCorta(iso: string): string {
-  const [a, m, d] = iso.split('-').map(Number)
-  return new Date(a, m - 1, d).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' })
+/** aaaa-mm-dd → dd/mm/aaaa sin cambiar de zona; un instante → su día en Colombia (S-38). */
+export function fechaCorta(valor: string): string {
+  return formatearFecha(valor)
 }

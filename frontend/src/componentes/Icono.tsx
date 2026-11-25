@@ -22,10 +22,13 @@ export type IconoNombre =
   | 'clave'
   | 'chevron'
   | 'prohibido'
-  | 'reactivar'
-  | 'inventario'
   | 'configuracion'
+  | 'inventario'
+  | 'reactivar'
   | 'billetera'
+  | 'agrandar'
+  | 'achicar'
+  | 'panel'
 
 /** Trazos propios. No hay fuente de iconos ni librería de UI. */
 export default function Icono({ nombre }: { nombre: IconoNombre }) {
@@ -47,19 +50,22 @@ const trazos: Record<IconoNombre, ReactNode> = {
   usuarios: <path d="M16 19v-1.2A3.8 3.8 0 0 0 12.2 14H7.8A3.8 3.8 0 0 0 4 17.8V19M10 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM20 19v-1.2A3.8 3.8 0 0 0 17 14.2M16 5.1a3 3 0 0 1 0 5.8" />,
   auditoria: <path d="M8 6h11M8 12h11M8 18h11M4 6h.01M4 12h.01M4 18h.01" />,
   agotados: <path d="M12 4l8 14H4L12 4zM12 10v4M12 16.5h.01" />,
+  panel: <path d="M4 20h16M6 16v-4M10 16V8M14 16v-6M18 16V5" />, // RF-23
   buscar: <path d="M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-3.5-3.5" />,
   persona: <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4.5 20a7.5 7.5 0 0 1 15 0" />,
   salir: <path d="M15 4h3a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-3M10 16l-4-4 4-4M6 12h10" />,
   ojo: <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12zm10 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" />,
   'ojo-cerrado': <path d="M3 3l18 18M10.6 6.1A10.4 10.4 0 0 1 12 5.8c6.6 0 10 6.2 10 6.2a17 17 0 0 1-3.1 3.6M6.3 6.4C3.9 8.2 2 12 2 12s3.4 6.2 10 6.2a10 10 0 0 0 3.8-.8" />,
   editar: <path d="M11 4H4a1 1 0 0 0-1 1v15a1 1 0 0 0 1 1h15a1 1 0 0 0 1-1v-7M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />,
-  activar: <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4.5 20a7.5 7.5 0 0 1 9-7.1M16.5 18.5l2 2 4-4" />,
-  desactivar: <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4.5 20a7.5 7.5 0 0 1 10.2-6.9M16 16l5 5M21 16l-5 5" />,
+  activar: <path d="M5 12.5l5 5L19.5 7" />,
+  desactivar: <path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM7.2 7.2l9.6 9.6" />,
   clave: <g><circle cx="7.5" cy="15.5" r="3.5" /><path d="M10.6 13.4L21 3M16 8l2 2M19 5l2 2" /></g>,
   chevron: <path d="M6 9l6 6 6-6" />,
-  prohibido: <g><circle cx="12" cy="12" r="9" /><path d="M5.6 5.6l12.8 12.8" /></g>,
-  billetera: <path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H18v3M4 7.5V17a2 2 0 0 0 2 2h14V9H6.5A2.5 2.5 0 0 1 4 7.5zM16.5 14h.01" />,
   configuracion: <path d="M4 7h10M18 7h2M4 17h4M12 17h8M16 5v4M10 15v4" />,
   inventario: <path d="M9 3.5h6v3H9zM9 5H6a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-3M8.5 12h7M8.5 16h4.5" />,
+  prohibido: <g><circle cx="12" cy="12" r="9" /><path d="M5.6 5.6l12.8 12.8" /></g>,
+  billetera: <path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H18v3M4 7.5V17a2 2 0 0 0 2 2h14V9H6.5A2.5 2.5 0 0 1 4 7.5zM16.5 14h.01" />,
   reactivar: <path d="M4 12a8 8 0 0 1 13.7-5.6L20 8.7M20 4v4.7h-4.7M20 12a8 8 0 0 1-13.7 5.6L4 15.3M4 20v-4.7h4.7" />,
+  agrandar: <path d="M15 3h6v6M21 3l-7 7M3 21l7-7M9 21H3v-6" />,
+  achicar: <path d="M14 10l7-7M20 10h-6V4M4 20l7-7M10 14H4v6" />,
 }

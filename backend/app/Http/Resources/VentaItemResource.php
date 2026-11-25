@@ -21,6 +21,7 @@ class VentaItemResource extends JsonResource
             'precio_unitario' => $this->precio_unitario,
             'iva_porcentaje' => $this->iva_porcentaje,
             'metodo_captura' => $this->metodo_captura,
+            'origen_codigo' => $this->origen_codigo, // S-31: etiqueta | referencia
             'created_at' => $this->created_at,
             'usuario' => ['id' => $this->usuario->id, 'name' => $this->usuario->name],
             'unidad' => new UnidadResource($this->unidad),

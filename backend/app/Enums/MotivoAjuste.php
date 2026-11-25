@@ -13,8 +13,12 @@ enum MotivoAjuste: string
     case DevolucionProveedor = 'devolucion_proveedor';
     case Dano = 'dano';
     case Perdida = 'perdida';
+    case FaltanteInventario = 'faltante_inventario'; // S-39
     // Reintegro
     case ErrorDeRegistro = 'error_de_registro';
+    // Alta (S-39)
+    case SobranteInventario = 'sobrante_inventario';
+    case SinFactura = 'sin_factura';
     // Ambos
     case Otro = 'otro';
 
@@ -22,8 +26,9 @@ enum MotivoAjuste: string
     public static function para(TipoAjuste $tipo): array
     {
         return match ($tipo) {
-            TipoAjuste::Baja => [self::Garantia, self::DevolucionProveedor, self::Dano, self::Perdida, self::Otro],
+            TipoAjuste::Baja => [self::Garantia, self::DevolucionProveedor, self::Dano, self::Perdida, self::FaltanteInventario, self::Otro],
             TipoAjuste::Reintegro => [self::ErrorDeRegistro, self::Otro],
+            TipoAjuste::Alta => [self::SobranteInventario, self::SinFactura, self::Otro],
         };
     }
 

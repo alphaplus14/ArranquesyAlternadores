@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\MetodoCaptura;
+use App\Enums\OrigenCodigo;
 use App\Models\Concerns\Inmutable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -16,11 +17,11 @@ class AjusteItem extends Model
 
     protected $table = 'ajuste_items';
 
-    protected $fillable = ['ajuste_id', 'unidad_id', 'metodo_captura'];
+    protected $fillable = ['ajuste_id', 'unidad_id', 'metodo_captura', 'origen_codigo'];
 
     protected function casts(): array
     {
-        return ['metodo_captura' => MetodoCaptura::class];
+        return ['metodo_captura' => MetodoCaptura::class, 'origen_codigo' => OrigenCodigo::class]; // S-34
     }
 
     public function ajuste(): BelongsTo

@@ -25,10 +25,11 @@ it('roles: logística no vende ni edita proveedores ni categorías (S-24, S-26)'
     $this->patchJson('/api/categorias/'.referencia('RN-4410')->categoria_id, ['nombre' => 'X'])->assertForbidden();
 });
 
-it('roles: el admin entra a todos los módulos', function () {
+it('roles: el admin entra a todos los módulos (las ventas, solo a consultar: S-43)', function () {
     actuarComo(Rol::Admin);
 
-    $this->postJson('/api/ventas')->assertCreated();
+    $this->getJson('/api/ventas')->assertOk();
+    $this->postJson('/api/ventas')->assertForbidden();
     $this->getJson('/api/ingresos')->assertOk();
     $this->getJson('/api/usuarios')->assertOk();
 });

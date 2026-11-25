@@ -354,7 +354,7 @@ export default function Productos() {
             <div role="columnheader">Descripción</div>
             <div role="columnheader">Proveedor</div>
             {completa && <div role="columnheader">Categoría</div>}
-            <div role="columnheader" className="col-numero">Precio</div>
+            <div role="columnheader" className="col-numero" title="Precio de venta con IVA incluido">Precio (IVA incl.)</div>
             {completa && <div role="columnheader" className="col-numero">IVA</div>}
             <div role="columnheader" className="col-numero">Existencia</div>
             {puedeGestionar && <div role="columnheader" className="col-acciones">Acciones</div>}
@@ -519,7 +519,7 @@ function FormularioReferencia({ id, inicial, onListo, onCerrar }: { id: number |
           <input type="number" min="0.01" step="0.01" required aria-invalid={errorPrecioVenta !== null} aria-describedby="precio-venta-ayuda" {...campo('precio_venta')} />
         </label>
         <p id="precio-venta-ayuda" className={errorPrecioVenta ? 'ayuda error' : 'ayuda'}>
-          {errorPrecioVenta ?? 'Mayor que 0. Una referencia sin precio no se puede vender.'}
+          {errorPrecioVenta ?? 'Con IVA incluido. Mayor que 0: una referencia sin precio no se puede vender.'}
         </p>
         {universalElegido ? (
           <p className="ayuda">Stock mínimo: se define en el código universal y se evalúa sobre la suma de sus referencias.</p>

@@ -1,4 +1,4 @@
-﻿import type { KeyboardEvent } from 'react'
+import type { KeyboardEvent } from 'react'
 
 const ENFOCABLES = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 

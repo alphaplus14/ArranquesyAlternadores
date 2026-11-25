@@ -12,10 +12,9 @@ beforeEach(fn () => sembrarDemo());
 it('RF-14: la venta de contado sigue abriéndose sin cliente y sin vencimiento', function () {
     actuarComo(Rol::Mostrador);
 
-    $id = $this->postJson('/api/ventas')->assertCreated()
-        ->assertJsonPath('forma_pago', 'contado')
-        ->assertJsonPath('cliente', null)
-        ->json('id');
+    // S-46: la venta nace con su primer escaneo.
+    $id = $this->postJson('/api/ventas', escaneoInicial('RN-4410'))->assertCreated()->json('venta_id');
+    $this->getJson("/api/ventas/{$id}")->assertJsonPath('forma_pago', 'contado')->assertJsonPath('cliente', null);
 
     $this->postJson("/api/ventas/{$id}/cerrar")->assertOk()->assertJsonPath('vence_el', null);
 });
@@ -23,7 +22,7 @@ it('RF-14: la venta de contado sigue abriéndose sin cliente y sin vencimiento',
 it('RF-14: una venta a crédito sin cliente responde 422', function () {
     actuarComo(Rol::Mostrador);
 
-    $this->postJson('/api/ventas', ['forma_pago' => 'credito'])->assertUnprocessable();
+    $this->postJson('/api/ventas', ['forma_pago' => 'credito', ...escaneoInicial('RN-4410')])->assertUnprocessable();
     expect(Venta::count())->toBe(0);
 });
 
@@ -31,29 +30,28 @@ it('RF-14: una venta a crédito con un cliente inactivo responde 422', function 
     actuarComo(Rol::Mostrador);
     $cliente = Cliente::factory()->inactivo()->create();
 
-    $this->postJson('/api/ventas', ['forma_pago' => 'credito', 'cliente_id' => $cliente->id])->assertUnprocessable();
+    $this->postJson('/api/ventas', ['forma_pago' => 'credito', 'cliente_id' => $cliente->id, ...escaneoInicial('RN-4410')])->assertUnprocessable();
     expect(Venta::count())->toBe(0);
 });
 
 it('RF-14: forma_pago inválida o cliente inexistente no pasan la validación', function () {
     actuarComo(Rol::Mostrador);
 
-    $this->postJson('/api/ventas', ['forma_pago' => 'fiado'])->assertUnprocessable()->assertJsonValidationErrors('forma_pago');
-    $this->postJson('/api/ventas', ['forma_pago' => 'credito', 'cliente_id' => 999999])->assertUnprocessable()->assertJsonValidationErrors('cliente_id');
+    $this->postJson('/api/ventas', ['forma_pago' => 'fiado', ...escaneoInicial('RN-4410')])->assertUnprocessable()->assertJsonValidationErrors('forma_pago');
+    $this->postJson('/api/ventas', ['forma_pago' => 'credito', 'cliente_id' => 999999, ...escaneoInicial('RN-4410')])->assertUnprocessable()->assertJsonValidationErrors('cliente_id');
 });
 
 it('RF-14: escanear guarda el precio de venta y el IVA de la referencia en el ítem (S-10, S-15)', function () {
     actuarComo(Rol::Mostrador);
     $cliente = Cliente::factory()->create();
-    $id = $this->postJson('/api/ventas', ['forma_pago' => 'credito', 'cliente_id' => $cliente->id, 'factura_contapyme' => 'FE-1234'])
+    // S-46: POST /ventas crea la venta a crédito con su primer escaneo.
+    $id = $this->postJson('/api/ventas', ['forma_pago' => 'credito', 'cliente_id' => $cliente->id, 'factura_contapyme' => 'FE-1234', ...escaneoInicial('RN-4410')])
         ->assertCreated()
+        ->json('venta_id');
+    $this->getJson("/api/ventas/{$id}")
         ->assertJsonPath('forma_pago', 'credito')
         ->assertJsonPath('cliente.id', $cliente->id)
-        ->assertJsonPath('factura_contapyme', 'FE-1234')
-        ->json('id');
-
-    $this->postJson("/api/ventas/{$id}/escanear", ['codigo_barras' => unidadDe('RN-4410')->codigo_barras, 'metodo_captura' => 'escaneado'])
-        ->assertCreated();
+        ->assertJsonPath('factura_contapyme', 'FE-1234');
 
     $item = VentaItem::where('venta_id', $id)->sole();
     expect($item->precio_unitario)->toBe('85000.00')
@@ -67,7 +65,7 @@ it('RF-14: escanear guarda el precio de venta y el IVA de la referencia en el í
 it('RF-14: una referencia sin IVA se vende con iva_porcentaje 0', function () {
     actuarComo(Rol::Mostrador);
     referencia('RN-4410')->update(['iva_venta_porcentaje' => 0]);
-    $id = $this->postJson('/api/ventas')->json('id');
+    $id = abrirVenta();
 
     $this->postJson("/api/ventas/{$id}/escanear", ['codigo_barras' => unidadDe('RN-4410')->codigo_barras, 'metodo_captura' => 'digitado'])
         ->assertCreated();
@@ -79,7 +77,7 @@ it('RF-14: al cerrar una venta a crédito, vence_el = fecha de cierre + plazo de
     Carbon::setTestNow('2026-11-20 16:45:00');
     actuarComo(Rol::Mostrador);
     $cliente = Cliente::factory()->create(['plazo_dias' => 45]);
-    $id = $this->postJson('/api/ventas', ['forma_pago' => 'credito', 'cliente_id' => $cliente->id])->json('id');
+    $id = abrirVenta(['forma_pago' => 'credito', 'cliente_id' => $cliente->id]);
 
     expect(Venta::find($id)->vence_el)->toBeNull();
 

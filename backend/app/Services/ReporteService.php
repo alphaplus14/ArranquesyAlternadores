@@ -11,7 +11,7 @@ use App\Models\IngresoItem;
 use App\Models\Proveedor;
 use App\Support\Antiguedad;
 use App\Support\TotalesIngreso;
-use App\Support\ValorVenta;
+use App\Support\TotalesVenta;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -71,7 +71,7 @@ class ReporteService
 
     /**
      * 2. Ventas a crédito cerradas en el período, por cliente, netas de reversos. Una venta
-     * reversada por completo no aparece. Base e IVA salen del precio (S-24, ValorVenta).
+     * reversada por completo no aparece. Base e IVA salen del precio con IVA incluido (S-33, TotalesVenta).
      *
      * @return array{filas: Collection<int, array<string, mixed>>, totales: array<string, string>}
      */
@@ -96,7 +96,9 @@ class ReporteService
             ->get(['ventas.id', 'ventas.cerrada_at', 'ventas.vence_el', 'ventas.factura_contapyme', 'ventas.cliente_id', 'clientes.nombre as cliente']);
 
         $filas = $ventas->map(function ($v) use ($items) {
-            $valor = ValorVenta::calcular($items[$v->id]->map(fn ($i) => (array) $i));
+            $valor = TotalesVenta::desglosar($items[$v->id]->map(fn ($i) => [
+                'precio' => $i->precio_unitario, 'iva' => $i->iva_porcentaje, 'vigente' => true,
+            ]));
 
             return [
                 'id' => (int) $v->id,
@@ -106,7 +108,7 @@ class ReporteService
                 'factura_contapyme' => $v->factura_contapyme,
                 'items' => $items[$v->id]->count(),
                 'base' => $valor->base,
-                'iva' => $valor->iva,
+                'iva' => $valor->ivaIncluido,
                 'total' => $valor->total,
             ];
         });
@@ -121,13 +123,18 @@ class ReporteService
      */
     public function carteraClientes(CarbonInterface $corte): array
     {
-        $documentos = $this->cartera->ventasCredito(null, $corte);
-        $abonado = $this->cartera->abonado(null, $corte);
-        $nombres = Cliente::query()
-            ->whereKey($documentos->keys()->merge(array_keys($abonado))->unique())
-            ->get(['id', 'nombre', 'documento', 'plazo_dias'])->keyBy('id');
+        // Mismo cálculo que la pantalla de Cartera (CarteraService, S-30 / S-32).
+        $filas = $this->cartera->resumenClientes($corte->toDateString())
+            ->filter(fn ($f) => bccomp($f['saldo'], '0', self::ESCALA) !== 0)
+            ->sortBy(fn ($f) => mb_strtolower($f['cliente']['nombre']))
+            ->values();
 
-        return $this->porTitular($nombres, $documentos, $abonado, $corte, 'cliente');
+        $totales = $this->sumar($filas, ['cargos', 'abonos', 'saldo', 'a_favor', 'vencido']);
+        $totales['rangos'] = collect(array_keys(config('cartera.rangos')))->mapWithKeys(fn ($r) => [
+            $r => $filas->reduce(fn ($s, $f) => bcadd($s, $f['rangos'][$r], self::ESCALA), '0.00'),
+        ])->all();
+
+        return ['filas' => $filas, 'totales' => $totales];
     }
 
     /**
@@ -144,53 +151,6 @@ class ReporteService
             ->get(['id', 'nombre', 'nit', 'plazo_dias'])->keyBy('id');
 
         return $this->porTitular($nombres, $documentos, $pagado, $corte, 'proveedor');
-    }
-
-    /**
-     * 5. Estado de cuenta de un cliente: ventas a crédito (por su valor al cerrar), reversos
-     * posteriores al cierre, abonos y anulaciones de abonos, en orden de fecha, con saldo anterior
-     * y saldo corrido. El saldo final coincide con el saldo del cliente a la fecha hasta.
-     *
-     * @return array{saldo_anterior: string, filas: Collection<int, array<string, mixed>>, totales: array<string, string>}
-     */
-    public function estadoCuentaCliente(Cliente $cliente, CarbonInterface $desde, CarbonInterface $hasta): array
-    {
-        $fin = Carbon::instance($hasta)->endOfDay();
-        $base = fn () => DB::table('venta_items')
-            ->join('ventas', 'ventas.id', '=', 'venta_items.venta_id')
-            ->where('ventas.cliente_id', $cliente->id)
-            ->where('ventas.forma_pago', FormaPago::Credito->value)
-            ->where('ventas.estado', EstadoVenta::Cerrada->value)
-            ->whereNotNull('venta_items.precio_unitario');
-
-        // Valor de la venta al cerrar: sin los ítems anulados antes del cierre.
-        $ventas = $base()
-            ->leftJoin('reverso_items', 'reverso_items.venta_item_id', '=', 'venta_items.id')
-            ->leftJoin('reversos', 'reversos.id', '=', 'reverso_items.reverso_id')
-            ->where('ventas.cerrada_at', '<=', $fin)
-            ->where(fn ($q) => $q->whereNull('reversos.id')->orWhereColumn('reversos.created_at', '>', 'ventas.cerrada_at'))
-            ->groupBy('ventas.id', 'ventas.cerrada_at', 'ventas.vence_el', 'ventas.factura_contapyme')
-            ->get(['ventas.id', 'ventas.cerrada_at', 'ventas.vence_el', 'ventas.factura_contapyme', DB::raw('SUM(venta_items.precio_unitario) as valor')])
-            ->map(fn ($v) => $this->movimiento($v->cerrada_at, 'venta', 'Venta #'.$v->id.($v->factura_contapyme ? " · FE {$v->factura_contapyme}" : ''), $v->valor, '0', [
-                'venta_id' => (int) $v->id, 'vence_el' => $v->vence_el,
-            ]));
-
-        $reversos = $base()
-            ->join('reverso_items', 'reverso_items.venta_item_id', '=', 'venta_items.id')
-            ->join('reversos', 'reversos.id', '=', 'reverso_items.reverso_id')
-            ->whereColumn('reversos.created_at', '>', 'ventas.cerrada_at')
-            ->where('reversos.created_at', '<=', $fin)
-            ->groupBy('reversos.id', 'reversos.created_at', 'reversos.tipo', 'reversos.motivo', 'ventas.id')
-            ->get(['reversos.id', 'reversos.created_at', 'reversos.tipo', 'reversos.motivo', 'ventas.id as venta_id', DB::raw('SUM(venta_items.precio_unitario) as valor')])
-            ->map(fn ($r) => $this->movimiento($r->created_at, 'reverso', ucfirst($r->tipo).' de la venta #'.$r->venta_id.': '.$r->motivo, '0', $r->valor, [
-                'venta_id' => (int) $r->venta_id,
-            ]));
-
-        $movimientos = $ventas->concat($reversos)->concat(
-            $this->movimientosDinero('abonos_clientes', 'abono_anulaciones', 'abono_id', 'cliente_id', $cliente->id, $fin, 'abono')
-        );
-
-        return $this->estadoCuenta($movimientos, $desde);
     }
 
     /**

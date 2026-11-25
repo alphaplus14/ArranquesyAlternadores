@@ -10,6 +10,7 @@ enum TipoMovimiento: string
     case Reverso = 'reverso';
     case Baja = 'baja';
     case Reintegro = 'reintegro';
+    case Alta = 'alta'; // S-39: entrada por ajuste de inventario físico
 
     /** @return list<string> */
     public static function valores(): array

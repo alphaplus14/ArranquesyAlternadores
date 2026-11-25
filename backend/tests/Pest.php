@@ -34,6 +34,11 @@ pest()->extend(TestCase::class)
     ->use(DatabaseTruncation::class)
     ->in('Busqueda');
 
+// S-46: bajar y subir una migración hace DDL (commit implícito en MySQL): fuera de una transacción.
+pest()->extend(TestCase::class)
+    ->use(DatabaseTruncation::class)
+    ->in('Migraciones');
+
 /** Crea un usuario del rol indicado y deja la sesión iniciada con él. */
 function actuarComo(Rol $rol): User
 {
@@ -41,6 +46,26 @@ function actuarComo(Rol $rol): User
     test()->actingAs($usuario);
 
     return $usuario;
+}
+
+/**
+ * S-46: abre una venta VACÍA con el servicio para el usuario en sesión (POST /ventas ya no crea
+ * ventas vacías: exige el primer escaneo). Sirve a las pruebas que escanean después. Devuelve el id.
+ */
+function abrirVenta(array $datos = []): int
+{
+    return app(VentaService::class)->abrir(
+        auth()->user(),
+        FormaPago::from($datos['forma_pago'] ?? FormaPago::Contado->value),
+        $datos['cliente_id'] ?? null,
+        $datos['factura_contapyme'] ?? null,
+    )->id;
+}
+
+/** S-46: payload del primer escaneo de POST /ventas: la primera unidad disponible de la referencia. */
+function escaneoInicial(string $codigoReferencia, string $metodo = 'escaneado'): array
+{
+    return ['codigo_barras' => unidadDe($codigoReferencia)->codigo_barras, 'metodo_captura' => $metodo];
 }
 
 /** Petición desde la SPA (dominio stateful): pasa por el AuthenticateSession de Sanctum. */
@@ -81,6 +106,74 @@ function ingresar(Referencia $referencia, int $cantidad, ?User $usuario = null):
     return $servicio->confirmar($ingreso, $usuario);
 }
 
+/**
+ * RF-06: vende la primera unidad disponible de la referencia como mostrador (contado o, con
+ * $venta, a crédito) y vuelve a la sesión anterior. Devuelve [ventaId, código de la unidad].
+ */
+function venderComoMostrador(string $codigoReferencia, bool $cerrar = true, array $venta = []): array
+{
+    $anterior = auth()->user();
+    actuarComo(Rol::Mostrador);
+
+    $codigo = unidadDe($codigoReferencia)->codigo_barras;
+    $ventaId = abrirVenta($venta);
+    test()->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => $codigo, 'metodo_captura' => 'escaneado'])->assertCreated();
+
+    if ($cerrar) {
+        test()->postJson("/api/ventas/{$ventaId}/cerrar")->assertOk();
+    }
+
+    if ($anterior) {
+        test()->actingAs($anterior);
+    }
+
+    return [$ventaId, $codigo];
+}
+
+/* RF-15 / RF-18: ayudas de cartera (ventas a crédito y abonos). */
+
+/**
+ * Venta a crédito con un ítem por precio (cada uno, una unidad disponible distinta), como mostrador.
+ * Devuelve [ventaId, ids de los ítems]. Deja la sesión que había.
+ *
+ * @param  list<int>  $precios
+ */
+function ventaCredito(Cliente $cliente, array $precios, bool $cerrar = true): array
+{
+    $anterior = auth()->user();
+    actuarComo(Rol::Mostrador);
+
+    $ventaId = abrirVenta(['forma_pago' => 'credito', 'cliente_id' => $cliente->id]);
+    $items = [];
+    $unidades = Unidad::where('estado', 'disponible')->orderBy('id')->limit(count($precios))->pluck('codigo_barras');
+    foreach ($precios as $i => $precio) {
+        $itemId = test()->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => $unidades[$i], 'metodo_captura' => 'escaneado'])->assertCreated()->json('venta_item_id');
+        test()->patchJson("/api/ventas/{$ventaId}/items/{$itemId}", ['precio_unitario' => $precio])->assertOk();
+        $items[] = $itemId;
+    }
+    if ($cerrar) {
+        test()->postJson("/api/ventas/{$ventaId}/cerrar")->assertOk();
+    }
+
+    if ($anterior) {
+        test()->actingAs($anterior);
+    }
+
+    return [$ventaId, $items];
+}
+
+/** Mueve el cierre y el vencimiento de una venta (sin pasar por el modelo: es preparación del test). */
+function fecharVenta(int $ventaId, string $cerrada, string $vence): void
+{
+    DB::table('ventas')->where('id', $ventaId)->update(['cerrada_at' => $cerrada.' 15:00:00', 'vence_el' => $vence]);
+}
+
+/** RF-15: respuesta HTTP del abono (cesar/cartera). */
+function abonar(Cliente $cliente, mixed $valor, array $extra = [])
+{
+    return test()->postJson("/api/clientes/{$cliente->id}/abonos", ['fecha' => now('America/Bogota')->toDateString(), 'valor' => $valor, 'medio' => 'efectivo', ...$extra]);
+}
+
 /** RF-14: venta a crédito cerrada con las unidades de RN-4410 indicadas, cada una al precio dado. */
 function ventaCreditoCerrada(Cliente $cliente, int $unidades, int $precio): Venta
 {
@@ -119,71 +212,45 @@ function aCredito(string $vence = '2026-12-31'): array
     return ['forma_pago' => 'credito', 'vence_el' => $vence];
 }
 
-/**
- * RF-06: vende la primera unidad disponible de la referencia como mostrador (contado o, con
- * $venta, a crédito) y vuelve a la sesión anterior. Devuelve [ventaId, código de la unidad].
- */
-function venderComoMostrador(string $codigoReferencia, bool $cerrar = true, array $venta = []): array
+/* S-38: ayudas de devoluciones y salidas con cantidad. */
+
+function refS38(string $codigo, int $unidades, int $precio = 80000): Referencia
 {
-    $anterior = auth()->user();
-    actuarComo(Rol::Mostrador);
-
-    $codigo = unidadDe($codigoReferencia)->codigo_barras;
-    $ventaId = test()->postJson('/api/ventas', $venta)->assertCreated()->json('id');
-    test()->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => $codigo, 'metodo_captura' => 'escaneado'])->assertCreated();
-
-    if ($cerrar) {
-        test()->postJson("/api/ventas/{$ventaId}/cerrar")->assertOk();
+    $ref = Referencia::factory()->create(['codigo_referencia' => $codigo, 'precio_venta' => $precio]);
+    if ($unidades > 0) {
+        ingresar($ref, $unidades);
     }
 
-    if ($anterior) {
-        test()->actingAs($anterior);
-    }
-
-    return [$ventaId, $codigo];
+    return $ref->refresh();
 }
 
-/* RF-15 / RF-18: ayudas de cartera (ventas a crédito y abonos). */
+function codigosS38(Referencia $ref): array
+{
+    return Unidad::where('referencia_id', $ref->id)->orderBy('id')->pluck('codigo_barras')->all();
+}
 
 /**
- * Venta a crédito con un ítem por precio (cada uno, una unidad disponible distinta), como mostrador.
- * Devuelve [ventaId, ids de los ítems]. Deja la sesión que había.
- *
- * @param  list<int>  $precios
+ * Venta (a crédito si hay cliente) con esas etiquetas; $precios cambia el precio de cada ítem mientras
+ * está abierta (S-18). Deja la sesión que había. Devuelve [ventaId, ids de ítems].
  */
-function ventaCredito(Cliente $cliente, array $precios, bool $cerrar = true): array
+function venderS38(array $codigos, ?Cliente $cliente = null, bool $cerrar = true, array $precios = []): array
 {
     $anterior = auth()->user();
     actuarComo(Rol::Mostrador);
-
-    $ventaId = test()->postJson('/api/ventas', ['forma_pago' => 'credito', 'cliente_id' => $cliente->id])->assertCreated()->json('id');
+    $ventaId = abrirVenta($cliente ? ['forma_pago' => 'credito', 'cliente_id' => $cliente->id] : []);
     $items = [];
-    $unidades = Unidad::where('estado', 'disponible')->orderBy('id')->limit(count($precios))->pluck('codigo_barras');
-    foreach ($precios as $i => $precio) {
-        $itemId = test()->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => $unidades[$i], 'metodo_captura' => 'escaneado'])->assertCreated()->json('venta_item_id');
-        test()->patchJson("/api/ventas/{$ventaId}/items/{$itemId}", ['precio_unitario' => $precio])->assertOk();
-        $items[] = $itemId;
+    foreach ($codigos as $i => $c) {
+        $items[] = $itemId = test()->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => $c, 'metodo_captura' => 'escaneado'])->assertCreated()->json('venta_item_id');
+        if (isset($precios[$i])) {
+            test()->patchJson("/api/ventas/{$ventaId}/items/{$itemId}", ['precio_unitario' => $precios[$i]])->assertOk();
+        }
     }
     if ($cerrar) {
         test()->postJson("/api/ventas/{$ventaId}/cerrar")->assertOk();
     }
-
     if ($anterior) {
         test()->actingAs($anterior);
     }
 
     return [$ventaId, $items];
 }
-
-/** Mueve el cierre y el vencimiento de una venta (sin pasar por el modelo: es preparación del test). */
-function fecharVenta(int $ventaId, string $cerrada, string $vence): void
-{
-    DB::table('ventas')->where('id', $ventaId)->update(['cerrada_at' => $cerrada.' 15:00:00', 'vence_el' => $vence]);
-}
-
-/** RF-15: respuesta HTTP del abono (cesar/cartera). */
-function abonar(Cliente $cliente, mixed $valor, array $extra = [])
-{
-    return test()->postJson("/api/clientes/{$cliente->id}/abonos", ['fecha' => now('America/Bogota')->toDateString(), 'valor' => $valor, 'medio' => 'efectivo', ...$extra]);
-}
-

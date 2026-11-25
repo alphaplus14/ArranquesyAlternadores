@@ -67,6 +67,18 @@ class Referencia extends Model
         return $query->where('referencias.activo', true);
     }
 
+    /**
+     * S-31 / S-25: referencias cuyo código del proveedor o del fabricante es exactamente $codigo
+     * (sin espacios en los extremos; la intercalación utf8mb4_unicode_ci ignora mayúsculas). Cada
+     * columna tiene índice simple: MySQL resuelve el OR con index_merge (union), sin recorrer la tabla.
+     */
+    public function scopePorCodigoProveedor($query, string $codigo)
+    {
+        $codigo = trim($codigo);
+
+        return $query->where(fn ($q) => $q->where('referencias.codigo_referencia', $codigo)->orWhere('referencias.codigo_fabricante', $codigo));
+    }
+
     public function proveedor(): BelongsTo
     {
         return $this->belongsTo(Proveedor::class);
@@ -121,8 +133,10 @@ class Referencia extends Model
         $prefijoCodigo = addcslashes($q, '%_\\').'%';
         $match = 'MATCH(referencias.descripcion) AGAINST(? IN BOOLEAN MODE)';
 
-        $query->where(function (Builder $w) use ($prefijoCodigo, $palabras, $booleana, $fueraDelIndice, $match) {
-            $w->where('referencias.codigo_referencia', 'like', $prefijoCodigo);
+        $query->where(function (Builder $w) use ($q, $prefijoCodigo, $palabras, $booleana, $fueraDelIndice, $match) {
+            $w->where('referencias.codigo_referencia', 'like', $prefijoCodigo)
+                // S-25: el código de barras del fabricante, exacto (índice simple).
+                ->orWhere('referencias.codigo_fabricante', $q);
             if ($palabras !== []) {
                 $w->orWhere(function (Builder $d) use ($booleana, $fueraDelIndice, $match) {
                     if ($booleana !== '') {

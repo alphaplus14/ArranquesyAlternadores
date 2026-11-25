@@ -72,7 +72,7 @@ it('RF-18 / RF-19: una remisión cubierta por una factura confirmada no se cuent
         ->assertJsonPath('totales.total', '2000.00');
 });
 
-it('RF-18: ventas a crédito netas de reversos, con base e IVA del precio (S-24)', function () {
+it('RF-18: ventas a crédito netas de reversos, con base e IVA del precio (S-35, S-33)', function () {
     $cliente = Cliente::factory()->create();
     $parcial = ventaCreditoCerrada($cliente, 2, 119);
     $admin = actuarComo(Rol::Admin);
@@ -124,7 +124,8 @@ it('RF-18: la cartera a una fecha de corte anterior no ve lo posterior', functio
     ventaCreditoCerrada($cliente, 1, 300);
     actuarComo(Rol::Admin);
 
-    $ayer = now()->subDay()->toDateString();
+    // El corte es un día de Bogotá (RangoFechas), no de UTC.
+    $ayer = now('America/Bogota')->subDay()->toDateString();
     $this->getJson("/api/reportes/cartera-clientes?corte={$ayer}")
         ->assertOk()
         ->assertJsonPath('corte', $ayer)
@@ -157,28 +158,29 @@ it('RF-18: estado de cuenta del cliente con saldo anterior, saldo corrido y sald
     app(ReversoService::class)->reversar($venta, TipoReverso::Devolucion, 'Devolvió una', $venta->items()->value('id'), $admin);
     $this->postJson("/api/clientes/{$cliente->id}/abonos", ['valor' => 30, 'medio' => 'efectivo'])->assertCreated();
 
-    $desde = now()->subDays(5)->toDateString();
+    // Merge cesar + legri: el estado de cuenta del cliente es el de la cartera (S-30).
+    $desde = now('America/Bogota')->subDays(5)->toDateString();
     $r = $this->getJson("/api/clientes/{$cliente->id}/estado-cuenta?desde={$desde}")->assertOk();
 
-    expect($r->json('saldo_anterior'))->toBe('400.00')
-        ->and(array_column($r->json('data'), 'tipo'))->toBe(['venta', 'reverso', 'abono'])
-        ->and(array_column($r->json('data'), 'saldo'))->toBe(['500.00', '450.00', '420.00'])
-        ->and($r->json('totales.saldo_final'))->toBe('420.00');
+    expect($r->json('saldo_inicial'))->toBe('400.00')
+        ->and(array_column($r->json('movimientos'), 'tipo'))->toBe(['venta', 'reverso', 'abono'])
+        ->and(array_column($r->json('movimientos'), 'saldo'))->toBe(['500.00', '450.00', '420.00'])
+        ->and($r->json('saldo_final'))->toBe('420.00');
 
-    $this->getJson("/api/clientes/{$cliente->id}/saldo")->assertJsonPath('saldo', '420.00');
+    $this->getJson("/api/clientes/{$cliente->id}/cartera")->assertJsonPath('resumen.saldo', '420.00');
 });
 
 it('RF-18: el estado de cuenta muestra la anulación de un abono como cargo', function () {
     $cliente = Cliente::factory()->create();
     ventaCreditoCerrada($cliente, 1, 100);
     actuarComo(Rol::Admin);
-    $abono = abonar($cliente, 60);
+    $abono = abonar($cliente, 60)->assertCreated()->json('abono.id');
     $this->postJson("/api/abonos/{$abono}/anulaciones", ['motivo' => 'Cheque devuelto'])->assertCreated();
 
     $r = $this->getJson("/api/clientes/{$cliente->id}/estado-cuenta")->assertOk();
 
-    expect(array_column($r->json('data'), 'tipo'))->toBe(['venta', 'abono', 'anulacion_abono'])
-        ->and($r->json('totales.saldo_final'))->toBe('100.00');
+    expect(array_column($r->json('movimientos'), 'tipo'))->toBe(['venta', 'abono', 'anulacion_abono'])
+        ->and($r->json('saldo_final'))->toBe('100.00');
 });
 
 it('RF-18 / RF-19: el estado de cuenta del proveedor descuenta la remisión cubierta y cuadra con el saldo', function () {
@@ -257,5 +259,6 @@ it('RF-18: los informes de cartera son solo del admin', function (Rol $rol) {
 
     $this->getJson('/api/reportes/compras')->assertForbidden();
     $this->getJson('/api/reportes/cartera-clientes')->assertForbidden();
-    $this->getJson("/api/clientes/{$cliente->id}/estado-cuenta")->assertForbidden();
+    // S-30: el estado de cuenta del cliente también es del mostrador (cartera); logística no entra.
+    $this->getJson("/api/clientes/{$cliente->id}/estado-cuenta")->assertStatus($rol === Rol::Mostrador ? 200 : 403);
 })->with([Rol::Logistica, Rol::Mostrador]);

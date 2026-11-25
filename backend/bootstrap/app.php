@@ -79,6 +79,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'rol' => EnsureRol::class,
+            'solo_rol' => \App\Http\Middleware\EnsureRolExacto::class, // S-43: sin el pase del admin
             'medir' => MedirDuracion::class,
         ]);
     })

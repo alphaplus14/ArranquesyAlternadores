@@ -31,7 +31,7 @@ export interface Opcion {
 /** RF-16: plazo_dias solo prellena el vencimiento de las compras a crédito. */
 export interface Proveedor extends Opcion {
   nit?: string | null
-  /** S-29: asesor comercial (opcional). */
+  /** S-29: nombre del asesor comercial (opcional). */
   asesor?: string | null
   plazo_dias?: number | null
 }
@@ -40,12 +40,17 @@ export interface Categoria extends Opcion {
   admite_codigo_universal: boolean
 }
 
+export type EstadoUnidad = 'disponible' | 'vendida' | 'retirada'
+
 export interface Unidad {
   id: number
   codigo_barras: string
-  estado: 'disponible' | 'vendida'
+  /** RF-21: `retirada` = salió del inventario por una baja (no se vende). */
+  estado: EstadoUnidad
   referencia_id: number
   referencia?: Referencia
+  /** S-34: en la verificación de una salida, 'referencia' si el sistema asignó la unidad. */
+  origen_codigo?: OrigenCodigo
 }
 
 /** S-23: calidad opcional de una referencia. */
@@ -64,9 +69,9 @@ export interface Referencia {
   /** RF-14 / S-15: IVA con que se vende (0 = sin IVA). */
   iva_venta_porcentaje: string
   existencia: number
-  /** S-26: false = desactivada. */
+  /** S-26: false = desactivada (no se lista, no se escanea, no entra a ingresos). */
   activo?: boolean
-  /** RF-22: propio (null = usa el general; 0 = no maneja). */
+  /** RF-22: propio (null = usa el general; 0 = no maneja). Con universal manda el del universal. */
   stock_minimo?: number | null
   minimo_efectivo?: number | null
   minimo_origen?: 'general' | 'personalizado' | null
@@ -77,7 +82,7 @@ export interface Referencia {
   codigo_universal_id: number | null
   proveedor?: Opcion
   categoria?: Categoria
-  codigo_universal?: { id: number; codigo: string } | null
+  codigo_universal?: { id: number; codigo: string; stock_minimo?: number | null } | null
   unidades_disponibles?: Unidad[]
 }
 
@@ -181,10 +186,25 @@ export interface VentaItem {
   precio_unitario: string | null
   iva_porcentaje: string | null
   metodo_captura: MetodoCaptura
+  /** S-31: 'referencia' si se vendió con el código del proveedor (el sistema eligió la unidad). */
+  origen_codigo?: OrigenCodigo
   created_at: string
   usuario: { id: number; name: string }
   unidad: Unidad
   reverso_id: number | null
+}
+
+/** S-31: con qué código se vendió la unidad. */
+export type OrigenCodigo = 'etiqueta' | 'referencia'
+
+/** S-31: una de las referencias que comparten el código escaneado (422 tipo 'elegir_referencia'). */
+export interface OpcionReferenciaVenta {
+  id: number
+  codigo_referencia: string
+  descripcion: string
+  proveedor: string | null
+  calidad: Calidad | null
+  existencia: number
 }
 
 export interface Reverso {
@@ -198,7 +218,8 @@ export interface Reverso {
 
 export interface Venta {
   id: number
-  estado: 'abierta' | 'cerrada'
+  /** S-46: `descartada` solo la pone el sistema a una abierta sin ítems vigentes. */
+  estado: 'abierta' | 'cerrada' | 'descartada'
   /** RF-14 */
   forma_pago: FormaPago
   cliente: { id: number; nombre: string; documento: string | null; plazo_dias: number } | null
@@ -207,39 +228,61 @@ export interface Venta {
   usuario?: { id: number; name: string }
   created_at: string
   cerrada_at: string | null
+  /** S-46: cuándo la descartó el sistema (solo en descartadas). */
+  descartada_at?: string | null
   /** Fecha (aaaa-mm-dd) que calcula el backend al cerrar una venta a crédito. */
   vence_el: string | null
   items: VentaItem[]
   reversos: Reverso[]
+  /** S-33 / S-15: precios con IVA incluido; total de los ítems vigentes y su desglose. */
+  totales?: TotalesVenta
 }
 
-/** RF-06: respuesta de POST /ventas/{id}/escanear. `item` tiene la misma forma que en GET /ventas/{id}. */
-export interface RespuestaEscaneo {
-  venta_id: number
-  item: VentaItem
-  venta_item_id: number
-  metodo_captura: MetodoCaptura
-  unidad: { id: number; codigo_barras: string; estado: Unidad['estado'] }
-  referencia: { id: number; codigo_referencia: string; descripcion: string; calidad: Calidad | null; proveedor: string; existencia: number }
+/** S-33: total = suma de ítems vigentes (con IVA); base e IVA incluido extraídos por ítem. */
+export interface TotalesVenta {
+  total: string
+  base: string
+  iva_incluido: string
+  /** Porcentajes de IVA distintos de los ítems vigentes (uno solo = se muestra en la línea de IVA). */
+  iva_porcentajes: number[]
+  /** Ítems antiguos sin IVA registrado: no se desglosan. */
+  items_sin_iva: number
 }
-
-export type EstadoUnidad = 'disponible' | 'vendida' | 'retirada'
 
 /** RF-21 (S-27): baja (salida) o reintegro de unidades. */
-export type TipoAjuste = 'baja' | 'reintegro'
-export type MotivoBaja = 'garantia' | 'devolucion_proveedor' | 'dano' | 'perdida' | 'otro'
+export type TipoAjuste = 'baja' | 'reintegro' | 'alta'
+export type MotivoBaja = 'garantia' | 'devolucion_proveedor' | 'dano' | 'perdida' | 'faltante_inventario' | 'otro'
 export type MotivoReintegro = 'error_de_registro' | 'otro'
-export type MotivoAjuste = MotivoBaja | MotivoReintegro
+/** S-39: motivos de una entrada por ajuste de inventario físico. */
+export type MotivoAlta = 'sobrante_inventario' | 'sin_factura' | 'otro'
+export type MotivoAjuste = MotivoBaja | MotivoReintegro | MotivoAlta
+
+/** S-39: referencia elegible para una entrada (GET /ajustes/referencia). */
+export interface ReferenciaEntrada {
+  id: number
+  codigo_referencia: string
+  codigo_fabricante: string | null
+  descripcion: string
+  proveedor: { id: number; nombre: string } | null
+  calidad: Calidad | null
+  existencia: number
+  precio_venta: string
+  tiene_precio: boolean
+}
 
 export const NOMBRE_MOTIVO: Record<MotivoAjuste, string> = {
   garantia: 'Garantía',
   devolucion_proveedor: 'Devolución a proveedor',
   dano: 'Daño',
   perdida: 'Pérdida',
+  faltante_inventario: 'Faltante de inventario físico',
   error_de_registro: 'Error de registro',
+  sobrante_inventario: 'Sobrante de inventario físico',
+  sin_factura: 'Mercancía sin factura',
   otro: 'Otro',
 }
 
+/** Referencia resumida de una unidad en ajustes y devoluciones. */
 export interface ReferenciaUnidad {
   id: number
   codigo_referencia: string
@@ -261,11 +304,15 @@ export interface AjusteInventario {
     codigo_barras: string
     estado: EstadoUnidad
     metodo_captura: MetodoCaptura
+    /** S-34: 'referencia' si se leyó el código del proveedor y el sistema eligió la unidad. */
+    origen_codigo?: OrigenCodigo
+    /** true si sigue retirada y esta es su última baja. */
     reintegrable: boolean
     referencia: ReferenciaUnidad
   }>
 }
 
+/** RF-07 / S-27: la venta de una unidad, para registrar la devolución de un cliente. */
 export interface Devolucion {
   venta_item_id: number
   precio_unitario: string | null
@@ -282,6 +329,39 @@ export interface Devolucion {
   reverso: { id: number; tipo: 'devolucion' | 'anulacion'; motivo: string; created_at: string } | null
 }
 
+/**
+ * S-34 / S-38: un grupo candidato a devolverse por código de proveedor: ítems sin reverso de una venta
+ * cerrada, de la misma referencia y al mismo precio. `codigos` en el orden en que se devuelven.
+ */
+export interface GrupoDevolucion {
+  venta_id: number
+  cerrada_at: string
+  forma_pago: FormaPago
+  cliente: { id: number; nombre: string; documento: string | null } | null
+  /** Saldo actual del cliente (solo ventas a crédito). */
+  saldo_actual: string | null
+  referencia: { id: number; codigo_referencia: string; descripcion: string; calidad: Calidad | null; proveedor: string | null }
+  precio_unitario: string | null
+  cantidad_disponible: number
+  codigos: string[]
+  venta_item_id: number
+}
+
+/** La consulta trae la venta de la etiqueta (con el saldo actual si es a crédito) o, con un código de proveedor, grupos. */
+export type ConsultaDevolucion =
+  | (Devolucion & { saldo_actual?: string | null })
+  | { tipo: 'elegir_venta'; codigo: string; ventas: GrupoDevolucion[] }
+
+/** S-38: respuesta de POST /devoluciones: el primer ítem, cuántas se devolvieron y el saldo antes y después. */
+export interface ResultadoDevolucion extends Devolucion {
+  cantidad: number
+  total: string
+  devueltas: string[]
+  devueltas_ids: number[]
+  saldo_cliente: { antes: string; despues: string } | null
+}
+
+/** RF-22: fila del informe Bajo mínimo (referencia sin universal o universal con su desglose). */
 export interface FilaBajoMinimo {
   tipo: 'referencia' | 'universal'
   id: number
@@ -295,6 +375,154 @@ export interface FilaBajoMinimo {
   origen: 'general' | 'personalizado'
   faltante: number
   referencias: Array<{ id: number; codigo_referencia: string; calidad: Calidad | null; proveedor: Opcion; existencia: number }> | null
+}
+
+/* RF-15 / RF-18 (S-30): cartera de clientes. Montos en pesos como texto con 2 decimales. */
+export type MedioPago = 'efectivo' | 'transferencia' | 'consignacion' | 'otro'
+export const NOMBRE_MEDIO: Record<MedioPago, string> = { efectivo: 'Efectivo', transferencia: 'Transferencia', consignacion: 'Consignación', otro: 'Otro' }
+
+export type RangoAntiguedad = 'al_dia' | 'd1_30' | 'd31_60' | 'd61_90' | 'mas_90'
+export const RANGOS: { clave: RangoAntiguedad; texto: string }[] = [
+  { clave: 'al_dia', texto: 'Al día' },
+  { clave: 'd1_30', texto: '1-30' },
+  { clave: 'd31_60', texto: '31-60' },
+  { clave: 'd61_90', texto: '61-90' },
+  { clave: 'mas_90', texto: '+90' },
+]
+
+export interface ResumenCartera {
+  cliente: { id: number; nombre: string; documento: string | null; telefono: string | null; plazo_dias: number; activo: boolean } | null
+  ventas: string
+  abonado: string
+  saldo: string
+  saldo_a_favor: boolean
+  vencido: string
+  proximo_vencimiento: string | null
+  vencida_desde: string | null
+  antiguedad: Record<RangoAntiguedad, string>
+  corte?: string
+  /** Solo en GET /cartera con búsqueda: la venta por la que apareció el cliente (n.º o factura). */
+  coincidencia?: { venta_id: number; factura_contapyme: string | null } | null
+}
+
+export interface ListaCartera extends Pagina<ResumenCartera> {
+  totales: {
+    cartera_total: string
+    saldo_a_favor: string
+    vencido_total: string
+    clientes_con_saldo: number
+    clientes_vencidos: number
+    antiguedad: Record<RangoAntiguedad, string>
+  }
+  corte: string
+}
+
+export interface Abono {
+  id: number
+  cliente_id: number
+  /** S-32: null = general (a las ventas más antiguas); con número, dirigido a esa venta. */
+  venta_id: number | null
+  /** S-32: "General" o "Venta #11 · FE-1042". */
+  aplicado_a: string
+  fecha: string
+  valor: string
+  medio: MedioPago
+  referencia: string | null
+  nota: string | null
+  created_at: string
+  usuario?: { id: number; name: string }
+  anulado: boolean | null
+  anulacion?: { id: number; motivo: string; created_at: string; usuario: { id: number; name: string } | null } | null
+}
+
+export interface VentaCartera {
+  id: number
+  /** N.º de factura de Contapyme (texto de referencia; este sistema no factura). */
+  factura_contapyme: string | null
+  cerrada_at: string
+  vence_el: string | null
+  total: string
+  aplicado: string
+  /** S-32: parte de lo aplicado que vino de abonos dirigidos a esta venta. */
+  aplicado_dirigido: string
+  /** S-32: parte de lo aplicado que vino del pool general (FIFO). */
+  aplicado_general: string
+  pendiente: string
+  estado: 'al_dia' | 'por_vencer' | 'vencida'
+  estado_texto: string
+  dias_vencida: number
+  rango: RangoAntiguedad | null
+}
+
+export interface DetalleCartera {
+  resumen: ResumenCartera
+  ventas: VentaCartera[]
+  /** Ventas a crédito del cliente sin filtros (para "N de M"). */
+  ventas_total: number
+  abonos: Abono[]
+}
+
+export type EstadoFiltroVenta = 'todas' | 'pendientes' | 'vencidas' | 'pagadas'
+
+export interface MovimientoCuenta {
+  tipo: 'venta' | 'reverso' | 'abono' | 'anulacion_abono'
+  dia: string
+  momento: string
+  descripcion: string
+  venta_id?: number
+  reverso_id?: number
+  abono_id?: number
+  medio?: MedioPago
+  referencia?: string | null
+  nota?: string | null
+  motivo?: string
+  usuario?: string | null
+  anulado?: boolean
+  anulacion?: { motivo: string; usuario: string | null; fecha: string } | null
+  /** S-32 (abonos): "General" o "Venta #11 · FE-1042". */
+  aplicado_a?: string
+  cargo: string
+  abono: string
+  saldo: string
+}
+
+export interface EstadoCuenta {
+  cliente: { id: number; nombre: string; documento: string | null }
+  desde: string | null
+  hasta: string | null
+  saldo_inicial: string
+  movimientos: MovimientoCuenta[]
+  saldo_final: string
+}
+
+/** S-40: una venta abierta en el listado (GET /ventas?estado=abierta). */
+export interface VentaAbierta {
+  id: number
+  forma_pago: FormaPago
+  cliente: { id: number; nombre: string; plazo_dias?: number } | null
+  factura_contapyme: string | null
+  created_at: string
+  usuario: { id: number; name: string }
+  /** Ítems vigentes (sin reverso). */
+  items_count: number
+  /** S-33: total con IVA incluido. */
+  total: string | number
+}
+
+/** RF-06: respuesta de POST /ventas/{id}/escanear. `item` tiene la misma forma que en GET /ventas/{id}. */
+export interface RespuestaEscaneo {
+  venta_id: number
+  item: VentaItem
+  venta_item_id: number
+  metodo_captura: MetodoCaptura
+  unidad: { id: number; codigo_barras: string; estado: Unidad['estado'] }
+  referencia: { id: number; codigo_referencia: string; descripcion: string; calidad: Calidad | null; proveedor: string; existencia: number }
+  /** S-31: 'referencia' si se escaneó el código del proveedor y el sistema eligió la unidad. */
+  origen_codigo?: OrigenCodigo
+  /** S-33: totales de la venta después del escaneo (precios con IVA incluido). */
+  totales?: TotalesVenta
+  /** S-40: todos los ítems de la lectura (con cantidad > 1, varios); `item` es el último. */
+  items?: VentaItem[]
 }
 
 export interface Auditoria {
@@ -317,13 +545,14 @@ export interface Pagina<T> {
   meta?: { current_page: number; last_page: number; total: number }
 }
 
-/** RF-15 / RF-17: lista fija de config/cartera.php. */
-export type MedioPago = 'efectivo' | 'transferencia' | 'consignacion' | 'otro'
+/** RF-17: medios de un pago a proveedor (config/cartera.php). Los abonos de clientes usan MedioPago (S-30). */
+export type MedioDinero = 'efectivo' | 'transferencia' | 'tarjeta' | 'cheque' | 'otro'
 
-export const NOMBRE_MEDIO: Record<MedioPago, string> = {
+export const NOMBRE_MEDIO_DINERO: Record<MedioDinero, string> = {
   efectivo: 'Efectivo',
   transferencia: 'Transferencia',
-  consignacion: 'Consignación',
+  tarjeta: 'Tarjeta',
+  cheque: 'Cheque',
   otro: 'Otro',
 }
 
@@ -332,20 +561,15 @@ export interface MovimientoDinero {
   id: number
   cliente_id?: number
   proveedor_id?: number
-  /** RF-17 (ajuste): factura a la que se aplicó el pago; null = FIFO. */
-  ingreso_id?: number | null
-  ingreso?: { id: number; tipo: TipoIngreso; numero_documento: string } | null
   fecha: string
   valor: string
-  medio: MedioPago
+  medio: MedioDinero
   referencia: string | null
   nota: string | null
   usuario: { id: number; name: string } | null
   created_at: string
   anulacion: { motivo: string; usuario: { id: number; name: string } | null; created_at: string } | null
 }
-
-export type RangoAntiguedad = 'al_dia' | 'd1_30' | 'd31_60' | 'd61_90' | 'mas_90'
 
 export const NOMBRE_RANGO: Record<RangoAntiguedad, string> = {
   al_dia: 'Al día',
@@ -356,7 +580,7 @@ export const NOMBRE_RANGO: Record<RangoAntiguedad, string> = {
 }
 
 /** Saldo con antigüedad a una fecha de corte (FIFO: lo abonado cubre primero lo más antiguo). */
-export interface ResumenCartera {
+export interface ResumenSaldo {
   cargos: string
   abonos: string
   saldo: string
@@ -372,21 +596,17 @@ export interface DocumentoPendiente {
   valor: string
   pendiente: string
   dias_vencido: number
-  dias_para_vencer: number
   rango: RangoAntiguedad
-  /** Solo en documentos de proveedor. */
-  tipo?: TipoIngreso
-  numero_documento?: string
 }
 
-export interface SaldoCliente extends ResumenCartera {
+export interface SaldoCliente extends ResumenSaldo {
   cliente: Cliente
   corte: string
   documentos: DocumentoPendiente[]
   abonos_recientes: MovimientoDinero[]
 }
 
-export interface SaldoProveedor extends ResumenCartera {
+export interface SaldoProveedor extends ResumenSaldo {
   proveedor: Proveedor
   corte: string
   documentos: DocumentoPendiente[]
@@ -428,12 +648,12 @@ export interface FilaVentaCredito {
   total: string
 }
 
-export interface FilaCartera extends ResumenCartera {
+export interface FilaCartera extends ResumenSaldo {
   cliente?: { id: number; nombre: string; documento: string | null; plazo_dias: number }
   proveedor?: { id: number; nombre: string; nit: string | null; plazo_dias: number | null }
 }
 
-export type TotalesCartera = Omit<ResumenCartera, 'rangos'> & { rangos: Record<RangoAntiguedad, string> }
+export type TotalesCartera = Omit<ResumenSaldo, 'rangos'> & { rangos: Record<RangoAntiguedad, string> }
 
 export type TipoMovimientoCuenta =
   | 'venta' | 'reverso' | 'abono' | 'anulacion_abono'
@@ -453,7 +673,7 @@ export interface FilaEstadoCuenta {
   vence_el?: string | null
 }
 
-export interface EstadoCuenta extends PaginaInforme<FilaEstadoCuenta, { cargo: string; abono: string; saldo_final: string }> {
+export interface EstadoCuentaInforme extends PaginaInforme<FilaEstadoCuenta, { cargo: string; abono: string; saldo_final: string }> {
   saldo_anterior: string
   desde: string
   hasta: string
@@ -489,127 +709,125 @@ export function infoPagina<T>(p: Pagina<T>) {
   }
 }
 
-/** RF-22: documento con saldo vencido o que vence dentro del aviso (config cartera.aviso_dias). */
-export type TipoVencimiento = 'por_pagar' | 'por_cobrar'
+/* ───────────── RF-23 / S-45: panel de gestión del administrador (solo en pantalla) ───────────── */
 
-export interface FilaVencimiento {
-  tipo: TipoVencimiento
-  estado: 'vencida' | 'por_vencer'
-  titular: { id: number; nombre: string }
-  documento_id: number
-  documento: string
-  fecha: string
-  vence_el: string
-  dias_vencido: number
-  dias_para_vencer: number
-  valor: string
-  pendiente: string
-}
+export interface PanelGenerado { generado_at: string }
+export interface PanelRango { desde: string; hasta: string; dias_periodo: number }
 
-type GrupoVencimiento = { cantidad: number; pendiente: string }
-
-export interface Vencimientos extends PaginaInforme<FilaVencimiento, { vencidas: GrupoVencimiento; por_vencer: GrupoVencimiento; todas: GrupoVencimiento }> {
-  hoy: string
-  aviso_dias: number
-}
-
-/* RF-15 / RF-18 (S-30): módulo Cartera (mostrador/admin), distinto del ResumenCartera de informes contables. */
-export const RANGOS: { clave: RangoAntiguedad; texto: string }[] = [
-  { clave: 'al_dia', texto: 'Al día' },
-  { clave: 'd1_30', texto: '1-30' },
-  { clave: 'd31_60', texto: '31-60' },
-  { clave: 'd61_90', texto: '61-90' },
-  { clave: 'mas_90', texto: '+90' },
-]
-
-export interface ResumenClienteLista {
-  cliente: { id: number; nombre: string; documento: string | null; telefono: string | null; plazo_dias: number; activo: boolean } | null
-  ventas: string
-  abonado: string
-  saldo: string
-  saldo_a_favor: boolean
-  vencido: string
-  proximo_vencimiento: string | null
-  vencida_desde: string | null
-  antiguedad: Record<RangoAntiguedad, string>
-  corte?: string
-  coincidencia?: { venta_id: number; factura_contapyme: string | null } | null
-}
-
-export interface ListaCartera extends Pagina<ResumenClienteLista> {
-  totales: {
-    cartera_total: string
-    saldo_a_favor: string
-    vencido_total: string
-    clientes_con_saldo: number
-    clientes_vencidos: number
-    antiguedad: Record<RangoAntiguedad, string>
-  }
-  corte: string
-}
-
-export interface AbonoClienteCartera {
+export interface PanelReferencia {
   id: number
-  cliente_id: number
-  fecha: string
-  valor: string
-  medio: MedioPago
-  referencia: string | null
-  nota: string | null
-  created_at: string
-  usuario?: { id: number; name: string }
-  anulado: boolean | null
-  anulacion?: { id: number; motivo: string; created_at: string; usuario: { id: number; name: string } | null } | null
-}
-
-export interface VentaCartera {
-  id: number
-  factura_contapyme: string | null
-  cerrada_at: string
-  vence_el: string | null
-  total: string
-  aplicado: string
-  pendiente: string
-  estado: 'al_dia' | 'por_vencer' | 'vencida'
-  estado_texto: string
-  dias_vencida: number
-  rango: RangoAntiguedad | null
-}
-
-export interface DetalleCartera {
-  resumen: ResumenClienteLista
-  ventas: VentaCartera[]
-  ventas_total: number
-  abonos: AbonoClienteCartera[]
-}
-
-export type EstadoFiltroVenta = 'todas' | 'pendientes' | 'vencidas' | 'pagadas'
-
-export interface MovimientoCuenta {
-  tipo: 'venta' | 'reverso' | 'abono' | 'anulacion_abono'
-  dia: string
-  momento: string
+  codigo_referencia: string
   descripcion: string
-  venta_id?: number
-  reverso_id?: number
-  abono_id?: number
-  medio?: MedioPago
-  referencia?: string | null
-  nota?: string | null
-  motivo?: string
-  usuario?: string | null
-  anulado?: boolean
-  anulacion?: { motivo: string; usuario: string | null; fecha: string } | null
-  cargo: string
-  abono: string
-  saldo: string
+  calidad: Calidad | null
+  proveedor: { id: number; nombre: string }
+  categoria: { id: number; nombre: string } | null
+  universal: { id: number; codigo: string } | null
 }
 
-export interface CarteraEstadoCuenta {
-  cliente: { id: number; nombre: string; documento: string | null }
-  desde: string | null
-  hasta: string | null
-  saldo_inicial: string
-  movimientos: MovimientoCuenta[]
-  saldo_final: string
+export interface PanelVentas {
+  total: string
+  base: string
+  iva_incluido: string
+  ventas: number
+  unidades: number
+  ticket_promedio: string
+  contado: string
+  credito: string
+  ventas_contado: number
+  ventas_credito: number
+}
+
+export interface PanelMargen {
+  /** null = ninguna unidad vendida con costo conocido. */
+  margen: string | null
+  margen_porcentaje: number | null
+  base_con_costo: string
+  costo: string
+  cobertura_costo: number | null
+  unidades_sin_costo: number
+}
+
+export interface PanelResumen extends PanelGenerado, PanelRango {
+  periodo_anterior: { desde: string; hasta: string }
+  ventas: PanelVentas & { anterior: PanelVentas; variacion_total: number | null }
+  margen: PanelMargen & { anterior: PanelMargen; variacion: number | null }
+  inventario: { unidades: number; valor_costo: string; valor_venta_sin_iva: string; unidades_sin_costo: number }
+  cartera: { por_cobrar: string; vencida: string }
+  cuentas_por_pagar: { por_pagar: string; vencidas: string }
+  compras: { total: string }
+  agotados: number
+  bajo_minimo: number
+}
+
+export interface PanelDia { dia: string; contado: string; credito: string; total: string; unidades: number; ventas: number }
+export interface PanelVentasPorDia extends PanelGenerado, PanelRango {
+  serie: PanelDia[]
+  totales: { contado: string; credito: string; total: string; unidades: number; ventas: number }
+}
+
+export type OrdenMasVendidos = 'unidades' | 'valor' | 'margen'
+export interface PanelMasVendido {
+  referencia: PanelReferencia
+  unidades: number
+  valor: string
+  base: string
+  margen: string | null
+  margen_porcentaje: number | null
+  unidades_sin_costo: number
+  porcentaje_total: number | null
+  clase: 'A' | 'B' | 'C' | null
+}
+export interface PanelMasVendidos extends PanelGenerado, PanelRango { orden: OrdenMasVendidos; total_valor: string; filas: PanelMasVendido[] }
+
+export interface PanelReabastecer extends PanelGenerado, PanelRango {
+  total: number
+  filas: { referencia: PanelReferencia; vendidas: number; existencia: number; cobertura_dias: number; minimo_efectivo: number | null; motivo: 'agotada' | 'bajo_minimo' | 'cobertura_corta' }[]
+}
+
+export interface PanelEstancada {
+  referencia: PanelReferencia
+  existencia: number
+  valor_costo: string
+  unidades_sin_costo: number
+  ultima_venta: string | null
+  en_stock_desde: string
+  dias_sin_vender: number
+  universal_rota: boolean | null
+}
+export interface PanelSinMovimiento extends PanelGenerado, Pagina<PanelEstancada> {
+  dias: number
+  desde_limite: string
+  totales: { referencias: number; unidades: number; valor_costo: string; unidades_sin_costo: number }
+}
+
+export interface PanelAntiguedad extends PanelGenerado {
+  rangos: { rango: string; unidades: number; valor_costo: string; unidades_sin_costo: number; referencias: number }[]
+}
+
+export interface PanelRotacionFila {
+  id: number
+  nombre: string
+  unidades_vendidas: number
+  ventas: string
+  margen: string | null
+  margen_porcentaje: number | null
+  existencia: number
+  valor_costo: string
+  unidades_sin_costo: number
+  /** null = sin rotación en el período. */
+  cobertura_dias: number | null
+  sobrestock: boolean
+  compras: string | null
+}
+export interface PanelRotacion extends PanelGenerado, PanelRango { agrupar: 'categoria' | 'proveedor'; filas: PanelRotacionFila[] }
+
+export interface PanelControl extends PanelGenerado, PanelRango {
+  ajustes: { tipo: 'baja' | 'alta' | 'reintegro'; motivo: string; unidades: number; valor_costo: string; unidades_sin_costo: number }[]
+  reversos: Record<'devolucion' | 'anulacion', { reversos: number; items: number; valor: string }>
+  capturas: { total: number; digitadas: number; porcentaje_digitado: number | null }
+  ventas_por_usuario: { usuario: { id: number; nombre: string }; ventas: number; unidades: number; total: string }[]
+  ventas_abiertas_viejas: number
+  cambios_precio_credito: number
+  dias_sin_ventas: number
+  dias: number
 }

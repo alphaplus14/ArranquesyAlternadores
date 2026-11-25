@@ -5,12 +5,13 @@ use App\Exceptions\RegistroInmutableException;
 use App\Models\MovimientoInventario;
 use App\Models\Venta;
 use App\Models\VentaItem;
+use Illuminate\Support\Facades\DB;
 
 beforeEach(fn () => sembrarDemo());
 
 it('RF-06: cada escaneo descuenta de inmediato, antes de cerrar la venta, y deja el usuario que vendió', function () {
     $mostrador = actuarComo(Rol::Mostrador);
-    $ventaId = $this->postJson('/api/ventas')->assertCreated()->assertJsonPath('estado', 'abierta')->json('id');
+    $ventaId = abrirVenta();
     $unidad = unidadDe('RN-4410');
 
     $this->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => $unidad->codigo_barras, 'metodo_captura' => 'escaneado'])
@@ -27,7 +28,7 @@ it('RF-06: cada escaneo descuenta de inmediato, antes de cerrar la venta, y deja
 
 it('RF-06: escanear devuelve el ítem con la misma forma que GET /ventas/{id}, sin perder los campos de antes', function () {
     $mostrador = actuarComo(Rol::Mostrador);
-    $ventaId = $this->postJson('/api/ventas')->json('id');
+    $ventaId = abrirVenta();
     $unidad = unidadDe('RN-4410');
 
     $respuesta = $this->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => $unidad->codigo_barras, 'metodo_captura' => 'escaneado'])
@@ -56,15 +57,15 @@ it('RF-06: escanear devuelve el ítem con la misma forma que GET /ventas/{id}, s
 
 it('RF-06: la respuesta ampliada del escaneo no agrega consultas (sin N+1)', function () {
     actuarComo(Rol::Mostrador);
-    $ventaId = $this->postJson('/api/ventas')->json('id');
+    $ventaId = abrirVenta();
     $codigos = [unidadDe('RN-4410')->codigo_barras, unidadDe('AC-77812')->codigo_barras];
 
     $consultas = [];
     foreach ($codigos as $codigo) {
-        \Illuminate\Support\Facades\DB::enableQueryLog();
-        \Illuminate\Support\Facades\DB::flushQueryLog();
+        DB::enableQueryLog();
+        DB::flushQueryLog();
         $this->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => $codigo, 'metodo_captura' => 'escaneado'])->assertCreated();
-        $consultas[] = count(\Illuminate\Support\Facades\DB::getQueryLog());
+        $consultas[] = count(DB::getQueryLog());
     }
 
     // El segundo escaneo cuesta lo mismo que el primero aunque la venta ya tenga ítems.
@@ -73,7 +74,7 @@ it('RF-06: la respuesta ampliada del escaneo no agrega consultas (sin N+1)', fun
 
 it('RF-06: una venta baja la unidad escaneada y baja el total del universal', function () {
     actuarComo(Rol::Mostrador);
-    $ventaId = $this->postJson('/api/ventas')->json('id');
+    $ventaId = abrirVenta();
 
     $this->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => unidadDe('AC-77812')->codigo_barras, 'metodo_captura' => 'escaneado']);
 
@@ -83,7 +84,7 @@ it('RF-06: una venta baja la unidad escaneada y baja el total del universal', fu
 
 it('RF-06: escanear una unidad ya vendida responde 409 y no descuenta dos veces', function () {
     actuarComo(Rol::Mostrador);
-    $ventaId = $this->postJson('/api/ventas')->json('id');
+    $ventaId = abrirVenta();
     $codigo = unidadDe('RN-4410')->codigo_barras;
 
     $this->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => $codigo, 'metodo_captura' => 'escaneado'])->assertCreated();
@@ -94,14 +95,14 @@ it('RF-06: escanear una unidad ya vendida responde 409 y no descuenta dos veces'
 
 it('RF-06: un código inexistente responde 404', function () {
     actuarComo(Rol::Mostrador);
-    $ventaId = $this->postJson('/api/ventas')->json('id');
+    $ventaId = abrirVenta();
 
     $this->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => 'NOEXISTE', 'metodo_captura' => 'escaneado'])->assertNotFound();
 });
 
 it('RF-06: una venta cerrada no admite más escaneos', function () {
     actuarComo(Rol::Mostrador);
-    $ventaId = $this->postJson('/api/ventas')->json('id');
+    $ventaId = abrirVenta();
     $this->postJson("/api/ventas/{$ventaId}/cerrar")->assertOk()->assertJsonPath('estado', 'cerrada');
 
     $this->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => unidadDe('RN-4410')->codigo_barras, 'metodo_captura' => 'escaneado'])
@@ -125,7 +126,7 @@ it('RF-06: una venta no se edita salvo para cerrarla', function () {
 
 it('RF-06: los ítems de venta y los movimientos no se editan ni se borran', function () {
     actuarComo(Rol::Mostrador);
-    $ventaId = $this->postJson('/api/ventas')->json('id');
+    $ventaId = abrirVenta();
     $this->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => unidadDe('RN-4410')->codigo_barras, 'metodo_captura' => 'escaneado']);
 
     $item = VentaItem::where('venta_id', $ventaId)->first();
@@ -138,7 +139,7 @@ it('RF-06: los ítems de venta y los movimientos no se editan ni se borran', fun
 
 it('RF-06: no existe ruta DELETE para ventas', function () {
     actuarComo(Rol::Admin);
-    $ventaId = $this->postJson('/api/ventas')->json('id');
+    $ventaId = abrirVenta();
 
     $this->deleteJson("/api/ventas/{$ventaId}")->assertStatus(405);
 });

@@ -15,6 +15,8 @@ class UnidadResource extends JsonResource
             'codigo_barras' => $this->codigo_barras,
             'estado' => $this->estado,
             'referencia_id' => $this->referencia_id,
+            // S-34: solo en la verificación de un ajuste: 'etiqueta' o 'referencia' (unidad asignada).
+            'origen_codigo' => $this->when($this->resource->getAttribute('origen_codigo') !== null, fn () => $this->resource->getAttribute('origen_codigo')),
             'referencia' => new ReferenciaResource($this->whenLoaded('referencia')),
         ];
     }

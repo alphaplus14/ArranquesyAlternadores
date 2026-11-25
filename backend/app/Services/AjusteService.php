@@ -4,10 +4,12 @@ namespace App\Services;
 
 use App\Enums\MetodoCaptura;
 use App\Enums\MotivoAjuste;
+use App\Enums\OrigenCodigo;
 use App\Enums\TipoAjuste;
 use App\Exceptions\ReglaInventarioException;
 use App\Models\AjusteInventario;
 use App\Models\AjusteItem;
+use App\Models\Referencia;
 use App\Models\Unidad;
 use App\Models\User;
 use App\Support\RangoFechas;
@@ -18,6 +20,10 @@ use Illuminate\Support\Facades\DB;
 /**
  * RF-21 (S-27): logística y admin sacan unidades del inventario (baja) y corrigen una baja hecha
  * por error (reintegro). Cada código es el código local de una unidad física (regla 3, RF-03).
+ * S-34: en una SALIDA también vale el código del proveedor o del fabricante: el sistema elige la
+ * unidad disponible con el criterio de S-31 (ResolverCodigoService), sin repetir unidades del mismo
+ * lote. Cada ítem guarda origen_codigo ('etiqueta' | 'referencia'). Los reintegros siguen solo con
+ * la etiqueta (se hacen sobre las unidades de una salida, desde el historial).
  *
  * Un lote es atómico: entran todas sus unidades o ninguna, y el error nombra el código que falló.
  * Nada se borra: el ajuste, sus ítems y los movimientos son inmutables. Garantía es solo un motivo
@@ -29,9 +35,12 @@ class AjusteService
 
     private const POR_PAGINA = 20;
 
-    public function __construct(private readonly InventarioService $inventario) {}
+    public function __construct(
+        private readonly InventarioService $inventario,
+        private readonly ResolverCodigoService $resolver,
+    ) {}
 
-    /** @param list<array{codigo: string, metodo_captura: MetodoCaptura|string}> $codigos */
+    /** @param list<array{codigo: string, metodo_captura: MetodoCaptura|string, origen_codigo?: string|null, unidad_codigo?: string|null}> $codigos */
     public function retirar(MotivoAjuste $motivo, ?string $nota, array $codigos, User $usuario): AjusteInventario
     {
         return $this->ajustar(TipoAjuste::Baja, $motivo, $nota, $codigos, $usuario);
@@ -44,26 +53,115 @@ class AjusteService
     }
 
     /**
-     * Consulta previa de la pantalla al escanear un código para el lote. No escribe: la regla se
-     * vuelve a validar, con la unidad bloqueada, al registrar el ajuste.
+     * S-39: entrada por ajuste de inventario físico. Crea $cantidad unidades nuevas de la referencia
+     * (InventarioService), un ajuste tipo 'alta' y un ajuste_item por unidad con el método con que se
+     * eligió la referencia (RF-12). Motivo obligatorio de la lista de altas; "otro" exige nota.
+     * Inmutable: un error se corrige con una salida.
      */
-    public function verificar(TipoAjuste $tipo, string $codigo): Unidad
+    public function alta(MotivoAjuste $motivo, ?string $nota, int $referenciaId, int $cantidad, MetodoCaptura $metodo, User $usuario): AjusteInventario
+    {
+        if (! in_array($motivo, MotivoAjuste::para(TipoAjuste::Alta), true)) {
+            throw new ReglaInventarioException('El motivo no corresponde a una entrada por ajuste.', 422, ['campo' => 'motivo']);
+        }
+
+        $nota = trim((string) $nota) === '' ? null : trim((string) $nota);
+        if ($motivo->exigeNota() && $nota === null) {
+            throw new ReglaInventarioException('Escriba una nota: el motivo "Otro" la exige.', 422, ['campo' => 'nota']);
+        }
+
+        $referencia = Referencia::query()->find($referenciaId, ['id', 'codigo_referencia', 'activo'])
+            ?? throw new ReglaInventarioException("No existe la referencia #{$referenciaId}.", 404);
+
+        return DB::transaction(function () use ($motivo, $nota, $referencia, $cantidad, $metodo, $usuario) {
+            $ajuste = AjusteInventario::create([
+                'tipo' => TipoAjuste::Alta,
+                'motivo' => $motivo,
+                'nota' => $nota,
+                'usuario_id' => $usuario->id,
+            ]);
+
+            $unidades = $this->inventario->darAltaPorAjuste($referencia, $cantidad, $ajuste, $usuario->id, $metodo);
+
+            AjusteItem::insert($unidades->map(fn (Unidad $u) => [
+                'ajuste_id' => $ajuste->id,
+                'unidad_id' => $u->id,
+                'metodo_captura' => $metodo->value,
+                'origen_codigo' => OrigenCodigo::Referencia->value,
+            ])->all());
+
+            return $ajuste;
+        });
+    }
+
+    /**
+     * S-39: referencias activas para una entrada. Con $codigo, las que tienen exactamente ese código
+     * del proveedor o del fabricante (ResolverCodigoService; varias = la pantalla elige). Con $q, por
+     * prefijo de código o texto de la descripción (scope buscarTexto: índices, sin comodín inicial),
+     * hasta 10.
+     *
+     * @return Collection<int, Referencia>
+     */
+    public function buscarReferencias(?string $codigo, ?string $q): Collection
+    {
+        $columnas = ['referencias.id', 'codigo_referencia', 'codigo_fabricante', 'descripcion', 'proveedor_id', 'calidad', 'existencia', 'precio_venta'];
+
+        if (trim((string) $codigo) !== '') {
+            $coinciden = $this->resolver->coincidencias(trim((string) $codigo), 10);
+
+            return $coinciden->isEmpty()
+                ? throw new ReglaInventarioException('No existe una referencia activa con el código '.trim((string) $codigo).'.', 404)
+                : Referencia::query()->whereKey($coinciden->pluck('id'))->with('proveedor:id,nombre')->orderBy('id')->get($columnas);
+        }
+
+        return Referencia::query()->activas()->buscarTexto(trim((string) $q))->with('proveedor:id,nombre')->limit(10)->get($columnas);
+    }
+
+    /**
+     * Consulta previa de la pantalla al escanear un código para el lote. No escribe: la regla se
+     * vuelve a validar, con las unidades bloqueadas, al registrar el ajuste.
+     *
+     * S-34 (solo salidas): si el código no es una etiqueta, se resuelve la referencia por el código del
+     * proveedor o del fabricante. S-38: se asignan $cantidad unidades disponibles DISTINTAS que no estén
+     * en $excluir (las ya elegidas en el lote); si hay menos, 422 y ninguna. Con una etiqueta la
+     * cantidad es siempre 1. $referenciaId resuelve un código que está en varias referencias. Cada
+     * unidad devuelta lleva origen_codigo.
+     *
+     * @param  list<int>  $excluir
+     * @return Collection<int, Unidad>
+     */
+    public function verificar(TipoAjuste $tipo, string $codigo, ?int $referenciaId = null, array $excluir = [], int $cantidad = 1): Collection
     {
         $codigo = trim($codigo);
+        $relaciones = ['referencia:id,codigo_referencia,descripcion,calidad,activo,proveedor_id', 'referencia.proveedor:id,nombre'];
 
         $unidad = Unidad::query()
             ->where('codigo_barras', $codigo)
-            ->with('referencia:id,codigo_referencia,descripcion,calidad,activo,proveedor_id', 'referencia.proveedor:id,nombre')
+            ->with($relaciones)
             ->first(['id', 'referencia_id', 'codigo_barras', 'estado']);
 
-        if (! $unidad) {
+        if ($unidad) {
+            if ($cantidad > 1) {
+                throw new ReglaInventarioException("Cada etiqueta es una unidad: {$codigo} se agrega de a una (cantidad 1).", 422, ['codigo' => $codigo]);
+            }
+            $this->inventario->exigirEstadoPara($tipo, $unidad);
+            $this->exigirReferenciaActiva($tipo, $unidad);
+            $unidad->setAttribute('origen_codigo', OrigenCodigo::Etiqueta->value);
+
+            return collect([$unidad]);
+        }
+
+        if ($tipo !== TipoAjuste::Baja) {
             throw $this->noExiste($codigo);
         }
 
-        $this->inventario->exigirEstadoPara($tipo, $unidad);
-        $this->exigirReferenciaActiva($tipo, $unidad);
+        $referencia = $this->resolver->referencia($codigo, $referenciaId, bloquear: false, accion: 'se retira', noExiste: fn () => $this->noExiste($codigo));
+        $ids = $this->resolver->unidadesDisponibles($referencia, $cantidad, $excluir)->pluck('id');
 
-        return $unidad;
+        return Unidad::query()->whereKey($ids)->with($relaciones)->orderBy('id')
+            ->get(['id', 'referencia_id', 'codigo_barras', 'estado'])
+            // Mismo orden en que las eligió el criterio (sin etiqueta primero).
+            ->sortBy(fn (Unidad $u) => $ids->search($u->id))->values()
+            ->each(fn (Unidad $u) => $u->setAttribute('origen_codigo', OrigenCodigo::Referencia->value));
     }
 
     /**
@@ -98,7 +196,17 @@ class AjusteService
         return $pagina;
     }
 
-    /** @param list<array{codigo: string, metodo_captura: MetodoCaptura|string}> $codigos */
+    /**
+     * Un lote atómico: entran todas sus unidades o ninguna, y el error nombra la unidad o el código
+     * que falló, en el orden del lote.
+     *
+     * Cada fila trae el código leído y, si fue un código de proveedor (S-34), la unidad que asignó la
+     * verificación (unidad_codigo). Esa unidad se vuelve a bloquear y validar: si otro usuario la
+     * vendió o retiró en medio, el lote falla completo y dice cuál. Una fila de salida con código de
+     * proveedor sin unidad_codigo se resuelve aquí mismo, sin repetir unidades del lote.
+     *
+     * @param  list<array{codigo: string, metodo_captura: MetodoCaptura|string, origen_codigo?: string|null, unidad_codigo?: string|null}>  $codigos
+     */
     private function ajustar(TipoAjuste $tipo, MotivoAjuste $motivo, ?string $nota, array $codigos, User $usuario): AjusteInventario
     {
         if (! in_array($motivo, MotivoAjuste::para($tipo), true)) {
@@ -111,24 +219,46 @@ class AjusteService
             throw new ReglaInventarioException('Escriba una nota: el motivo "Otro" la exige.', 422);
         }
 
-        $lote = $this->normalizarLote($codigos);
+        $lote = $this->normalizarLote($tipo, $codigos);
 
         return DB::transaction(function () use ($tipo, $motivo, $nota, $lote, $usuario) {
-            // Orden fijo por id: dos lotes simultáneos bloquean las mismas unidades en el mismo orden.
-            $unidades = Unidad::query()
-                ->whereIn('codigo_barras', array_keys($lote))
+            // Unidades por su etiqueta (la leída o la asignada), bloqueadas en orden fijo por id: dos
+            // lotes simultáneos bloquean las mismas unidades en el mismo orden.
+            $etiquetas = array_values(array_unique(array_map(fn ($f) => $f['unidad_codigo'] ?? $f['codigo'], $lote)));
+            $porCodigo = Unidad::query()
+                ->whereIn('codigo_barras', $etiquetas)
                 ->with('referencia:id,codigo_referencia,activo')
                 ->orderBy('id')
                 ->lockForUpdate()
-                ->get();
+                ->get()
+                ->keyBy('codigo_barras');
 
-            $porCodigo = $unidades->keyBy('codigo_barras');
+            // Se resuelve y revisa en el orden del lote para nombrar el primero que falla.
+            $elegidas = [];
+            foreach ($lote as $fila) {
+                if ($fila['unidad_codigo'] !== null) {
+                    $unidad = $porCodigo->get($fila['unidad_codigo']) ?? throw $this->noExiste($fila['unidad_codigo']);
+                    $this->exigirDelCodigo($unidad, $fila['codigo']);
+                    $origen = OrigenCodigo::Referencia;
+                } elseif ($unidad = $porCodigo->get($fila['codigo'])) {
+                    $origen = OrigenCodigo::Etiqueta;
+                } elseif ($tipo === TipoAjuste::Baja) {
+                    $referencia = $this->resolver->referencia($fila['codigo'], null, bloquear: false, accion: 'se retira', noExiste: fn () => $this->noExiste($fila['codigo']));
+                    // Sin repetir unidades del lote: ni las ya elegidas ni las que vienen por etiqueta o asignadas.
+                    $excluir = array_values(array_unique([...array_keys($elegidas), ...$porCodigo->pluck('id')->all()]));
+                    $unidad = $this->resolver->unidadDisponible($referencia, $excluir)->load('referencia:id,codigo_referencia,activo');
+                    $origen = OrigenCodigo::Referencia;
+                } else {
+                    throw $this->noExiste($fila['codigo']);
+                }
 
-            // Se revisa en el orden del lote para nombrar el primer código que falla.
-            foreach (array_keys($lote) as $codigo) {
-                $unidad = $porCodigo->get($codigo) ?? throw $this->noExiste($codigo);
+                if (isset($elegidas[$unidad->id])) {
+                    throw new ReglaInventarioException("La unidad {$unidad->codigo_barras} está repetida en el lote.", 422, ['codigo' => $unidad->codigo_barras]);
+                }
+
                 $this->inventario->exigirEstadoPara($tipo, $unidad);
                 $this->exigirReferenciaActiva($tipo, $unidad);
+                $elegidas[$unidad->id] = ['unidad' => $unidad, 'metodo' => $fila['metodo'], 'origen' => $origen];
             }
 
             $ajuste = AjusteInventario::create([
@@ -138,29 +268,43 @@ class AjusteService
                 'usuario_id' => $usuario->id,
             ]);
 
-            foreach ($unidades as $unidad) {
-                $metodo = $lote[$unidad->codigo_barras];
-
+            ksort($elegidas);
+            foreach ($elegidas as $e) {
                 $tipo === TipoAjuste::Baja
-                    ? $this->inventario->retirar($unidad, $ajuste, $usuario->id, $metodo)
-                    : $this->inventario->reintegrar($unidad, $ajuste, $usuario->id, $metodo);
+                    ? $this->inventario->retirar($e['unidad'], $ajuste, $usuario->id, $e['metodo'])
+                    : $this->inventario->reintegrar($e['unidad'], $ajuste, $usuario->id, $e['metodo']);
             }
 
-            AjusteItem::insert($unidades->map(fn (Unidad $u) => [
+            AjusteItem::insert(array_map(fn ($e) => [
                 'ajuste_id' => $ajuste->id,
-                'unidad_id' => $u->id,
-                'metodo_captura' => $lote[$u->codigo_barras]->value,
-            ])->all());
+                'unidad_id' => $e['unidad']->id,
+                'metodo_captura' => $e['metodo']->value,
+                'origen_codigo' => $e['origen']->value,
+            ], array_values($elegidas)));
 
             return $ajuste;
         });
     }
 
     /**
-     * @param  list<array{codigo: string, metodo_captura: MetodoCaptura|string}>  $codigos
-     * @return array<string, MetodoCaptura> código => método, en el orden del lote
+     * S-34: la unidad asignada por la verificación debe ser de una referencia activa con el código
+     * leído (no se acepta cualquier unidad con un código de proveedor ajeno).
      */
-    private function normalizarLote(array $codigos): array
+    private function exigirDelCodigo(Unidad $unidad, string $codigo): void
+    {
+        $coincide = $this->resolver->coincidencias($codigo, ResolverCodigoService::MAX_OPCIONES * 4)
+            ->contains(fn ($r) => $r->id === $unidad->referencia_id);
+
+        if (! $coincide) {
+            throw new ReglaInventarioException("La unidad {$unidad->codigo_barras} no corresponde al código {$codigo}.", 422, ['codigo' => $unidad->codigo_barras]);
+        }
+    }
+
+    /**
+     * @param  list<array{codigo: string, metodo_captura: MetodoCaptura|string, origen_codigo?: string|null, unidad_codigo?: string|null}>  $codigos
+     * @return list<array{codigo: string, unidad_codigo: string|null, metodo: MetodoCaptura}> en el orden del lote
+     */
+    private function normalizarLote(TipoAjuste $tipo, array $codigos): array
     {
         if ($codigos === []) {
             throw new ReglaInventarioException('El lote no tiene unidades.', 422);
@@ -171,16 +315,34 @@ class AjusteService
         }
 
         $lote = [];
+        $etiquetas = [];
 
         foreach ($codigos as $fila) {
             $codigo = trim((string) $fila['codigo']);
+            $unidadCodigo = trim((string) ($fila['unidad_codigo'] ?? '')) ?: null;
 
-            if (isset($lote[$codigo])) {
-                throw new ReglaInventarioException("El código {$codigo} está repetido en el lote.", 422, ['codigo' => $codigo]);
+            // Un reintegro solo trabaja con la etiqueta de la unidad.
+            if ($tipo === TipoAjuste::Reintegro) {
+                $unidadCodigo = null;
+            }
+
+            // La misma etiqueta (leída o asignada) no entra dos veces; el mismo código de proveedor sí:
+            // cada lectura toma una unidad distinta.
+            $porReferencia = $unidadCodigo === null && ($fila['origen_codigo'] ?? null) === OrigenCodigo::Referencia->value;
+            $etiqueta = $unidadCodigo ?? $codigo;
+            if (! $porReferencia) {
+                if (isset($etiquetas[$etiqueta])) {
+                    throw new ReglaInventarioException("El código {$etiqueta} está repetido en el lote.", 422, ['codigo' => $etiqueta]);
+                }
+                $etiquetas[$etiqueta] = true;
             }
 
             $metodo = $fila['metodo_captura'];
-            $lote[$codigo] = $metodo instanceof MetodoCaptura ? $metodo : MetodoCaptura::from($metodo);
+            $lote[] = [
+                'codigo' => $codigo,
+                'unidad_codigo' => $unidadCodigo,
+                'metodo' => $metodo instanceof MetodoCaptura ? $metodo : MetodoCaptura::from($metodo),
+            ];
         }
 
         return $lote;

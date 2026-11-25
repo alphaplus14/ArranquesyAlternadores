@@ -104,9 +104,9 @@ it('RF-21 (b): la consulta previa de la pantalla rechaza con el mismo mensaje', 
     $libre = unidadDe('AC-77812');
 
     $this->getJson("/api/ajustes/unidad?tipo=baja&codigo={$libre->codigo_barras}")->assertOk()
-        ->assertJsonPath('codigo_barras', $libre->codigo_barras)
-        ->assertJsonPath('referencia.codigo_referencia', 'AC-77812')
-        ->assertJsonPath('referencia.proveedor.nombre', 'Autopartes Central');
+        ->assertJsonPath('unidades.0.codigo_barras', $libre->codigo_barras)
+        ->assertJsonPath('unidades.0.referencia.codigo_referencia', 'AC-77812')
+        ->assertJsonPath('unidades.0.referencia.proveedor.nombre', 'Autopartes Central');
 
     $this->getJson("/api/ajustes/unidad?tipo=baja&codigo={$vendida}")->assertUnprocessable()
         ->assertJsonPath('message', "La unidad {$vendida} está vendida; no se puede retirar.");
@@ -130,7 +130,8 @@ it('RF-21: el motivo debe corresponder al tipo y un código no se repite en el l
     $codigo = unidadDe('RN-4410')->codigo_barras;
 
     retirarPorApi([$codigo], 'error_de_registro')->assertUnprocessable()->assertJsonValidationErrors('motivo');
-    retirarPorApi([$codigo, $codigo])->assertUnprocessable()->assertJsonValidationErrors('codigos.0.codigo');
+    // S-34: la misma etiqueta no entra dos veces (un código de proveedor sí: cada lectura es otra unidad).
+    retirarPorApi([$codigo, $codigo])->assertUnprocessable()->assertJsonPath('message', "El código {$codigo} está repetido en el lote.");
     expect(AjusteInventario::count())->toBe(0);
 });
 
@@ -181,7 +182,7 @@ it('RF-21 (e) / criterio 4: una unidad retirada no se vende ni se escanea en mos
     retirarPorApi([$codigo])->assertCreated();
 
     actuarComo(Rol::Mostrador);
-    $ventaId = $this->postJson('/api/ventas')->json('id');
+    $ventaId = abrirVenta();
 
     $this->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => $codigo, 'metodo_captura' => 'escaneado'])
         ->assertUnprocessable()
@@ -204,7 +205,7 @@ it('RF-21 / RF-08: una referencia sin disponibles por bajas aparece en agotados'
     expect($agotados)->toContain('RN-4410');
 });
 
-it('RF-21 (g) / criterio 8: mostrador recibe 403 en ajustes; logística y admin pasan', function () {
+it('RF-21 (g) / criterio 8 / S-44: mostrador 403 en ajustes; el admin solo consulta el historial; logística opera', function () {
     actuarComo(Rol::Mostrador);
     $codigo = unidadDe('RN-4410')->codigo_barras;
 
@@ -214,10 +215,12 @@ it('RF-21 (g) / criterio 8: mostrador recibe 403 en ajustes; logística y admin 
     $this->postJson('/api/ajustes/reintegros', ['motivo' => 'error_de_registro', 'codigos' => loteAjuste([$codigo])])->assertForbidden();
     expect(referencia('RN-4410')->existencia)->toBe(2);
 
-    actuarComo(Rol::Logistica);
-    $this->getJson('/api/ajustes')->assertOk();
-
     actuarComo(Rol::Admin);
+    $this->getJson('/api/ajustes')->assertOk();
+    retirarPorApi([$codigo])->assertForbidden();
+    expect(referencia('RN-4410')->existencia)->toBe(2);
+
+    actuarComo(Rol::Logistica);
     $this->getJson('/api/ajustes')->assertOk();
     retirarPorApi([$codigo])->assertCreated();
 });

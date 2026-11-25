@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\DevolucionController;
 use App\Http\Controllers\Api\EtiquetaController;
 use App\Http\Controllers\Api\IngresoController;
 use App\Http\Controllers\Api\PagoController;
+use App\Http\Controllers\Api\PanelController;
 use App\Http\Controllers\Api\ProveedorController;
 use App\Http\Controllers\Api\ReferenciaController;
 use App\Http\Controllers\Api\ReporteController;
@@ -23,7 +24,9 @@ use App\Http\Controllers\Api\VentaController;
 use Illuminate\Support\Facades\Route;
 
 /*
- * Regla 12: todo endpoint protegido por rol (middleware "rol"; el admin pasa siempre).
+ * Regla 14: todo endpoint protegido por rol. Middleware "rol": el admin pasa siempre; "solo_rol"
+ * (S-43, S-44): sin el pase del admin (vender es solo del mostrador; operar ajustes y devoluciones,
+ * solo de logística). El admin consulta todo y tiene su panel de gestión (RF-23, S-45).
  * No hay rutas DELETE para ventas, venta_items, reversos, movimientos, abonos, pagos ni auditoría (RF-07, RF-11, RF-15, RF-17).
  */
 
@@ -92,6 +95,21 @@ Route::middleware('auth:sanctum')->group(function () {
         // RF-22: mínimo general del almacén (auditado).
         Route::get('/configuracion/stock-minimo', [ConfiguracionController::class, 'stockMinimo']);
         Route::put('/configuracion/stock-minimo', [ConfiguracionController::class, 'fijarStockMinimo']);
+        // S-45 e: días sin movimiento del panel (120 por defecto, 30 a 730).
+        Route::get('/configuracion/dias-sin-movimiento', [ConfiguracionController::class, 'diasSinMovimiento']);
+        Route::put('/configuracion/dias-sin-movimiento', [ConfiguracionController::class, 'fijarDiasSinMovimiento']);
+
+        // RF-23 / S-45: panel de gestión, solo admin y solo en pantalla (regla 16). Objetivo p95 < 800 ms.
+        Route::middleware('medir:800')->prefix('panel')->group(function () {
+            Route::get('/resumen', [PanelController::class, 'resumen'])->name('panel.resumen');
+            Route::get('/ventas-por-dia', [PanelController::class, 'ventasPorDia'])->name('panel.ventas-por-dia');
+            Route::get('/mas-vendidos', [PanelController::class, 'masVendidos'])->name('panel.mas-vendidos');
+            Route::get('/reabastecer', [PanelController::class, 'reabastecer'])->name('panel.reabastecer');
+            Route::get('/sin-movimiento', [PanelController::class, 'sinMovimiento'])->name('panel.sin-movimiento');
+            Route::get('/antiguedad-stock', [PanelController::class, 'antiguedadStock'])->name('panel.antiguedad-stock');
+            Route::get('/rotacion', [PanelController::class, 'rotacion'])->name('panel.rotacion');
+            Route::get('/control', [PanelController::class, 'control'])->name('panel.control');
+        });
 
         Route::match(['put', 'patch'], '/clientes/{cliente}', [ClienteController::class, 'update']); // RF-13
 
@@ -148,15 +166,23 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     // RF-21 (S-27): salidas y reintegros de inventario, y devoluciones de clientes por código de
-    // unidad (RF-07). Logística y admin; mostrador 403. Sin DELETE: los ajustes son inmutables.
+    // unidad (RF-07). Mostrador 403. Sin DELETE: los ajustes son inmutables.
+    // S-44: el historial lo consultan logística y admin; operar (y sus búsquedas auxiliares) es solo
+    // de logística: el admin recibe 403. Para que el admin vuelva a operar, `solo_rol:logistica` → `rol:logistica`.
     Route::middleware('rol:admin,logistica')->group(function () {
         Route::get('/ajustes', [AjusteController::class, 'index']);
-        Route::get('/ajustes/unidad', [AjusteController::class, 'unidad'])->middleware('medir:500')->name('ajustes.unidad');
-        Route::post('/ajustes/salidas', [AjusteController::class, 'salidas'])->name('ajustes.salidas');
-        Route::post('/ajustes/reintegros', [AjusteController::class, 'reintegros'])->name('ajustes.reintegros');
 
-        Route::get('/devoluciones/consulta', [DevolucionController::class, 'consulta'])->middleware('medir:500')->name('devoluciones.consulta');
-        Route::post('/devoluciones', [DevolucionController::class, 'store']);
+        Route::middleware('solo_rol:logistica')->group(function () {
+            Route::get('/ajustes/unidad', [AjusteController::class, 'unidad'])->middleware('medir:500')->name('ajustes.unidad');
+            Route::post('/ajustes/salidas', [AjusteController::class, 'salidas'])->name('ajustes.salidas');
+            Route::post('/ajustes/reintegros', [AjusteController::class, 'reintegros'])->name('ajustes.reintegros');
+            // S-39: entradas por ajuste de inventario físico y búsqueda de la referencia (sin DELETE ni PUT).
+            Route::post('/ajustes/entradas', [AjusteController::class, 'entradas'])->name('ajustes.entradas');
+            Route::get('/ajustes/referencia', [AjusteController::class, 'referencia'])->middleware('medir:500')->name('ajustes.referencia');
+
+            Route::get('/devoluciones/consulta', [DevolucionController::class, 'consulta'])->middleware('medir:500')->name('devoluciones.consulta');
+            Route::post('/devoluciones', [DevolucionController::class, 'store']);
+        });
     });
 
     // RF-15 / RF-18 (S-30): cartera de clientes. Admin y mostrador; logística 403. Los abonos no
@@ -170,14 +196,22 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/abonos/{abono}/anulaciones', [AbonoController::class, 'anular'])->middleware('rol:admin');
 
     // Módulo de mostrador: venta = descargue (RF-06, RF-12) y reversos (RF-07).
+    // S-43: consultar y reversar con motivo (regla 8): mostrador y admin.
     Route::middleware('rol:mostrador')->group(function () {
         Route::get('/ventas', [VentaController::class, 'index']);
-        Route::post('/ventas', [VentaController::class, 'store']);
         Route::get('/ventas/{venta}', [VentaController::class, 'show']);
-        Route::post('/ventas/{venta}/escanear', [VentaController::class, 'escanear'])->middleware('medir:300')->name('ventas.escanear');
-        Route::post('/ventas/{venta}/cerrar', [VentaController::class, 'cerrar']);
         Route::post('/ventas/{venta}/reversos', [VentaController::class, 'reversar']);
-        // RF-14 / S-18: solo el precio de un ítem de una venta a crédito abierta.
-        Route::patch('/ventas/{venta}/items/{item}', [VentaController::class, 'cambiarPrecio'])->scopeBindings();
+
+        // S-43: solo el mostrador vende (abrir, escanear, cerrar, precios); el admin recibe 403.
+        Route::middleware('solo_rol:mostrador')->group(function () {
+            // S-46: la venta nace con su primer escaneo (exige el payload de la lectura).
+            Route::post('/ventas', [VentaController::class, 'store'])->middleware('medir:300')->name('ventas.abrir');
+            Route::post('/ventas/{venta}/escanear', [VentaController::class, 'escanear'])->middleware('medir:300')->name('ventas.escanear');
+            Route::post('/ventas/{venta}/cerrar', [VentaController::class, 'cerrar']);
+            // RF-14 / S-18: solo el precio de un ítem de una venta a crédito abierta.
+            // S-42: precio de varios ítems (un grupo del modal de cierre). Antes de {item} para no confundirse.
+            Route::patch('/ventas/{venta}/items/precio', [VentaController::class, 'cambiarPrecioLote']);
+            Route::patch('/ventas/{venta}/items/{item}', [VentaController::class, 'cambiarPrecio'])->scopeBindings();
+        });
     });
 });

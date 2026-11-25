@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { api, erroresCampo, mensajeError } from '../api/cliente'
-import { NOMBRE_MEDIO, NOMBRE_RANGO, type MedioPago, type MovimientoDinero, type RangoAntiguedad, type ResumenCartera } from '../api/tipos'
+import { NOMBRE_MEDIO_DINERO, NOMBRE_RANGO, type MedioDinero, type MovimientoDinero, type RangoAntiguedad, type ResumenSaldo } from '../api/tipos'
 import { useAvisoTexto } from './Avisos'
 import Dialogo, { DialogoSeccion } from './Dialogo'
 import { fechaCorta, hoy } from './fechas'
@@ -11,7 +11,7 @@ import './cartera.css'
 const RANGOS = Object.keys(NOMBRE_RANGO) as RangoAntiguedad[]
 
 /** Saldo por antigüedad (FIFO). Las cifras vienen del backend: aquí no se recalculan. */
-export function Antiguedad({ resumen }: { resumen: Pick<ResumenCartera, 'rangos' | 'saldo'> }) {
+export function Antiguedad({ resumen }: { resumen: Pick<ResumenSaldo, 'rangos' | 'saldo'> }) {
   return (
     <div className="antiguedad" aria-label="Saldo por antigüedad">
       {RANGOS.map((r) => (
@@ -48,12 +48,8 @@ export function TablaMovimientos({ movimientos, vacio, onAnular }: {
             <tr key={m.id} className={m.anulacion ? 'reversado' : ''}>
               <td>{fechaCorta(m.fecha)}</td>
               <td className="cifra">{pesos(m.valor)}</td>
-              <td>{NOMBRE_MEDIO[m.medio] ?? m.medio}</td>
-              <td>
-                {m.referencia ?? '—'}
-                {m.ingreso && <><br /><small>A {m.ingreso.tipo === 'factura' ? 'factura' : 'remisión'} {m.ingreso.numero_documento}</small></>}
-                {m.nota && <><br /><small>{m.nota}</small></>}
-              </td>
+              <td>{NOMBRE_MEDIO_DINERO[m.medio] ?? m.medio}</td>
+              <td>{m.referencia ?? '—'}{m.nota && <><br /><small>{m.nota}</small></>}</td>
               <td>{m.usuario?.name ?? '—'}</td>
               <td>
                 {m.anulacion
@@ -78,29 +74,25 @@ export function TablaMovimientos({ movimientos, vacio, onAnular }: {
  * RF-15 / RF-17: registrar un abono o un pago. Fecha de hoy por defecto, editable hacia atrás,
  * nunca futura; valor en pesos enteros > 0; medio de una lista fija. El backend vuelve a validar.
  */
-export function DialogoMovimiento({ titulo, titular, saldo, ruta, documento, onGuardado, onCerrar }: {
+export function DialogoMovimiento({ titulo, titular, saldo, ruta, onGuardado, onCerrar }: {
   titulo: string
   titular: string
   saldo: string
   /** POST que registra el movimiento (/clientes/{id}/abonos o /proveedores/{id}/pagos). */
   ruta: string
-  /** RF-17 (ajuste): pago a una factura elegida; el valor se prellena con su pendiente y no puede superarlo. */
-  documento?: { id: number; nombre: string; pendiente: string }
   onGuardado: (m: MovimientoDinero) => void
   onCerrar: () => void
 }) {
   const [fecha, setFecha] = useState(hoy())
-  const [valor, setValor] = useState(documento ? String(Math.round(Number(documento.pendiente))) : '')
-  const [medio, setMedio] = useState<MedioPago>('efectivo')
+  const [valor, setValor] = useState('')
+  const [medio, setMedio] = useState<MedioDinero>('efectivo')
   const [referencia, setReferencia] = useState('')
   const [nota, setNota] = useState('')
 
   const numero = leerNumero(valor)
   const errorValor = valor.trim() === '' ? null
-    : numero === null || Number.isNaN(numero) || !Number.isInteger(numero) || numero < 1 ? 'Escriba un valor en pesos enteros, mayor que 0.'
-    : documento && numero > Number(documento.pendiente) ? `No puede superar lo pendiente de ${documento.nombre} (${pesos(documento.pendiente)}).` : null
-  const quedaAFavor = !documento && numero !== null && !Number.isNaN(numero) && numero > Number(saldo)
-  const cancela = documento && numero !== null && numero === Math.round(Number(documento.pendiente))
+    : numero === null || Number.isNaN(numero) || !Number.isInteger(numero) || numero < 1 ? 'Escriba un valor en pesos enteros, mayor que 0.' : null
+  const quedaAFavor = numero !== null && !Number.isNaN(numero) && numero > Number(saldo)
 
   const guardar = useMutation({
     mutationFn: async () => (await api.post<MovimientoDinero>(ruta, {
@@ -109,7 +101,6 @@ export function DialogoMovimiento({ titulo, titular, saldo, ruta, documento, onG
       medio,
       referencia: referencia.trim() || null,
       nota: nota.trim() || null,
-      ...(documento ? { ingreso_id: documento.id } : {}),
     })).data,
     onSuccess: onGuardado,
   })
@@ -120,9 +111,7 @@ export function DialogoMovimiento({ titulo, titular, saldo, ruta, documento, onG
   return (
     <Dialogo
       titulo={titulo}
-      descripcion={documento
-        ? `${titular} · ${documento.nombre} · pendiente ${pesos(documento.pendiente)}`
-        : `${titular} · saldo actual ${pesos(saldo)}`}
+      descripcion={`${titular} · saldo actual ${pesos(saldo)}`}
       onCerrar={onCerrar}
       pendiente={guardar.isPending}
       onEnviar={() => guardar.mutate()}
@@ -148,9 +137,7 @@ export function DialogoMovimiento({ titulo, titular, saldo, ruta, documento, onG
             onChange={(e) => setValor(e.target.value)}
           />
           <small id="movimiento-valor-ayuda" className={errorValor ?? errores.valor ? 'ayuda error' : 'ayuda'}>
-            {errorValor ?? errores.valor ?? (quedaAFavor ? 'Supera el saldo: la diferencia queda como saldo a favor.'
-              : cancela ? 'Con este valor la factura queda cancelada.'
-              : documento ? 'Pago parcial: la factura sigue con saldo.' : 'Pesos enteros.')}
+            {errorValor ?? errores.valor ?? (quedaAFavor ? 'Supera el saldo: la diferencia queda como saldo a favor.' : 'Pesos enteros.')}
           </small>
         </label>
         <div className="campos-dos">
@@ -159,8 +146,8 @@ export function DialogoMovimiento({ titulo, titular, saldo, ruta, documento, onG
             {errores.fecha && <small className="ayuda error">{errores.fecha}</small>}
           </label>
           <label>Medio
-            <select value={medio} onChange={(e) => setMedio(e.target.value as MedioPago)}>
-              {(Object.keys(NOMBRE_MEDIO) as MedioPago[]).map((m) => <option key={m} value={m}>{NOMBRE_MEDIO[m]}</option>)}
+            <select value={medio} onChange={(e) => setMedio(e.target.value as MedioDinero)}>
+              {(Object.keys(NOMBRE_MEDIO_DINERO) as MedioDinero[]).map((m) => <option key={m} value={m}>{NOMBRE_MEDIO_DINERO[m]}</option>)}
             </select>
           </label>
         </div>

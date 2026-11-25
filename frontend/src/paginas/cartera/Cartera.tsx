@@ -148,7 +148,7 @@ export default function Cartera() {
           onGuardado={(abono, resumen) => {
             qc.invalidateQueries({ queryKey: ['cartera'] })
             qc.invalidateQueries({ queryKey: ['cartera-cliente', abono.cliente_id] })
-            setAviso(`Abono de ${pesos(abono.valor)} registrado a ${resumen.cliente?.nombre}. Saldo: ${textoSaldo(resumen.saldo)}.`)
+            setAviso(`Abono de ${pesos(abono.valor)} registrado a ${resumen.cliente?.nombre} (${abono.aplicado_a === 'General' ? 'a las ventas más antiguas' : `a la venta ${abono.aplicado_a.replace(/^Venta /, '')}`}). Saldo: ${textoSaldo(resumen.saldo)}.`)
             cerrarAbono()
           }}
         />

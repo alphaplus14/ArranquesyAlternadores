@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\EstadoUnidad;
 use App\Enums\MetodoCaptura;
+use App\Enums\OrigenCodigo;
 use App\Enums\TipoAjuste;
 use App\Enums\TipoMovimiento;
 use App\Exceptions\ReglaInventarioException;
@@ -30,6 +31,71 @@ use LogicException;
 class InventarioService
 {
     private const LOTE = 500;
+
+    /** S-39: máximo de unidades por ajuste de alta. */
+    public const MAX_ALTA = 500;
+
+    public function __construct(private readonly CodigoBarrasService $codigos) {}
+
+    /**
+     * S-39: alta por ajuste de inventario físico. Crea $cantidad unidades NUEVAS de la referencia, cada
+     * una con su código del local (misma secuencia que los ingresos: CodigoBarrasService bloquea la
+     * fila de la secuencia, así no hay repetidos ni huecos aunque haya concurrencia), suma la
+     * existencia y deja un movimiento 'alta' por unidad. Todo en bloque (sin N+1). La referencia se
+     * bloquea primero y debe estar activa (S-26). No es una compra: no hay ingreso ni costo.
+     *
+     * @return Collection<int, Unidad>
+     */
+    public function darAltaPorAjuste(Referencia $referencia, int $cantidad, AjusteInventario $ajuste, int $usuarioId, MetodoCaptura $metodo): Collection
+    {
+        $this->exigirTransaccion();
+
+        if ($cantidad < 1 || $cantidad > self::MAX_ALTA) {
+            throw new ReglaInventarioException('La cantidad debe estar entre 1 y '.self::MAX_ALTA.'.', 422, ['campo' => 'cantidad']);
+        }
+
+        $bloqueada = Referencia::query()->whereKey($referencia->id)->lockForUpdate()->first(['id', 'codigo_referencia', 'activo']);
+        if (! $bloqueada?->activo) {
+            throw new ReglaInventarioException("La referencia {$referencia->codigo_referencia} está inactiva: reactívela para darle entrada.", 422, ['campo' => 'referencia_id']);
+        }
+
+        $ahora = now();
+        $codigos = $this->codigos->reservar($cantidad);
+        $filas = array_map(fn (string $codigo) => [
+            'referencia_id' => $referencia->id,
+            'ingreso_item_id' => null,
+            'ajuste_id' => $ajuste->id,
+            'codigo_barras' => $codigo,
+            'estado' => EstadoUnidad::Disponible->value,
+            'created_at' => $ahora,
+            'updated_at' => $ahora,
+        ], $codigos);
+
+        foreach (array_chunk($filas, self::LOTE) as $lote) {
+            Unidad::insert($lote);
+        }
+
+        $creadas = Unidad::query()->where('ajuste_id', $ajuste->id)->orderBy('id')->get(['id', 'referencia_id', 'codigo_barras', 'estado']);
+
+        $movimientos = $creadas->map(fn (Unidad $u) => [
+            'tipo' => TipoMovimiento::Alta->value,
+            'unidad_id' => $u->id,
+            'referencia_id' => $u->referencia_id,
+            'usuario_id' => $usuarioId,
+            'metodo_captura' => $metodo->value,
+            'origen_type' => 'ajuste',
+            'origen_id' => $ajuste->id,
+            'created_at' => $ahora,
+        ])->all();
+
+        foreach (array_chunk($movimientos, self::LOTE) as $lote) {
+            MovimientoInventario::insert($lote);
+        }
+
+        Referencia::whereKey($referencia->id)->increment('existencia', $cantidad);
+
+        return $creadas;
+    }
 
     /** RF-19: unidades nuevas de una línea; lo cubierto por remisiones ligadas ya está en inventario. */
     public static function unidadesNuevas(IngresoItem $item): int
@@ -102,8 +168,9 @@ class InventarioService
 
     /**
      * RF-06: la unidad sale del inventario. La unidad debe venir bloqueada con lockForUpdate().
+     * S-31: $origen dice si se escaneó la etiqueta del local o el código de la referencia.
      */
-    public function darSalida(Unidad $unidad, Venta $venta, int $usuarioId, MetodoCaptura $metodo): void
+    public function darSalida(Unidad $unidad, Venta $venta, int $usuarioId, MetodoCaptura $metodo, OrigenCodigo $origen = OrigenCodigo::Etiqueta): void
     {
         $this->exigirTransaccion();
 
@@ -121,7 +188,7 @@ class InventarioService
 
         Referencia::whereKey($unidad->referencia_id)->decrement('existencia');
 
-        $this->registrarMovimiento(TipoMovimiento::Venta, $unidad, $usuarioId, $metodo, 'venta', $venta->id);
+        $this->registrarMovimiento(TipoMovimiento::Venta, $unidad, $usuarioId, $metodo, 'venta', $venta->id, $origen);
     }
 
     /**
@@ -214,6 +281,7 @@ class InventarioService
         ?MetodoCaptura $metodo,
         string $origenType,
         int $origenId,
+        OrigenCodigo $origenCodigo = OrigenCodigo::Etiqueta,
     ): void {
         MovimientoInventario::create([
             'tipo' => $tipo,
@@ -223,6 +291,7 @@ class InventarioService
             'metodo_captura' => $metodo,
             'origen_type' => $origenType,
             'origen_id' => $origenId,
+            'origen_codigo' => $origenCodigo,
         ]);
     }
 

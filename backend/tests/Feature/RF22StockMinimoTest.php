@@ -189,10 +189,12 @@ it('RF-22: un universal con una referencia desactivada suma solo las activas', f
     $this->putJson("/api/codigos-universales/{$im204->id}", ['stock_minimo' => 4])->assertOk();
     expect(codigosBajoMinimo())->not->toContain('IM204'); // 6 > 4
 
-    // Se retiran las dos unidades de AC-77812 (RF-21) y se desactiva: la suma baja a 4.
+    // Se retiran las dos unidades de AC-77812 (RF-21, logística: S-44) y se desactiva: la suma baja a 4.
     $codigos = Unidad::whereBelongsTo(referencia('AC-77812'))->pluck('codigo_barras')
         ->map(fn ($c) => ['codigo' => $c, 'metodo_captura' => 'digitado'])->all();
+    actuarComo(Rol::Logistica);
     $this->postJson('/api/ajustes/salidas', ['motivo' => 'perdida', 'codigos' => $codigos])->assertCreated();
+    actuarComo(Rol::Admin);
     $this->postJson('/api/referencias/'.referencia('AC-77812')->id.'/desactivar')->assertOk();
 
     $fila = filaBajoMinimo('IM204');

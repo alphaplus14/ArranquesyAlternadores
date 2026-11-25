@@ -21,7 +21,7 @@ function atraparTab(e: KeyboardEvent<HTMLElement>) {
   }
 }
 
-export type VarianteDialogo = 'cuenta' | 'ancha' | 'ficha' | 'ingreso' | 'proveedor' | 'confirmar'
+export type VarianteDialogo = 'cuenta' | 'ancha' | 'ficha' | 'ingreso' | 'proveedor' | 'confirmar' | 'cierre'
 
 const FONDO: Record<VarianteDialogo, string> = {
   cuenta: 'modal',
@@ -30,6 +30,8 @@ const FONDO: Record<VarianteDialogo, string> = {
   ingreso: 'modal modal-ingreso',
   proveedor: 'modal modal-proveedor',
   confirmar: 'modal confirmar',
+  // S-41: centrado, cabecera y pie fijos, cuerpo con scroll.
+  cierre: 'modal modal-cierre',
 }
 
 const CAJA: Record<VarianteDialogo, string> = {
@@ -39,6 +41,7 @@ const CAJA: Record<VarianteDialogo, string> = {
   ingreso: 'modal-caja cuenta-modal ingreso-modal',
   proveedor: 'modal-caja cuenta-modal proveedor-modal',
   confirmar: 'modal-caja cuenta-modal',
+  cierre: 'modal-caja cuenta-modal cierre-modal',
 }
 
 /** El de encima es el único que atiende Escape. Así una confirmación no cierra el diálogo de abajo. */

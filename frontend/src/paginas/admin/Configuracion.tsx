@@ -5,7 +5,7 @@ import { api, mensajeError } from '../../api/cliente'
 import CampoStockMinimo from '../../componentes/CampoStockMinimo'
 import { aValorMinimo, errorStockMinimo } from '../../utilidades/stockMinimo'
 
-/** RF-22 (S-28): parámetros del almacén que fija el administrador. Cada cambio queda auditado. */
+/** RF-22 (S-28) y S-45: parámetros del almacén que fija el administrador. Cada cambio queda auditado. */
 export default function Configuracion() {
   const qc = useQueryClient()
   const general = useQuery({
@@ -61,6 +61,74 @@ export default function Configuracion() {
           </div>
         </form>
       </section>
+      <DiasSinMovimiento />
     </div>
+  )
+}
+
+/** S-45 e: días sin venta para que el panel considere estancada una referencia (30 a 730; 120 por defecto). */
+const DIAS_MIN = 30
+const DIAS_MAX = 730
+
+function errorDias(texto: string): string | null {
+  const t = texto.trim()
+  if (t === '') return 'Escriba los días.'
+  if (!/^\d+$/.test(t)) return 'Use un número entero de días.'
+  const n = Number(t)
+  return n < DIAS_MIN || n > DIAS_MAX ? `Entre ${DIAS_MIN} y ${DIAS_MAX} días.` : null
+}
+
+function DiasSinMovimiento() {
+  const qc = useQueryClient()
+  const actual = useQuery({
+    queryKey: ['configuracion', 'dias-sin-movimiento'],
+    queryFn: async () => (await api.get<{ valor: number }>('/configuracion/dias-sin-movimiento')).data.valor,
+  })
+  const [valor, setValor] = useState('')
+  const [guardado, setGuardado] = useState(false)
+  useEffect(() => {
+    if (actual.data !== undefined) setValor(String(actual.data))
+  }, [actual.data])
+
+  const guardar = useMutation({
+    mutationFn: async () => (await api.put<{ valor: number }>('/configuracion/dias-sin-movimiento', { valor: Number(valor.trim()) })).data.valor,
+    onSuccess: (v) => {
+      qc.setQueryData(['configuracion', 'dias-sin-movimiento'], v)
+      qc.invalidateQueries({ queryKey: ['panel', 'sin-movimiento'] })
+      setGuardado(true)
+    },
+  })
+  const error = errorDias(valor)
+  const sinCambios = actual.data !== undefined && String(actual.data) === valor.trim()
+
+  return (
+    <section className="tarjeta-pagina" id="panel-gestion">
+      <h2>Panel de gestión</h2>
+      <form className="formulario campo-configuracion" onSubmit={(e) => { e.preventDefault(); setGuardado(false); guardar.mutate() }}>
+        <label htmlFor="dias-sin-movimiento">Días sin movimiento</label>
+        <input
+          id="dias-sin-movimiento"
+          type="number"
+          min={DIAS_MIN}
+          max={DIAS_MAX}
+          step="1"
+          inputMode="numeric"
+          value={valor}
+          aria-invalid={error !== null}
+          aria-describedby="dias-sin-movimiento-ayuda"
+          onChange={(e) => { setValor(e.target.value); setGuardado(false) }}
+        />
+        <p id="dias-sin-movimiento-ayuda" className={error ? 'ayuda error' : 'ayuda'}>
+          {error ?? `Una referencia con existencia que no se vende en estos días se considera estancada. Entre ${DIAS_MIN} y ${DIAS_MAX}; 120 por defecto.`}
+        </p>
+        {actual.isError && <div className="aviso error">{mensajeError(actual.error)}</div>}
+        {guardar.isError && <div className="aviso error">{mensajeError(guardar.error)}</div>}
+        {guardado && <div className="aviso ok" role="status">Guardado. El stock estancado del panel ya usa el nuevo valor.</div>}
+        <div className="acciones acciones-izquierda">
+          <button className="primario boton-44" disabled={actual.isLoading || guardar.isPending || sinCambios || error !== null}>Guardar</button>
+          <Link to="/admin/auditoria?tabla=configuraciones">Ver cambios anteriores</Link>
+        </div>
+      </form>
+    </section>
   )
 }

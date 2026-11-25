@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeError } from '../../api/cliente'
+import { useAvisoTexto } from '../../componentes/Avisos'
 import type { Cliente, Pagina } from '../../api/tipos'
 import Icono from '../../componentes/Icono'
 import Medida from '../../componentes/Medida'
@@ -55,6 +56,8 @@ export default function Clientes() {
     mutationFn: (c: Cliente) => api.patch(`/clientes/${c.id}`, { activo: !c.activo }),
     onSuccess: refrescar,
   })
+  useAvisoTexto(crear.isError ? mensajeError(crear.error) : null)
+  useAvisoTexto((guardar.isError || alternar.isError) ? mensajeError(guardar.error ?? alternar.error) : null)
 
   const activos = filas.filter((c) => c.activo).length
   const campoNuevo = (k: keyof Borrador) => ({ value: nuevo[k], onChange: (e: { target: { value: string } }) => setNuevo({ ...nuevo, [k]: e.target.value }) })
@@ -95,7 +98,6 @@ export default function Clientes() {
           <input type="number" min={0} max={365} placeholder="Plazo (días)" title="Si lo deja vacío, el sistema pone el plazo por defecto" aria-label="Plazo en días" {...campoNuevo('plazo_dias')} />
           <button className="primario" disabled={crear.isPending || nuevo.nombre.trim() === ''}>Crear cliente</button>
         </form>
-        {crear.isError && <div className="aviso error">{mensajeError(crear.error)}</div>}
       </section>
 
       <section className="tarjeta-pagina">
@@ -113,7 +115,6 @@ export default function Clientes() {
             </select>
           </div>
         </div>
-        {(guardar.isError || alternar.isError) && <div className="aviso error">{mensajeError(guardar.error ?? alternar.error)}</div>}
         <table className="tabla-apilable tabla-clientes">
           <thead><tr><th>Nombre</th><th>Documento</th><th>Teléfono</th><th>Plazo</th><th>Estado</th><th><span className="solo-lector">Acciones</span></th></tr></thead>
           <tbody>

@@ -12,11 +12,14 @@ class Unidad extends Model
 {
     protected $table = 'unidades';
 
-    protected $fillable = ['referencia_id', 'ingreso_item_id', 'codigo_barras', 'estado'];
+    // S-39: ingreso_item_id (compra) o ajuste_id (alta por inventario físico): uno de los dos.
+    protected $fillable = ['referencia_id', 'ingreso_item_id', 'ajuste_id', 'codigo_barras', 'estado'];
+
+    // S-31: etiqueta_impresa_at no es asignable en masa; la marca EtiquetaService al imprimir.
 
     protected function casts(): array
     {
-        return ['estado' => EstadoUnidad::class];
+        return ['estado' => EstadoUnidad::class, 'etiqueta_impresa_at' => 'datetime'];
     }
 
     public function referencia(): BelongsTo

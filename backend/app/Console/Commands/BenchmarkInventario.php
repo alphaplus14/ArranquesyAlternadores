@@ -39,6 +39,10 @@ class BenchmarkInventario extends Command
         try {
             $usuario = User::create(['name' => 'bench', 'usuario' => 'bench-'.uniqid(), 'password' => 'x', 'rol' => Rol::Admin, 'activo' => true]);
             Auth::login($usuario);
+            // S-43: solo el mostrador vende; los escaneos se miden con un mostrador y el resto con el admin.
+            $vendedor = User::create(['name' => 'bench-mostrador', 'usuario' => 'bench-m-'.uniqid(), 'password' => 'x', 'rol' => Rol::Mostrador, 'activo' => true]);
+            // S-44: las búsquedas de Ajustes son de logística (el admin solo consulta el historial).
+            $bodega = User::create(['name' => 'bench-logistica', 'usuario' => 'bench-l-'.uniqid(), 'password' => 'x', 'rol' => Rol::Logistica, 'activo' => true]);
             $proveedor = Proveedor::create(['nombre' => 'Proveedor benchmark']);
             $categoria = Categoria::firstOrCreate(['nombre' => 'Categoría benchmark']);
 
@@ -59,18 +63,51 @@ class BenchmarkInventario extends Command
             $ingresos->confirmar($ingreso, $usuario);
 
             $codigos = Unidad::where('referencia_id', $referencia->id)->pluck('codigo_barras');
-            $venta = $ventas->abrir($usuario);
+            $venta = $ventas->abrir($vendedor);
 
             $escaneos = [];
             foreach ($codigos as $codigo) {
-                $escaneos[] = $this->medir($kernel, $usuario, Request::create("/api/ventas/{$venta->id}/escanear", 'POST',
+                $escaneos[] = $this->medir($kernel, $vendedor, Request::create("/api/ventas/{$venta->id}/escanear", 'POST',
                     ['codigo_barras' => $codigo, 'metodo_captura' => MetodoCaptura::Escaneado->value]), 201);
+            }
+
+            // S-31: el mismo escaneo con el código del proveedor (el sistema elige la unidad). La mitad
+            // de las unidades con etiqueta impresa, para que la elección recorra los dos casos.
+            $porReferencia = Referencia::where('codigo_referencia', 'BX000002')->first();
+            $ingresoRef = $ingresos->crearBorrador(['proveedor_id' => $proveedor->id, 'numero_documento' => 'BENCH-REF', 'fecha' => now()->toDateString()], $usuario);
+            $ingresos->agregarItem($ingresoRef, ['referencia_id' => $porReferencia->id, 'cantidad' => $n, 'costo_unitario' => 500]);
+            $ingresos->confirmar($ingresoRef, $usuario);
+            Unidad::where('referencia_id', $porReferencia->id)->whereRaw('id % 2 = 0')->update(['etiqueta_impresa_at' => now()]);
+
+            $escaneosRef = [];
+            for ($i = 0; $i < $n; $i++) {
+                $escaneosRef[] = $this->medir($kernel, $vendedor, Request::create("/api/ventas/{$venta->id}/escanear", 'POST',
+                    ['codigo_barras' => 'BX000002', 'metodo_captura' => MetodoCaptura::Escaneado->value]), 201);
+            }
+
+            // S-40: una lectura con cantidad 50 por código del proveedor (50 ítems en una transacción).
+            $porLote = Referencia::where('codigo_referencia', 'BX000003')->first();
+            $ingresoLote = $ingresos->crearBorrador(['proveedor_id' => $proveedor->id, 'numero_documento' => 'BENCH-50', 'fecha' => now()->toDateString()], $usuario);
+            $ingresos->agregarItem($ingresoLote, ['referencia_id' => $porLote->id, 'cantidad' => 500, 'costo_unitario' => 500]);
+            $ingresos->confirmar($ingresoLote, $usuario);
+            $ventaLote = $ventas->abrir($vendedor);
+            $escaneos50 = [];
+            for ($i = 0; $i < 10; $i++) {
+                $escaneos50[] = $this->medir($kernel, $vendedor, Request::create("/api/ventas/{$ventaLote->id}/escanear", 'POST',
+                    ['codigo_barras' => 'BX000003', 'metodo_captura' => MetodoCaptura::Escaneado->value, 'cantidad' => 50]), 201);
             }
 
             $busquedas = [];
             for ($i = 0; $i < $n; $i++) {
                 $q = $i % 2 ? sprintf('BX%04d', random_int(1, 1999)) : $codigos[$i % $codigos->count()];
                 $busquedas[] = $this->medir($kernel, $usuario, Request::create('/api/buscar', 'GET', ['q' => $q]), 200);
+            }
+
+            // S-39: búsqueda de la referencia para una entrada (código exacto o texto, máx. 10).
+            $referenciasAjuste = [];
+            for ($i = 0; $i < $n; $i++) {
+                $params = $i % 2 ? ['q' => sprintf('BX%04d', random_int(1, 1999))] : ['codigo' => sprintf('BX%06d', random_int(1, 1999))];
+                $referenciasAjuste[] = $this->medir($kernel, $bodega, Request::create('/api/ajustes/referencia', 'GET', $params), 200);
             }
 
             // RF-22: mínimo general 3 para todo el catálogo de relleno (existencia 0: todas alertan)
@@ -101,11 +138,34 @@ class BenchmarkInventario extends Command
                 $cartera[] = $this->medir($kernel, $usuario, Request::create('/api/cartera', 'GET', $filtro), 200);
             }
 
+            // RF-23 / S-45 h: panel del admin sobre este mismo volumen. Sin caché (refrescar=1)
+            // objetivo p95 < 800 ms; con caché < 150 ms. Filtros alternados: todo, proveedor, categoría.
+            $informes = ['resumen', 'ventas-por-dia', 'mas-vendidos', 'reabastecer', 'sin-movimiento', 'antiguedad-stock', 'rotacion', 'control'];
+            $repeticiones = max(5, intdiv($n, 4));
+            $filasPanel = [];
+            foreach ($informes as $informe) {
+                $frio = [];
+                $caliente = [];
+                for ($i = 0; $i < $repeticiones; $i++) {
+                    $filtro = match ($i % 3) {
+                        0 => [], 1 => ['proveedor_id' => $proveedor->id], default => ['categoria_id' => $categoria->id]
+                    };
+                    $frio[] = $this->medir($kernel, $usuario, Request::create("/api/panel/{$informe}", 'GET', ['refrescar' => 1, ...$filtro]), 200);
+                    $caliente[] = $this->medir($kernel, $usuario, Request::create("/api/panel/{$informe}", 'GET', $filtro), 200);
+                }
+                $filasPanel[] = ["GET /panel/{$informe} (sin caché)", count($frio), $this->pct($frio, 50), $this->pct($frio, 95), max($frio), 800];
+                $filasPanel[] = ["GET /panel/{$informe} (con caché)", count($caliente), $this->pct($caliente, 50), $this->pct($caliente, 95), max($caliente), 150];
+            }
+
             $this->table(['endpoint', 'n', 'p50 ms', 'p95 ms', 'máx ms', 'objetivo p95'], [
-                ['POST /ventas/{id}/escanear', count($escaneos), $this->pct($escaneos, 50), $this->pct($escaneos, 95), max($escaneos), 300],
+                ['POST /ventas/{id}/escanear (etiqueta)', count($escaneos), $this->pct($escaneos, 50), $this->pct($escaneos, 95), max($escaneos), 300],
+                ['POST /ventas/{id}/escanear (código proveedor, S-31)', count($escaneosRef), $this->pct($escaneosRef, 50), $this->pct($escaneosRef, 95), max($escaneosRef), 300],
+                ['POST /ventas/{id}/escanear (cantidad 50, S-40)', count($escaneos50), $this->pct($escaneos50, 50), $this->pct($escaneos50, 95), max($escaneos50), 1000],
                 ['GET /buscar', count($busquedas), $this->pct($busquedas, 50), $this->pct($busquedas, 95), max($busquedas), 500],
+                ['GET /ajustes/referencia (S-39)', count($referenciasAjuste), $this->pct($referenciasAjuste, 50), $this->pct($referenciasAjuste, 95), max($referenciasAjuste), 500],
                 ['GET /reportes/bajo-minimo', count($bajoMinimo), $this->pct($bajoMinimo, 50), $this->pct($bajoMinimo, 95), max($bajoMinimo), 500],
                 ['GET /cartera', count($cartera), $this->pct($cartera, 50), $this->pct($cartera, 95), max($cartera), 500],
+                ...$filasPanel,
             ]);
             $this->line('Sin latencia de red: en red local sumar el RTT (normalmente < 5 ms).');
         } finally {
@@ -161,10 +221,18 @@ class BenchmarkInventario extends Command
             DB::table('venta_items')->insert($lote);
         }
 
+        // Abonos generales a la mitad de los clientes y (S-32) uno dirigido a la venta más reciente
+        // de uno de cada tres, para que la asignación haga el trabajo completo.
+        $ultimaVenta = DB::table('ventas')->whereIn('cliente_id', $clienteIds)->groupBy('cliente_id')
+            ->selectRaw('cliente_id, MAX(id) AS id')->pluck('id', 'cliente_id');
         $abonos = [];
         foreach ($clienteIds as $i => $clienteId) {
             if ($i % 2 === 0) {
-                $abonos[] = ['cliente_id' => $clienteId, 'fecha' => $ahora->toDateString(), 'valor' => 150000, 'medio' => 'efectivo',
+                $abonos[] = ['cliente_id' => $clienteId, 'venta_id' => null, 'fecha' => $ahora->toDateString(), 'valor' => 150000, 'medio' => 'efectivo',
+                    'usuario_id' => $usuario->id, 'created_at' => $ahora];
+            }
+            if ($i % 3 === 0) {
+                $abonos[] = ['cliente_id' => $clienteId, 'venta_id' => $ultimaVenta[$clienteId] ?? null, 'fecha' => $ahora->toDateString(), 'valor' => 50000, 'medio' => 'transferencia',
                     'usuario_id' => $usuario->id, 'created_at' => $ahora];
             }
         }
@@ -177,10 +245,14 @@ class BenchmarkInventario extends Command
     {
         $request->headers->set('Accept', 'application/json');
         $request->setUserResolver(fn () => $usuario);
+        // S-43: el guard toma el usuario de la sesión; se mide como $usuario y luego se restaura.
+        $anterior = Auth::user();
+        Auth::setUser($usuario);
 
         $inicio = hrtime(true);
         $respuesta = $kernel->handle($request);
         $ms = (hrtime(true) - $inicio) / 1e6;
+        Auth::setUser($anterior);
 
         if ($respuesta->getStatusCode() !== $esperado) {
             throw new \RuntimeException("{$request->getPathInfo()} respondió {$respuesta->getStatusCode()}: {$respuesta->getContent()}");

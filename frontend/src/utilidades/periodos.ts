@@ -4,7 +4,7 @@
  * hora de Bogotá y el backend interpreta desde/hasta como días de Bogotá (hasta inclusivo).
  */
 
-export type Periodo = 'este_mes' | 'mes_anterior' | 'ultimos_3_meses' | 'ultimo_anio' | 'todo' | 'personalizado'
+export type Periodo = 'ultimos_30_dias' | 'este_mes' | 'mes_anterior' | 'ultimos_3_meses' | 'ultimo_anio' | 'todo' | 'personalizado'
 
 export const PERIODO_POR_DEFECTO: Periodo = 'este_mes'
 
@@ -17,6 +17,16 @@ export const PERIODOS: { valor: Periodo; texto: string }[] = [
   { valor: 'personalizado', texto: 'Personalizado' },
 ]
 
+/**
+ * RF-23 / S-45: períodos del panel del admin. Por defecto los últimos 30 días; sin "Todo el
+ * historial" (el panel compara contra el período anterior de igual duración).
+ */
+export const PERIODO_PANEL: Periodo = 'ultimos_30_dias'
+export const PERIODOS_PANEL: { valor: Periodo; texto: string }[] = [
+  { valor: 'ultimos_30_dias', texto: 'Últimos 30 días' },
+  ...PERIODOS.filter((p) => p.valor !== 'todo'),
+]
+
 export const ZONA_LOCAL = 'America/Bogota'
 
 export interface Rango {
@@ -27,7 +37,7 @@ export interface Rango {
 const FORMATO = /^\d{4}-\d{2}-\d{2}$/
 
 export function esPeriodo(valor: unknown): valor is Periodo {
-  return PERIODOS.some((p) => p.valor === valor)
+  return PERIODOS.some((p) => p.valor === valor) || valor === 'ultimos_30_dias'
 }
 
 /** Fecha válida 'YYYY-MM-DD' (formato y día existente). */
@@ -56,6 +66,8 @@ export function rangoDe(periodo: Periodo, hoy: string, personalizado: Partial<Ra
   const [a, m, d] = hoy.split('-').map(Number)
 
   switch (periodo) {
+    case 'ultimos_30_dias':
+      return { desde: diasAntes(a, m, d, 29), hasta: hoy }
     case 'este_mes':
       return { desde: fecha(a, m, 1), hasta: hoy }
     case 'mes_anterior': {
@@ -80,6 +92,12 @@ export function rangoDe(periodo: Periodo, hoy: string, personalizado: Partial<Ra
 export function errorRango({ desde, hasta }: Rango): string | null {
   // Las fechas 'YYYY-MM-DD' se comparan bien como texto.
   return desde && hasta && desde > hasta ? '"Desde" no puede ser posterior a "Hasta".' : null
+}
+
+/** El día `dias` días antes de a-m-d (aritmética de calendario, sin zona horaria). */
+function diasAntes(a: number, m: number, d: number, dias: number): string {
+  const t = new Date(Date.UTC(a, m - 1, d - dias))
+  return fecha(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate())
 }
 
 function mismoDiaHace(a: number, m: number, d: number, meses: number): string {

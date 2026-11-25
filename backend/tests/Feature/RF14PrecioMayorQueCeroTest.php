@@ -53,7 +53,7 @@ it('RF-14: escanear una unidad de una referencia con precio 0 responde 422 y la 
     $unidad = unidadDe('RN-4410');
     $existencia = referencia('RN-4410')->existencia;
     $movimientos = MovimientoInventario::count();
-    $id = $this->postJson('/api/ventas')->assertCreated()->json('id');
+    $id = abrirVenta();
 
     $this->postJson("/api/ventas/{$id}/escanear", ['codigo_barras' => $unidad->codigo_barras, 'metodo_captura' => 'escaneado'])
         ->assertStatus(422)

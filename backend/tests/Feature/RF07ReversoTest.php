@@ -10,7 +10,7 @@ beforeEach(fn () => sembrarDemo());
 /** Abre una venta, escanea la unidad y, si se pide, la cierra. Devuelve [ventaId, ventaItemId]. */
 function venderUnidad(string $codigoReferencia, bool $cerrar = true): array
 {
-    $ventaId = test()->postJson('/api/ventas')->json('id');
+    $ventaId = abrirVenta();
     $itemId = test()->postJson("/api/ventas/{$ventaId}/escanear", [
         'codigo_barras' => unidadDe($codigoReferencia)->codigo_barras,
         'metodo_captura' => 'escaneado',
@@ -68,7 +68,7 @@ it('RF-07: un ítem no se puede reversar dos veces', function () {
 
 it('RF-07: la anulación completa reversa todos los ítems pendientes en un solo reverso', function () {
     actuarComo(Rol::Mostrador);
-    $ventaId = $this->postJson('/api/ventas')->json('id');
+    $ventaId = abrirVenta();
     foreach (['RN-4410', 'AC-77812'] as $ref) {
         $this->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => unidadDe($ref)->codigo_barras, 'metodo_captura' => 'escaneado']);
     }
@@ -105,7 +105,7 @@ it('RF-07: la unidad devuelta se puede vender de nuevo', function () {
     [$ventaId] = venderUnidad('RN-4410');
     $this->postJson("/api/ventas/{$ventaId}/reversos", ['tipo' => 'devolucion', 'motivo' => 'Devolución']);
 
-    $nueva = $this->postJson('/api/ventas')->json('id');
+    $nueva = abrirVenta();
     $this->postJson("/api/ventas/{$nueva}/escanear", ['codigo_barras' => $codigo, 'metodo_captura' => 'escaneado'])->assertCreated();
 });
 

@@ -1,0 +1,94 @@
+/* RF-23 / S-45: panel de gestión del administrador. Cuadrículas con minmax(0, 1fr) y min-width: 0
+   en los hijos: nada desborda la página; las tablas se desplazan dentro de su contenedor. */
+.panel-gestion { min-width: 0; }
+.panel-gestion > * { min-width: 0; }
+.panel-filtros { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 14px; }
+.panel-filtros > label { min-width: 0; flex: 0 1 auto; }
+.panel-filtros .filtro { min-width: 12rem; max-width: 100%; }
+.panel-actualizado { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.panel-rango { margin: 8px 0 0; }
+
+.panel-medidas { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr)); gap: 12px; min-width: 0; }
+.panel-medida {
+  background: var(--panel); border-radius: var(--radio); box-shadow: var(--sombra-barra);
+  padding: 14px 16px; min-width: 0; display: flex; flex-direction: column; gap: 4px;
+}
+.panel-medida-etiqueta { color: var(--suave); font-weight: 500; display: inline-flex; align-items: center; gap: 6px; }
+.panel-medida-valor { font-size: 1.45rem; font-weight: 650; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.panel-medida-valor small { font-size: 0.8rem; font-weight: 500; color: var(--suave); }
+.panel-medida-linea { color: var(--suave); font-size: 0.84rem; overflow-wrap: anywhere; }
+.panel-medida-enlace { font-size: 0.84rem; margin-top: auto; }
+.panel-variacion { font-size: 0.82rem; font-weight: 600; }
+.panel-variacion.sube { color: var(--ok); }
+.panel-variacion.baja { color: var(--peligro); }
+.panel-variacion.neutra { color: var(--suave); font-weight: 500; }
+
+.panel-bloque {
+  background: var(--panel); border-radius: var(--radio); box-shadow: var(--sombra-barra);
+  padding: 16px; min-width: 0; display: flex; flex-direction: column; gap: 12px;
+}
+.panel-bloque.sin-caja { background: none; box-shadow: none; padding: 0; }
+.panel-bloque-cabeza { display: flex; justify-content: space-between; align-items: center; gap: 10px 16px; flex-wrap: wrap; min-width: 0; }
+.panel-bloque-cabeza h2 { margin: 0; font-size: 1.1rem; display: inline-flex; align-items: center; gap: 6px; }
+.panel-acciones { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; min-width: 0; }
+.panel-titulo { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.panel-subtitulo { margin: 4px 0 0; font-size: 0.9rem; color: var(--suave); font-weight: 600; }
+.panel-contenido { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.panel-contenido.actualizando { opacity: 0.7; }
+.panel-vacio { margin: 0; }
+.panel-dos { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; min-width: 0; align-items: start; }
+@media (min-width: 1280px) { .panel-dos { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); } }
+.panel-tabla { overflow-x: auto; max-width: 100%; min-width: 0; position: relative; }
+.panel-tabla table { margin-top: 0; }
+.panel-tabla td, .panel-tabla th { padding: 8px 10px; }
+.panel-ref { display: flex; flex-direction: column; min-width: 0; }
+.panel-ref > button { text-align: left; }
+.panel-ref small { color: var(--suave); }
+.panel-dias select { min-width: 9rem; }
+.panel-total-estancado { margin: 0; }
+.panel-total-estancado small { color: var(--suave); }
+
+.panel-control { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr)); gap: 12px; min-width: 0; }
+.panel-control-tarjeta { border: 1px solid var(--borde); border-radius: 10px; padding: 12px 14px; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.panel-control-tarjeta h3 { margin: 0; font-size: 0.9rem; color: var(--suave); }
+.panel-control-tarjeta p { margin: 0; overflow-wrap: anywhere; }
+.panel-control-tarjeta .lista { margin: 0; padding-left: 18px; font-size: 0.88rem; }
+.panel-control-cifra { font-size: 1.2rem; font-weight: 650; }
+
+.chip.clase-abc { font-weight: 700; min-width: 1.6rem; text-align: center; }
+.chip.clase-A { background: #DCE8FB; color: var(--primario); }
+.chip.clase-B { background: var(--aviso-fondo); color: var(--aviso); }
+.chip.clase-C { background: var(--suave-fondo); color: var(--suave); }
+.chip.motivo-agotada { background: var(--error-fondo); color: var(--peligro); }
+.chip.motivo-bajo_minimo { background: var(--aviso-fondo); color: var(--aviso); }
+.chip.motivo-cobertura_corta { background: var(--suave-fondo); color: var(--texto); }
+.chip.universal-rota { background: var(--ok-fondo); color: var(--ok); }
+
+/* Ayuda del margen: se abre con el foco (teclado) o el puntero. */
+.ayuda-margen { position: relative; display: inline-flex; }
+.ayuda-icono {
+  width: 1.5rem; height: 1.5rem; min-height: 0; padding: 0; border-radius: 999px; border: 1px solid var(--borde);
+  background: var(--suave-fondo); color: var(--primario); font-weight: 700; font-size: 0.8rem; cursor: help;
+}
+.ayuda-icono:focus-visible { outline: 3px solid var(--primario); outline-offset: 2px; }
+.ayuda-burbuja {
+  position: absolute; z-index: 5; top: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+  width: min(18rem, 80vw); padding: 8px 10px; border-radius: 8px; background: var(--texto); color: #fff;
+  font-size: 0.8rem; font-weight: 400; line-height: 1.35; display: none;
+}
+/* Oculta con display: none (no ocupa ancho ni desborda la página); aria-describedby la sigue leyendo. */
+.ayuda-margen:hover .ayuda-burbuja, .ayuda-margen:focus-within .ayuda-burbuja { display: block; }
+
+.esqueleto {
+  border-radius: 10px; background: linear-gradient(90deg, var(--suave-fondo) 0%, #F8FAFD 50%, var(--suave-fondo) 100%);
+  background-size: 200% 100%; animation: panel-brillo 1.3s ease-in-out infinite;
+}
+@keyframes panel-brillo { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .esqueleto { animation: none; } }
+
+@media (max-width: 639px) {
+  .panel-actualizado { margin-left: 0; width: 100%; justify-content: space-between; }
+  .panel-filtros > label { flex: 1 1 100%; }
+  .panel-filtros .filtro { min-width: 0; width: 100%; }
+  .ayuda-burbuja { left: auto; right: -4rem; transform: none; width: min(16rem, calc(100vw - 48px)); }
+}

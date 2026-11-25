@@ -2,6 +2,9 @@
 
 namespace App\Services;
 
+use App\Enums\TipoAjuste;
+use App\Exceptions\ReglaInventarioException;
+use App\Models\AjusteInventario;
 use App\Models\Unidad;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Picqer\Barcode\Renderers\PngRenderer;
@@ -14,6 +17,24 @@ use Picqer\Barcode\Types\TypeCode128;
 class EtiquetaService
 {
     private const PUNTOS_POR_MM = 72 / 25.4;
+
+    /**
+     * S-39: las unidades que creó un ajuste de alta, en orden. Solo de un alta: una salida o un
+     * reintegro no crean unidades.
+     *
+     * @return list<int>
+     */
+    public function unidadesDeAlta(int $ajusteId): array
+    {
+        $ajuste = AjusteInventario::query()->find($ajusteId, ['id', 'tipo'])
+            ?? throw new ReglaInventarioException("No existe el ajuste #{$ajusteId}.", 404);
+
+        if ($ajuste->tipo !== TipoAjuste::Alta) {
+            throw new ReglaInventarioException("El ajuste #{$ajusteId} no es una entrada: no creó unidades para etiquetar.", 422);
+        }
+
+        return Unidad::query()->where('ajuste_id', $ajuste->id)->orderBy('id')->pluck('id')->all();
+    }
 
     /** @param list<int> $unidadIds */
     public function generar(array $unidadIds, string $tamano): string
@@ -37,6 +58,11 @@ class EtiquetaService
             'proveedor' => $u->referencia->proveedor->nombre, // S-23: en lugar de la marca
             'descripcion' => $u->referencia->descripcion,
         ]);
+
+        // S-31: la primera impresión marca la unidad como etiquetada (las reimpresiones no la
+        // cambian). Al vender por código del proveedor se prefieren las unidades sin etiqueta.
+        Unidad::query()->whereIn('id', $unidades->pluck('id'))->whereNull('etiqueta_impresa_at')
+            ->update(['etiqueta_impresa_at' => now()]);
 
         return Pdf::loadView('etiquetas.pdf', [
             'etiquetas' => $etiquetas,

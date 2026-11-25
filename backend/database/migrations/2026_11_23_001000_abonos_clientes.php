@@ -14,6 +14,12 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // Merge con la rama de Frank: su migración 2026_11_24_000100 crea las mismas tablas, con las
+        // mismas columnas. En una base donde ya corrió la suya, esta no las vuelve a crear.
+        if (Schema::hasTable('abonos_clientes')) {
+            return;
+        }
+
         Schema::create('abonos_clientes', function (Blueprint $table) {
             $table->id();
             $table->foreignId('cliente_id')->index()->constrained('clientes')->restrictOnDelete();

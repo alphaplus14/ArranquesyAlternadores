@@ -111,7 +111,7 @@ it('S-23: escaneo, venta, reverso e ingreso siguen funcionando sin marca', funct
 
     // Venta por escaneo (RF-06): la respuesta trae proveedor y calidad en lugar de la marca.
     actuarComo(Rol::Mostrador);
-    $ventaId = $this->postJson('/api/ventas')->assertCreated()->json('id');
+    $ventaId = abrirVenta();
     $this->postJson("/api/ventas/{$ventaId}/escanear", ['codigo_barras' => $unidades->json('0.codigo_barras'), 'metodo_captura' => 'escaneado'])
         ->assertCreated()
         ->assertJsonPath('referencia.proveedor', 'Repuestos del Norte')

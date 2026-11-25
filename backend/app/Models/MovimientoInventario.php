@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\MetodoCaptura;
+use App\Enums\OrigenCodigo;
 use App\Enums\TipoMovimiento;
 use App\Models\Concerns\Inmutable;
 use Illuminate\Database\Eloquent\Model;
@@ -19,7 +20,7 @@ class MovimientoInventario extends Model
     protected $table = 'movimientos_inventario';
 
     protected $fillable = [
-        'tipo', 'unidad_id', 'referencia_id', 'usuario_id', 'metodo_captura', 'origen_type', 'origen_id',
+        'tipo', 'unidad_id', 'referencia_id', 'usuario_id', 'metodo_captura', 'origen_type', 'origen_id', 'origen_codigo',
     ];
 
     protected function casts(): array
@@ -27,6 +28,7 @@ class MovimientoInventario extends Model
         return [
             'tipo' => TipoMovimiento::class,
             'metodo_captura' => MetodoCaptura::class,
+            'origen_codigo' => OrigenCodigo::class, // S-31
         ];
     }
 

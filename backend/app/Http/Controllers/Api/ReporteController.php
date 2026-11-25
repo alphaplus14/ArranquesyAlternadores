@@ -4,13 +4,13 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\ReferenciaResource;
-use App\Models\Cliente;
 use App\Models\Proveedor;
 use App\Models\Referencia;
 use App\Services\ReporteService;
 use App\Services\StockMinimoService;
 use App\Services\VencimientoService;
 use App\Support\InformeExcel;
+use App\Models\Cliente;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -24,7 +24,8 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 /**
  * RF-08: agotados por proveedor. RF-22: bajo mínimo. RF-18: informes de compras, ventas a crédito,
  * cartera, cuentas por pagar, estados de cuenta, remisiones pendientes y diferencias. Vencimientos
- * (adenda v1.3) y exportación a Excel con ?formato=xlsx (RF-23).
+ * (RF-22) y exportación a Excel con ?formato=xlsx (RF-23). El estado de cuenta del cliente en
+ * Cartera (S-30) usa el mismo cálculo; aquí el contable lo consulta con período y Excel.
  */
 class ReporteController extends Controller
 {
@@ -100,7 +101,7 @@ class ReporteController extends Controller
         return $this->responder($request, 'cuentas-por-pagar', $informe, ['totales' => $informe['totales'], 'corte' => $corte->toDateString()], $corte->toDateString());
     }
 
-    /** S-26: por período, con saldo anterior; sin período, los últimos días de config. */
+    /** S-37: por período, con saldo anterior; sin período, los últimos días de config. */
     public function estadoCuentaCliente(Request $request, Cliente $cliente): JsonResponse|BinaryFileResponse
     {
         [$desde, $hasta] = $this->periodo($request, Carbon::today()->subDays(config('cartera.dias_estado_cuenta')));

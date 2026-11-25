@@ -14,7 +14,8 @@ use Illuminate\Database\Eloquent\Collection;
  *
  * Orden de los resultados:
  *  1. Código de barras exacto → la unidad.
- *  2. Referencias cuyo código de referencia o código universal empieza por el término.
+ *  2. Referencias cuyo código de referencia o código universal empieza por el término, o cuyo
+ *     código del fabricante es exactamente el término (S-25). Solo referencias activas (S-26).
  *  3. Referencias cuya descripción contiene todas las palabras (FULLTEXT, por relevancia).
  * Dentro de cada grupo van primero las que tienen existencia: el objetivo es vender.
  * Sin LIKE con comodín inicial: la velocidad es requisito.
@@ -30,6 +31,7 @@ class BusquedaService
     {
         $unidad = Unidad::query()
             ->where('codigo_barras', $q)
+            ->whereHas('referencia', fn ($r) => $r->activas()) // S-26: una inactiva no se encuentra
             ->with('referencia.proveedor:id,nombre', 'referencia.codigoUniversal:id,codigo')
             ->first();
 
@@ -38,7 +40,7 @@ class BusquedaService
         // Un código de barras exacto ya respondió: no se mezcla con descripciones.
         $faltan = self::MAX_REFERENCIAS - $porCodigo->count();
         $porDescripcion = $unidad === null && $faltan > 0
-            ? $this->conExistenciaPrimero(Referencia::query()->whereKeyNot($porCodigo->modelKeys()))
+            ? $this->conExistenciaPrimero(Referencia::query()->activas()->whereKeyNot($porCodigo->modelKeys()))
                 ->buscarTexto($q)
                 ->limit($faltan)
                 ->get()
@@ -64,9 +66,10 @@ class BusquedaService
         $prefijo = addcslashes($q, '%_\\').'%';
         $universales = CodigoUniversal::where('codigo', 'like', $prefijo)->limit(self::MAX_REFERENCIAS)->pluck('id');
 
-        return $this->conExistenciaPrimero(Referencia::query())
+        return $this->conExistenciaPrimero(Referencia::query()->activas()) // S-26
             ->where(fn ($w) => $w
                 ->where('codigo_referencia', 'like', $prefijo)
+                ->orWhere('codigo_fabricante', $q) // S-25: código de barras exacto, en todos los proveedores
                 ->when($universales->isNotEmpty(), fn ($w) => $w->orWhereIn('codigo_universal_id', $universales)))
             ->orderBy('codigo_referencia')
             ->limit(self::MAX_REFERENCIAS)

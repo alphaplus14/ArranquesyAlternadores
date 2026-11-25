@@ -13,6 +13,13 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // Merge cesar + legri: las tablas las crea 2026_11_23_001000_abonos_clientes (mismas columnas;
+        // luego 2026_11_23_001300 agrega venta_id, S-32). Esta solo las crea en una base donde aquella
+        // no corrió, para no fallar con "la tabla ya existe".
+        if (Schema::hasTable('abonos_clientes')) {
+            return;
+        }
+
         Schema::create('abonos_clientes', function (Blueprint $table) {
             $table->id();
             $table->foreignId('cliente_id')->constrained('clientes')->restrictOnDelete();
@@ -38,7 +45,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::dropIfExists('abono_anulaciones');
-        Schema::dropIfExists('abonos_clientes');
+        // Las tablas son de 2026_11_23_001000_abonos_clientes: su down() las borra.
     }
 };

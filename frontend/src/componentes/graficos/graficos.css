@@ -1,0 +1,39 @@
+/* RF-23: gráficos SVG propios. Colores de --grafico-* (index.css), aptos para daltónicos. */
+.grafico { margin: 0; min-width: 0; }
+.grafico-lienzo { position: relative; width: 100%; min-width: 0; min-height: 40px; }
+.grafico-svg { display: block; max-width: 100%; overflow: visible; }
+.grafico-svg:focus-visible { outline: 3px solid var(--primario); outline-offset: 2px; border-radius: 6px; }
+.grafico-rejilla { stroke: var(--grafico-rejilla); stroke-width: 1; }
+.grafico-eje { fill: var(--suave); font-size: 11px; }
+.grafico-valor { fill: var(--texto); font-size: 11px; font-weight: 600; }
+.grafico-linea { fill: none; stroke-width: 2; }
+.grafico-guia { stroke: var(--texto); stroke-width: 1; stroke-dasharray: 3 3; }
+.grafico-punto { fill: var(--panel); stroke-width: 2.5; }
+.grafico-tooltip {
+  position: absolute; z-index: 2; pointer-events: none; width: 180px; box-sizing: border-box;
+  display: flex; flex-direction: column; gap: 2px; padding: 8px 10px;
+  background: var(--panel); border: 1px solid var(--borde); border-radius: 8px; box-shadow: var(--sombra-barra);
+  font-size: 0.8rem; color: var(--texto);
+}
+.grafico-leyenda { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 6px; font-size: 0.82rem; color: var(--suave); }
+.grafico-leyenda span, .grafico-tooltip span { display: inline-flex; align-items: center; gap: 6px; }
+.grafico-muestra { display: inline-block; width: 14px; height: 10px; border-radius: 2px; flex: none; }
+.grafico-muestra.rayas { background-image: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.85) 0 2px, transparent 2px 5px) !important; }
+.columna { fill: var(--grafico-barra); }
+.columna.activa { fill: var(--grafico-barra-activa); }
+
+.barras { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.barra-fila { display: grid; grid-template-columns: minmax(0, 14rem) minmax(0, 1fr) auto; align-items: center; gap: 10px; min-width: 0; }
+.barra-etiqueta { display: flex; flex-direction: column; min-width: 0; }
+.barra-etiqueta > button, .barra-etiqueta > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.barra-etiqueta small { color: var(--suave); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.barra-svg { width: 100%; height: 12px; display: block; }
+.barra-fondo { fill: var(--suave-fondo); }
+.barra-valor { fill: var(--grafico-barra); }
+.barra-valor.alerta { fill: var(--grafico-alerta); }
+.barra-texto { display: inline-flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 0.88rem; }
+.chip.marca-grafico { background: var(--aviso-fondo); color: var(--aviso); }
+@media (max-width: 480px) {
+  .barra-fila { grid-template-columns: minmax(0, 1fr) auto; }
+  .barra-svg { grid-column: 1 / -1; grid-row: 2; }
+}

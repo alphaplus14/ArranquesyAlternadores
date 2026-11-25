@@ -2,12 +2,15 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeError } from '../../api/cliente'
+import { useAvisoTexto } from '../../componentes/Avisos'
 import CampoStockMinimo from '../../componentes/CampoStockMinimo'
 import { aValorMinimo, errorStockMinimo } from '../../utilidades/stockMinimo'
 import type { DesgloseUniversal } from '../../api/tipos'
 import ChipCalidad from '../../componentes/ChipCalidad'
+import Icono from '../../componentes/Icono'
 import Medida from '../../componentes/Medida'
 import Resumen from '../../componentes/Resumen'
+import { formatearFechaHora } from '../../utilidades/fechas'
 
 /**
  * RF-02 / S-23: el total del universal es la suma de sus referencias y siempre se muestra el
@@ -15,11 +18,13 @@ import Resumen from '../../componentes/Resumen'
  */
 export default function UniversalDetalle() {
   const { id } = useParams()
-  const { data: u } = useQuery({
+  const { data: u, isError, error } = useQuery({
     queryKey: ['universal', id],
     queryFn: async () => (await api.get<DesgloseUniversal>(`/codigos-universales/${id}`)).data,
   })
+  useAvisoTexto(isError ? mensajeError(error) : null)
 
+  if (isError) return <div className="panel">No se pudo cargar el universal.</div>
   if (!u) return <div className="panel">Cargando…</div>
 
   const proveedores = new Set(u.referencias.map((r) => r.proveedor.id)).size
@@ -63,8 +68,17 @@ export default function UniversalDetalle() {
                   <td>{r.proveedor.nombre}</td>
                   <td>{r.calidad ? <ChipCalidad calidad={r.calidad} /> : '—'}</td>
                   <td className={r.existencia === 0 ? 'agotado' : ''}>{r.existencia}</td>
-                  <td>{new Date(r.updated_at).toLocaleString()}</td>
-                  <td><Link to={`/admin/auditoria?tabla=referencias&registro_id=${r.id}`}>Historial</Link></td>
+                  <td>{formatearFechaHora(r.updated_at)}</td>
+                  <td className="col-accion">
+                    <Link
+                      className="icono-accion"
+                      to={`/admin/auditoria?tabla=referencias&registro_id=${r.id}`}
+                      aria-label={`Historial de ${r.codigo_referencia}`}
+                      title="Historial"
+                    >
+                      <Icono nombre="auditoria" />
+                    </Link>
+                  </td>
                 </tr>
               ))}
               {u.referencias.length === 0 && <tr><td colSpan={6} className="vacio">Este universal todavía no tiene referencias.</td></tr>}
