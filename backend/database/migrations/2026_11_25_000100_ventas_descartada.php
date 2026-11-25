@@ -14,11 +14,17 @@ return new class extends Migration
 {
     public function up(): void
     {
-        DB::statement("ALTER TABLE ventas MODIFY estado ENUM('abierta','cerrada','descartada') NOT NULL DEFAULT 'abierta'");
+        if (! str_contains(DB::selectOne("SHOW COLUMNS FROM ventas LIKE 'estado'")->Type, 'descartada')) {
+            DB::statement("ALTER TABLE ventas MODIFY estado ENUM('abierta','cerrada','descartada') NOT NULL DEFAULT 'abierta'");
+        }
 
         Schema::table('ventas', function (Blueprint $table) {
-            $table->timestamp('descartada_at')->nullable()->after('cerrada_at');
-            $table->foreignId('descartada_por')->nullable()->after('descartada_at')->constrained('users')->restrictOnDelete();
+            if (! Schema::hasColumn('ventas', 'descartada_at')) {
+                $table->timestamp('descartada_at')->nullable()->after('cerrada_at');
+            }
+            if (! Schema::hasColumn('ventas', 'descartada_por')) {
+                $table->foreignId('descartada_por')->nullable()->after('descartada_at')->constrained('users')->restrictOnDelete();
+            }
         });
     }
 
