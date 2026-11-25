@@ -41,6 +41,8 @@ const TECNICO = /could not be found|is not supported for route|SQLSTATE|App\\|Il
 
 /** Ningún aviso de pantalla nombra una ruta, una clase o una consulta. */
 function mensajeParaPantalla(texto: string, estado?: number): string {
+  // Un 500 nunca es una regla de negocio (esas responden 4xx): no se muestra su texto técnico.
+  if (estado === 500) return 'Error del servidor. Avise al administrador del sistema.'
   const modelo = texto.match(/No query results for model \[App\\Models\\(\w+)\]/)
   if (modelo) return `No se encontró ${NOMBRE_MODELO[modelo[1]] ?? 'el registro'}.`
   if (!TECNICO.test(texto)) return texto
@@ -54,6 +56,10 @@ function mensajeParaPantalla(texto: string, estado?: number): string {
 /** Mensaje legible de un error de la API (validación, regla de negocio o red). */
 export function mensajeError(error: unknown): string {
   if (error instanceof AxiosError) {
+    // Sin respuesta (backend caído, red): la petición salió y no volvió nada. Una cancelada no cuenta.
+    if (!error.response && error.request && error.code !== AxiosError.ERR_CANCELED) {
+      return 'No hay conexión con el servidor. Avise al administrador del sistema.'
+    }
     const datos = error.response?.data as { message?: string; errors?: Record<string, string[]> } | undefined
     const primero = datos?.errors && Object.values(datos.errors)[0]?.[0]
     return mensajeParaPantalla(primero ?? datos?.message ?? error.message, error.response?.status)
