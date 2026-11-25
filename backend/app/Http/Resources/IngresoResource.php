@@ -74,6 +74,11 @@ class IngresoResource extends JsonResource
                 'total' => $totales->total,
                 // S-66: el borrador acepta el descuento; con true no se deja confirmar.
                 'descuento_excede_subtotal' => $totales->descuentoExcedeSubtotal(),
+                // S-66 (ajuste): para mostrar el borrador. Aplicado = min(D, subtotal neto); pendiente = lo
+                // que falta por aplicar hasta que haya líneas que lo cubran; total visible = max(total, 0).
+                'descuento_aplicado' => $totales->descuentoAplicado,
+                'descuento_pendiente' => $totales->descuentoPendiente,
+                'total_visible' => $totales->totalVisible,
             ] : null,
         ];
     }

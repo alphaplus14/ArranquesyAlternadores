@@ -109,7 +109,7 @@ function codigoInexistente(error: unknown): string | null {
  * RF-04 / RF-05: remisión o factura digitada a mano. RF-20: los ítems se agregan escaneando el
  * código de referencia del proveedor; si no existe, se ofrece crearla y se vuelve a escanear.
  * RF-09 / RF-10: descuentos y líneas sin IVA, corregibles en la tabla mientras es borrador.
- * RF-16: forma de pago y vencimiento (diálogo "Cambiar condiciones"); el total se fija al confirmar.
+ * RF-16: forma de pago y vencimiento (diálogo "Editar condiciones"); el total se fija al confirmar.
  * RF-03: al confirmar se crean las unidades y se pasa a imprimir etiquetas.
  * Todas las cifras (subtotal, base, IVA, total) vienen del backend: aquí no se recalculan.
  */
@@ -270,6 +270,11 @@ export default function IngresoDetalle() {
   if (ingreso.isError) return <div className="panel">No se pudo cargar el ingreso.</div>
   if (!i) return <div className="panel">Cargando…</div>
 
+  // S-66 (ajuste): el borrador muestra el total visible (nunca negativo); confirmado, el de siempre.
+  const totalMostrado = i.total ? pesos(i.total) : i.totales ? pesos(borrador ? i.totales.total_visible : i.totales.total) : '—'
+  const pendiente = i.totales ? Number(i.totales.descuento_pendiente) : 0
+  const descuentoDoc = Number(i.descuento_documento)
+
   const unidades = i.items.reduce((suma, it) => suma + it.cantidad, 0)
   const lineasSinCosto = i.items.filter((it) => Number(it.costo_unitario) <= 0).length
 
@@ -310,14 +315,14 @@ export default function IngresoDetalle() {
           <>
             <span>Estado <strong>{i.estado}</strong></span>
             <span>Unidades <strong>{unidades}</strong></span>
-            <span>Total <strong>{i.total ? pesos(i.total) : i.totales ? pesos(i.totales.total) : '—'}</strong></span>
+            <span>Total <strong>{totalMostrado}</strong></span>
             <span className={lineasSinCosto > 0 ? 'resumen-agotados' : ''}>Sin costo <strong>{lineasSinCosto}</strong></span>
           </>
         )}
       >
         <Medida etiqueta="Estado" valor={i.estado} tono={borrador ? 'amarillo' : 'verde'} icono="ingreso" />
         <Medida etiqueta="Unidades" valor={unidades} pie={`${i.items.length} línea(s)`} tono="azul" icono="caja" />
-        <Medida etiqueta="Total" valor={i.total ? pesos(i.total) : i.totales ? pesos(i.totales.total) : '—'} pie={i.total ? 'fijado al confirmar' : undefined} tono="verde" icono="etiqueta" />
+        <Medida etiqueta="Total" valor={totalMostrado} pie={i.total ? 'fijado al confirmar' : undefined} tono="verde" icono="etiqueta" />
         <Medida etiqueta="Sin costo" valor={lineasSinCosto} pie="líneas por completar" tono={lineasSinCosto > 0 ? 'rojo' : 'amarillo'} icono="agotados" />
       </Resumen>
       {corregido && !corrigiendo && (
@@ -345,13 +350,29 @@ export default function IngresoDetalle() {
           <span>{i.proveedor?.nombre}</span>
         </div>
 
-        <p className="venta-credito">
-          {i.forma_pago === 'credito'
-            ? <><span className="chip credito">Crédito</span> Vence el <strong>{i.vence_el ? fechaCorta(i.vence_el) : '—'}</strong></>
-            : <span className="chip">Contado</span>}
-          {' · '}Descuento del documento {i.descuento_documento_porcentaje !== null ? `${formatoNumero(i.descuento_documento_porcentaje)} % (${pesos(i.descuento_documento)})` : pesos(i.descuento_documento)}
-          {borrador && <> · <button type="button" className="enlace" onClick={() => setCondiciones(true)}>Cambiar condiciones</button></>}
-        </p>
+        <div className="condiciones-documento">
+          <ul className="condiciones-chips" aria-label="Condiciones del documento">
+            {i.forma_pago === 'credito' ? (
+              <>
+                <li><span className="chip credito">Crédito</span></li>
+                <li>{i.vence_el ? <span className="chip">Vence {fechaCorta(i.vence_el)}</span> : <span className="chip atencion">Falta el vencimiento</span>}</li>
+              </>
+            ) : <li><span className="chip">Contado</span></li>}
+            <li>
+              <span className="chip">
+                {i.descuento_documento_porcentaje !== null && Number(i.descuento_documento_porcentaje) > 0
+                  ? `Descuento ${formatoNumero(i.descuento_documento_porcentaje)} % (${pesos(i.descuento_documento)})`
+                  : descuentoDoc > 0 ? `Descuento ${pesos(i.descuento_documento)}` : 'Sin descuento'}
+              </span>
+            </li>
+          </ul>
+          {/* En confirmado no hay botón: la corrección va por RF-28. */}
+          {borrador && (
+            <button type="button" className="secundario boton-44" aria-label="Editar las condiciones del documento" onClick={() => setCondiciones(true)}>
+              <Icono nombre="editar" /> Editar condiciones
+            </button>
+          )}
+        </div>
 
         {borrador && (
           <>
@@ -459,19 +480,25 @@ export default function IngresoDetalle() {
           <dl className="totales">
             <dt>Subtotal</dt><dd>{pesos(i.totales.subtotal_bruto)}</dd>
             <dt>Descuento de líneas</dt><dd>{pesos(i.totales.descuento_lineas)}</dd>
-            <dt>Descuento del documento</dt><dd>{pesos(i.totales.descuento_documento)}</dd>
+            <dt>Descuento del documento</dt><dd>{pesos(borrador ? i.totales.descuento_aplicado : i.totales.descuento_documento)}</dd>
+            {borrador && pendiente > 0 && <><dt>Descuento por aplicar</dt><dd>{pesos(i.totales.descuento_pendiente)}</dd></>}
             <dt>Base gravada</dt><dd>{pesos(i.totales.base_gravada)}</dd>
             <dt>Base sin IVA</dt><dd>{pesos(i.totales.base_sin_iva)}</dd>
             <dt>IVA</dt><dd>{pesos(i.totales.iva)}</dd>
             <dt>Líneas sin IVA</dt><dd>{i.totales.lineas_sin_iva}</dd>
-            <dt>Total</dt><dd><strong>{pesos(i.totales.total)}</strong></dd>
+            <dt>Total</dt><dd><strong>{pesos(borrador ? i.totales.total_visible : i.totales.total)}</strong></dd>
             {i.total && <><dt>Total guardado al confirmar</dt><dd><strong>{pesos(i.total)}</strong></dd></>}
           </dl>
         )}
-        {borrador && i.totales?.descuento_excede_subtotal && (
+        {borrador && i.totales && i.items.length === 0 && descuentoDoc > 0 && (
+          <p className="aviso info" role="status">
+            El descuento de {pesos(i.totales.descuento_documento)} se guardó y se aplicará cuando agregue las líneas.
+          </p>
+        )}
+        {borrador && i.totales && i.items.length > 0 && pendiente > 0 && (
           <p className="aviso atencion" role="status">
-            El descuento del documento ({pesos(i.totales.descuento_documento)}) supera el subtotal neto de las líneas
-            ({pesos(i.totales.subtotal_neto)}). Agregue las líneas que faltan o corrija el descuento antes de confirmar.
+            El descuento ({pesos(i.totales.descuento_documento)}) es mayor que el subtotal de las líneas ({pesos(i.totales.subtotal_neto)}):
+            faltan {pesos(i.totales.descuento_pendiente)} por aplicar. Agregue líneas o corrija el descuento antes de confirmar.
           </p>
         )}
 
@@ -495,7 +522,12 @@ export default function IngresoDetalle() {
       {condiciones && (
         <DialogoCondiciones
           ingreso={i}
-          onGuardado={(nuevo) => { actualizar(nuevo); setCondiciones(false); avisos.limpiar() }}
+          onGuardado={(nuevo) => {
+            actualizar(nuevo)
+            setCondiciones(false)
+            avisos.limpiar()
+            requestAnimationFrame(() => inputRef.current?.focus())
+          }}
           onCerrar={() => setCondiciones(false)}
         />
       )}
@@ -828,8 +860,8 @@ function DialogoCondiciones({ ingreso, onGuardado, onCerrar }: {
         </>
       )}
     >
-      <DialogoSeccion>
-        <label>Pago
+      <DialogoSeccion titulo="Pago">
+        <label>Forma de pago
           <select autoFocus value={forma} onChange={(e) => cambiarForma(e.target.value as FormaPago)}>
             <option value="contado">Contado</option>
             <option value="credito">Crédito</option>
@@ -845,6 +877,8 @@ function DialogoCondiciones({ ingreso, onGuardado, onCerrar }: {
             </small>
           </label>
         )}
+      </DialogoSeccion>
+      <DialogoSeccion titulo="Descuento del documento">
         <CampoDescuento
           id="descuento-condiciones"
           modo={modo}
@@ -853,6 +887,7 @@ function DialogoCondiciones({ ingreso, onGuardado, onCerrar }: {
           onModo={cambiarModo}
           onValor={setDescuento}
         />
+        <small className="ayuda">Se reparte entre todas las líneas antes del IVA. Si todavía no hay líneas, se guarda y se aplica cuando las agregue.</small>
       </DialogoSeccion>
     </Dialogo>
   )

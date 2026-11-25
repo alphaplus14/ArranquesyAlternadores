@@ -17,6 +17,10 @@ use App\Models\IngresoItem;
  *   iva_i          = base_i × iva_porcentaje_i / 100            (sin redondear por línea; 0 % = sin IVA)
  *   total          = (subtotal_neto − D) + Σ iva_i, redondeado al peso al final
  *
+ * Derivados solo para mostrar un borrador (S-66, ajuste): descuentoAplicado = min(D, subtotal_neto),
+ * descuentoPendiente = max(0, D − subtotal_neto) y totalVisible = max(total, 0). No intervienen en
+ * `total` ni en la regla de confirmar (exigirDescuentoValido).
+ *
  * Todo con bcmath sobre cadenas decimales: nada de float. La regla de redondeo vive solo en
  * redondearAlPeso(), porque falta confirmarla con el contador.
  */
@@ -39,6 +43,9 @@ final class TotalesIngreso
         public readonly string $total,
         public readonly int $lineasSinIva,
         public readonly array $lineas,
+        public readonly string $descuentoAplicado,
+        public readonly string $descuentoPendiente,
+        public readonly string $totalVisible,
     ) {}
 
     /**
@@ -95,17 +102,25 @@ final class TotalesIngreso
             $lineas[$id] = ['neto' => self::centavos($netoLinea), 'base' => self::centavos($base), 'iva' => self::centavos($ivaLinea)];
         }
 
+        $subtotalNeto = self::centavos($neto);
+        $descuentoDocumento = self::centavos($descuento);
+        $total = self::redondearAlPeso(bcadd(bcsub($neto, $descuento, self::ESCALA), $iva, self::ESCALA));
+
         return new self(
             subtotalBruto: self::centavos($bruto),
             descuentoLineas: self::centavos(bcsub($bruto, $neto, self::ESCALA)),
-            subtotalNeto: self::centavos($neto),
-            descuentoDocumento: self::centavos($descuento),
+            subtotalNeto: $subtotalNeto,
+            descuentoDocumento: $descuentoDocumento,
             baseGravada: self::centavos($gravada),
             baseSinIva: self::centavos($exenta),
             iva: self::redondearAlPeso($iva),
-            total: self::redondearAlPeso(bcadd(bcsub($neto, $descuento, self::ESCALA), $iva, self::ESCALA)),
+            total: $total,
             lineasSinIva: $sinIva,
             lineas: $lineas,
+            // S-66 (ajuste): solo para mostrar el borrador; no cambian `total` ni la regla de confirmar.
+            descuentoAplicado: bccomp($descuentoDocumento, $subtotalNeto, 2) === 1 ? $subtotalNeto : $descuentoDocumento,
+            descuentoPendiente: bccomp($descuentoDocumento, $subtotalNeto, 2) === 1 ? bcsub($descuentoDocumento, $subtotalNeto, 2) : '0.00',
+            totalVisible: bccomp($total, '0', 2) === -1 ? '0.00' : $total,
         );
     }
 
