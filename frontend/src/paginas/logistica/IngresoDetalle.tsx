@@ -442,6 +442,12 @@ export default function IngresoDetalle() {
             {i.total && <><dt>Total guardado al confirmar</dt><dd><strong>{pesos(i.total)}</strong></dd></>}
           </dl>
         )}
+        {borrador && i.totales?.descuento_excede_subtotal && (
+          <p className="aviso atencion" role="status">
+            El descuento del documento ({pesos(i.totales.descuento_documento)}) supera el subtotal neto de las líneas
+            ({pesos(i.totales.subtotal_neto)}). Agregue las líneas que faltan o corrija el descuento antes de confirmar.
+          </p>
+        )}
 
         <div className="acciones">
           {borrador ? (

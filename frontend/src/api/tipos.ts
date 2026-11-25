@@ -156,6 +156,8 @@ export interface Ingreso {
     iva: string
     lineas_sin_iva: number
     total: string
+    /** S-51: el borrador lo acepta; con true el backend no deja confirmar. */
+    descuento_excede_subtotal: boolean
   } | null
   /** RF-19: en una remisión, la factura que la cubre; en una factura, sus remisiones ligadas. */
   factura: { id: number; numero_documento: string; estado: Ingreso['estado'] } | null

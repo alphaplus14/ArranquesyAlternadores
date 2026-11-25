@@ -69,6 +69,8 @@ class IngresoResource extends JsonResource
                 'iva' => $totales->iva,
                 'lineas_sin_iva' => $totales->lineasSinIva, // RF-10
                 'total' => $totales->total,
+                // S-51: el borrador acepta el descuento; con true no se deja confirmar.
+                'descuento_excede_subtotal' => $totales->descuentoExcedeSubtotal(),
             ] : null,
         ];
     }

@@ -68,14 +68,8 @@ class IngresoService
             $datos = $this->descuentoDocumento($this->condicionDePago($datos, $bloqueado));
             $bloqueado->fill($datos);
 
-            // RF-09: el descuento del documento no puede superar el subtotal neto de las líneas.
-            if ($bloqueado->isDirty(['descuento_documento', 'descuento_documento_porcentaje'])) {
-                TotalesIngreso::calcular(
-                    $bloqueado->items()->get(),
-                    $bloqueado->descuento_documento,
-                    $bloqueado->descuento_documento_porcentaje,
-                )->exigirDescuentoValido();
-            }
+            // RF-09 / S-51: en el borrador el descuento se fija en cualquier momento, aun sin líneas.
+            // Que no supere el subtotal neto se exige al confirmar, cuando el total queda fijo.
 
             try {
                 $bloqueado->save();
