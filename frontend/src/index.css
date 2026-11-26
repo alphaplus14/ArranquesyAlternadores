@@ -183,6 +183,8 @@ input:not([type='checkbox']):not([type='radio']):focus-visible, select:focus-vis
 .pagina-encabezado p { color: var(--suave); }
 
 .medidas { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; }
+.medidas-precios { margin-bottom: 16px; }
+.medidas-precios .medida { grid-column: span 4; }
 .resumen { margin-bottom: 16px; }
 .resumen-barra {
   width: 100%;
@@ -506,9 +508,45 @@ tr.reversado td:has(.icono-accion) { text-decoration: none; }
 .precio-editable { display: flex; flex-direction: column; gap: 2px; min-width: 130px; }
 .precio-editable input { width: 130px; padding: 4px 6px; }
 .unidades { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-.totales { display: grid; grid-template-columns: auto auto; gap: 4px 16px; justify-content: end; margin-top: 12px; }
-.totales dt { color: var(--suave); }
-.totales dd { margin: 0; text-align: right; }
+.totales {
+  display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: flex-end;
+  margin: 0 0 12px; padding: 10px 12px;
+  background: #F7F9FC; border: 1px solid var(--borde); border-radius: 10px;
+}
+.totales > div { display: flex; flex-direction: column; gap: 2px; min-width: 7.5rem; }
+.totales span { color: var(--suave); font-size: 0.75rem; }
+.totales strong { font-weight: 600; }
+.totales .totales-total { margin-left: auto; }
+.totales .totales-total strong { font-size: 1.15rem; color: var(--texto); }
+
+/* Registro de una compra: el lector y los totales quedan fijos; solo la tabla se desplaza. */
+.detalle-compra {
+  height: calc(100dvh - 4rem - 40px);
+  min-height: 0;
+  overflow: hidden;
+}
+.detalle-compra > .panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.detalle-compra > .panel-correccion { overflow: auto; }
+.detalle-compra .tabla-desplazable {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+.detalle-compra .tabla-lineas { margin-top: 0; border-collapse: separate; border-spacing: 0; }
+.detalle-compra .tabla-lineas thead th { position: sticky; top: 0; z-index: 1; }
+.detalle-compra .acciones { margin-top: 12px; flex: none; }
+@media (max-width: 960px) {
+  .detalle-compra { height: calc(100dvh - 4rem - 24px); }
+}
+@media (max-width: 720px) {
+  .totales .totales-total { margin-left: 0; }
+}
 .tamanos { display: flex; gap: 18px; flex-wrap: wrap; border: 1px solid var(--borde); border-radius: 8px; margin-top: 12px; padding: 8px 12px; }
 .tamanos label { flex-direction: row; align-items: center; color: var(--texto); font-size: 0.95rem; }
 .total-grande { font-size: 2.4rem; font-weight: 700; }
@@ -809,6 +847,7 @@ td.col-accion .icono-accion { display: inline-grid; vertical-align: middle; }
 }
 @media (max-width: 1100px) {
   .medida { grid-column: span 6; }
+  .medidas-precios .medida { grid-column: span 6; }
   .columnas > * { grid-column: span 6; }
 }
 @media (max-width: 960px) {
@@ -822,7 +861,7 @@ td.col-accion .icono-accion { display: inline-grid; vertical-align: middle; }
   .menu-abierto .menu { transform: none; }
   .menu-abierto .velo { display: block; position: fixed; inset: 4rem 0 0 0; border: 0; background: rgba(14, 26, 51, 0.25); z-index: 20; }
   .cuerpo { padding: 12px; }
-  .medida, .columnas > * { grid-column: span 12; }
+  .medida, .columnas > *, .medidas-precios .medida { grid-column: span 12; }
 }
 @media (max-width: 800px) {
   .venta { grid-template-columns: minmax(0, 1fr); }

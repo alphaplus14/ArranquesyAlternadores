@@ -691,6 +691,37 @@ export interface FilaCompra {
   total: string
 }
 
+/** RF-32 / S-70: una compra que cuenta para el historial de precios. */
+export interface LineaPrecioCompra {
+  id: number
+  ingreso_id: number
+  fecha: string
+  tipo: TipoIngreso
+  numero_documento: string
+  proveedor: Opcion
+  referencia: {
+    id: number
+    codigo_referencia: string
+    descripcion: string | null
+    codigo_universal: { id: number; codigo: string } | null
+  }
+  costo_unitario: string
+  descuento_porcentaje: string
+  costo_neto: string
+  corregido: boolean
+}
+
+export interface ResumenPreciosCompra {
+  ultimo: LineaPrecioCompra | null
+  anterior: LineaPrecioCompra | null
+  /** Último costo unitario menos el anterior. Null si no hay anterior. */
+  variacion: string | null
+}
+
+export interface PaginaPreciosCompra extends Pagina<LineaPrecioCompra> {
+  resumen: ResumenPreciosCompra | null
+}
+
 export interface FilaVentaCredito {
   id: number
   cliente: Opcion

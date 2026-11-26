@@ -2,7 +2,7 @@ import { Suspense, useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
 import { useVencimientos } from '../hooks/useVencimientos'
-import { RUTA_AJUSTES, RUTA_CAJA, RUTA_CAJA_ADMIN, RUTA_CARTERA, RUTA_CORRECCIONES, RUTA_PANEL, RUTA_UNIVERSALES, rutaInicio } from '../rutas'
+import { RUTA_AJUSTES, RUTA_CAJA, RUTA_CAJA_ADMIN, RUTA_CARTERA, RUTA_CORRECCIONES, RUTA_PANEL, RUTA_PRECIOS_COMPRA, RUTA_UNIVERSALES, rutaInicio } from '../rutas'
 import logo from '../assets/logo-la8va.jpg'
 import Icono, { type IconoNombre } from './Icono'
 import MiCuenta from './MiCuenta'
@@ -65,6 +65,7 @@ export default function Layout() {
           etiqueta: 'Logística',
           items: [
             { to: '/logistica/ingresos', texto: 'Compras', icono: 'ingreso', fin: true },
+            { to: RUTA_PRECIOS_COMPRA, texto: 'Precios de compra', icono: 'auditoria' },
             { to: '/logistica/etiquetas', texto: 'Etiquetas', icono: 'etiqueta' },
             // RF-21. S-44: el admin solo consulta el historial. S-63: "Ajustes" se llama "Movimientos".
             { to: RUTA_AJUSTES, texto: usuario?.rol === 'admin' ? 'Historial de movimientos' : 'Movimientos', icono: 'inventario' },
