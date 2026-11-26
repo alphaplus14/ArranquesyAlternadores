@@ -21,4 +21,10 @@ class ClienteRequest extends FormRequest
             'activo' => ['sometimes', 'boolean'],
         ];
     }
+
+    /** S-72: el selector de la venta a crédito reconoce este error y ofrece el cliente existente. */
+    public function messages(): array
+    {
+        return ['documento.unique' => 'Ya existe un cliente con ese documento.'];
+    }
 }

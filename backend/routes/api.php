@@ -50,7 +50,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Listas de proveedores y clientes: también las usa el módulo contable (RF-29).
     Route::middleware('rol:admin,logistica,mostrador,contable')->group(function () {
         Route::get('/proveedores', [ProveedorController::class, 'index']);
-        Route::get('/clientes', [ClienteController::class, 'index']); // RF-13
+        Route::get('/clientes', [ClienteController::class, 'index'])->middleware('medir:800'); // RF-13; S-72 búsqueda rápida
     });
 
     // Lectura común a los tres módulos de operación.
