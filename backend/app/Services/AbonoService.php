@@ -17,10 +17,12 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * RF-15 (S-30): abonos de clientes. Un abono nunca se edita ni se borra; anularlo es un
- * movimiento nuevo con motivo, usuario y fecha (misma lógica de RF-07, regla 8). Un abono mayor al
- * saldo se permite: queda saldo a favor. Los movimientos de dinero no tocan existencias.
- * S-32: un abono puede ir dirigido a una venta a crédito cerrada del cliente con pendiente, por no
- * más que ese pendiente. Sin venta, es general (FIFO), como antes.
+ * movimiento nuevo con motivo, usuario y fecha (misma lógica de RF-07, regla 8). Los movimientos de
+ * dinero no tocan existencias.
+ * S-79: todo abono nuevo va dirigido a una venta a crédito cerrada del cliente con pendiente, por no
+ * más que ese pendiente (S-32); una venta recibe varios abonos parciales hasta cancelarse. Ya no hay
+ * abono general (FIFO) ni saldo a favor nuevo. Los abonos antiguos sin venta se siguen leyendo y
+ * sumando (CarteraService aplica su FIFO solo para mostrar).
  */
 class AbonoService
 {
@@ -37,7 +39,7 @@ class AbonoService
         ?string $referencia,
         ?string $nota,
         User $usuario,
-        ?int $ventaId = null,
+        ?int $ventaId,
     ): AbonoCliente {
         if (! $cuenta->activa) {
             throw new ReglaInventarioException('La cuenta elegida está inactiva.', 422, ['campo' => 'cuenta_pago_id']);
@@ -58,11 +60,11 @@ class AbonoService
         }
 
         if ($ventaId === null) {
-            return DB::transaction(fn () => $this->crear($cliente, null, $fecha, $valor, $medio, $cuenta, $referencia, $nota, $usuario));
+            throw new ReglaInventarioException('Elija la factura o remisión a la que se aplica el abono.', 422, ['campo' => 'venta_id']);
         }
 
-        // Dirigido: el bloqueo de la venta serializa dos abonos a la misma venta, para que entre los
-        // dos no superen su pendiente.
+        // El bloqueo de la venta serializa dos abonos a la misma venta: el pendiente se recalcula
+        // dentro de la transacción y entre los dos no lo superan.
         return DB::transaction(function () use ($cliente, $ventaId, $fecha, $valor, $medio, $cuenta, $referencia, $nota, $usuario) {
             $venta = Venta::query()->lockForUpdate()->find($ventaId);
 
@@ -86,7 +88,7 @@ class AbonoService
             if (bccomp((string) $valor, $pendiente, 2) > 0) {
                 $tope = number_format((float) $pendiente, 0, ',', '.');
                 throw new ReglaInventarioException(
-                    "El abono supera lo pendiente de la venta #{$ventaId} (\${$tope}). Registre hasta \${$tope} a esta venta y el resto como abono general.",
+                    "El abono supera lo pendiente de la venta #{$ventaId} (\${$tope}). Registre hasta \${$tope}.",
                     422,
                     ['campo' => 'valor', 'pendiente' => $pendiente],
                 );
@@ -98,7 +100,7 @@ class AbonoService
 
     private function crear(
         Cliente $cliente,
-        ?int $ventaId,
+        int $ventaId,
         string $fecha,
         string|int|float $valor,
         MedioPago $medio,

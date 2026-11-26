@@ -94,25 +94,32 @@ export interface Referencia {
   ultimo_costo?: UltimoCosto | null
 }
 
-export interface DesgloseUniversal {
+/**
+ * S-82: universal en el listado de Inventario (fila agrupadora). Existencia = suma de sus referencias
+ * visibles (RF-02); precio y costo van en cada referencia. Mínimos solo para quien los ve (S-28).
+ */
+export interface UniversalInventario {
+  tipo: 'universal'
   id: number
   codigo: string
-  /** RF-22: null = usa el general; 0 = no maneja. */
-  stock_minimo?: number | null
   descripcion: string | null
-  categoria: Opcion
+  categoria_id: number
+  categoria: Opcion | null
   existencia_total: number
-  /** RF-02 / S-23: desglose por referencia, ordenado por código. */
-  referencias: Array<{
-    id: number
-    codigo_referencia: string
-    descripcion: string
-    proveedor: Opcion
-    calidad: Calidad | null
-    existencia: number
-    updated_at: string
-  }>
+  cantidad_referencias: number
+  proveedores: Opcion[]
+  stock_minimo?: number | null
+  minimo_efectivo?: number | null
+  minimo_origen?: 'general' | 'personalizado' | null
+  bajo_minimo?: boolean
+  /** Ids de las referencias hijas que coincidieron con la búsqueda (se resaltan). */
+  coincidencias: number[]
+  /** Sus referencias (con el filtro de proveedor, solo las de ese proveedor). */
+  referencias: Referencia[]
 }
+
+/** S-82: ítem del listado de Inventario: un universal o una referencia sin universal. */
+export type ItemInventario = UniversalInventario | (Referencia & { tipo: 'referencia' })
 
 export interface IngresoItem {
   id: number
@@ -500,6 +507,10 @@ export interface VentaCartera {
   id: number
   /** N.º de factura de Contapyme (texto de referencia; este sistema no factura). */
   factura_contapyme: string | null
+  /** S-73: tipo de documento de una venta de solo valor (null en las de ítems). */
+  tipo_documento?: TipoDocumentoVenta | null
+  /** S-73: "Factura N.º X", "Remisión N.º X" o "Factura sin número" (null en las de ítems). */
+  documento?: string | null
   cerrada_at: string
   vence_el: string | null
   total: string
@@ -624,7 +635,7 @@ export interface MovimientoDinero {
   id: number
   cliente_id?: number
   proveedor_id?: number
-  /** RF-17 (ajuste): factura a la que se aplicó el pago; null = FIFO. */
+  /** RF-17 (ajuste), S-79: factura a la que se aplicó el pago; null solo en pagos anteriores a S-79 (se leen FIFO). */
   ingreso_id?: number | null
   ingreso?: { id: number; tipo: TipoIngreso; numero_documento: string } | null
   fecha: string
@@ -663,6 +674,8 @@ export interface DocumentoPendiente {
   vence_el: string | null
   valor: string
   pendiente: string
+  /** S-79: lo ya pagado de este documento (valor − pendiente), con sus pagos parciales. */
+  abonado: string
   dias_vencido: number
   dias_para_vencer: number
   rango: RangoAntiguedad
@@ -1000,13 +1013,14 @@ export interface ResumenCaja {
   efectivo: { ventas: string; recaudo: string; otros_ingresos: string; ingresos_externos: string; devoluciones: string; pagos_proveedores: string; egresos: string; abonos_empleados?: string; prestamos_empleados?: string; neto: string }
   total_ingreso_dia: string
   efectivo_neto_dia: string
-  /** S-49: efectivo con que abrió la caja ese día (null mientras no se registre). */
+  /**
+   * S-84: apertura efectiva del día (del cierre, cambio manual o arrastre del último cierre). null
+   * solo el primer día sin cierres ni apertura: entonces el día no se cierra.
+   */
   apertura: AperturaCaja | null
-  /** Efectivo contado del último cierre vigente anterior (null si no hay): precarga la apertura. */
-  apertura_sugerida: string | null
-  /** Se registra o corrige mientras el día no tenga cierre vigente. */
+  /** S-84: el mostrador puede cambiarla (hoy o antes, sin cierre vigente). */
   apertura_editable: boolean
-  /** Apertura + efectivo neto del día; null sin apertura (y sin apertura no se cierra). */
+  /** Apertura + efectivo neto del día; null sin apertura efectiva (y sin ella no se cierra). */
   efectivo_esperado: string | null
   meta_venta_diaria: string
   faltante_meta: string
@@ -1029,11 +1043,24 @@ export interface TotalMovimientos {
   total: string
 }
 
-/** S-49: apertura diaria de la caja. */
+/**
+ * S-84: apertura efectiva de un día. `arrastre` = efectivo contado del último cierre vigente anterior
+ * (en vivo); `manual` = cambiada a mano (con motivo si difiere); `cierre` = la guardada en el cierre.
+ */
 export interface AperturaCaja {
   valor: string
+  origen: 'arrastre' | 'manual' | 'cierre'
+  /** En un día cerrado, de dónde vino la apertura que se usó. */
+  origen_usado: 'arrastre' | 'manual'
+  /** Fecha del último cierre vigente anterior (de donde arrastra). */
+  desde_cierre: string | null
+  /** Lo que dejó ese cierre (para comparar con un cambio manual). */
+  cierre_anterior_valor: string | null
+  motivo: string | null
   fijado_por: { id: number; name: string } | null
-  fijado_at: string
+  fijado_at: string | null
+  /** Entre el último cierre y este día quedaron días con movimientos sin cerrar (aviso, no bloquea). */
+  hay_dias_sin_cerrar: boolean
 }
 
 export interface CierreCaja {
@@ -1070,6 +1097,8 @@ export interface DiaCaja {
 export interface FilaMesCaja {
   fecha: string
   apertura: string | null
+  /** S-84: de dónde viene la apertura (null si no hay). */
+  apertura_origen: 'arrastre' | 'manual' | null
   ventas_efectivo: string
   ventas_banco: string
   ventas_datafono: string
@@ -1118,11 +1147,13 @@ export type TipoFilaEmpleado = 'prestamo' | 'abono' | 'anulacion'
 
 export type FormaAbonoEmpleado = 'caja' | 'nomina'
 
-/** Empleado activo para elegir (mostrador): sin saldo (S-57). */
+/** Empleado activo para elegir (mostrador y admin), con su saldo vigente (S-81, ajusta S-57). */
 export interface EmpleadoOpcion {
   id: number
   nombre: string
   documento: string | null
+  /** Saldo vigente (≥ 0), p. ej. "30000.00". */
+  saldo: string
 }
 
 /** Préstamo o abono de empleado en la caja del día. Anulado sigue visible. */
@@ -1249,6 +1280,8 @@ export interface FilaVencimiento {
   dias_para_vencer: number
   valor: string
   pendiente: string
+  /** S-79: lo ya pagado o abonado al documento (pagos parciales). */
+  abonado: string
 }
 
 type GrupoVencimiento = { cantidad: number; pendiente: string }

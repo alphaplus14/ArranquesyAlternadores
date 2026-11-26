@@ -31,7 +31,7 @@ class PagoProveedor extends Model
         return $this->belongsTo(Proveedor::class);
     }
 
-    /** RF-17 (ajuste): el ingreso a crédito al que se aplica el pago; null = FIFO. */
+    /** RF-17 (ajuste) / S-79: el ingreso a crédito al que se aplica el pago; null solo en pagos anteriores a S-79 (FIFO de lectura). */
     public function ingreso(): BelongsTo
     {
         return $this->belongsTo(Ingreso::class);

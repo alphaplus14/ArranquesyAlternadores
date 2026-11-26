@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Enums\FormaPago;
 use App\Enums\MetodoCaptura;
 use App\Enums\Rol;
+use App\Models\AbonoCliente;
 use App\Models\Cliente;
 use App\Models\CuentaPago;
 use App\Models\Unidad;
@@ -19,8 +20,9 @@ use Illuminate\Support\Facades\DB;
  * demo: `php artisan db:seed --class=CarteraDemoSeeder`. No está en DatabaseSeeder porque vende
  * unidades del demo y las pruebas cuentan con esas existencias.
  *
- * Deja tres clientes: uno con una venta vencida hace 40 días y otra al día, con un abono que salda
- * la vencida (FIFO); otro con saldo a favor; otro sin abonos.
+ * Deja tres clientes: uno con una venta vencida hace 40 días y otra al día, con un abono dirigido
+ * que salda la vencida (S-79); otro con saldo a favor de un abono antiguo sin venta (registro anterior
+ * a S-79, que se sigue leyendo); otro sin abonos.
  */
 class CarteraDemoSeeder extends Seeder
 {
@@ -35,10 +37,17 @@ class CarteraDemoSeeder extends Seeder
         $vieja = $this->venta($ventas, $mostrador, $taller, [60000]);
         $this->venta($ventas, $mostrador, $taller, [50000]);
         $this->fechar($vieja, now()->subDays(70), now()->subDays(40)->toDateString());
-        $abonos->registrar($taller, now('America/Bogota')->toDateString(), 70000, CuentaPago::query()->where('tipo', 'banco')->first() ?? CuentaPago::efectivo(), 'TR-1001', null, $mostrador);
+        $abonos->registrar($taller, now('America/Bogota')->toDateString(), 60000, CuentaPago::query()->where('tipo', 'banco')->first() ?? CuentaPago::efectivo(), 'TR-1001', null, $mostrador, $vieja);
 
+        // Abono antiguo sin venta (anterior a S-79): hoy ya no se registra así; se escribe directo
+        // para mostrar cómo se leen los registros viejos con saldo a favor.
         $this->venta($ventas, $mostrador, $motos, [45000]);
-        $abonos->registrar($motos, now('America/Bogota')->toDateString(), 50000, CuentaPago::efectivo(), null, 'Pagó de más; queda a favor', $mostrador);
+        $efectivo = CuentaPago::efectivo();
+        AbonoCliente::create([
+            'cliente_id' => $motos->id, 'venta_id' => null, 'fecha' => now('America/Bogota')->toDateString(), 'valor' => 50000,
+            'medio' => $efectivo->tipo->medio(), 'cuenta_pago_id' => $efectivo->id, 'referencia' => null,
+            'nota' => 'Pagó de más; queda a favor', 'usuario_id' => $mostrador->id,
+        ]);
 
         $vencida = $this->venta($ventas, $mostrador, $flota, [120000, 80000]);
         $this->fechar($vencida, now()->subDays(100), now()->subDays(55)->toDateString());

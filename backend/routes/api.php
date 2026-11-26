@@ -58,6 +58,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('rol:admin,logistica,mostrador')->group(function () {
         Route::get('/categorias', [CategoriaController::class, 'index']);
         Route::get('/referencias', [ReferenciaController::class, 'index']);
+        // S-82: Inventario con los universales integrados (antes /referencias en la pantalla).
+        Route::get('/inventario', [ReferenciaController::class, 'inventario'])->middleware('medir:800');
         Route::get('/referencias/{referencia}', [ReferenciaController::class, 'show']);
         Route::get('/codigos-universales', [CodigoUniversalController::class, 'index']);
         Route::get('/codigos-universales/{codigoUniversal}', [CodigoUniversalController::class, 'show']); // RF-02

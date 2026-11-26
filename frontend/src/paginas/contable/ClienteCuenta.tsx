@@ -8,7 +8,7 @@ export default function ClienteCuenta() {
   return (
     <div className="pila">
       <div className="pagina-encabezado">
-        <p><Link to="/contable/cartera">← Cartera de clientes</Link></p>
+        <p className="migas"><Link to="/contable/cartera">Cartera de clientes</Link> ›</p>
         <h1>Estado de cuenta del cliente</h1>
         <p>Ventas a crédito, reversos y abonos en orden de fecha. Los abonos los registra el mostrador o el administrador.</p>
       </div>

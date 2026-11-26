@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import type { FilaVencimiento, TipoVencimiento } from '../../api/tipos'
 import { useVencimientos } from '../../hooks/useVencimientos'
 import { DialogoMovimiento } from '../../componentes/Cartera'
+import BotonFila from '../../componentes/BotonFila'
 import ControlSegmentado from '../../componentes/ControlSegmentado'
 import Medida from '../../componentes/Medida'
 import Paginacion from '../../componentes/Paginacion'
@@ -69,7 +70,7 @@ export default function Vencimientos() {
             <thead>
               <tr>
                 <th>Estado</th><th>Tipo</th><th>Proveedor o cliente</th><th>Documento</th><th>Vence</th>
-                <th className="cifra">Valor</th><th className="cifra">Pendiente</th><th><span className="solo-lector">Acciones</span></th>
+                <th className="cifra">Valor</th><th className="cifra">Pendiente</th><th className="boton-fila-columna boton-fila-doble">Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -86,8 +87,17 @@ export default function Vencimientos() {
                   <td>{fechaCorta(f.vence_el)}</td>
                   <td className="cifra">{pesos(f.valor)}</td>
                   <td className="cifra"><strong>{pesos(f.pendiente)}</strong></td>
-                  <td className="col-accion">
-                    {f.tipo === 'por_pagar' && <button type="button" className="enlace" onClick={() => setPagando(f)}>Registrar pago</button>}
+                  <td className="boton-fila-columna boton-fila-doble">
+                    <span className="boton-fila-acciones">
+                      <BotonFila
+                        variante="ver"
+                        to={`${f.tipo === 'por_pagar' ? '/contable/proveedores' : '/contable/clientes'}/${f.titular.id}`}
+                        descripcion={`Ver cuenta de ${f.titular.nombre}`}
+                      />
+                      {f.tipo === 'por_pagar' && (
+                        <BotonFila variante="pagar" descripcion={`Pagar ${f.documento} de ${f.titular.nombre}`} onClick={() => setPagando(f)} />
+                      )}
+                    </span>
                   </td>
                 </tr>
               ))}
@@ -102,9 +112,8 @@ export default function Vencimientos() {
         <DialogoMovimiento
           titulo="Registrar pago"
           titular={pagando.titular.nombre}
-          saldo={pagando.pendiente}
           ruta={`/proveedores/${pagando.titular.id}/pagos`}
-          documento={{ id: pagando.documento_id, nombre: pagando.documento, pendiente: pagando.pendiente }}
+          documento={{ id: pagando.documento_id, nombre: pagando.documento, valor: pagando.valor, abonado: pagando.abonado, pendiente: pagando.pendiente }}
           onCerrar={() => setPagando(null)}
           onGuardado={() => {
             setPagando(null)

@@ -68,7 +68,7 @@ it('RF-15 (b): buscar por prefijo de factura Contapyme, sin distinguir mayúscul
     expect(idsVentas($r))->toBe([]);
 });
 
-it('RF-15 (c): pendientes, vencidas y pagadas usan el FIFO de todas las ventas del cliente', function () {
+it('RF-15 (c) / S-79: pendientes, vencidas y pagadas usan el FIFO de lectura de un abono antiguo sobre todas las ventas', function () {
     $cliente = Cliente::factory()->create();
     $hoy = Carbon::now('America/Bogota')->startOfDay();
     [$vieja] = ventaCredito($cliente, [60]);
@@ -79,8 +79,9 @@ it('RF-15 (c): pendientes, vencidas y pagadas usan el FIFO de todas las ventas d
     fecharVenta($nueva, $hoy->copy()->subDays(5)->toDateString(), $hoy->copy()->addDays(25)->toDateString());
 
     actuarComo(Rol::Mostrador);
-    // 70 salda la vieja (60) y deja 10 en la media: media 40 pendiente y vencida; nueva 30 por vencer.
-    abonar($cliente, 70)->assertCreated();
+    // Abono antiguo sin venta (anterior a S-79) de 70: salda la vieja (60) y deja 10 en la media:
+    // media 40 pendiente y vencida; nueva 30 por vencer.
+    abonoHistorico($cliente, 70);
 
     $ruta = "/api/clientes/{$cliente->id}/cartera";
     expect(idsVentas($this->getJson("{$ruta}?estado=pagadas")->assertOk()))->toBe([$vieja])

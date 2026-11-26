@@ -9,13 +9,21 @@ use Illuminate\Validation\Rule;
 /**
  * RF-27 (S-56): préstamo o abono de un empleado (solo mostrador). Pesos enteros > 0. La fecha es
  * siempre hoy (la pone el servicio): el movimiento entra a la caja del día en que se registra. El
- * abono lleva forma; la cuenta la exige el servicio solo si la forma es caja.
+ * abono lleva forma (S-81: si no llega, `caja`); la cuenta la exige el servicio solo si la forma es caja.
  */
 class MovimientoEmpleadoRequest extends FormRequest
 {
     public function authorize(): bool
     {
         return true;
+    }
+
+    /** S-81: un abono sin forma es por caja (la nómina se elige como opción de la cuenta de pago). */
+    protected function prepareForValidation(): void
+    {
+        if ($this->routeIs('empleados.abonos') && ! $this->filled('forma')) {
+            $this->merge(['forma' => FormaAbonoEmpleado::Caja->value]);
+        }
     }
 
     public function rules(): array

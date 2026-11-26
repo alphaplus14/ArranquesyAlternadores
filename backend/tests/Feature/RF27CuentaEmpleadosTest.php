@@ -100,13 +100,13 @@ it('RF-27: abono por caja feliz y saldo = préstamos − abonos', function () {
     expect(empSaldo($e))->toBe('100000.00');
 });
 
-it('RF-27 (S-57): un abono mayor que la deuda se rechaza sin revelar el saldo', function () {
+it('RF-27 (S-57, S-81): un abono mayor que la deuda se rechaza y dice cuánto debe', function () {
     $e = empCrear();
     actuarComo(Rol::Mostrador);
     empPrestar($e, 40000)->assertCreated();
 
-    $r = empAbonar($e, 40001)->assertUnprocessable();
-    expect($r->json('message'))->toContain('supera lo que debe')->not->toContain('40');
+    $r = empAbonar($e, 40001)->assertUnprocessable()->assertJsonPath('saldo', '40000.00');
+    expect($r->json('message'))->toBe('El abono supera lo que debe el empleado ($ 40.000).');
     empAbonar($e, 40000)->assertCreated();
     expect(empSaldo($e))->toBe('0.00');
 });
@@ -137,7 +137,8 @@ it('RF-27 (S-56): el abono por caja exige una cuenta activa', function () {
     $inactiva = cuentaBanco();
     $inactiva->update(['activa' => false]);
     empAbonar($e, 1000, 'caja', $inactiva->id)->assertUnprocessable()->assertJsonPath('campo', 'cuenta_pago_id');
-    test()->postJson("/api/empleados/{$e->id}/abonos", ['valor' => 1000])->assertUnprocessable()->assertJsonValidationErrors('forma');
+    // S-81: sin forma, el abono es por caja; sin cuenta, el servicio la exige.
+    test()->postJson("/api/empleados/{$e->id}/abonos", ['valor' => 1000])->assertUnprocessable()->assertJsonPath('campo', 'cuenta_pago_id');
 });
 
 it('RF-27 (S-55): la apertura la crea el admin al crear el empleado y no afecta la caja', function () {
@@ -236,7 +237,7 @@ it('RF-27: no se desactiva un empleado con saldo; en $0 sí, y queda auditado', 
     empPrestar($e->fresh(), 1000)->assertUnprocessable();
 });
 
-it('RF-27 (S-57): el mostrador elige empleados pero no ve saldos', function () {
+it('RF-27 (S-57, S-81): el mostrador elige empleados con su saldo, pero no ve resumen ni estado de cuenta', function () {
     empCrear('Jhon', ['saldo_apertura' => 5000]);
     empCrear('Inactivo')->update(['activo' => false]);
     $e = Empleado::where('nombre', 'Jhon')->sole();
@@ -244,7 +245,8 @@ it('RF-27 (S-57): el mostrador elige empleados pero no ve saldos', function () {
 
     $lista = $this->getJson('/api/empleados')->assertOk()->json('data');
     expect(collect($lista)->pluck('nombre')->all())->toBe(['Jhon'])
-        ->and(array_keys($lista[0]))->toBe(['id', 'nombre', 'documento']);
+        ->and(array_keys($lista[0]))->toBe(['id', 'nombre', 'documento', 'saldo'])
+        ->and($lista[0]['saldo'])->toBe('5000.00');
 
     $this->getJson('/api/empleados/resumen')->assertForbidden();
     $this->getJson("/api/empleados/{$e->id}/estado-cuenta")->assertForbidden();

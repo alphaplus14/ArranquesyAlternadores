@@ -1,9 +1,9 @@
-import { Link } from 'react-router-dom'
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeError } from '../../api/cliente'
 import { useAvisoTexto } from '../../componentes/Avisos'
 import type { Cliente, Pagina } from '../../api/tipos'
+import BotonFila from '../../componentes/BotonFila'
 import Icono from '../../componentes/Icono'
 import Medida from '../../componentes/Medida'
 import Resumen from '../../componentes/Resumen'
@@ -117,7 +117,7 @@ export default function Clientes() {
           </div>
         </div>
         <table className="tabla-apilable tabla-clientes">
-          <thead><tr><th>Nombre</th><th>Documento</th><th>Teléfono</th><th>Plazo</th><th>Estado</th><th><span className="solo-lector">Acciones</span></th></tr></thead>
+          <thead><tr><th>Nombre</th><th>Documento</th><th>Teléfono</th><th>Plazo</th><th>Estado</th><th className="boton-fila-columna boton-fila-doble">Acciones</th></tr></thead>
           <tbody>
             {filas.map((c) => editando?.id === c.id ? (
               <tr key={c.id}>
@@ -147,8 +147,8 @@ export default function Clientes() {
                     {c.activo ? 'Activo · desactivar' : 'Inactivo · activar'}
                   </button>
                 </td>
-                <td className="celda-accion">
-                  <Link className="enlace-accion" to={`/cartera/${c.id}`}>Ver cartera</Link>{' '}
+                <td className="celda-accion boton-fila-columna boton-fila-doble"><span className="boton-fila-acciones">
+                  <BotonFila variante="ver" to={`/cartera/${c.id}`} etiqueta="Ver cartera" descripcion={`Ver cartera de ${c.nombre}`} />
                   <button
                     type="button"
                     className="enlace"
@@ -157,7 +157,7 @@ export default function Clientes() {
                       setEditando({ id: c.id, datos: { nombre: c.nombre, documento: c.documento ?? '', telefono: c.telefono ?? '', plazo_dias: String(c.plazo_dias) } })
                     }}
                   >Editar</button>
-                </td>
+                </span></td>
               </tr>
             ))}
             {filas.length === 0 && !cargando && <tr><td colSpan={6} className="vacio">Sin clientes para esta búsqueda.</td></tr>}

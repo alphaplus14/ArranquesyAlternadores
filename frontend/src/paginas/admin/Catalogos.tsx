@@ -21,7 +21,8 @@ const PESTANAS: { clave: Clave; titulo: string; singular: string; alta: string; 
 ]
 
 /**
- * Catálogos editables (solo admin). RF-11: cada cambio queda auditado. S-23: la empresa no maneja
+ * Proveedores y categorías (antes "Catálogos", S-83; ruta /admin/catalogos), solo admin. Abre en
+ * la pestaña Proveedores. RF-11: cada cambio queda auditado. S-23: la empresa no maneja
  * marcas. S-29: los proveedores se crean y editan con todos sus campos en un diálogo.
  */
 export default function Catalogos() {
@@ -50,11 +51,11 @@ export default function Catalogos() {
   return (
     <div>
       <div className="pagina-encabezado">
-        <h1>Catálogos</h1>
+        <h1>Proveedores y categorías</h1>
         <p>Proveedores y categorías se editan aquí. Cada cambio queda auditado.</p>
       </div>
       <section className="panel catalogo">
-        <div className="pestanas" role="tablist" aria-label="Catálogos" onKeyDown={mover}>
+        <div className="pestanas" role="tablist" aria-label="Proveedores y categorías" onKeyDown={mover}>
           {PESTANAS.map((p) => (
             <button
               key={p.clave}

@@ -107,6 +107,7 @@ it('RF-24: los pagos de una venta son inmutables', function () {
 
 it('RF-24 / S-48: el abono elige la cuenta y el medio se deriva de su tipo', function () {
     $cliente = Cliente::factory()->create();
+    ventaCredito($cliente, [5000]);
     actuarComo(Rol::Mostrador);
 
     abonar($cliente, 1000)->assertCreated()->assertJsonPath('abono.medio', 'efectivo')->assertJsonPath('abono.cuenta.nombre', 'Efectivo');
@@ -118,14 +119,14 @@ it('RF-24 / S-48: el abono elige la cuenta y el medio se deriva de su tipo', fun
 
 it('RF-24 / S-48: el pago a proveedor elige la cuenta y el medio se deriva de su tipo', function () {
     $ref = referencia('RN-4410');
+    compra($ref, 1, 1000, aCredito());
     actuarComo(Rol::Admin);
 
-    $id = $this->postJson("/api/proveedores/{$ref->proveedor_id}/pagos", ['valor' => 500, 'cuenta_pago_id' => cuenta('Caja Social')->id])
+    $id = pagar($ref->proveedor_id, 500, ['cuenta_pago_id' => cuenta('Caja Social')->id])
         ->assertCreated()->assertJsonPath('medio', 'transferencia')->assertJsonPath('cuenta.nombre', 'Caja Social')->json('id');
     expect(PagoProveedor::find($id)->cuenta_pago_id)->toBe(cuenta('Caja Social')->id);
 
-    $this->postJson("/api/proveedores/{$ref->proveedor_id}/pagos", ['valor' => 500, 'cuenta_pago_id' => cuentaEfectivo()->id])
-        ->assertCreated()->assertJsonPath('medio', 'efectivo');
+    pagar($ref->proveedor_id, 500)->assertCreated()->assertJsonPath('medio', 'efectivo');
 });
 
 it('RF-24: el mostrador ve las cuentas activas; solo el admin las crea, edita y desactiva', function () {

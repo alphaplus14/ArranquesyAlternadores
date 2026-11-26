@@ -18,7 +18,7 @@ class AbonoResource extends JsonResource
         return [
             'id' => $this->id,
             'cliente_id' => $this->cliente_id,
-            // S-32: null = general (FIFO); con número, dirigido a esa venta a crédito.
+            // S-32 / S-79: la venta a la que va el abono; null solo en abonos generales anteriores a S-79 (se leen FIFO).
             'venta_id' => $this->venta_id,
             'aplicado_a' => $this->aplicadoA(),
             'fecha' => $this->fecha?->toDateString(),

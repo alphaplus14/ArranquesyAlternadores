@@ -8,6 +8,7 @@ use App\Http\Requests\ReferenciaRequest;
 use App\Http\Resources\ReferenciaResource;
 use App\Models\Referencia;
 use App\Services\CostoCompraService;
+use App\Services\InventarioListaService;
 use App\Services\ReferenciaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -53,6 +54,33 @@ class ReferenciaController extends Controller
         }
 
         return ReferenciaResource::collection($pagina);
+    }
+
+    /**
+     * S-82: listado de Inventario con los universales integrados (fila agrupadora con sus
+     * referencias) y las referencias sin universal. Paginado y ordenado por código.
+     */
+    public function inventario(Request $request, InventarioListaService $lista): JsonResponse
+    {
+        $datos = $request->validate([
+            'q' => ['nullable', 'string', 'max:120'],
+            'proveedor_id' => ['nullable', 'integer'],
+            'categoria_id' => ['nullable', 'integer'],
+            'universal_id' => ['nullable', 'integer'],
+            'tipo' => ['nullable', 'in:todos,universales,sin_universal'],
+            'inactivas' => ['nullable', 'boolean'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'por_pagina' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
+
+        return response()->json($lista->listar([
+            'q' => $datos['q'] ?? null,
+            'proveedor_id' => isset($datos['proveedor_id']) ? (int) $datos['proveedor_id'] : null,
+            'categoria_id' => isset($datos['categoria_id']) ? (int) $datos['categoria_id'] : null,
+            'universal_id' => isset($datos['universal_id']) ? (int) $datos['universal_id'] : null,
+            'tipo' => $datos['tipo'] ?? null,
+            'inactivas' => $request->boolean('inactivas'),
+        ], $request->user(), $request, (int) ($datos['por_pagina'] ?? 50), (int) ($datos['page'] ?? 1)));
     }
 
     /**

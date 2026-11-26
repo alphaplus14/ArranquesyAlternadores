@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { api, mensajeError } from '../../api/cliente'
 import type { CompraResumen, FilaCosto, HistorialCostos, Pagina, ProductoCostos, Referencia } from '../../api/tipos'
+import BotonFila from '../../componentes/BotonFila'
 import ChipCalidad from '../../componentes/ChipCalidad'
 import Icono from '../../componentes/Icono'
 import Paginacion from '../../componentes/Paginacion'
@@ -27,7 +28,7 @@ const porcentaje = (v: string) => `${Number(v).toLocaleString('es-CO', { maximum
 const documento = (c: { tipo: string; numero_documento: string }) => `${c.tipo === 'factura' ? 'Factura' : 'Remisión'} ${c.numero_documento}`
 
 /**
- * S-71: trazabilidad del costo de compra. Sin producto elegido, todas las compras confirmadas con
+ * S-71 (presentación S-80): trazabilidad del costo de compra. Sin producto elegido, todas las compras confirmadas con
  * filtros (lo que traía RF-32 / S-77, integrado aquí). Con una referencia o un código universal
  * (RF-02), su historial con último, anterior y variación. Solo consulta y solo en pantalla. Admin y
  * logística (ver-historial-costos); la ruta y el backend lo exigen. Las cifras vienen del backend.
@@ -80,9 +81,11 @@ export default function Costos() {
     || (universalId && historial.producto?.universal?.id === Number(universalId))
   ) ? historial : undefined
   const esUniversal = vigente?.producto?.tipo === 'universal'
-  const conReferencia = esUniversal || !hay
   // Las filas de otro modo (producto / lista general) no se muestran mientras llega el nuevo.
   const filasVigentes = hay ? (vigente ? filas : []) : (historial && historial.producto === null ? filas : [])
+  const pagina = historial?.meta?.current_page ?? historial?.current_page ?? 1
+  // S-80: los detalles abiertos se cierran al cambiar filtros o página (la tabla se monta de nuevo).
+  const claveTabla = [referenciaId, universalId, proveedorId, categoriaId, desde, hasta, q, pagina].join('|')
 
   return (
     <div className="pila costos-pantalla">
@@ -116,23 +119,31 @@ export default function Costos() {
           {hay && <button type="button" className="enlace" onClick={() => elegir({ referencia: null, universal: null, page: null })}>Ver todas las compras</button>}
         </div>
         <div className="costos-filtros">
-          <SelectorProveedor
-            className="filtro costos-filtro"
-            aria-label="Proveedor"
-            value={proveedorId}
-            onChange={(v) => elegir({ proveedor: v || null })}
-            opcionTodos="Todos los proveedores"
-          />
+          <div className="costos-campo costos-campo-proveedor">
+            <span className="costos-campo-etiqueta" aria-hidden>Proveedor</span>
+            <SelectorProveedor
+              className="filtro costos-filtro"
+              aria-label="Proveedor"
+              value={proveedorId}
+              onChange={(v) => elegir({ proveedor: v || null })}
+              opcionTodos="Todos los proveedores"
+            />
+          </div>
           {!hay && (
-            <select className="filtro" aria-label="Categoría" value={categoriaId} onChange={(e) => elegir({ categoria: e.target.value || null })}>
-              <option value="">Todas las categorías</option>
-              {categorias.data?.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-            </select>
+            <label className="costos-campo">
+              <span className="costos-campo-etiqueta">Categoría</span>
+              <select className="costos-select" value={categoriaId} onChange={(e) => elegir({ categoria: e.target.value || null })}>
+                <option value="">Todas las categorías</option>
+                {categorias.data?.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+              </select>
+            </label>
           )}
-          <label className="costos-fecha">Desde
+          <label className="costos-campo">
+            <span className="costos-campo-etiqueta">Desde</span>
             <input type="date" max={hasta || undefined} value={desde} onChange={(e) => elegir({ desde: e.target.value || null })} />
           </label>
-          <label className="costos-fecha">Hasta
+          <label className="costos-campo">
+            <span className="costos-campo-etiqueta">Hasta</span>
             <input type="date" min={desde || undefined} value={hasta} onChange={(e) => elegir({ hasta: e.target.value || null })} />
           </label>
         </div>
@@ -142,28 +153,12 @@ export default function Costos() {
             : <p className="vacio">{hay ? 'Este producto aún no tiene compras confirmadas con estos filtros.' : 'No hay compras confirmadas con estos filtros.'}</p>
         ) : (
           <div className={`tabla-desplazable${cargando ? ' actualizando' : ''}`}>
-            <table className="tabla-lineas costos-tabla">
-              <thead>
-                <tr>
-                  <th>Fecha</th><th>Documento</th><th>Proveedor</th>{conReferencia && <th>Referencia</th>}
-                  <th className="col-numero">Cant.</th><th className="col-numero">Costo en factura</th>
-                  <th className="col-numero">Desc. %</th><th className="col-numero">IVA %</th>
-                  <th className="col-numero">Costo neto sin IVA</th><th className="col-numero">Costo con IVA</th>
-                  {hay && <th className="col-numero">Variación vs anterior</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {filasVigentes.map((f) => (
-                  <FilaCompra
-                    key={f.linea_id}
-                    f={f}
-                    conReferencia={conReferencia}
-                    conVariacion={hay}
-                    onReferencia={hay ? undefined : (id) => elegir({ referencia: String(id), universal: null, page: null })}
-                  />
-                ))}
-              </tbody>
-            </table>
+            <TablaCostos
+              key={claveTabla}
+              filas={filasVigentes}
+              modo={!hay ? 'lista' : esUniversal ? 'universal' : 'referencia'}
+              onReferencia={(id) => elegir({ referencia: String(id), universal: null, page: null })}
+            />
           </div>
         )}
         <Paginacion pagina={resultado as Pagina<FilaCosto> | undefined} onCambiar={irA} />
@@ -327,7 +322,10 @@ function Variacion({ valor, corta = false }: { valor: string | null; corta?: boo
 
 function Resumen({ resumen }: { resumen: NonNullable<HistorialCostos['resumen']> }) {
   const pie = (c: CompraResumen) => (
-    <small>{formatearFecha(c.fecha)} · <Link to={`/logistica/ingresos/${c.ingreso_id}`}>{documento(c)}</Link></small>
+    <>
+      <small>{formatearFecha(c.fecha)} · {documento(c)}</small>
+      <BotonFila compacto variante="abrir" to={`/logistica/ingresos/${c.ingreso_id}`} descripcion={`Abrir ${documento(c)}`} />
+    </>
   )
   return (
     <div className="costos-tarjetas">
@@ -355,48 +353,170 @@ function Resumen({ resumen }: { resumen: NonNullable<HistorialCostos['resumen']>
   )
 }
 
-function FilaCompra({ f, conReferencia, conVariacion, onReferencia }: {
+type ModoTabla = 'lista' | 'referencia' | 'universal'
+
+/**
+ * S-80: seis columnas visibles. Lista general: Fecha | Referencia | Proveedor (con el documento debajo)
+ * | Cant. | Costo | Acciones. Historial de una referencia o universal: Fecha | Documento y proveedor |
+ * Cant. | Costo | Variación | Acciones. Costo en factura, descuento, IVA y costo con IVA van en un
+ * detalle plegable por fila (solo lectura, con los datos que ya trae la fila). Se monta de nuevo al
+ * cambiar filtros o página, así los detalles abiertos se cierran.
+ */
+function TablaCostos({ filas, modo, onReferencia }: { filas: FilaCosto[]; modo: ModoTabla; onReferencia: (id: number) => void }) {
+  const [abiertas, setAbiertas] = useState<Set<number>>(() => new Set())
+  const alternar = (id: number) => setAbiertas((actual) => {
+    const nuevo = new Set(actual)
+    if (nuevo.has(id)) nuevo.delete(id)
+    else nuevo.add(id)
+    return nuevo
+  })
+  const lista = modo === 'lista'
+
+  return (
+    <table className="costos-tabla">
+      <thead>
+        <tr>
+          <th scope="col">Fecha</th>
+          {lista ? <><th scope="col">Referencia</th><th scope="col">Proveedor</th></> : <th scope="col">Documento y proveedor</th>}
+          <th scope="col" className="col-numero">Cant.</th>
+          <th scope="col" className="col-numero">Costo<small className="costos-th-sub">sin IVA</small></th>
+          {!lista && <th scope="col" className="col-numero">Variación<small className="costos-th-sub">vs anterior</small></th>}
+          <th scope="col" className="boton-fila-columna boton-fila-doble">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {filas.map((f) => (
+          <FilaCompra
+            key={f.linea_id}
+            f={f}
+            modo={modo}
+            abierta={abiertas.has(f.linea_id)}
+            onAlternar={() => alternar(f.linea_id)}
+            onReferencia={lista ? onReferencia : undefined}
+          />
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
+const COLUMNAS = 6
+
+/** Etiquetas visibles en la fila: Último/Anterior, corrección y "Cubierta" (su costo no cuenta). */
+function EtiquetasFila({ f }: { f: FilaCosto }) {
+  if (!f.ultimo && !f.anterior && !f.costo_corregido && !f.corregida && !f.cubierta_por) return null
+  return (
+    <span className="costos-chips">
+      {f.ultimo && <span className="chip costos-chip-ultimo">Último</span>}
+      {f.anterior && <span className="chip">Anterior</span>}
+      {/* RF-28: "Costo corregido" si la corrección cambió el costo de esta línea; si no, el documento. */}
+      {f.costo_corregido
+        ? <span className="chip corregida" title="Una corrección cambió este costo; se muestra el vigente">Costo corregido</span>
+        : f.corregida && <span className="chip corregida">Corregida</span>}
+      {f.cubierta_por && <span className="chip" title={`Remisión cubierta por factura ${f.cubierta_por}: su costo no cuenta`}>Cubierta</span>}
+    </span>
+  )
+}
+
+function FilaCompra({ f, modo, abierta, onAlternar, onReferencia }: {
   f: FilaCosto
-  conReferencia: boolean
-  conVariacion: boolean
+  modo: ModoTabla
+  abierta: boolean
+  onAlternar: () => void
   /** Lista general: abrir el historial de la referencia. */
   onReferencia?: (id: number) => void
 }) {
+  const doc = documento(f)
+  const idDetalle = `costos-detalle-${f.linea_id}`
+  const descuento = Number(f.descuento_porcentaje)
+  const clases = [f.ultimo ? 'costos-fila-ultima' : '', abierta ? 'costos-fila-abierta' : ''].filter(Boolean).join(' ') || undefined
+  const referencia = (
+    <>
+      {onReferencia
+        ? <button type="button" className="enlace" title="Ver su historial de costos" onClick={() => onReferencia(f.referencia.id)}>{f.referencia.codigo_referencia}</button>
+        : <span>{f.referencia.codigo_referencia}</span>}
+      {f.referencia.calidad && <> <ChipCalidad calidad={f.referencia.calidad} /></>}
+    </>
+  )
+
   return (
-    <tr className={f.ultimo ? 'costos-fila-ultima' : undefined}>
-      <td data-label="Fecha">{formatearFecha(f.fecha)}</td>
-      <td data-label="Documento">
-        <Link to={`/logistica/ingresos/${f.ingreso_id}`}>{documento(f)}</Link>
-        <span className="costos-chips">
-          {f.ultimo && <span className="chip costos-chip-ultimo">Último</span>}
-          {f.anterior && <span className="chip">Anterior</span>}
-          <span className="chip">{f.tipo === 'factura' ? 'Factura' : 'Remisión'}</span>
-          {/* RF-28: "Costo corregido" si la corrección cambió el costo de esta línea; si no, el documento. */}
-          {f.costo_corregido
-            ? <span className="chip corregida" title="Una corrección cambió este costo; se muestra el vigente">Costo corregido</span>
-            : f.corregida && <span className="chip corregida">Corregida</span>}
-          {f.sin_costo && <span className="chip sin-precio">Sin costo</span>}
-          {f.cubierta_por && <span className="chip" title="Su costo no cuenta: manda el de la factura">Remisión cubierta por factura {f.cubierta_por}</span>}
-          {f.cubre_remisiones.map((n) => <span key={n} className="chip">Cubre remisión {n}</span>)}
-        </span>
-      </td>
-      <td data-label="Proveedor">{f.proveedor.nombre}</td>
-      {conReferencia && (
-        <td data-label="Referencia">
-          {onReferencia
-            ? <button type="button" className="enlace" title="Ver su historial de costos" onClick={() => onReferencia(f.referencia.id)}>{f.referencia.codigo_referencia}</button>
-            : f.referencia.codigo_referencia}
-          {' '}{f.referencia.calidad && <ChipCalidad calidad={f.referencia.calidad} />}
-          {onReferencia && f.referencia.descripcion && <small className="costos-ref-descripcion">{f.referencia.descripcion}</small>}
+    <Fragment>
+      <tr className={clases}>
+        <td data-label="Fecha" className="costos-col-fecha">{formatearFecha(f.fecha)}</td>
+        {modo === 'lista' ? (
+          <>
+            <td data-label="Referencia">
+              <span className="costos-celda-pila">
+                <span>{referencia}</span>
+                {f.referencia.descripcion && <small className="costos-ref-descripcion" title={f.referencia.descripcion}>{f.referencia.descripcion}</small>}
+              </span>
+            </td>
+            <td data-label="Proveedor">
+              <span className="costos-celda-pila">
+                <span>{f.proveedor.nombre}</span>
+                <small className="costos-secundario">{doc}</small>
+                <EtiquetasFila f={f} />
+              </span>
+            </td>
+          </>
+        ) : (
+          <td data-label="Documento">
+            <span className="costos-celda-pila">
+              <span>{doc}</span>
+              <small className="costos-secundario">{f.proveedor.nombre}</small>
+              {modo === 'universal' && <small className="costos-secundario">{referencia}</small>}
+              <EtiquetasFila f={f} />
+            </span>
+          </td>
+        )}
+        <td data-label="Cant." className="col-numero">{f.cantidad}</td>
+        <td data-label="Costo (sin IVA)" className="col-numero">
+          <span className="costos-celda-pila costos-costo">
+            {f.sin_costo || f.costo_neto === null
+              ? <span><span className="chip sin-precio">Sin costo</span> —</span>
+              : <strong>{dinero(f.costo_neto)}</strong>}
+            {descuento > 0 && <small className="costos-secundario">−{porcentaje(f.descuento_porcentaje)} desc.</small>}
+          </span>
         </td>
+        {modo !== 'lista' && <td data-label="Variación vs anterior" className="col-numero"><Variacion valor={f.variacion} corta /></td>}
+        <td data-label="Acciones" className="boton-fila-columna boton-fila-doble costos-acciones">
+          <span className="boton-fila-acciones">
+            <BotonFila variante="abrir" to={`/logistica/ingresos/${f.ingreso_id}`} descripcion={`Abrir ${doc} de ${f.proveedor.nombre}`} />
+            <button
+              type="button"
+              className={abierta ? 'costos-detalle-boton abierto' : 'costos-detalle-boton'}
+              aria-expanded={abierta}
+              aria-controls={idDetalle}
+              aria-label={`Ver detalle de ${doc} de ${f.proveedor.nombre}`}
+              title="Detalle"
+              onClick={onAlternar}
+            >
+              <Icono nombre="chevron" />
+            </button>
+          </span>
+        </td>
+      </tr>
+      {abierta && (
+        <tr id={idDetalle} className={f.ultimo ? 'costos-detalle-fila costos-fila-ultima' : 'costos-detalle-fila'}>
+          <td colSpan={COLUMNAS} data-label="">
+            <dl className="costos-detalle">
+              <div><dt>Costo en factura</dt><dd>{f.sin_costo ? '—' : dinero(f.costo_factura)}</dd></div>
+              <div><dt>Descuento %</dt><dd>{porcentaje(f.descuento_porcentaje)}</dd></div>
+              <div><dt>IVA %</dt><dd>{porcentaje(f.iva_porcentaje)}</dd></div>
+              <div><dt>Costo con IVA</dt><dd>{dinero(f.costo_con_iva)}</dd></div>
+              {(f.cubierta_por || f.cubre_remisiones.length > 0) && (
+                <div className="costos-detalle-ancho">
+                  <dt>Remisiones y facturas</dt>
+                  <dd className="costos-chips">
+                    {f.cubierta_por && <span className="chip" title="Su costo no cuenta: manda el de la factura">Remisión cubierta por factura {f.cubierta_por}</span>}
+                    {f.cubre_remisiones.map((n) => <span key={n} className="chip">Cubre remisión {n}</span>)}
+                  </dd>
+                </div>
+              )}
+            </dl>
+          </td>
+        </tr>
       )}
-      <td data-label="Cant." className="col-numero">{f.cantidad}</td>
-      <td data-label="Costo en factura" className="col-numero">{f.sin_costo ? '—' : dinero(f.costo_factura)}</td>
-      <td data-label="Desc. %" className="col-numero">{porcentaje(f.descuento_porcentaje)}</td>
-      <td data-label="IVA %" className="col-numero">{porcentaje(f.iva_porcentaje)}</td>
-      <td data-label="Costo neto sin IVA" className="col-numero"><strong>{dinero(f.costo_neto)}</strong></td>
-      <td data-label="Costo con IVA" className="col-numero">{dinero(f.costo_con_iva)}</td>
-      {conVariacion && <td data-label="Variación vs anterior" className="col-numero"><Variacion valor={f.variacion} corta /></td>}
-    </tr>
+    </Fragment>
   )
 }

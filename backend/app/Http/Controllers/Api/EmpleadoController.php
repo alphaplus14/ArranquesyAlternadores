@@ -17,25 +17,20 @@ use Illuminate\Http\Request;
  * RF-27 (S-55 a S-57): cuenta de empleados.
  * - Admin: crea y edita empleados (con apertura al crear), anula movimientos, consulta resumen y
  *   estado de cuenta. No registra préstamos ni abonos.
- * - Mostrador: lista empleados activos (sin saldos, S-57) y registra préstamos y abonos.
+ * - Mostrador: lista empleados activos con su saldo (S-81, ajusta S-57) y registra préstamos y abonos.
+ *   Resumen y estado de cuenta siguen siendo solo del admin.
  * Sin rutas DELETE (regla 8).
  */
 class EmpleadoController extends Controller
 {
     public function __construct(private readonly EmpleadoService $empleados) {}
 
-    /** Mostrador y admin: empleados activos para elegir, sin saldo. */
+    /** Mostrador y admin: empleados activos para elegir, con su saldo vigente (S-81, ajusta S-57). */
     public function index(Request $request): JsonResponse
     {
         $q = trim((string) ($request->validate(['q' => ['nullable', 'string', 'max:120']])['q'] ?? ''));
 
-        return response()->json([
-            'data' => Empleado::query()->activos()
-                ->when($q !== '', fn ($w) => $w->where(fn ($s) => $s->where('nombre', 'like', "%{$q}%")->orWhere('documento', 'like', "%{$q}%")))
-                ->orderBy('nombre')
-                ->limit(200)
-                ->get(['id', 'nombre', 'documento']),
-        ]);
+        return response()->json(['data' => $this->empleados->activosConSaldo($q !== '' ? $q : null)->values()]);
     }
 
     public function resumen(Request $request): JsonResponse

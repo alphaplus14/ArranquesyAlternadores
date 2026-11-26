@@ -10,7 +10,7 @@ use Illuminate\Support\Carbon;
 
 beforeEach(fn () => sembrarDemo());
 
-it('RF-18 / S-12 (g) / criterio 4: el detalle aplica el abono FIFO por venta: la vieja saldada y la nueva con pendiente 40', function () {
+it('RF-18 / S-12 (g) / criterio 4 / S-79: el detalle aplica un abono antiguo sin venta FIFO: la vieja saldada y la nueva con pendiente 40', function () {
     $cliente = Cliente::factory()->create(['nombre' => 'Taller FIFO']);
     $hoy = Carbon::now('America/Bogota')->startOfDay();
     [$vieja] = ventaCredito($cliente, [60]);
@@ -26,7 +26,7 @@ it('RF-18 / S-12 (g) / criterio 4: el detalle aplica el abono FIFO por venta: la
         ->assertJsonPath('ventas.0.estado_texto', 'vencida hace 40 días')
         ->assertJsonPath('ventas.0.rango', 'd31_60');
 
-    abonar($cliente, 70)->assertCreated();
+    abonoHistorico($cliente, 70); // registro anterior a S-79 (sin venta)
 
     $this->getJson("/api/clientes/{$cliente->id}/cartera")->assertOk()
         ->assertJsonPath('ventas.0.total', '60.00')

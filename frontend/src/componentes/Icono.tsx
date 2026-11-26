@@ -30,6 +30,7 @@ export type IconoNombre =
   | 'achicar'
   | 'panel'
   | 'caja-diaria'
+  | 'abrir'
 
 /** Trazos propios. No hay fuente de iconos ni librería de UI. */
 export default function Icono({ nombre }: { nombre: IconoNombre }) {
@@ -70,4 +71,5 @@ const trazos: Record<IconoNombre, ReactNode> = {
   reactivar: <path d="M4 12a8 8 0 0 1 13.7-5.6L20 8.7M20 4v4.7h-4.7M20 12a8 8 0 0 1-13.7 5.6L4 15.3M4 20v-4.7h4.7" />,
   agrandar: <path d="M15 3h6v6M21 3l-7 7M3 21l7-7M9 21H3v-6" />,
   achicar: <path d="M14 10l7-7M20 10h-6V4M4 20l7-7M10 14H4v6" />,
+  abrir: <path d="M5 12h14M13 6l6 6-6 6" />, // S-78: botón "Abrir" de las tablas
 }

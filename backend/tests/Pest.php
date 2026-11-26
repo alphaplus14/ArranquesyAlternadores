@@ -3,17 +3,22 @@
 use App\Enums\FormaPago;
 use App\Enums\MetodoCaptura;
 use App\Enums\Rol;
+use App\Models\AbonoCliente;
 use App\Models\CategoriaCaja;
 use App\Models\Cliente;
 use App\Models\CuentaPago;
 use App\Models\Ingreso;
+use App\Models\PagoProveedor;
+use App\Models\Proveedor;
 use App\Models\Referencia;
 use App\Models\Unidad;
 use App\Models\User;
 use App\Models\Venta;
 use App\Services\CajaService;
+use App\Services\CarteraService;
 use App\Services\IngresoService;
 use App\Services\VentaService;
+use App\Support\Antiguedad;
 use App\Support\RangoFechas;
 use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -208,10 +213,61 @@ function fecharVenta(int $ventaId, string $cerrada, string $vence): void
     DB::table('ventas')->where('id', $ventaId)->update(['cerrada_at' => $cerrada.' 15:00:00', 'vence_el' => $vence]);
 }
 
-/** RF-15: respuesta HTTP del abono (cesar/cartera). */
+/**
+ * RF-15: respuesta HTTP del abono (cesar/cartera). S-79: todo abono va a una venta; si el test no
+ * envía `venta_id` (ni null a propósito), se dirige a la venta con saldo que vence primero.
+ */
 function abonar(Cliente $cliente, mixed $valor, array $extra = [])
 {
+    if (! array_key_exists('venta_id', $extra)) {
+        $extra['venta_id'] = documentoConSaldo(app(CarteraService::class)->saldoCliente($cliente));
+    }
+
     return test()->postJson("/api/clientes/{$cliente->id}/abonos", ['fecha' => now('America/Bogota')->toDateString(), 'valor' => $valor, 'cuenta_pago_id' => cuentaEfectivo()->id, ...$extra]);
+}
+
+/**
+ * RF-17: respuesta HTTP del pago a proveedor. S-79: todo pago va a una factura; sin `ingreso_id` en
+ * el test, se dirige a la que vence primero.
+ */
+function pagar(int $proveedorId, mixed $valor, array $extra = [])
+{
+    if (! array_key_exists('ingreso_id', $extra)) {
+        $extra['ingreso_id'] = documentoConSaldo(app(CarteraService::class)->saldoProveedor(Proveedor::findOrFail($proveedorId)));
+    }
+
+    return test()->postJson("/api/proveedores/{$proveedorId}/pagos", ['valor' => $valor, 'cuenta_pago_id' => cuentaEfectivo()->id, ...$extra]);
+}
+
+/** Id del documento con saldo que vence primero (Antiguedad los ordena así), o null. */
+function documentoConSaldo(Antiguedad $saldo): ?int
+{
+    return $saldo->documentos[0]['id'] ?? null;
+}
+
+/**
+ * Abono antiguo sin venta (anterior a S-79), escrito directo como quedó en la base. La API ya no
+ * los crea; sirve para probar que se siguen leyendo, sumando (FIFO de lectura) y anulando.
+ */
+function abonoHistorico(Cliente $cliente, int|string $valor, ?string $fecha = null, ?CuentaPago $cuenta = null): AbonoCliente
+{
+    $cuenta ??= cuentaEfectivo();
+
+    return AbonoCliente::create([
+        'cliente_id' => $cliente->id, 'venta_id' => null, 'fecha' => $fecha ?? RangoFechas::hoy(), 'valor' => $valor,
+        'medio' => $cuenta->tipo->medio(), 'cuenta_pago_id' => $cuenta->id, 'usuario_id' => User::factory()->rol(Rol::Mostrador)->create()->id,
+    ]);
+}
+
+/** Pago antiguo sin factura (anterior a S-79, FIFO de lectura), escrito directo como quedó en la base. */
+function pagoHistorico(int $proveedorId, int|string $valor, ?string $fecha = null, ?CuentaPago $cuenta = null): PagoProveedor
+{
+    $cuenta ??= cuentaEfectivo();
+
+    return PagoProveedor::create([
+        'proveedor_id' => $proveedorId, 'ingreso_id' => null, 'fecha' => $fecha ?? RangoFechas::hoy(), 'valor' => $valor,
+        'medio' => $cuenta->tipo->medio(), 'cuenta_pago_id' => $cuenta->id, 'usuario_id' => User::factory()->rol(Rol::Contable)->create()->id,
+    ]);
 }
 
 /** RF-14: venta a crédito cerrada con las unidades de RN-4410 indicadas, cada una al precio dado. */
@@ -317,5 +373,6 @@ function movimientoCaja(string $categoria, $valor, ?CuentaPago $cuenta = null, a
 /** RF-25 (S-49): registra la apertura de caja de ese día (como un mostrador), sin tocar la sesión. */
 function abrirCaja(string $fecha, int|string $valor = 0): void
 {
-    app(CajaService::class)->fijarApertura($fecha, (string) $valor, User::factory()->rol(Rol::Mostrador)->create());
+    // S-84: con motivo, por si difiere de la apertura que arrastra el último cierre.
+    app(CajaService::class)->fijarApertura($fecha, (string) $valor, 'Apertura de prueba', User::factory()->rol(Rol::Mostrador)->create());
 }

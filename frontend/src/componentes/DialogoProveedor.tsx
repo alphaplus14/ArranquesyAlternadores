@@ -22,8 +22,8 @@ function existenteDe(error: unknown): { id: number; nombre: string } | null {
 /**
  * S-24 / S-29: crear o editar un proveedor. Nombre y NIT obligatorios; asesor y plazo opcionales.
  * Crear: logística y admin (desde el selector de ingresos, encima del formulario, o desde
- * Catálogos). Si el texto escrito en el selector parece un NIT va al NIT y el foco a Nombre; si
- * no, al revés. Editar: solo el admin (Catálogos); el NIT también es obligatorio (un proveedor
+ * Proveedores y categorías). Si el texto escrito en el selector parece un NIT va al NIT y el foco a Nombre; si
+ * no, al revés. Editar: solo el admin (Proveedores y categorías); el NIT también es obligatorio (un proveedor
  * antiguo sin NIT lo recibe al editarlo). Un NIT o nombre repetido ofrece usar el existente.
  */
 export default function DialogoProveedor({ proveedor, texto = '', onGuardado, onUsar, textoUsar = 'Usar ese proveedor', onCerrar }: {

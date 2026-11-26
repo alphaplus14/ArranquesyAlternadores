@@ -129,6 +129,12 @@ export default function IngresoDetalle() {
   const [corregido, setCorregido] = useState<CorreccionIngreso | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
+  /** RF-28: al cerrar la corrección (cancelar o guardar) el foco vuelve a "Corregir". */
+  const botonCorregir = useRef<HTMLButtonElement>(null)
+  const terminarCorreccion = () => {
+    setCorrigiendo(false)
+    requestAnimationFrame(() => botonCorregir.current?.focus())
+  }
   const zonaLector = useRef<HTMLDivElement>(null)
   // Las filas memoizadas reciben funciones estables que llaman a la versión vigente.
   const accionesRef = useRef<AccionesLinea | null>(null)
@@ -293,7 +299,8 @@ export default function IngresoDetalle() {
   accionesRef.current = { abrir: abrirFila, pedirQuitar, cancelarQuitar: () => setQuitando(null), quitar: (itemId) => quitar.mutate(itemId) }
 
   return (
-    <div className="pila detalle-compra">
+    // RF-28: en corrección, un solo scroll (el de la página); ver .detalle-compra.corrigiendo en index.css.
+    <div className={`pila detalle-compra${corrigiendo ? ' corrigiendo' : ''}`}>
       <div className="pagina-encabezado">
         <h1>{i.tipo === 'factura' ? 'Factura' : 'Remisión'} {i.numero_documento}</h1>
         <p>{i.proveedor?.nombre} · {i.fecha.slice(0, 10)}{i.proveedor?.asesor && <small className="asesor">Asesor: {i.proveedor.asesor}</small>}</p>
@@ -307,11 +314,11 @@ export default function IngresoDetalle() {
       {corrigiendo && (
         <PanelCorreccion
           ingreso={i}
-          onCancelar={() => setCorrigiendo(false)}
+          onCancelar={terminarCorreccion}
           onCorregido={(r) => {
             actualizar(r.ingreso)
             setCorregido(r.correccion)
-            setCorrigiendo(false)
+            terminarCorreccion()
             qc.invalidateQueries({ queryKey: ['ingresos'] })
             qc.invalidateQueries({ queryKey: ['ingreso', String(i.id), 'unidades'] })
           }}
@@ -436,7 +443,7 @@ export default function IngresoDetalle() {
         ) : (
           <div className="acciones">
             {/* RF-28: única vía para cambiar un ingreso confirmado (auditada). */}
-            <button type="button" className="secundario" onClick={() => { setCorregido(null); setCorrigiendo(true) }}>Corregir</button>
+            <button ref={botonCorregir} type="button" className="secundario" onClick={() => { setCorregido(null); setCorrigiendo(true) }}>Corregir</button>
             <Link className="boton primario" to={`/logistica/etiquetas?ingreso=${i.id}`}>Imprimir etiquetas</Link>
           </div>
         )}
@@ -822,7 +829,7 @@ function DialogoReferencia({ codigo, proveedor, onCreada, onCerrar }: {
             onChange={(codigo_universal_id) => setF((v) => ({ ...v, codigo_universal_id }))}
           />
         ) : f.categoria_id !== '' && (
-          <p className="ayuda">Esta categoría no usa código universal. Si este repuesto debería unificarse (regulador, portadiodo u otro que el administrador haya marcado), pídale que active esa opción en Catálogos.</p>
+          <p className="ayuda">Esta categoría no usa código universal. Si este repuesto debería unificarse (regulador, portadiodo u otro que el administrador haya marcado), pídale que active esa opción en Proveedores y categorías.</p>
         )}
         <label>Descripción<input required maxLength={255} {...campo('descripcion')} /></label>
         <label>Precio de venta
@@ -1232,6 +1239,8 @@ function PanelCorreccion({ ingreso, onCancelar, onCorregido }: {
             className="escaner"
             placeholder="Agregar línea: escanee el código o escriba la referencia y pulse Enter"
             aria-label="Agregar línea por código o búsqueda"
+            // RF-28: al abrir "Corregir", el foco va al lector.
+            autoFocus
             onKeyDown={scanner.onKeyDown}
             onPaste={scanner.onPaste}
             onBlur={reenfocar}

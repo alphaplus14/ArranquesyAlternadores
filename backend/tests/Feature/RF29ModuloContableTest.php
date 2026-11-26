@@ -19,8 +19,7 @@ it('RF-29: el contable consulta cuentas por pagar y registra un pago, pero no en
     $this->getJson('/api/proveedores')->assertOk();
     $this->getJson('/api/clientes')->assertOk();
     $this->getJson('/api/me')->assertOk();
-    $pago = $this->postJson("/api/proveedores/{$ref->proveedor_id}/pagos", ['valor' => 100, 'cuenta_pago_id' => cuentaBanco()->id])
-        ->assertCreated()->json('id');
+    $pago = pagar($ref->proveedor_id, 100, ['cuenta_pago_id' => cuentaBanco()->id])->assertCreated()->json('id');
 
     $this->getJson('/api/ventas')->assertForbidden();
     $this->getJson('/api/ingresos')->assertForbidden();
@@ -46,7 +45,7 @@ it('RF-29: el admin crea una cuenta contable', function () {
 
 /* ---------- RF-17 (ajuste): pago a una factura elegida ---------- */
 
-it('RF-17 ajuste: el pago a una factura elegida la cancela; sin elegir, se aplica FIFO', function () {
+it('RF-17 ajuste / S-79: el pago a una factura elegida la cancela; sin elegir factura, 422', function () {
     Carbon::setTestNow('2026-11-23 10:00:00');
     $ref = referencia('RN-4410');
     $a = compra($ref, 1, 100, aCredito('2026-12-01'));
@@ -64,10 +63,11 @@ it('RF-17 ajuste: el pago a una factura elegida la cancela; sin elegir, se aplic
     actuarComo(Rol::Admin);
     $this->postJson("/api/pagos/{$pago}/anulaciones", ['motivo' => 'Transferencia devuelta'])->assertCreated();
 
-    // El mismo pago sin elegir factura cancela A (vence primero) y deja B en 100.
-    $this->postJson("{$url}/pagos", ['valor' => 200, 'cuenta_pago_id' => cuentaBanco()->id])->assertCreated();
-    $saldo = $this->getJson("{$url}/saldo")->assertJsonPath('saldo', '100.00');
-    expect(collect($saldo->json('documentos'))->pluck('pendiente', 'id')->all())->toBe([$b->id => '100.00']);
+    // S-79: sin elegir factura ya no se aplica FIFO: se rechaza y el saldo no cambia.
+    $this->postJson("{$url}/pagos", ['valor' => 200, 'cuenta_pago_id' => cuentaBanco()->id])
+        ->assertUnprocessable()->assertJsonValidationErrors(['ingreso_id' => 'Elija la factura que va a pagar.']);
+    $saldo = $this->getJson("{$url}/saldo")->assertJsonPath('saldo', '300.00');
+    expect(collect($saldo->json('documentos'))->pluck('pendiente', 'id')->all())->toBe([$a->id => '100.00', $b->id => '200.00']);
 });
 
 it('RF-17 ajuste: se admiten pagos parciales a una factura hasta su pendiente', function () {
@@ -136,7 +136,7 @@ it('RF-30: también avisa las ventas a crédito de clientes vencidas, netas de a
     $venta = ventaCreditoCerrada($cliente, 2, 50000); // vence el 31-oct
     Carbon::setTestNow('2026-11-23 10:00:00');
     actuarComo(Rol::Admin);
-    $this->postJson("/api/clientes/{$cliente->id}/abonos", ['valor' => 30000, 'cuenta_pago_id' => cuentaEfectivo()->id])->assertCreated();
+    abonar($cliente, 30000, ['venta_id' => $venta->id])->assertCreated();
 
     actuarComo(Rol::Contable);
     $this->getJson('/api/vencimientos?tipo=por_cobrar')->assertOk()

@@ -31,7 +31,7 @@ export const RUTA_CAJA = '/caja'
 /** RF-25 a RF-27: Caja del administrador (día en consulta, mes, cuentas y categorías, empleados). */
 export const RUTA_CAJA_ADMIN = '/admin/caja'
 
-/** RF-01 / S-59: códigos universales (admin y logística crean y editan; borrar es del admin). */
+/** S-82: ruta vieja de los códigos universales; redirige a Inventario (/productos?universal=ID). */
 export const RUTA_UNIVERSALES = '/universales'
 
 /** S-71: historial de costos de compra por producto (admin y logística). */

@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../api/cliente'
 import { NOMBRE_RANGO, type FilaCartera, type PaginaInforme, type RangoAntiguedad, type TotalesCartera } from '../../api/tipos'
+import BotonFila from '../../componentes/BotonFila'
 import Paginacion from '../../componentes/Paginacion'
 import { hoy } from '../../componentes/fechas'
 import { pesos } from '../../componentes/numeros'
@@ -13,7 +13,7 @@ const RANGOS = Object.keys(NOMBRE_RANGO) as RangoAntiguedad[]
 const TEXTOS = {
   proveedores: {
     titulo: 'Cuentas por pagar',
-    ayuda: 'Saldo por proveedor a la fecha de corte, con antigüedad. Abra un proveedor para ver sus facturas y registrar pagos.',
+    ayuda: 'Saldo por proveedor a la fecha de corte, con antigüedad. Use «Ver cuenta» para ver las facturas y registrar pagos.',
     ruta: '/reportes/cuentas-por-pagar',
     clave: 'cuentas-por-pagar',
     titular: 'Proveedor',
@@ -21,7 +21,7 @@ const TEXTOS = {
   },
   clientes: {
     titulo: 'Cartera de clientes',
-    ayuda: 'Saldo por cliente de las ventas a crédito del mostrador, a la fecha de corte. Abra un cliente para ver su estado de cuenta.',
+    ayuda: 'Saldo por cliente de las ventas a crédito del mostrador, a la fecha de corte. Use «Ver cuenta» para ver su estado de cuenta.',
     ruta: '/reportes/cartera-clientes',
     clave: 'cartera-clientes',
     titular: 'Cliente',
@@ -32,7 +32,6 @@ const TEXTOS = {
 /** RF-18 (3 y 4): cartera de clientes o cuentas por pagar, con antigüedad, solo en pantalla. */
 export default function Saldos({ de }: { de: keyof typeof TEXTOS }) {
   const t = TEXTOS[de]
-  const navegar = useNavigate()
   const [corte, setCorte] = useState(hoy())
   const [pagina, setPagina] = useState(1)
 
@@ -64,6 +63,7 @@ export default function Saldos({ de }: { de: keyof typeof TEXTOS }) {
                 <th className="cifra">Saldo</th>
                 <th className="cifra">Vencido</th>
                 {RANGOS.map((r) => <th key={r} className="cifra">{r === 'al_dia' ? NOMBRE_RANGO[r] : `${NOMBRE_RANGO[r]} d`}</th>)}
+                <th className="boton-fila-columna">Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -72,22 +72,26 @@ export default function Saldos({ de }: { de: keyof typeof TEXTOS }) {
                 return (
                   <tr key={titular?.id}>
                     <td>
-                      <button type="button" className="enlace" onClick={() => navegar(`${t.detalle}/${titular?.id}`)}>{titular?.nombre}</button>
+                      {titular?.nombre}
                       {Number(f.a_favor) > 0 && <> <span className="chip">A favor {pesos(f.a_favor)}</span></>}
                     </td>
                     <td className="cifra"><strong>{pesos(f.saldo)}</strong></td>
                     <td className="cifra">{pesos(f.vencido)}</td>
                     {RANGOS.map((r) => <td key={r} className="cifra">{pesos(f.rangos[r])}</td>)}
+                    <td className="boton-fila-columna">
+                      {titular && <BotonFila variante="ver" to={`${t.detalle}/${titular.id}`} etiqueta="Ver cuenta" descripcion={`Ver cuenta de ${titular.nombre}`} />}
+                    </td>
                   </tr>
                 )
               })}
-              {data && data.data.length === 0 && <tr><td colSpan={3 + RANGOS.length} className="vacio">Nadie tiene saldo a esta fecha.</td></tr>}
+              {data && data.data.length === 0 && <tr><td colSpan={4 + RANGOS.length} className="vacio">Nadie tiene saldo a esta fecha.</td></tr>}
               {data && data.data.length > 0 && (
                 <tr className="fila-total">
                   <td>Totales</td>
                   <td className="cifra">{pesos(data.totales.saldo)}</td>
                   <td className="cifra">{pesos(data.totales.vencido)}</td>
                   {RANGOS.map((r) => <td key={r} className="cifra">{pesos(data.totales.rangos[r])}</td>)}
+                  <td className="boton-fila-columna" />
                 </tr>
               )}
             </tbody>

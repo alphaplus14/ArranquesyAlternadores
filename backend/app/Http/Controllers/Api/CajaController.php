@@ -98,24 +98,25 @@ class CajaController extends Controller
     }
 
     /**
-     * S-49: el mostrador registra o corrige el efectivo con que abre la caja de ese día (solo mientras
-     * no esté cerrado). Responde la apertura; el resumen del día la trae también.
+     * S-84 ("Cambiar apertura"; antes S-49): el mostrador cambia a mano el efectivo con que abre la
+     * caja de ese día (solo mientras no esté cerrado). Motivo obligatorio si difiere de la apertura del
+     * cierre anterior (lo valida CajaService). Responde la apertura efectiva.
      */
     public function fijarApertura(Request $request, string $fecha): JsonResponse
     {
         $this->validarFecha($fecha);
         $datos = $request->validate([
             'valor' => ['required', 'numeric', 'min:0', 'max:999999999999', 'decimal:0,2'],
+            'motivo' => ['nullable', 'string', 'max:200'],
         ], [
+            'motivo.max' => 'El motivo admite máximo 200 caracteres.',
             'valor.required' => 'Escriba el efectivo con que abre la caja (puede ser 0).',
             'valor.numeric' => 'La apertura debe ser un número.',
             'valor.min' => 'La apertura no puede ser negativa.',
             'valor.decimal' => 'La apertura admite máximo 2 decimales.',
         ]);
 
-        $this->caja->fijarApertura($fecha, (string) $datos['valor'], $request->user());
-
-        return response()->json(['apertura' => $this->caja->aperturaDelDia($fecha)]);
+        return response()->json(['apertura' => $this->caja->fijarApertura($fecha, (string) $datos['valor'], $datos['motivo'] ?? null, $request->user())]);
     }
 
     /** S-53 / S-54: la única escritura del admin en caja. */

@@ -8,6 +8,8 @@ use Illuminate\Support\Carbon;
 /**
  * RF-15 / RF-17 / RF-18: saldo y antigüedad de un cliente o un proveedor a una fecha de corte.
  *
+ * S-79: los pagos y abonos nuevos van siempre a un documento (`aplicado`); el FIFO queda solo para
+ * leer los registros anteriores sin documento.
  * Lo abonado (o pagado) se aplica FIFO a los documentos que vencen primero (S-12), sin guardar
  * la asignación. RF-17 (ajuste): un documento puede traer `aplicado`, lo pagado directamente a
  * él; eso se descuenta primero de su valor (hasta cubrirlo) y solo el resto de lo abonado se
@@ -23,7 +25,7 @@ final class Antiguedad
 
     /**
      * @param  array<string, string>  $rangos  pendiente por rango (claves de config('cartera.rangos'))
-     * @param  list<array{id:int, fecha:string, vence_el:?string, valor:string, pendiente:string, dias_vencido:int, dias_para_vencer:int, rango:string}>  $documentos  solo los que tienen saldo
+     * @param  list<array{id:int, fecha:string, vence_el:?string, valor:string, pendiente:string, abonado:string, dias_vencido:int, dias_para_vencer:int, rango:string}>  $documentos  solo los que tienen saldo
      */
     private function __construct(
         public readonly string $cargos,
@@ -93,6 +95,9 @@ final class Antiguedad
                 'vence_el' => $doc['vence_el'],
                 'valor' => $doc['valor'],
                 'pendiente' => $pendiente,
+                // S-79: lo ya pagado de este documento (valor − pendiente): sus pagos dirigidos y, en
+                // datos anteriores a S-79, la parte que le tocó del FIFO de los pagos sin documento.
+                'abonado' => bcsub($doc['valor'], $pendiente, self::ESCALA),
                 'dias_vencido' => max($dias, 0),
                 'dias_para_vencer' => max(-$dias, 0), // RF-30
                 'rango' => $rango,
