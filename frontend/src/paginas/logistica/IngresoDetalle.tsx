@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type FocusEvent, type KeyboardEvent, type RefObject } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
@@ -18,11 +18,11 @@ import { useCategorias } from '../../hooks/useCatalogos'
 import SelectorCategoria from '../../componentes/SelectorCategoria'
 import ControlSegmentado, { type OpcionSegmento } from '../../componentes/ControlSegmentado'
 import AvisoCoincidencias from '../../componentes/AvisoCoincidencias'
-import { useScanner } from '../../hooks/useScanner'
-import { useBloquearScroll } from '../../hooks/useBloquearScroll'
-import { atraparTab } from '../../componentes/foco'
+import { UMBRAL_RAFAGA_MS, useScanner } from '../../hooks/useScanner'
+import { useAuth } from '../../auth/AuthProvider'
 import Resumen from '../../componentes/Resumen'
 import Icono from '../../componentes/Icono'
+import BotonCancelar from '../../componentes/BotonCancelar'
 
 type Campo = 'cantidad' | 'costo_unitario' | 'descuento_porcentaje' | 'iva_porcentaje'
 const CAMPOS: Campo[] = ['cantidad', 'costo_unitario', 'descuento_porcentaje', 'iva_porcentaje']
@@ -130,6 +130,16 @@ export default function IngresoDetalle() {
   const [corrigiendo, setCorrigiendo] = useState(false)
   const [corregido, setCorregido] = useState<CorreccionIngreso | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const zonaLector = useRef<HTMLDivElement>(null)
+  // Las filas memoizadas reciben funciones estables que llaman a la versión vigente.
+  const accionesRef = useRef<AccionesLinea | null>(null)
+  const acciones = useMemo<AccionesLinea>(() => ({
+    abrir: (it, campo) => accionesRef.current?.abrir(it, campo),
+    pedirQuitar: (it) => accionesRef.current?.pedirQuitar(it),
+    cancelarQuitar: () => accionesRef.current?.cancelarQuitar(),
+    quitar: (itemId) => accionesRef.current?.quitar(itemId),
+  }), [])
 
   const ingreso = useQuery({
     queryKey: ['ingreso', id],
@@ -137,6 +147,7 @@ export default function IngresoDetalle() {
   })
   const i = ingreso.data
   const borrador = i?.estado === 'borrador'
+  useAltoLector(panelRef, zonaLector, borrador)
 
   const actualizar = (nuevo: Ingreso) => qc.setQueryData(['ingreso', id], nuevo)
 
@@ -278,30 +289,12 @@ export default function IngresoDetalle() {
   const unidades = i.items.reduce((suma, it) => suma + it.cantidad, 0)
   const lineasSinCosto = i.items.filter((it) => Number(it.costo_unitario) <= 0).length
 
-  /** Valor de una línea en borrador: se ve como celda editable; clic abre la fila completa. */
-  const valor = (it: IngresoItem, campo: Campo, texto: string) => {
-    if (!borrador) return texto
-    const codigo = it.referencia?.codigo_referencia ?? ''
-    if (campo === 'costo_unitario' && Number(it.costo_unitario) <= 0) {
-      return (
-        <button type="button" className="celda-editable pendiente" title="Clic para editar" aria-label={`Falta el costo de ${codigo}. Editar la línea`} onClick={() => abrirFila(it, campo)}>
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" aria-hidden><path d="M12 7v6M12 17h.01" /><circle cx="12" cy="12" r="9" /></svg>
-          Costo
-        </button>
-      )
-    }
-    return (
-      <button type="button" className="celda-editable" title="Clic para editar" aria-label={`${REGLAS[campo].etiqueta} de ${codigo}: ${texto}. Editar la línea`} onClick={() => abrirFila(it, campo)}>
-        {texto}
-      </button>
-    )
-  }
-
   /** Quitar: directo con cantidad 1 y sin costo; si no, confirmación breve en la fila. */
   const pedirQuitar = (it: IngresoItem) => {
     if (it.cantidad > 1 || Number(it.costo_unitario) > 0) setQuitando(it.id)
     else quitar.mutate(it.id)
   }
+  accionesRef.current = { abrir: abrirFila, pedirQuitar, cancelarQuitar: () => setQuitando(null), quitar: (itemId) => quitar.mutate(itemId) }
 
   return (
     <div className="pila">
@@ -344,7 +337,7 @@ export default function IngresoDetalle() {
           }}
         />
       )}
-      <div className="panel" hidden={corrigiendo}>
+      <div ref={panelRef} className={borrador ? 'panel ingreso-con-barra' : 'panel'} hidden={corrigiendo}>
         <div className="fila-titulo">
           <h2>Líneas <span className={`chip ${i.estado}`}>{i.estado}</span>{i.corregido && <span className="chip corregida">Corregida</span>}</h2>
           <span>{i.proveedor?.nombre}</span>
@@ -375,7 +368,7 @@ export default function IngresoDetalle() {
         </div>
 
         {borrador && (
-          <>
+          <div ref={zonaLector} className="ingreso-lector">
             <input
               ref={inputRef}
               className="escaner"
@@ -386,37 +379,11 @@ export default function IngresoDetalle() {
               onBlur={reenfocar}
               autoComplete="off"
             />
-            <p className="ayuda">Se busca entre las referencias de {i.proveedor?.nombre}. Leer el mismo código otra vez suma 1. Haga clic en un valor o en el lápiz para editar la línea: Tab recorre, Enter guarda y Esc cancela.</p>
-          </>
-        )}
-        {ambiguo && (
-          <div
-            className="aviso atencion eleccion-codigo"
-            role="group"
-            aria-labelledby="codigo-ambiguo-titulo"
-            onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); setAmbiguo(null) } }}
-          >
-            <p id="codigo-ambiguo-titulo">Código ambiguo: <strong>{ambiguo.codigo}</strong> coincide con varias referencias de este proveedor. ¿Cuál es?</p>
-            <div className="opciones-codigo">
-              {ambiguo.opciones.map((o, n) => (
-                <button
-                  key={o.id}
-                  type="button"
-                  className="secundario"
-                  autoFocus={n === 0}
-                  onClick={() => { setAmbiguo(null); escanear.mutate({ codigo: ambiguo.codigo, referenciaId: o.id }) }}
-                >
-                  <strong>{o.codigo_referencia}</strong>
-                  {o.codigo_fabricante && <small> · código de barras {o.codigo_fabricante}</small>}
-                  <small> · {o.descripcion}</small>
-                </button>
-              ))}
-              <button type="button" className="enlace" onClick={() => setAmbiguo(null)}>Cancelar</button>
-            </div>
+            {ambiguo && <EleccionAmbigua ambiguo={ambiguo} onElegir={(o) => { setAmbiguo(null); escanear.mutate({ codigo: ambiguo.codigo, referenciaId: o.id }) }} onCancelar={() => setAmbiguo(null)} />}
           </div>
         )}
-
-        <div className="tabla-desplazable">
+        {borrador && <p className="ayuda">Se busca entre las referencias de {i.proveedor?.nombre}. Leer el mismo código otra vez suma 1. Haga clic en un valor o en el lápiz para editar la línea: Tab recorre, Enter guarda y Esc cancela.</p>}
+        <div className="tabla-desplazable ingreso-tabla">
         <table ref={tablaRef} className="tabla-lineas">
           <thead><tr><th>Referencia</th><th>Cant.</th><th>Costo</th><th>Desc. %</th><th>IVA %</th><th>Neto</th><th>IVA</th><th><span className="solo-lector">Acciones</span></th></tr></thead>
           <tbody>
@@ -434,41 +401,15 @@ export default function IngresoDetalle() {
                   />
                 )
               }
-              const exenta = Number(it.iva_porcentaje) === 0
-              const codigo = it.referencia?.codigo_referencia ?? ''
               return (
-                <tr key={it.id}>
-                  <td data-label="Referencia">{codigo} <small>{it.referencia?.descripcion}</small></td>
-                  <td data-label="Cant.">{valor(it, 'cantidad', String(it.cantidad))}</td>
-                  <td data-label="Costo">
-                    {!borrador && Number(it.costo_unitario) <= 0 ? <span className="agotado">Sin costo</span> : valor(it, 'costo_unitario', pesos(it.costo_unitario))}
-                  </td>
-                  <td data-label="Desc. %">{valor(it, 'descuento_porcentaje', `${formatoNumero(it.descuento_porcentaje)} %`)}</td>
-                  <td data-label="IVA %">
-                    <span>
-                      {valor(it, 'iva_porcentaje', `${formatoNumero(it.iva_porcentaje)} %`)}
-                      {exenta && <> <span className="chip">sin IVA</span></>}
-                    </span>
-                  </td>
-                  <td data-label="Neto">{it.neto === null ? '—' : pesos(it.neto)}</td>
-                  <td data-label="IVA">{it.iva === null ? '—' : pesos(it.iva)}</td>
-                  <td data-label="" className="acciones-linea">
-                    {borrador && (quitando === it.id ? (
-                      <span className="confirmar-quitar" role="group" aria-label={`Quitar ${codigo}`} onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); setQuitando(null) } }}>
-                        ¿Quitar?
-                        <button type="button" className="peligro" disabled={quitar.isPending} onClick={() => quitar.mutate(it.id)}>Sí</button>
-                        <button type="button" className="secundario" autoFocus onClick={() => setQuitando(null)}>No</button>
-                      </span>
-                    ) : (
-                      <>
-                        <button type="button" className="icono-accion" title="Editar" aria-label={`Editar la línea ${codigo}`} onClick={() => abrirFila(it, 'cantidad')}>
-                          <Icono nombre="editar" />
-                        </button>
-                        <button type="button" className="enlace" disabled={quitar.isPending} onClick={() => pedirQuitar(it)}>Quitar</button>
-                      </>
-                    ))}
-                  </td>
-                </tr>
+                <FilaLinea
+                  key={it.id}
+                  it={it}
+                  borrador={borrador}
+                  confirmandoQuitar={quitando === it.id}
+                  quitandoPendiente={quitar.isPending}
+                  acciones={acciones}
+                />
               )
             })}
             {i.items.length === 0 && <tr><td colSpan={8} className="vacio">Escanee el primer producto.</td></tr>}
@@ -502,19 +443,23 @@ export default function IngresoDetalle() {
           </p>
         )}
 
-        <div className="acciones">
-          {borrador ? (
-            <button type="button" className="primario" disabled={i.items.length === 0 || confirmar.isPending} onClick={() => confirmar.mutate()}>
-              Confirmar ingreso y crear unidades
-            </button>
-          ) : (
-            <>
-              {/* RF-28: única vía para cambiar un ingreso confirmado (auditada). */}
-              <button type="button" className="secundario" onClick={() => { setCorregido(null); setCorrigiendo(true) }}>Corregir</button>
-              <Link className="boton primario" to={`/logistica/etiquetas?ingreso=${i.id}`}>Imprimir etiquetas</Link>
-            </>
-          )}
-        </div>
+        {borrador ? (
+          // Barra fija al pie del área visible: con muchas líneas el botón sigue a la vista.
+          <div className="ingreso-barra">
+            <span className="ingreso-barra-resumen">{i.items.length} {i.items.length === 1 ? 'línea' : 'líneas'} · Total {totalMostrado}</span>
+            <div className="ingreso-barra-acciones">
+              <button type="button" className="primario" disabled={i.items.length === 0 || confirmar.isPending} onClick={() => confirmar.mutate()}>
+                Confirmar ingreso y crear unidades
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="acciones">
+            {/* RF-28: única vía para cambiar un ingreso confirmado (auditada). */}
+            <button type="button" className="secundario" onClick={() => { setCorregido(null); setCorrigiendo(true) }}>Corregir</button>
+            <Link className="boton primario" to={`/logistica/etiquetas?ingreso=${i.id}`}>Imprimir etiquetas</Link>
+          </div>
+        )}
       </div>
 
       {!borrador && (i.correcciones?.length ?? 0) > 0 && <HistorialCorrecciones correcciones={i.correcciones ?? []} />}
@@ -542,6 +487,105 @@ export default function IngresoDetalle() {
           onCerrar={() => setCreando(null)}
         />
       )}
+    </div>
+  )
+}
+
+interface AccionesLinea {
+  abrir: (it: LineaEditable, campo: Campo) => void
+  pedirQuitar: (it: IngresoItem) => void
+  cancelarQuitar: () => void
+  quitar: (itemId: number) => void
+}
+
+/**
+ * Una línea del borrador (o del ingreso confirmado, solo lectura). Memoizada: editar otra fila o
+ * escanear no vuelve a pintar las demás (mismo `it` y acciones estables).
+ */
+const FilaLinea = memo(function FilaLinea({ it, borrador, confirmandoQuitar, quitandoPendiente, acciones }: {
+  it: IngresoItem
+  borrador: boolean
+  confirmandoQuitar: boolean
+  quitandoPendiente: boolean
+  acciones: AccionesLinea
+}) {
+  const exenta = Number(it.iva_porcentaje) === 0
+  const codigo = it.referencia?.codigo_referencia ?? ''
+
+  /** Valor de una línea en borrador: se ve como celda editable; clic abre la fila completa. */
+  const valor = (campo: Campo, texto: string) => {
+    if (!borrador) return texto
+    if (campo === 'costo_unitario' && Number(it.costo_unitario) <= 0) {
+      return (
+        <button type="button" className="celda-editable pendiente" title="Clic para editar" aria-label={`Falta el costo de ${codigo}. Editar la línea`} onClick={() => acciones.abrir(it, campo)}>
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" aria-hidden><path d="M12 7v6M12 17h.01" /><circle cx="12" cy="12" r="9" /></svg>
+          Costo
+        </button>
+      )
+    }
+    return (
+      <button type="button" className="celda-editable" title="Clic para editar" aria-label={`${REGLAS[campo].etiqueta} de ${codigo}: ${texto}. Editar la línea`} onClick={() => acciones.abrir(it, campo)}>
+        {texto}
+      </button>
+    )
+  }
+
+  return (
+    <tr>
+      <td data-label="Referencia">{codigo} <small>{it.referencia?.descripcion}</small></td>
+      <td data-label="Cant.">{valor('cantidad', String(it.cantidad))}</td>
+      <td data-label="Costo">
+        {!borrador && Number(it.costo_unitario) <= 0 ? <span className="agotado">Sin costo</span> : valor('costo_unitario', pesos(it.costo_unitario))}
+      </td>
+      <td data-label="Desc. %">{valor('descuento_porcentaje', `${formatoNumero(it.descuento_porcentaje)} %`)}</td>
+      <td data-label="IVA %">
+        <span>
+          {valor('iva_porcentaje', `${formatoNumero(it.iva_porcentaje)} %`)}
+          {exenta && <> <span className="chip">sin IVA</span></>}
+        </span>
+      </td>
+      <td data-label="Neto">{it.neto === null ? '—' : pesos(it.neto)}</td>
+      <td data-label="IVA">{it.iva === null ? '—' : pesos(it.iva)}</td>
+      <td data-label="" className="acciones-linea">
+        {borrador && (confirmandoQuitar ? (
+          <span className="confirmar-quitar" role="group" aria-label={`Quitar ${codigo}`} onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); acciones.cancelarQuitar() } }}>
+            ¿Quitar?
+            <button type="button" className="peligro" disabled={quitandoPendiente} onClick={() => acciones.quitar(it.id)}>Sí</button>
+            <button type="button" className="secundario" autoFocus onClick={() => acciones.cancelarQuitar()}>No</button>
+          </span>
+        ) : (
+          <>
+            <button type="button" className="icono-accion" title="Editar" aria-label={`Editar la línea ${codigo}`} onClick={() => acciones.abrir(it, 'cantidad')}>
+              <Icono nombre="editar" />
+            </button>
+            <button type="button" className="enlace" disabled={quitandoPendiente} onClick={() => acciones.pedirQuitar(it)}>Quitar</button>
+          </>
+        ))}
+      </td>
+    </tr>
+  )
+})
+
+/** S-25: el código leído coincide con varias referencias del mismo proveedor; se elige una. */
+function EleccionAmbigua({ ambiguo, onElegir, onCancelar }: { ambiguo: Ambiguo; onElegir: (o: OpcionAmbigua) => void; onCancelar: () => void }) {
+  return (
+    <div
+      className="aviso atencion eleccion-codigo"
+      role="group"
+      aria-labelledby="codigo-ambiguo-titulo"
+      onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); onCancelar() } }}
+    >
+      <p id="codigo-ambiguo-titulo">Código ambiguo: <strong>{ambiguo.codigo}</strong> coincide con varias referencias de este proveedor. ¿Cuál es?</p>
+      <div className="opciones-codigo">
+        {ambiguo.opciones.map((o, n) => (
+          <button key={o.id} type="button" className="secundario" autoFocus={n === 0} onClick={() => onElegir(o)}>
+            <strong>{o.codigo_referencia}</strong>
+            {o.codigo_fabricante && <small> · código de barras {o.codigo_fabricante}</small>}
+            <small> · {o.descripcion}</small>
+          </button>
+        ))}
+        <button type="button" className="enlace" onClick={onCancelar}>Cancelar</button>
+      </div>
     </div>
   )
 }
@@ -674,7 +718,7 @@ const TIPOS_CODIGO: OpcionSegmento<TipoCodigo>[] = [
 function DialogoReferencia({ codigo, proveedor, onCreada, onCerrar }: {
   codigo: string
   proveedor: Opcion
-  onCreada: () => void
+  onCreada: (referencia: Referencia) => void
   onCerrar: () => void
 }) {
   const categorias = useCategorias()
@@ -687,7 +731,6 @@ function DialogoReferencia({ codigo, proveedor, onCreada, onCerrar }: {
   /** El otro código (el que no se leyó), opcional; y el que se consulta al salir del campo. */
   const [otro, setOtro] = useState('')
   const [otroConsultado, setOtroConsultado] = useState('')
-  useBloquearScroll()
   // El foco empieza en Categoría también si algo lo movió durante el montaje.
   useEffect(() => {
     const cuadro = requestAnimationFrame(() => campoCategoria.current?.focus())
@@ -697,7 +740,7 @@ function DialogoReferencia({ codigo, proveedor, onCreada, onCerrar }: {
   const admiteUniversal = categoria?.admite_codigo_universal ?? false
 
   const crear = useMutation({
-    mutationFn: async () => api.post('/referencias', {
+    mutationFn: async () => (await api.post<Referencia>('/referencias', {
       // Leído como código de barras: la referencia es opcional (vacía = el mismo código, S-25).
       codigo_referencia: tipo === 'referencia' ? codigo : otro.trim(),
       codigo_fabricante: tipo === 'barras' ? codigo : otro.trim() || null,
@@ -707,7 +750,7 @@ function DialogoReferencia({ codigo, proveedor, onCreada, onCerrar }: {
       descripcion: f.descripcion.trim(),
       precio_venta: leerNumero(f.precio_venta), // S-67: sin el formato
       codigo_universal_id: admiteUniversal && f.codigo_universal_id ? Number(f.codigo_universal_id) : null,
-    }),
+    })).data,
     onSuccess: onCreada,
   })
 
@@ -716,9 +759,20 @@ function DialogoReferencia({ codigo, proveedor, onCreada, onCerrar }: {
   const campo = (k: keyof typeof f) => ({ value: f[k], onChange: (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value }) })
 
   return (
-    <div className="modal" onKeyDown={(e) => { if (e.key === 'Escape') onCerrar(); else atraparTab(e) }}>
-      <form className="modal-caja" role="dialog" aria-modal="true" aria-labelledby="crear-referencia-titulo" onSubmit={(e) => { e.preventDefault(); crear.mutate() }}>
-        <h2 id="crear-referencia-titulo">Crear referencia</h2>
+    // Marco compartido: X de cerrar, Escape, foco atrapado y bloqueo del scroll.
+    <Dialogo
+      titulo="Crear referencia"
+      pendiente={crear.isPending}
+      onCerrar={onCerrar}
+      onEnviar={() => crear.mutate()}
+      pie={(
+        <>
+          <BotonCancelar />
+          <button type="submit" className="primario" disabled={!completo || crear.isPending}>{crear.isPending ? 'Guardando…' : 'Crear y agregar'}</button>
+        </>
+      )}
+    >
+      <DialogoSeccion>
         {/* Datos fijos: no son campos (no se enfocan ni se editan). */}
         <dl className="datos-fijos">
           <div>
@@ -794,12 +848,8 @@ function DialogoReferencia({ codigo, proveedor, onCreada, onCerrar }: {
         </label>
         <p className={errorPrecio ? 'ayuda error' : 'ayuda'}>{errorPrecio ?? 'Con IVA incluido. Mayor que 0. Si no lo conoce, consúltelo con el administrador antes de crearla.'}</p>
         {crear.isError && <div className="aviso error">{mensajeError(crear.error)}</div>}
-        <div className="acciones">
-          <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
-          <button className="primario" disabled={!completo || crear.isPending}>{crear.isPending ? 'Guardando…' : 'Crear y agregar'}</button>
-        </div>
-      </form>
-    </div>
+      </DialogoSeccion>
+    </Dialogo>
   )
 }
 
@@ -855,7 +905,7 @@ function DialogoCondiciones({ ingreso, onGuardado, onCerrar }: {
       onEnviar={() => guardar.mutate()}
       pie={(
         <>
-          <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
+          <BotonCancelar />
           <button type="submit" className="primario" disabled={guardar.isPending}>{guardar.isPending ? 'Guardando…' : 'Guardar'}</button>
         </>
       )}
@@ -927,13 +977,18 @@ function lineasIniciales(i: Ingreso): LineaCorr[] {
  * encabezado, líneas (cantidad, costo, descuento %, IVA %), agregar escaneando o buscando y quitar.
  * "Revisar cambios" pide la vista previa (sin escritura); luego se escribe el motivo y se confirma.
  * S-61: una remisión cubierta por una factura solo corrige número y fecha.
+ * RF-20: un código que no es referencia del proveedor se ofrece crear (mismo diálogo del borrador)
+ * y queda como línea nueva; uno desactivado se reactiva en Inventario (no se duplica).
  */
 function PanelCorreccion({ ingreso, onCancelar, onCorregido }: {
   ingreso: Ingreso
   onCancelar: () => void
   onCorregido: (r: { ingreso: Ingreso; correccion: CorreccionIngreso }) => void
 }) {
+  const { tieneRol } = useAuth()
+  const puedeCrear = tieneRol('logistica') // logística y admin (S-26)
   const soloEncabezado = ingreso.tipo === 'remision' && ingreso.factura !== null
+  const nombreProveedor = ingreso.proveedor?.nombre ?? 'este proveedor'
   const [enc, setEnc] = useState({
     numero_documento: ingreso.numero_documento,
     fecha: ingreso.fecha.slice(0, 10),
@@ -942,20 +997,43 @@ function PanelCorreccion({ ingreso, onCancelar, onCorregido }: {
     descuento: formatoNumero(ingreso.descuento_documento),
   })
   const [lineas, setLineas] = useState<LineaCorr[]>(() => lineasIniciales(ingreso))
-  const [opciones, setOpciones] = useState<Referencia[] | null>(null)
-  const [avisoLector, setAvisoLector] = useState<string | null>(null)
+  const lineasRef = useRef(lineas)
+  lineasRef.current = lineas
+  /** Resultado de una búsqueda sin coincidencia exacta: opciones del proveedor y el código escrito. */
+  const [opciones, setOpciones] = useState<{ texto: string; refs: Referencia[] } | null>(null)
+  const [avisoLector, setAvisoLector] = useState<{ tono: 'error' | 'atencion'; texto: string } | null>(null)
+  const [creando, setCreando] = useState<string | null>(null)
   const [vista, setVista] = useState<VistaPreviaCorreccion | null>(null)
+  const [enfocarCosto, setEnfocarCosto] = useState<string | null>(null)
   const lector = useRef<HTMLInputElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const zonaLector = useRef<HTMLDivElement>(null)
+  const tablaRef = useRef<HTMLDivElement>(null)
+  const barraRef = useRef<HTMLDivElement>(null)
+  const costos = useRef(new Map<string, HTMLInputElement>())
+  useAltoLector(panelRef, zonaLector, !soloEncabezado)
 
   const credito = enc.forma_pago === 'credito'
-  const erroresLinea = (l: LineaCorr): Partial<Record<Campo, string | null>> =>
-    (l.quitada ? {} : Object.fromEntries(CAMPOS.map((c) => [c, REGLAS[c].validar(leerNumero(l.valores[c]))])))
   const descuento = leerNumero(enc.descuento)
-  const hayErrores = lineas.some((l) => Object.values(erroresLinea(l)).some(Boolean))
-    || lineas.every((l) => l.quitada)
-    || enc.numero_documento.trim() === ''
-    || (credito && enc.vence_el === '')
-    || (!soloEncabezado && descuento !== null && Number.isNaN(descuento))
+  const conErrores = lineas.filter((l) => Object.values(erroresLinea(l)).some(Boolean))
+  const vigentes = lineas.filter((l) => !l.quitada)
+  const nuevas = lineas.filter((l) => l.id === null).length
+  const quitadas = lineas.length - vigentes.length
+
+  /** Por qué "Revisar cambios" está deshabilitado, en una línea corta (null = se puede revisar). */
+  const motivoBloqueo = (() => {
+    if (enc.numero_documento.trim() === '') return 'Falta el número del documento'
+    if (credito && enc.vence_el === '') return 'Falta el vencimiento'
+    if (!soloEncabezado && descuento !== null && Number.isNaN(descuento)) return 'Descuento del documento no válido'
+    if (vigentes.length === 0) return 'Debe quedar al menos una línea'
+    if (conErrores.length === 1) {
+      const errores = erroresLinea(conErrores[0])
+      const soloCosto = CAMPOS.every((c) => c === 'costo_unitario' || !errores[c])
+      return soloCosto ? `Falta el costo de ${conErrores[0].codigo}` : `Faltan datos en ${conErrores[0].codigo}`
+    }
+    if (conErrores.length > 1) return `Faltan datos en ${conErrores.length} líneas`
+    return null
+  })()
 
   const cuerpo = (): Record<string, unknown> => {
     const base: Record<string, unknown> = { numero_documento: enc.numero_documento.trim(), fecha: enc.fecha }
@@ -974,62 +1052,171 @@ function PanelCorreccion({ ingreso, onCancelar, onCorregido }: {
     mutationFn: async () => (await api.post<VistaPreviaCorreccion>(`/ingresos/${ingreso.id}/correcciones/vista-previa`, cuerpo())).data,
     onSuccess: setVista,
   })
+  const reiniciarRevision = useRef(revisar.reset)
+  reiniciarRevision.current = revisar.reset
 
   const cambiarEnc = (k: keyof typeof enc, v: string) => { revisar.reset(); setEnc((e) => ({ ...e, [k]: v })) }
-  const cambiarValor = (clave: string, campo: Campo, valor: string) => {
-    revisar.reset()
+  // Estables: la fila memoizada solo se vuelve a pintar si cambia su propia línea.
+  const cambiarValor = useCallback((clave: string, campo: Campo, valor: string) => {
+    reiniciarRevision.current()
     setLineas((ls) => ls.map((l) => (l.clave === clave ? { ...l, valores: { ...l.valores, [campo]: valor } } : l)))
-  }
+  }, [])
   /** Una línea existente se marca quitada (se puede deshacer); una nueva se elimina de la lista. */
-  const alternarQuitada = (clave: string) => {
-    revisar.reset()
+  const alternarQuitada = useCallback((clave: string) => {
+    reiniciarRevision.current()
     setLineas((ls) => ls.flatMap((l) => (l.clave !== clave ? [l] : l.id === null ? [] : [{ ...l, quitada: !l.quitada }])))
-  }
+  }, [])
+  const registrarCosto = useCallback((clave: string, el: HTMLInputElement | null) => {
+    if (el) costos.current.set(clave, el)
+    else costos.current.delete(clave)
+  }, [])
 
-  /** Agrega una referencia del proveedor: si ya hay una línea vigente suya, suma 1. */
+  /**
+   * Agrega una referencia del proveedor: si ya hay una línea vigente suya, suma 1 y el foco vuelve
+   * al lector; si no, línea nueva (cantidad 1, IVA de la referencia) con el foco en su costo.
+   */
   const agregar = (r: Referencia) => {
     revisar.reset()
     setOpciones(null)
     setAvisoLector(null)
-    setLineas((ls) => {
-      const existente = ls.find((l) => l.referencia_id === r.id && !l.quitada)
-      if (existente) {
-        const n = (leerNumero(existente.valores.cantidad) ?? 0) + 1
-        return ls.map((l) => (l === existente ? { ...l, valores: { ...l.valores, cantidad: String(n) } } : l))
-      }
-      secuenciaLineaNueva += 1
-      return [...ls, {
-        clave: `n${secuenciaLineaNueva}`,
-        id: null,
-        referencia_id: r.id,
-        codigo: r.codigo_referencia,
-        descripcion: r.descripcion,
-        valores: { cantidad: '1', costo_unitario: '', descuento_porcentaje: '0', iva_porcentaje: String(Number(r.iva_venta_porcentaje ?? 0)) },
-        quitada: false,
-      }]
-    })
-    lector.current?.focus()
+    const existente = lineasRef.current.find((l) => l.referencia_id === r.id && !l.quitada)
+    if (existente) {
+      setLineas((ls) => ls.map((l) => (l.clave === existente.clave
+        ? { ...l, valores: { ...l.valores, cantidad: String((leerNumero(l.valores.cantidad) ?? 0) + 1) } }
+        : l)))
+      lector.current?.focus()
+      return
+    }
+    secuenciaLineaNueva += 1
+    const clave = `n${secuenciaLineaNueva}`
+    setLineas((ls) => [...ls, {
+      clave,
+      id: null,
+      referencia_id: r.id,
+      codigo: r.codigo_referencia,
+      descripcion: r.descripcion,
+      valores: { cantidad: '1', costo_unitario: '', descuento_porcentaje: '0', iva_porcentaje: String(Number(r.iva_venta_porcentaje ?? 0)) },
+      quitada: false,
+    }])
+    setEnfocarCosto(clave)
   }
+  useEffect(() => {
+    if (enfocarCosto === null) return
+    const el = costos.current.get(enfocarCosto)
+    if (el) { el.focus(); el.select(); el.scrollIntoView({ block: 'nearest' }) }
+    setEnfocarCosto(null)
+  }, [enfocarCosto])
 
-  /** Escaneado o escrito: busca entre las referencias activas del proveedor; exacto agrega, si no ofrece opciones. */
+  /**
+   * Escaneado o escrito: busca entre las referencias del proveedor del ingreso (nunca de otro).
+   * Exacta y activa: agrega. Varias o parecidas: se elige (o se crea la del código escrito).
+   * Desactivada: se reactiva en Inventario. Ninguna: se ofrece crearla (RF-20).
+   */
   const buscar = async (codigo: string) => {
     if (lector.current) lector.current.value = ''
     const texto = codigo.trim()
     if (texto === '') return
     try {
-      const encontradas = (await api.get<Pagina<Referencia>>('/referencias', { params: { proveedor_id: ingreso.proveedor_id, q: texto, por_pagina: 10 } })).data.data
-      const exactas = encontradas.filter((r) => [r.codigo_referencia, r.codigo_fabricante ?? ''].some((c) => c.toUpperCase() === texto.toUpperCase()))
-      if (exactas.length === 1) agregar(exactas[0])
-      else if (encontradas.length > 0) { setOpciones(exactas.length > 1 ? exactas : encontradas); setAvisoLector(null) }
-      else setAvisoLector(`${texto} no es una referencia activa de ${ingreso.proveedor?.nombre ?? 'este proveedor'}.`)
+      const encontradas = (await api.get<Pagina<Referencia>>('/referencias', {
+        params: { proveedor_id: ingreso.proveedor_id, q: texto, por_pagina: 10, inactivas: 1 },
+      })).data.data
+      const coincide = (r: Referencia) => [r.codigo_referencia, r.codigo_fabricante ?? ''].some((c) => c.toUpperCase() === texto.toUpperCase())
+      const activas = encontradas.filter((r) => r.activo !== false)
+      const exactas = activas.filter(coincide)
+      if (exactas.length === 1) { agregar(exactas[0]); return }
+      if (exactas.length > 1) { setOpciones({ texto, refs: exactas }); setAvisoLector(null); return }
+      if (encontradas.some((r) => r.activo === false && coincide(r))) {
+        setOpciones(null)
+        setAvisoLector({ tono: 'atencion', texto: `El código ${texto} está desactivado para ${nombreProveedor}. Reactívelo en Inventario.` })
+        return
+      }
+      if (activas.length > 0) { setOpciones({ texto, refs: activas }); setAvisoLector(null); return }
+      setOpciones(null)
+      if (puedeCrear) { setAvisoLector(null); setCreando(texto) } else {
+        setAvisoLector({ tono: 'error', texto: `${texto} no es una referencia activa de ${nombreProveedor}.` })
+      }
     } catch (e) {
-      setAvisoLector(mensajeError(e))
+      setAvisoLector({ tono: 'error', texto: mensajeError(e) })
     }
   }
-  const scanner = useScanner((codigo) => { void buscar(codigo) })
+  const buscarRef = useRef(buscar)
+  buscarRef.current = buscar
+  const scanner = useScanner(useCallback((codigo: string) => { void buscarRef.current(codigo) }, []))
+
+  // El lector recupera el foco salvo con un diálogo abierto, las opciones a la vista o una celda en
+  // edición. Mientras se crea una referencia, el diálogo atrapa el foco: el lector no captura nada.
+  const hayDialogo = creando !== null || vista !== null || opciones !== null
+  const hayDialogoRef = useRef(hayDialogo)
+  hayDialogoRef.current = hayDialogo
+  useEffect(() => {
+    if (hayDialogo || soloEncabezado) return
+    const activo = document.activeElement
+    if (!activo || activo === document.body || activo === lector.current) lector.current?.focus()
+  }, [hayDialogo, soloEncabezado])
+  /** Si el foco quedó en ninguna parte (clic en un espacio vacío), vuelve al lector. */
+  const reenfocar = () => setTimeout(() => {
+    if (hayDialogoRef.current) return
+    const activo = document.activeElement
+    if (!activo || activo === document.body) lector.current?.focus()
+  }, 0)
+
+  /**
+   * Teclado dentro de la tabla. Enter o Esc devuelven el foco al lector. Una ráfaga de lector
+   * (< 30 ms entre teclas y Enter) con el foco en una celda no se escribe en ella: la celda vuelve
+   * a su valor y el código se busca como si se hubiera leído en el lector.
+   */
+  const rafaga = useRef<{ t: number; texto: string; bloqueadas: number; celda: { clave: string; campo: Campo; valor: string } | null }>({ t: 0, texto: '', bloqueadas: 0, celda: null })
+  const alTeclearEnTabla = (e: KeyboardEvent<HTMLDivElement>) => {
+    const el = e.target as HTMLElement
+    const clave = el.dataset.clave
+    const campo = el.dataset.campo as Campo | undefined
+    if (!clave || !campo) return
+    const r = rafaga.current
+    const ahora = performance.now()
+    if (e.key === 'Enter' || e.key === 'Escape') {
+      e.preventDefault()
+      const escaneo = e.key === 'Enter' && r.celda !== null && r.bloqueadas >= 2 && ahora - r.t < 100
+      if (escaneo && r.celda) {
+        const c = r.celda
+        setLineas((ls) => ls.map((l) => (l.clave === c.clave ? { ...l, valores: { ...l.valores, [c.campo]: c.valor } } : l)))
+        void buscar(r.texto)
+      }
+      rafaga.current = { t: 0, texto: '', bloqueadas: 0, celda: null }
+      lector.current?.focus()
+      return
+    }
+    if (!(el instanceof HTMLInputElement) || e.key.length !== 1 || e.ctrlKey || e.metaKey || e.altKey) {
+      rafaga.current = { t: 0, texto: '', bloqueadas: 0, celda: null }
+      return
+    }
+    if (r.celda && ahora - r.t < UMBRAL_RAFAGA_MS) {
+      e.preventDefault()
+      r.texto += e.key
+      r.bloqueadas += 1
+    } else {
+      const linea = lineasRef.current.find((l) => l.clave === clave)
+      rafaga.current = { t: ahora, texto: e.key, bloqueadas: 0, celda: linea ? { clave, campo, valor: linea.valores[campo] } : null }
+      return
+    }
+    r.t = ahora
+  }
+  /** Tab o clic fuera de la tabla: el foco vuelve al lector, salvo que vaya a la barra de acciones o a un campo del encabezado. */
+  const alSalirDeTabla = (e: FocusEvent<HTMLDivElement>) => {
+    const destino = e.relatedTarget as Node | null
+    if (destino && (tablaRef.current?.contains(destino) || barraRef.current?.contains(destino) || zonaLector.current?.contains(destino))) return
+    if (destino && panelRef.current?.querySelector('.encabezado-correccion')?.contains(destino)) return
+    setTimeout(() => { if (!hayDialogoRef.current) lector.current?.focus() }, 0)
+  }
+
+  const resumen = [
+    `${vigentes.length} ${vigentes.length === 1 ? 'línea' : 'líneas'}`,
+    `${nuevas} ${nuevas === 1 ? 'nueva' : 'nuevas'}`,
+    `${quitadas} ${quitadas === 1 ? 'quitada' : 'quitadas'}`,
+    ...(conErrores.length > 0 ? [`${conErrores.length} con errores`] : []),
+  ].join(' · ')
 
   return (
-    <div className="panel panel-correccion">
+    <div ref={panelRef} className="panel panel-correccion ingreso-con-barra">
       <div className="fila-titulo">
         <h2>Corregir {ingreso.tipo === 'factura' ? 'factura' : 'remisión'} {ingreso.numero_documento}</h2>
       </div>
@@ -1056,7 +1243,8 @@ function PanelCorreccion({ ingreso, onCancelar, onCorregido }: {
       </div>
 
       {!soloEncabezado && (
-        <>
+        // Fijo bajo la barra superior: con muchas líneas se sigue escaneando sin subir.
+        <div ref={zonaLector} className="ingreso-lector">
           <input
             ref={lector}
             className="escaner"
@@ -1064,80 +1252,75 @@ function PanelCorreccion({ ingreso, onCancelar, onCorregido }: {
             aria-label="Agregar línea por código o búsqueda"
             onKeyDown={scanner.onKeyDown}
             onPaste={scanner.onPaste}
+            onBlur={reenfocar}
             autoComplete="off"
           />
-          {avisoLector && <div className="aviso error" role="alert">{avisoLector}</div>}
+          {avisoLector && <div className={`aviso ${avisoLector.tono}`} role="alert">{avisoLector.texto}</div>}
           {opciones && (
-            <div className="aviso atencion eleccion-codigo" role="group" aria-label="Elija la referencia">
+            <div
+              className="aviso atencion eleccion-codigo"
+              role="group"
+              aria-label="Elija la referencia"
+              onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); setOpciones(null) } }}
+            >
               <p>Elija la referencia:</p>
               <div className="opciones-codigo">
-                {opciones.map((r, n) => (
+                {opciones.refs.map((r, n) => (
                   <button key={r.id} type="button" className="secundario" autoFocus={n === 0} onClick={() => agregar(r)}>
                     <strong>{r.codigo_referencia}</strong><small> · {r.descripcion}</small>
                   </button>
                 ))}
+                {puedeCrear && !opciones.refs.some((r) => r.codigo_referencia.toUpperCase() === opciones.texto.toUpperCase()) && (
+                  <button type="button" className="secundario" onClick={() => { const t = opciones.texto; setOpciones(null); setCreando(t) }}>
+                    Crear referencia <strong>{opciones.texto}</strong>
+                  </button>
+                )}
                 <button type="button" className="enlace" onClick={() => setOpciones(null)}>Cancelar</button>
               </div>
             </div>
           )}
-        </>
+        </div>
       )}
 
-      <div className="tabla-desplazable">
+      <div ref={tablaRef} className="tabla-desplazable ingreso-tabla" onKeyDown={alTeclearEnTabla} onBlur={alSalirDeTabla}>
         <table className="tabla-lineas tabla-correccion">
           <thead><tr><th>Referencia</th><th>Cant.</th><th>Costo</th><th>Desc. %</th><th>IVA %</th><th><span className="solo-lector">Acciones</span></th></tr></thead>
           <tbody>
-            {lineas.map((l) => {
-              const errores = erroresLinea(l)
-              return (
-                <tr key={l.clave} className={l.quitada ? 'reversado' : ''}>
-                  <td data-label="Referencia">
-                    {l.codigo} <small>{l.descripcion}</small>
-                    {l.id === null && <span className="chip corregida">Nueva</span>}
-                  </td>
-                  {CAMPOS.map((c) => (
-                    <td key={c} data-label={REGLAS[c].etiqueta}>
-                      {soloEncabezado || l.quitada ? (
-                        <span>{l.valores[c] || '—'}</span>
-                      ) : c === 'iva_porcentaje' ? (
-                        <select aria-label={`${REGLAS[c].etiqueta} de ${l.codigo}`} value={l.valores[c]} onChange={(e) => cambiarValor(l.clave, c, e.target.value)}>
-                          {[...new Set([...IVAS.map(String), l.valores[c]])].map((v) => <option key={v} value={v}>{v} %</option>)}
-                        </select>
-                      ) : (
-                        <>
-                          <input
-                            className="celda-numero"
-                            inputMode={c === 'cantidad' ? 'numeric' : 'decimal'}
-                            aria-label={`${REGLAS[c].etiqueta} de ${l.codigo}`}
-                            aria-invalid={!!errores[c]}
-                            value={l.valores[c]}
-                            onChange={(e) => cambiarValor(l.clave, c, e.target.value)}
-                          />
-                          {errores[c] && <small className="ayuda error">{errores[c]}</small>}
-                        </>
-                      )}
-                    </td>
-                  ))}
-                  <td data-label="" className="acciones-linea">
-                    {!soloEncabezado && (
-                      <button type="button" className="enlace" onClick={() => alternarQuitada(l.clave)}>{l.quitada ? 'Deshacer' : 'Quitar'}</button>
-                    )}
-                  </td>
-                </tr>
-              )
-            })}
+            {lineas.map((l) => (
+              <FilaCorreccion
+                key={l.clave}
+                linea={l}
+                soloEncabezado={soloEncabezado}
+                onCambiar={cambiarValor}
+                onQuitar={alternarQuitada}
+                registrarCosto={registrarCosto}
+              />
+            ))}
           </tbody>
         </table>
       </div>
 
       {revisar.isError && <div className="aviso error" role="alert">{mensajeError(revisar.error)}</div>}
-      <div className="acciones">
-        <button type="button" className="secundario" onClick={onCancelar}>Cancelar</button>
-        <button type="button" className="primario" disabled={hayErrores || revisar.isPending} onClick={() => revisar.mutate()}>
-          {revisar.isPending ? 'Revisando…' : 'Revisar cambios'}
-        </button>
+      {/* Barra fija al pie del área visible: resumen y botones siempre a la vista. */}
+      <div ref={barraRef} className="ingreso-barra">
+        <span className="ingreso-barra-resumen">{resumen}</span>
+        <div className="ingreso-barra-acciones">
+          {motivoBloqueo && <small className="ingreso-barra-motivo" role="status">{motivoBloqueo}</small>}
+          <button type="button" className="secundario" onClick={onCancelar}>Cancelar</button>
+          <button type="button" className="primario" disabled={motivoBloqueo !== null || revisar.isPending} onClick={() => revisar.mutate()}>
+            {revisar.isPending ? 'Revisando…' : 'Revisar cambios'}
+          </button>
+        </div>
       </div>
 
+      {creando !== null && ingreso.proveedor && (
+        <DialogoReferencia
+          codigo={creando}
+          proveedor={ingreso.proveedor}
+          onCreada={(r) => { setCreando(null); agregar(r) }}
+          onCerrar={() => { setCreando(null); requestAnimationFrame(() => lector.current?.focus()) }}
+        />
+      )}
       {vista && (
         <DialogoConfirmarCorreccion
           ingresoId={ingreso.id}
@@ -1149,6 +1332,81 @@ function PanelCorreccion({ ingreso, onCancelar, onCorregido }: {
       )}
     </div>
   )
+}
+
+function erroresLinea(l: LineaCorr): Partial<Record<Campo, string | null>> {
+  return l.quitada ? {} : Object.fromEntries(CAMPOS.map((c) => [c, REGLAS[c].validar(leerNumero(l.valores[c]))]))
+}
+
+/**
+ * Una línea de la corrección. Memoizada: escribir en una celda solo vuelve a pintar su fila (las
+ * demás conservan el mismo objeto y las mismas funciones).
+ */
+const FilaCorreccion = memo(function FilaCorreccion({ linea: l, soloEncabezado, onCambiar, onQuitar, registrarCosto }: {
+  linea: LineaCorr
+  soloEncabezado: boolean
+  onCambiar: (clave: string, campo: Campo, valor: string) => void
+  onQuitar: (clave: string) => void
+  registrarCosto: (clave: string, el: HTMLInputElement | null) => void
+}) {
+  const errores = erroresLinea(l)
+  return (
+    <tr className={l.quitada ? 'reversado' : ''}>
+      <td data-label="Referencia">
+        {l.codigo} <small>{l.descripcion}</small>
+        {l.id === null && <span className="chip corregida">Nueva</span>}
+      </td>
+      {CAMPOS.map((c) => (
+        <td key={c} data-label={REGLAS[c].etiqueta}>
+          {soloEncabezado || l.quitada ? (
+            <span>{l.valores[c] || '—'}</span>
+          ) : c === 'iva_porcentaje' ? (
+            <select data-clave={l.clave} data-campo={c} aria-label={`${REGLAS[c].etiqueta} de ${l.codigo}`} value={l.valores[c]} onChange={(e) => onCambiar(l.clave, c, e.target.value)}>
+              {[...new Set([...IVAS.map(String), l.valores[c]])].map((v) => <option key={v} value={v}>{v} %</option>)}
+            </select>
+          ) : (
+            <>
+              <input
+                ref={c === 'costo_unitario' ? (el) => registrarCosto(l.clave, el) : undefined}
+                data-clave={l.clave}
+                data-campo={c}
+                className="celda-numero"
+                inputMode={c === 'cantidad' ? 'numeric' : 'decimal'}
+                autoComplete="off"
+                aria-label={`${REGLAS[c].etiqueta} de ${l.codigo}`}
+                aria-invalid={!!errores[c]}
+                value={l.valores[c]}
+                onChange={(e) => onCambiar(l.clave, c, e.target.value)}
+              />
+              {errores[c] && <small className="ayuda error">{errores[c]}</small>}
+            </>
+          )}
+        </td>
+      ))}
+      <td data-label="" className="acciones-linea">
+        {!soloEncabezado && (
+          <button type="button" className="enlace" onClick={() => onQuitar(l.clave)}>{l.quitada ? 'Deshacer' : 'Quitar'}</button>
+        )}
+      </td>
+    </tr>
+  )
+})
+
+/**
+ * El lector y la cabecera de la tabla quedan fijos al hacer scroll: la cabecera va justo debajo del
+ * lector, cuyo alto cambia con avisos u opciones. Se publica en --ingreso-lector-alto.
+ */
+function useAltoLector(contenedor: RefObject<HTMLElement | null>, zona: RefObject<HTMLElement | null>, activo: boolean) {
+  useEffect(() => {
+    const el = zona.current
+    const caja = contenedor.current
+    if (!el || !caja || typeof ResizeObserver === 'undefined') return
+    const medir = () => caja.style.setProperty('--ingreso-lector-alto', `${Math.ceil(el.getBoundingClientRect().height)}px`)
+    medir()
+    const obs = new ResizeObserver(medir)
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [contenedor, zona, activo])
 }
 
 /** RF-28: resumen de la vista previa, motivo y confirmación (con etiquetas impresas y diferencia si aplica). */
@@ -1190,11 +1448,12 @@ function DialogoConfirmarCorreccion({ ingresoId, vista, cuerpo, onCerrar, onCorr
       onEnviar={() => { if (listo) corregir.mutate() }}
       pie={(
         <>
-          <button type="button" className="secundario" onClick={onCerrar}>Volver a editar</button>
+          <BotonCancelar>Volver a editar</BotonCancelar>
           <button type="submit" className="primario" disabled={!listo}>{corregir.isPending ? 'Guardando…' : 'Confirmar corrección'}</button>
         </>
       )}
     >
+      <DialogoSeccion>
       <dl className="datos-fijos">
         <div><dt>Total anterior</dt><dd>{vista.total_anterior === null ? '—' : pesos(vista.total_anterior)}</dd></div>
         <div><dt>Total nuevo</dt><dd><strong>{pesos(vista.total_nuevo)}</strong></dd></div>
@@ -1238,6 +1497,7 @@ function DialogoConfirmarCorreccion({ ingresoId, vista, cuerpo, onCerrar, onCorr
         </label>
       )}
       {corregir.isError && !errores.motivo && <div className="aviso error" role="alert">{mensajeError(corregir.error)}</div>}
+      </DialogoSeccion>
     </Dialogo>
   )
 }

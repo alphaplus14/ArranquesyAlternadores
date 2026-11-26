@@ -1,5 +1,6 @@
 import { useAvisoTexto } from './Avisos'
 import Dialogo from './Dialogo'
+import BotonCancelar from './BotonCancelar'
 
 /** Pregunta antes de guardar un cambio. Escape o Cancelar vuelven atrás sin aplicar nada. */
 export default function Confirmar({
@@ -30,12 +31,13 @@ export default function Confirmar({
       descripcion={texto}
       alertdialog
       variante="confirmar"
+      confirmarSalida={false}
       onCerrar={onCancelar}
       pendiente={pendiente}
       onEnviar={onConfirmar}
       pie={(
         <>
-          <button type="button" className="secundario" autoFocus disabled={pendiente} onClick={onCancelar}>Cancelar</button>
+          <BotonCancelar autoFocus />
           <button type="submit" className={peligro ? 'peligro' : 'primario'} disabled={pendiente}>
             {pendiente ? 'Guardando…' : accion}
           </button>
