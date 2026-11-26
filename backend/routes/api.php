@@ -19,6 +19,7 @@ use App\Http\Controllers\Api\EmpleadoController;
 use App\Http\Controllers\Api\EtiquetaController;
 use App\Http\Controllers\Api\IngresoController;
 use App\Http\Controllers\Api\MovimientoCajaController;
+use App\Http\Controllers\Api\RecaudoDocumentoController;
 use App\Http\Controllers\Api\PagoController;
 use App\Http\Controllers\Api\PanelController;
 use App\Http\Controllers\Api\ProveedorController;
@@ -260,6 +261,9 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::middleware('solo_rol:mostrador')->group(function () {
                 Route::post('/movimientos', [MovimientoCajaController::class, 'store']);
                 Route::post('/movimientos/{movimiento}/anulaciones', [MovimientoCajaController::class, 'anular']);
+                // S-76: recaudo de documentos de Contapyme (no son ventas a crédito del sistema).
+                Route::post('/dias/{fecha}/recaudos', [RecaudoDocumentoController::class, 'store'])->where('fecha', '\d{4}-\d{2}-\d{2}');
+                Route::post('/recaudos/{recaudo}/anular', [RecaudoDocumentoController::class, 'anular']);
                 Route::post('/cierres', [CajaController::class, 'cerrar']);
                 // S-49: apertura diaria de la caja (crear o corregir mientras el día no esté cerrado).
                 Route::put('/dias/{fecha}/apertura', [CajaController::class, 'fijarApertura'])->where('fecha', '\d{4}-\d{2}-\d{2}');
@@ -273,6 +277,9 @@ Route::middleware('auth:sanctum')->group(function () {
             });
         });
     });
+
+    // S-76: consulta de recaudos de documentos para la contadora (admin pasa). Solo en pantalla.
+    Route::get('/recaudos-documento', [RecaudoDocumentoController::class, 'index'])->middleware(['rol:contable', 'medir:800']);
 
     // RF-27 (S-55 a S-57): cuenta de empleados, independiente de la cartera de clientes. Logística 403.
     // Mostrador: elige empleado (sin saldos) y registra préstamos y abonos. Admin: crea y edita

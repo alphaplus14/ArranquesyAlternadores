@@ -14,6 +14,7 @@ class MovimientoEmpleadoResource extends JsonResource
         return [
             'id' => $this->id,
             'empleado_id' => $this->empleado_id,
+            'empleado' => $this->whenLoaded('empleado', fn () => ['id' => $this->empleado->id, 'nombre' => $this->empleado->nombre]),
             'tipo' => $this->tipo,
             'fecha' => $this->fecha->toDateString(),
             'valor' => $this->valor,
@@ -26,6 +27,8 @@ class MovimientoEmpleadoResource extends JsonResource
             'anulacion' => $this->whenLoaded('anulacion', fn () => $this->anulacion ? [
                 'motivo' => $this->anulacion->motivo,
                 'created_at' => $this->anulacion->created_at,
+                'usuario' => $this->anulacion->relationLoaded('usuario') && $this->anulacion->usuario
+                    ? ['id' => $this->anulacion->usuario->id, 'name' => $this->anulacion->usuario->name] : null,
             ] : null),
         ];
     }

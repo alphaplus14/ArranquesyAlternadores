@@ -173,7 +173,39 @@ class CajaService
         $apertura = $this->aperturaDelDia($fecha);
         $r = $this->componer($fecha, $agregados[$fecha] ?? $this->vacio(), $cuentas, $this->metaVentaDiaria());
 
+        // S-75: totales de la pestaña Movimientos, de los mismos agregados que el efectivo esperado
+        // (sin anulados). Gastos = vario + fijo + financiero (= egresos.total); ingresos = otros
+        // ingresos + ingresos externos, de todas las cuentas. Ventas, recaudo, pagos a proveedores y
+        // préstamos a empleados no son movimientos de caja y no entran.
+        $delDia = $agregados[$fecha] ?? $this->vacio();
+        $conteos = $delDia['conteos'];
+        $cantidad = fn (array $grupos) => array_sum(array_map(fn (GrupoCaja $g) => $conteos[$g->value], $grupos));
+
         return $r + [
+            'totales_movimientos' => [
+                'gastos' => [
+                    'cantidad' => $cantidad([GrupoCaja::Vario, GrupoCaja::Fijo, GrupoCaja::Financiero]),
+                    'total' => $r['egresos']['total'],
+                ],
+                'ingresos' => [
+                    'cantidad' => $cantidad([GrupoCaja::OtroIngreso, GrupoCaja::IngresoExterno]),
+                    'total' => bcadd($r['otros_ingresos'], $r['ingresos_externos'], 2),
+                ],
+                // S-76: recaudos de documentos (también dentro de recaudo_cartera); ni gasto ni ingreso.
+                'recaudos' => [
+                    'cantidad' => $delDia['conteo_recaudos'],
+                    'total' => $delDia['recaudos_documento'],
+                ],
+                // RF-27: préstamos y abonos de empleados del día; ni gasto ni ingreso. Mismos agregados
+                // que el detalle del efectivo: préstamos = "Préstamos a empleados" (siempre de Efectivo);
+                // abonos por caja de todas las cuentas (la parte en Efectivo es "Abonos de empleados en
+                // efectivo"); abonos por nómina aparte (no mueven la caja).
+                'empleados' => [
+                    'prestamos' => ['cantidad' => $delDia['conteo_empleados']['prestamos'], 'total' => $r['prestamos_empleados']],
+                    'abonos_caja' => ['cantidad' => $delDia['conteo_empleados']['abonos_caja'], 'total' => $r['abonos_empleados']],
+                    'abonos_nomina' => ['cantidad' => $delDia['conteo_empleados']['abonos_nomina'], 'total' => $delDia['abonos_nomina']],
+                ],
+            ],
             'apertura' => $apertura,
             'apertura_sugerida' => $this->aperturaSugerida($fecha),
             'apertura_editable' => $fecha <= RangoFechas::hoy() && $this->cierreVigente($fecha) === null,
@@ -325,6 +357,19 @@ class CajaService
             $poner($f->dia, $f->forma_pago === 'credito' ? 'ventas_credito' : 'ventas_sin_detalle', null, (string) $f->valor);
         }
 
+        // 2b. S-73: ventas a crédito de solo valor (sin ítems): crédito del día de su registro, como las
+        // demás a crédito. Cuentan para la meta y no entran a ninguna cuenta de pago; una anulación
+        // posterior no resta del día (igual que el reverso de una venta a crédito ya cerrada).
+        $q = DB::table('ventas as v')
+            ->where('v.estado', 'cerrada')->where('v.cerrada_at', '>=', $ini)->where('v.cerrada_at', '<', $fin)
+            ->where('v.forma_pago', 'credito')
+            ->whereNotNull('v.valor_total')
+            ->selectRaw($this->dia('v.cerrada_at').' as dia, SUM(v.valor_total) as valor')
+            ->groupBy('dia');
+        foreach ($q->get() as $f) {
+            $poner($f->dia, 'ventas_credito', null, (string) $f->valor);
+        }
+
         // 3. Devoluciones de ventas de contado ya cerradas (S-50): salen del efectivo.
         $q = DB::table('reversos as r')
             ->join('ventas as v', 'v.id', '=', 'r.venta_id')
@@ -357,32 +402,58 @@ class CajaService
             }
         }
 
-        // 6. Movimientos de caja no anulados, por grupo y cuenta (RF-26).
+        // 5b. S-76: recaudo de documentos de Contapyme (no son ventas a crédito del sistema), no anulados,
+        // por su día de caja y cuenta. Van con el recaudo de cartera: suman al neto de su cuenta y, en
+        // efectivo, al esperado; no a la meta. La anulación solo se permite con el día abierto, así que
+        // basta excluir los anulados de su propio día. El conteo sale de la misma consulta.
+        $q = DB::table('recaudos_documento as r')
+            ->leftJoin('recaudo_documento_anulaciones as x', 'x.recaudo_id', '=', 'r.id')
+            ->whereBetween('r.fecha', [$desde, $hasta])->whereNull('x.id')
+            ->selectRaw('r.fecha as dia, r.cuenta_pago_id as cuenta, SUM(r.valor) as valor, COUNT(*) as cantidad')
+            ->groupBy('r.fecha', 'r.cuenta_pago_id');
+        foreach ($q->get() as $f) {
+            $dia = (string) $f->dia;
+            $poner($dia, 'recaudo', (int) $f->cuenta, (string) $f->valor);
+            $poner($dia, 'recaudos_documento', null, (string) $f->valor);
+            $out[$dia]['conteo_recaudos'] += (int) $f->cantidad;
+        }
+
+        // 6. Movimientos de caja no anulados, por grupo y cuenta (RF-26). El conteo sale de la misma
+        // consulta: totales de la pestaña Movimientos (S-75).
         $q = DB::table('movimientos_caja as m')
             ->leftJoin('movimiento_caja_anulaciones as x', 'x.movimiento_id', '=', 'm.id')
             ->whereBetween('m.fecha', [$desde, $hasta])->whereNull('x.id')
-            ->selectRaw('m.fecha as dia, m.grupo, m.cuenta_pago_id as cuenta, SUM(m.valor) as valor')
+            ->selectRaw('m.fecha as dia, m.grupo, m.cuenta_pago_id as cuenta, SUM(m.valor) as valor, COUNT(*) as cantidad')
             ->groupBy('m.fecha', 'm.grupo', 'm.cuenta_pago_id');
         foreach ($q->get() as $f) {
             $out[$f->dia] ??= $this->vacio();
             $out[$f->dia]['movimientos'][$f->grupo][(int) $f->cuenta] = bcadd($out[$f->dia]['movimientos'][$f->grupo][(int) $f->cuenta] ?? '0', (string) $f->valor, 2);
+            $out[$f->dia]['conteos'][$f->grupo] += (int) $f->cantidad;
         }
 
         // 7. Préstamos y abonos de empleados (RF-27, S-55, S-56): por su fecha (siempre la del registro)
-        // y cuenta; una anulación resta el día en que se anula. Sin apertura ni abonos por nómina.
-        $mueveCaja = fn ($w) => $w->where('m.apertura', false)->where(fn ($t) => $t->where('m.tipo', 'prestamo')->orWhere('m.forma', 'caja'));
+        // y cuenta; una anulación resta el día en que se anula. Sin apertura. El abono por nómina no
+        // mueve la caja: va aparte, solo para los totales de la pestaña Movimientos. El conteo sale de
+        // la misma consulta (altas − anulaciones del día, como el valor).
         $altas = DB::table('movimientos_empleado as m')
-            ->whereBetween('m.fecha', [$desde, $hasta])->where($mueveCaja)
-            ->selectRaw('m.fecha as dia, m.tipo, m.cuenta_pago_id as cuenta, SUM(m.valor) as valor')
-            ->groupBy('m.fecha', 'm.tipo', 'm.cuenta_pago_id');
+            ->whereBetween('m.fecha', [$desde, $hasta])->where('m.apertura', false)
+            ->selectRaw('m.fecha as dia, m.tipo, m.forma, m.cuenta_pago_id as cuenta, SUM(m.valor) as valor, COUNT(*) as cantidad')
+            ->groupBy('m.fecha', 'm.tipo', 'm.forma', 'm.cuenta_pago_id');
         $bajas = DB::table('movimiento_empleado_anulaciones as x')
             ->join('movimientos_empleado as m', 'm.id', '=', 'x.movimiento_id')
-            ->where('x.created_at', '>=', $ini)->where('x.created_at', '<', $fin)->where($mueveCaja)
-            ->selectRaw($this->dia('x.created_at').' as dia, m.tipo, m.cuenta_pago_id as cuenta, -SUM(m.valor) as valor')
-            ->groupBy('dia', 'm.tipo', 'cuenta');
+            ->where('x.created_at', '>=', $ini)->where('x.created_at', '<', $fin)->where('m.apertura', false)
+            ->selectRaw($this->dia('x.created_at').' as dia, m.tipo, m.forma, m.cuenta_pago_id as cuenta, -SUM(m.valor) as valor, -COUNT(*) as cantidad')
+            ->groupBy('dia', 'm.tipo', 'm.forma', 'cuenta');
         foreach ($altas->unionAll($bajas)->get() as $f) {
-            $cuenta = $f->cuenta !== null ? (int) $f->cuenta : ($efectivoId ?? self::SIN_CUENTA);
-            $poner((string) $f->dia, $f->tipo === 'prestamo' ? 'prestamos_empleados' : 'abonos_empleados', $cuenta, (string) $f->valor);
+            $dia = (string) $f->dia;
+            $clave = $f->tipo === 'prestamo' ? 'prestamos' : ($f->forma === 'nomina' ? 'abonos_nomina' : 'abonos_caja');
+            if ($clave === 'abonos_nomina') {
+                $poner($dia, 'abonos_nomina', null, (string) $f->valor);
+            } else {
+                $cuenta = $f->cuenta !== null ? (int) $f->cuenta : ($efectivoId ?? self::SIN_CUENTA);
+                $poner($dia, $clave === 'prestamos' ? 'prestamos_empleados' : 'abonos_empleados', $cuenta, (string) $f->valor);
+            }
+            $out[$dia]['conteo_empleados'][$clave] += (int) $f->cantidad;
         }
 
         return $out;
@@ -401,6 +472,12 @@ class CajaService
             'prestamos_empleados' => [],
             'abonos_empleados' => [],
             'movimientos' => array_fill_keys(GrupoCaja::valores(), []),
+            'conteos' => array_fill_keys(GrupoCaja::valores(), 0),
+            'recaudos_documento' => '0.00', // S-76: ya incluidos en 'recaudo'; aparte solo para los totales
+            'conteo_recaudos' => 0,
+            // RF-27: abonos de empleados por nómina (no mueven la caja) y conteos, solo para los totales.
+            'abonos_nomina' => '0.00',
+            'conteo_empleados' => ['prestamos' => 0, 'abonos_caja' => 0, 'abonos_nomina' => 0],
         ];
     }
 

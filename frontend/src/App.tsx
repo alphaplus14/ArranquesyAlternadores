@@ -34,6 +34,7 @@ const Saldos = lazy(() => import('./paginas/contable/Saldos'))
 const ProveedorCuenta = lazy(() => import('./paginas/contable/ProveedorCuenta'))
 const ClienteCuenta = lazy(() => import('./paginas/contable/ClienteCuenta'))
 const Informes = lazy(() => import('./paginas/contable/Informes'))
+const RecaudosContable = lazy(() => import('./paginas/contable/Recaudos')) // S-76
 // RF-23: el panel (con sus gráficos) también; tiene su propio aviso de carga.
 const Panel = lazy(() => import('./paginas/admin/Panel'))
 
@@ -61,6 +62,7 @@ export default function App() {
           <Route path="/contable/cartera" element={<Saldos de="clientes" />} />
           <Route path="/contable/clientes/:id" element={<ClienteCuenta />} />
           <Route path="/contable/informes" element={<Informes />} />
+          <Route path="/contable/recaudos" element={<RecaudosContable />} />
         </Route>
         <Route element={<ConRol roles={['mostrador']} />}>
           <Route path="/mostrador/venta" element={<Venta />} />

@@ -5,8 +5,12 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\CierreCajaResource;
 use App\Http\Resources\MovimientoCajaResource;
+use App\Http\Resources\MovimientoEmpleadoResource;
+use App\Http\Resources\RecaudoDocumentoResource;
 use App\Models\CierreCaja;
 use App\Models\MovimientoCaja;
+use App\Models\MovimientoEmpleado;
+use App\Models\RecaudoDocumento;
 use App\Services\CajaService;
 use App\Services\CierreCajaService;
 use App\Support\RangoFechas;
@@ -36,6 +40,19 @@ class CajaController extends Controller
             ->with('categoria:id,nombre', 'cuenta:id,nombre,tipo', 'usuario:id,name', 'anulacion.usuario:id,name')
             ->orderBy('id')
             ->get();
+        // S-76: recaudos de documentos del día, con los demás movimientos.
+        $recaudos = RecaudoDocumento::query()
+            ->where('fecha', $fecha)
+            ->with('cuenta:id,nombre,tipo', 'usuario:id,name', 'anulacion.usuario:id,name')
+            ->orderBy('id')
+            ->get();
+        // RF-27: préstamos y abonos de empleados del día (también por nómina), sin la apertura (no toca
+        // la caja). Solo nombre del empleado: nunca su saldo (S-57).
+        $empleados = MovimientoEmpleado::query()
+            ->where('fecha', $fecha)->where('apertura', false)
+            ->with('empleado:id,nombre', 'cuenta:id,nombre', 'usuario:id,name', 'anulacion.usuario:id,name')
+            ->orderBy('id')
+            ->get();
         $cierres = CierreCaja::query()
             ->where('fecha', $fecha)
             ->with('usuario:id,name', 'reapertura.usuario:id,name')
@@ -48,6 +65,8 @@ class CajaController extends Controller
             'hoy' => RangoFechas::hoy(),
             'resumen' => $this->caja->resumenDia($fecha),
             'movimientos' => MovimientoCajaResource::collection($movimientos),
+            'recaudos' => RecaudoDocumentoResource::collection($recaudos),
+            'movimientos_empleado' => MovimientoEmpleadoResource::collection($empleados),
             'cierre' => $vigente ? new CierreCajaResource($vigente) : null,
             'cierres_reabiertos' => CierreCajaResource::collection($cierres->filter(fn (CierreCaja $c) => $c->reapertura !== null)->values()),
             'ventas_abiertas' => $vigente ? [] : $this->cierres->ventasAbiertas($fecha)->map(fn ($v) => [

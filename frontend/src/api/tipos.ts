@@ -939,6 +939,32 @@ export interface MovimientoCaja {
   anulacion: { motivo: string; created_at: string; usuario: { id: number; name: string } | null } | null
 }
 
+/**
+ * S-76: recaudo de una factura o remisión a crédito de Contapyme que no está en las ventas a crédito
+ * del sistema. Entra a la caja (con el recaudo de cartera); no toca la cartera de clientes.
+ */
+export interface RecaudoDocumento {
+  id: number
+  fecha: string
+  tipo_documento: TipoDocumentoVenta
+  numero_documento: string
+  /** "Factura N.º 12345" / "Remisión N.º 45". */
+  documento: string
+  valor: string
+  cuenta: { id: number; nombre: string; tipo: TipoCuentaPago }
+  observacion: string | null
+  usuario: { id: number; name: string }
+  created_at: string
+  anulacion: { motivo: string; created_at: string; usuario: { id: number; name: string } | null } | null
+}
+
+/** S-76: consulta del contable: totales vigentes del rango, en total y por cuenta. */
+export interface TotalesRecaudos {
+  total_vigente: string
+  cantidad_vigente: number
+  por_cuenta: { cuenta_pago_id: number; nombre: string; tipo: TipoCuentaPago; total: string; cantidad: number }[]
+}
+
 export interface FilaCuentaCaja {
   cuenta_pago_id: number | null
   nombre: string
@@ -952,6 +978,9 @@ export interface FilaCuentaCaja {
   ingresos_externos: string
   egresos: string
   devoluciones: string
+  /** RF-27: abonos y préstamos de empleados por cuenta. */
+  abonos_empleados?: string
+  prestamos_empleados?: string
   neto: string
 }
 
@@ -981,6 +1010,23 @@ export interface ResumenCaja {
   efectivo_esperado: string | null
   meta_venta_diaria: string
   faltante_meta: string
+  /**
+   * S-75: totales de la pestaña Movimientos, sin anulados. Gastos = egresos.total; ingresos = otros
+   * ingresos + ingresos externos de todas las cuentas. Solo en el resumen del día.
+   */
+  totales_movimientos?: {
+    gastos: TotalMovimientos
+    ingresos: TotalMovimientos
+    recaudos?: TotalMovimientos
+    /** RF-27: préstamos y abonos de empleados del día, sin anulados; ni gasto ni ingreso. Nómina no mueve la caja. */
+    empleados?: { prestamos: TotalMovimientos; abonos_caja: TotalMovimientos; abonos_nomina: TotalMovimientos }
+  }
+}
+
+/** S-75: cantidad y total (sin anulados) de un tipo de movimiento de caja. */
+export interface TotalMovimientos {
+  cantidad: number
+  total: string
 }
 
 /** S-49: apertura diaria de la caja. */
@@ -1012,6 +1058,10 @@ export interface DiaCaja {
   hoy: string
   resumen: ResumenCaja
   movimientos: MovimientoCaja[]
+  /** S-76: recaudos de documentos del día (con los demás movimientos). */
+  recaudos: RecaudoDocumento[]
+  /** RF-27: préstamos y abonos de empleados del día (sin la apertura); nunca saldos (S-57). */
+  movimientos_empleado?: MovimientoEmpleadoDia[]
   cierre: CierreCaja | null
   cierres_reabiertos: CierreCaja[]
   ventas_abiertas: { id: number; forma_pago: FormaPago; items_count: number; usuario: string | null }[]
@@ -1065,6 +1115,31 @@ export interface ResumenEmpleados extends Pagina<EmpleadoResumen> {
 }
 
 export type TipoFilaEmpleado = 'prestamo' | 'abono' | 'anulacion'
+
+export type FormaAbonoEmpleado = 'caja' | 'nomina'
+
+/** Empleado activo para elegir (mostrador): sin saldo (S-57). */
+export interface EmpleadoOpcion {
+  id: number
+  nombre: string
+  documento: string | null
+}
+
+/** Préstamo o abono de empleado en la caja del día. Anulado sigue visible. */
+export interface MovimientoEmpleadoDia {
+  id: number
+  empleado_id: number
+  empleado: { id: number; nombre: string }
+  tipo: 'prestamo' | 'abono'
+  fecha: string
+  valor: string
+  forma: FormaAbonoEmpleado | null
+  cuenta: { id: number; nombre: string } | null
+  nota: string | null
+  usuario: { id: number; name: string }
+  created_at: string
+  anulacion: { motivo: string; created_at: string; usuario: { id: number; name: string } | null } | null
+}
 
 /** Fila del estado de cuenta: un préstamo, un abono o la anulación de uno de ellos, con saldo corrido. */
 export interface FilaEstadoEmpleado {

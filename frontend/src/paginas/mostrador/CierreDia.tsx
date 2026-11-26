@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useId, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Navigate, useSearchParams } from 'react-router-dom'
 import { api, erroresCampo, mensajeError } from '../../api/cliente'
-import { GRUPOS_CAJA, NOMBRE_GRUPO_CAJA, soloEfectivo, type CierreCaja, type DiaCaja, type GrupoCaja, type MovimientoCaja, type ResumenCaja } from '../../api/tipos'
+import { GRUPOS_CAJA, NOMBRE_GRUPO_CAJA, soloEfectivo, type CierreCaja, type DiaCaja, type EmpleadoOpcion, type FormaAbonoEmpleado, type GrupoCaja, type MovimientoCaja, type MovimientoEmpleadoDia, type RecaudoDocumento, type ResumenCaja, type TipoDocumentoVenta } from '../../api/tipos'
 import { useAuth } from '../../auth/AuthProvider'
 import { useAviso } from '../../componentes/Avisos'
 import Confirmar from '../../componentes/Confirmar'
@@ -11,11 +11,12 @@ import ControlSegmentado from '../../componentes/ControlSegmentado'
 import { DialogoAnular } from '../../componentes/Cartera'
 import Medida from '../../componentes/Medida'
 import CampoMoneda from '../../componentes/CampoMoneda'
-import { formatoNumero, leerNumero, pesos } from '../../componentes/numeros'
+import { formatearDinero, formatoNumero, leerNumero, pesos } from '../../componentes/numeros'
 import { useCategoriasCaja, useCuentasPago } from '../../hooks/useCatalogos'
 import { hoyEnBogota } from '../../utilidades/periodos'
 import { formatearFecha, formatearFechaHora } from '../../utilidades/fechas'
 import { RUTA_CAJA_ADMIN } from '../../rutas'
+import BotonCancelar from '../../componentes/BotonCancelar'
 
 /**
  * RF-25 / RF-26 (S-49 a S-54): caja del día del mostrador. Registra movimientos, los anula con motivo
@@ -26,19 +27,17 @@ export default function CierreDia() {
   const { usuario } = useAuth()
   if (usuario?.rol === 'admin') return <Navigate to={RUTA_CAJA_ADMIN} replace />
 
-  return (
-    <div className="pila caja">
-      <div className="pagina-encabezado">
-        <h1>Caja del día</h1>
-        <p>Lo que entra y sale por el mostrador: ventas, recaudos, pagos, gastos e ingresos. Al final del día, cuente el efectivo y cierre.</p>
-      </div>
-      <VistaDia soloConsulta={false} />
-    </div>
-  )
+  return <VistaDia soloConsulta={false} titulo="Caja del día" pantalla />
 }
 
-/** El día de caja; con soloConsulta (admin) no hay escritura salvo "Reabrir" un cierre. */
-export function VistaDia({ soloConsulta }: { soloConsulta: boolean }) {
+/**
+ * El día de caja; con soloConsulta (admin) no hay escritura salvo "Reabrir" un cierre.
+ * Distribución (solo presentación): encabezado en una fila con fecha, estado y apertura; franja de
+ * tres tarjetas; zona de trabajo en dos columnas (Movimientos | Por cuenta a la izquierda; efectivo
+ * esperado y cierre a la derecha). Con `pantalla` (mostrador) la vista ocupa el alto útil de la
+ * ventana y cada columna desplaza su propio contenido: en escritorio no hay scroll de página.
+ */
+export function VistaDia({ soloConsulta, titulo, pantalla = false }: { soloConsulta: boolean; titulo?: string; pantalla?: boolean }) {
   const hoy = hoyEnBogota()
   const [params, setParams] = useSearchParams()
   const fechaParam = params.get('fecha')
@@ -47,7 +46,11 @@ export function VistaDia({ soloConsulta }: { soloConsulta: boolean }) {
   const avisos = useAviso()
   const [agregando, setAgregando] = useState(false)
   const [anulando, setAnulando] = useState<MovimientoCaja | null>(null)
+  const [recaudando, setRecaudando] = useState(false)
+  const [conEmpleados, setConEmpleados] = useState(false)
+  const [anulandoRecaudo, setAnulandoRecaudo] = useState<RecaudoDocumento | null>(null)
   const [reabriendo, setReabriendo] = useState<CierreCaja | null>(null)
+  const [corrigiendoApertura, setCorrigiendoApertura] = useState(false)
 
   const dia = useQuery({
     queryKey: ['caja', 'dia', fecha],
@@ -58,147 +61,155 @@ export function VistaDia({ soloConsulta }: { soloConsulta: boolean }) {
   const r = d?.resumen
   const cerrado = !!d?.cierre
   const puedeEscribir = !soloConsulta && !!d && !cerrado
+  // S-49: la apertura se registra o corrige (mostrador) mientras el día no tenga cierre vigente.
+  const puedeApertura = !soloConsulta && !!r?.apertura_editable
+  const mostrarFormApertura = !!r && puedeApertura && (!r.apertura || corrigiendoApertura)
+  const sinApertura = !!r && !r.apertura && puedeApertura
+  const alGuardarApertura = (valor: number) => {
+    setCorrigiendoApertura(false)
+    refrescar()
+    avisos.mostrar('ok', `Caja del ${formatearFecha(fecha)} abierta con ${pesos(valor)}.`)
+  }
 
   return (
-    <>
-      <section className="tarjeta-pagina caja-barra">
-        <label className="caja-fecha">
-          <span className="etiqueta-campo">Día</span>
+    <div className={pantalla ? 'caja-vista caja-vista-pantalla' : 'caja-vista'}>
+      <header className="caja-encabezado">
+        {titulo && <h1>{titulo}</h1>}
+        <label className="caja-encabezado-fecha">
+          <span className="solo-lector">Día</span>
           <input
             type="date"
             max={hoy}
             value={fecha}
-            onChange={(e) => setParams((p) => {
-              const n = new URLSearchParams(p)
-              if (!e.target.value || e.target.value === hoy) n.delete('fecha'); else n.set('fecha', e.target.value)
-              return n
-            }, { replace: true })}
+            onChange={(e) => {
+              setCorrigiendoApertura(false)
+              setParams((p) => {
+                const n = new URLSearchParams(p)
+                if (!e.target.value || e.target.value === hoy) n.delete('fecha'); else n.set('fecha', e.target.value)
+                return n
+              }, { replace: true })
+            }}
           />
         </label>
         {d && (cerrado
-          ? (
-            <p className="caja-estado cerrado">
-              <span className="chip cerrada">Cerrado</span> por <strong>{d.cierre!.usuario?.name ?? '—'}</strong> el {formatearFechaHora(d.cierre!.cerrado_at)}
-              {soloConsulta && <button type="button" className="secundario" onClick={() => setReabriendo(d.cierre)}>Reabrir</button>}
-            </p>
-          )
-          : <p className="caja-estado"><span className="chip abierta">Sin cerrar</span>{fecha < hoy ? ' Día anterior sin cierre.' : ''}</p>)}
-      </section>
+          ? <span className="chip cerrada" title={`Por ${d.cierre!.usuario?.name ?? '—'}, ${formatearFechaHora(d.cierre!.cerrado_at)}`}>Cerrado</span>
+          : <span className="chip abierta">Sin cerrar</span>)}
+        {r?.apertura && (
+          <span className="caja-chip-apertura">
+            <span className="chip" title={r.apertura.fijado_por ? `${r.apertura.fijado_por.name}, ${formatearFechaHora(r.apertura.fijado_at)}` : undefined}>
+              Abierta con {pesos(r.apertura.valor)}
+            </span>
+            {puedeApertura && !corrigiendoApertura && <button type="button" className="enlace" onClick={() => setCorrigiendoApertura(true)}>Corregir</button>}
+          </span>
+        )}
+        {r && !r.apertura && !puedeApertura && <span className="chip">Sin apertura</span>}
+      </header>
 
       {dia.isLoading && <p className="cargando">Cargando la caja…</p>}
       {dia.isError && <div className="aviso error">{mensajeError(dia.error)}</div>}
 
       {d && r && (
         <>
-          <AperturaDia
-            fecha={fecha}
-            resumen={r}
-            cierre={d.cierre}
-            soloConsulta={soloConsulta}
-            onGuardada={(valor) => { refrescar(); avisos.mostrar('ok', `Caja del ${formatearFecha(fecha)} abierta con ${pesos(valor)}.`) }}
-          />
+          {mostrarFormApertura && (
+            <FormularioApertura
+              fecha={fecha}
+              actual={r.apertura?.valor ?? null}
+              sugerida={r.apertura_sugerida}
+              onCancelar={r.apertura ? () => setCorrigiendoApertura(false) : undefined}
+              onGuardada={alGuardarApertura}
+            />
+          )}
           {d.ventas_abiertas.length > 0 && (
             <div className="aviso atencion" role="status">
               Hay ventas abiertas con ítems: {d.ventas_abiertas.map((v) => `#${v.id}${v.usuario ? ` (${v.usuario})` : ''}`).join(', ')}. Ciérrelas o anule sus ítems antes de cerrar el día.
             </div>
           )}
 
-          <section className="medidas">
-            <Medida etiqueta="Total ingreso del día" valor={pesos(r.total_ingreso_dia)} pie={`Meta ${pesos(r.meta_venta_diaria)}`} tono="azul" icono="panel" />
-            <Medida
-              etiqueta={Number(r.faltante_meta) > 0 ? 'Faltante para la meta' : 'Sobre la meta'}
-              valor={pesos(Math.abs(Number(r.faltante_meta)))}
-              tono={Number(r.faltante_meta) > 0 ? 'amarillo' : 'verde'}
-              icono="agotados"
-            />
-            <Medida
-              etiqueta="Efectivo esperado"
-              valor={r.efectivo_esperado !== null ? pesos(r.efectivo_esperado) : '—'}
-              pie={r.apertura ? `Apertura ${pesos(r.apertura.valor)} + neto ${pesos(r.efectivo_neto_dia)}` : `Falta la apertura · neto ${pesos(r.efectivo_neto_dia)}`}
-              tono="verde"
-              icono="billetera"
-            />
-          </section>
+          <div className={sinApertura ? 'caja-trabajo caja-atenuada' : 'caja-trabajo'}>
+            <section className="medidas caja-medidas">
+              <Medida etiqueta="Total ingreso del día" valor={pesos(r.total_ingreso_dia)} pie={`Meta ${pesos(r.meta_venta_diaria)}`} tono="azul" icono="panel" />
+              <Medida
+                etiqueta={Number(r.faltante_meta) > 0 ? 'Faltante para la meta' : 'Sobre la meta'}
+                valor={pesos(Math.abs(Number(r.faltante_meta)))}
+                tono={Number(r.faltante_meta) > 0 ? 'amarillo' : 'verde'}
+                icono="agotados"
+              />
+              <Medida
+                etiqueta="Efectivo esperado"
+                valor={r.efectivo_esperado !== null ? pesos(r.efectivo_esperado) : '—'}
+                pie={r.apertura ? `Apertura ${pesos(r.apertura.valor)} + neto ${pesos(r.efectivo_neto_dia)}` : `Falta la apertura · neto ${pesos(r.efectivo_neto_dia)}`}
+                tono="verde"
+                icono="billetera"
+              />
+            </section>
 
-          <section className="tarjeta-pagina">
-            <h2>Por cuenta</h2>
-            <div className="tabla-contenedor-simple">
-              <table className="tabla-caja">
-                <caption className="solo-lector">Movimiento del día por cuenta</caption>
-                <thead>
-                  <tr>
-                    <th>Cuenta</th><th className="col-numero">Ventas</th><th className="col-numero">Recaudo cartera</th><th className="col-numero">Otros ingresos</th>
-                    <th className="col-numero">Ingresos externos</th><th className="col-numero">Pagos a proveedores</th><th className="col-numero">Egresos</th>
-                    <th className="col-numero">Devoluciones</th><th className="col-numero">Neto</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {r.cuentas.map((c) => (
-                    <tr key={c.cuenta_pago_id ?? 'sin'}>
-                      <td>{c.nombre}{c.ventas_sin_detalle && Number(c.ventas_sin_detalle) > 0 && <small className="bloque">Incluye {pesos(c.ventas_sin_detalle)} de ventas sin detalle de pago</small>}</td>
-                      <td className="col-numero">{pesos(c.ventas)}</td>
-                      <td className="col-numero">{pesos(c.recaudo)}</td>
-                      <td className="col-numero">{pesos(c.otros_ingresos)}</td>
-                      <td className="col-numero">{pesos(c.ingresos_externos)}</td>
-                      <td className="col-numero">{pesos(c.pagos_proveedores)}</td>
-                      <td className="col-numero">{pesos(c.egresos)}</td>
-                      <td className="col-numero">{pesos(c.devoluciones)}</td>
-                      <td className="col-numero"><strong>{pesos(c.neto)}</strong></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="caja-zona">
+              <PanelMovimientos
+                resumen={r}
+                movimientos={d.movimientos}
+                recaudos={d.recaudos ?? []}
+                movimientosEmpleado={d.movimientos_empleado ?? []}
+                onAgregar={puedeEscribir ? () => setAgregando(true) : undefined}
+                // S-76: recaudo de documentos solo con la caja abierta (apertura registrada) y el día sin cerrar.
+                onRecaudo={puedeEscribir && !!r.apertura ? () => setRecaudando(true) : undefined}
+                // RF-27: préstamos y abonos de empleados entran siempre a la caja de hoy (S-56): solo en el
+                // día de hoy, con apertura y sin cerrar. Solo el mostrador (el admin ve la caja en consulta).
+                onEmpleados={puedeEscribir && !!r.apertura && fecha === d.hoy ? () => setConEmpleados(true) : undefined}
+                onAnular={puedeEscribir ? setAnulando : undefined}
+                onAnularRecaudo={puedeEscribir ? setAnulandoRecaudo : undefined}
+              />
+
+              <section className="tarjeta-pagina caja-panel caja-panel-cierre" aria-labelledby="caja-titulo-cierre">
+                <h2 id="caja-titulo-cierre">Efectivo esperado y cierre</h2>
+                <div className="caja-panel-cuerpo">
+                  <DesgloseEfectivo resumen={r} />
+                  {cerrado && <CierreGuardado cierre={d.cierre!} />}
+                  {cerrado && soloConsulta && (
+                    <div className="acciones acciones-izquierda">
+                      <button type="button" className="secundario boton-44" onClick={() => setReabriendo(d.cierre)}>Reabrir</button>
+                    </div>
+                  )}
+                  {d.cierres_reabiertos.length > 0 && (
+                    <details className="caja-historial">
+                      <summary>Cierres reabiertos ({d.cierres_reabiertos.length})</summary>
+                      <ul>
+                        {d.cierres_reabiertos.map((c) => (
+                          <li key={c.id}>
+                            Cerrado por {c.usuario?.name ?? '—'} el {formatearFechaHora(c.cerrado_at)} (contado {pesos(c.efectivo_contado)}, diferencia {pesos(c.diferencia)}).
+                            {' '}Reabierto por {c.reapertura?.usuario?.name ?? '—'} el {formatearFechaHora(c.reapertura?.created_at)}: «{c.reapertura?.motivo}»
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+                </div>
+                {!cerrado && !soloConsulta && (
+                  <FormularioCierre
+                    key={fecha}
+                    fecha={fecha}
+                    esperado={r.efectivo_esperado ?? '0'}
+                    bloqueado={d.ventas_abiertas.length > 0 || !r.apertura}
+                    onCerrado={() => { refrescar(); avisos.mostrar('ok', `Caja del ${formatearFecha(fecha)} cerrada.`) }}
+                  />
+                )}
+              </section>
             </div>
-            <p className="ayuda">Ventas a crédito del día: <strong>{pesos(r.ventas_credito)}</strong> (cuentan para la meta, no entran a ninguna cuenta). El recaudo de cartera y los ingresos externos no cuentan para la meta.</p>
-          </section>
-
-          <div className="caja-columnas">
-            <section className="tarjeta-pagina">
-              <div className="fila-titulo">
-                <h2>Movimientos del día</h2>
-                {puedeEscribir && <button type="button" className="primario" onClick={() => setAgregando(true)}>Agregar movimiento</button>}
-              </div>
-              <ListaMovimientos movimientos={d.movimientos} onAnular={puedeEscribir ? setAnulando : undefined} />
-            </section>
-
-            <section className="tarjeta-pagina caja-efectivo">
-              <h2>Efectivo esperado</h2>
-              <dl className="desglose-efectivo">
-                <div><dt>Ventas en efectivo</dt><dd>{pesos(r.efectivo.ventas)}</dd></div>
-                <div><dt>+ Recaudo de cartera en efectivo</dt><dd>{pesos(r.efectivo.recaudo)}</dd></div>
-                <div><dt>+ Otros ingresos en efectivo</dt><dd>{pesos(r.efectivo.otros_ingresos)}</dd></div>
-                <div><dt>+ Ingresos externos</dt><dd>{pesos(r.efectivo.ingresos_externos)}</dd></div>
-                {r.efectivo.abonos_empleados !== undefined && <div><dt>+ Abonos de empleados en efectivo</dt><dd>{pesos(r.efectivo.abonos_empleados)}</dd></div>}
-                <div><dt>− Devoluciones de contado</dt><dd>{pesos(r.efectivo.devoluciones)}</dd></div>
-                <div><dt>− Pagos a proveedores en efectivo</dt><dd>{pesos(r.efectivo.pagos_proveedores)}</dd></div>
-                <div><dt>− Egresos (gastos, fijos y cuotas)</dt><dd>{pesos(r.efectivo.egresos)}</dd></div>
-                {r.efectivo.prestamos_empleados !== undefined && <div><dt>− Préstamos a empleados</dt><dd>{pesos(r.efectivo.prestamos_empleados)}</dd></div>}
-                <div className="subtotal"><dt>Efectivo neto del día</dt><dd>{pesos(r.efectivo.neto)}</dd></div>
-                <div><dt>+ Apertura de la caja</dt><dd>{r.apertura ? pesos(r.apertura.valor) : 'Sin registrar'}</dd></div>
-                <div className="total"><dt>Efectivo esperado</dt><dd>{r.efectivo_esperado !== null ? pesos(r.efectivo_esperado) : '—'}</dd></div>
-              </dl>
-              {cerrado
-                ? <CierreGuardado cierre={d.cierre!} />
-                : !soloConsulta && <FormularioCierre fecha={fecha} esperado={r.efectivo_esperado ?? '0'} bloqueado={d.ventas_abiertas.length > 0 || !r.apertura} onCerrado={() => { refrescar(); avisos.mostrar('ok', `Caja del ${formatearFecha(fecha)} cerrada.`) }} />}
-              {d.cierres_reabiertos.length > 0 && (
-                <details className="caja-historial">
-                  <summary>Cierres reabiertos ({d.cierres_reabiertos.length})</summary>
-                  <ul>
-                    {d.cierres_reabiertos.map((c) => (
-                      <li key={c.id}>
-                        Cerrado por {c.usuario?.name ?? '—'} el {formatearFechaHora(c.cerrado_at)} (contado {pesos(c.efectivo_contado)}, diferencia {pesos(c.diferencia)}).
-                        {' '}Reabierto por {c.reapertura?.usuario?.name ?? '—'} el {formatearFechaHora(c.reapertura?.created_at)}: «{c.reapertura?.motivo}»
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              )}
-            </section>
           </div>
         </>
       )}
 
       {agregando && <DialogoMovimiento fecha={fecha} onCerrar={() => setAgregando(false)} onGuardado={() => { setAgregando(false); refrescar() }} />}
+      {recaudando && <DialogoRecaudo fecha={fecha} onCerrar={() => setRecaudando(false)} onGuardado={() => { setRecaudando(false); refrescar() }} />}
+      {conEmpleados && <DialogoEmpleados onCerrar={() => setConEmpleados(false)} onGuardado={() => { setConEmpleados(false); refrescar() }} />}
+      {anulandoRecaudo && (
+        <DialogoAnular
+          titulo="Anular recaudo"
+          descripcion={`Recaudo de cartera · ${anulandoRecaudo.documento} · ${pesos(anulandoRecaudo.valor)}. Queda visible como anulado.`}
+          ruta={`/caja/recaudos/${anulandoRecaudo.id}/anular`}
+          onHecho={() => { setAnulandoRecaudo(null); refrescar() }}
+          onCerrar={() => setAnulandoRecaudo(null)}
+        />
+      )}
       {anulando && (
         <DialogoAnular
           titulo="Anular movimiento"
@@ -217,50 +228,175 @@ export function VistaDia({ soloConsulta }: { soloConsulta: boolean }) {
           onCerrar={() => setReabriendo(null)}
         />
       )}
-    </>
+    </div>
   )
 }
 
-/**
- * S-49: apertura diaria de la caja. Sin apertura, el mostrador ve la tarjeta "Abrir la caja" con el
- * efectivo precargado desde el último cierre; registrada, queda una línea "Abrió con $X" y, mientras
- * el día no esté cerrado, el enlace "Corregir". El admin y un día cerrado la ven solo como texto.
- */
-function AperturaDia({ fecha, resumen: r, cierre, soloConsulta, onGuardada }: {
-  fecha: string
+/** Columna izquierda: pestañas "Movimientos" | "Por cuenta"; cada una desplaza su propio contenido. */
+function PanelMovimientos({ resumen: r, movimientos, recaudos, movimientosEmpleado, onAgregar, onRecaudo, onEmpleados, onAnular, onAnularRecaudo }: {
   resumen: ResumenCaja
-  cierre: CierreCaja | null
-  soloConsulta: boolean
-  onGuardada: (valor: number) => void
+  movimientos: MovimientoCaja[]
+  recaudos: RecaudoDocumento[]
+  movimientosEmpleado: MovimientoEmpleadoDia[]
+  onAgregar?: () => void
+  onRecaudo?: () => void
+  onEmpleados?: () => void
+  onAnular?: (m: MovimientoCaja) => void
+  onAnularRecaudo?: (r: RecaudoDocumento) => void
 }) {
-  const [corrigiendo, setCorrigiendo] = useState(false)
-  const puede = !soloConsulta && r.apertura_editable
-
-  if (r.apertura && !(corrigiendo && puede)) {
-    return (
-      <p className="apertura-linea">
-        Abrió con <strong>{pesos(r.apertura.valor)}</strong>
-        {r.apertura.fijado_por && <small> · {r.apertura.fijado_por.name}, {formatearFechaHora(r.apertura.fijado_at)}</small>}
-        {puede && <button type="button" className="enlace boton-44" onClick={() => setCorrigiendo(true)}>Corregir</button>}
-      </p>
-    )
-  }
-  if (!r.apertura && !puede) {
-    return (
-      <p className="apertura-linea">
-        {cierre ? 'Este cierre es anterior a la apertura diaria: no tiene apertura registrada.' : 'La caja de este día no tiene apertura registrada.'}
-      </p>
-    )
+  const [pestana, setPestana] = useState<'movimientos' | 'cuentas'>('movimientos')
+  const pestanas = [
+    { clave: 'movimientos' as const, texto: 'Movimientos' },
+    { clave: 'cuentas' as const, texto: 'Por cuenta' },
+  ]
+  const mover = (e: KeyboardEvent) => {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return
+    e.preventDefault()
+    const siguiente = pestana === 'movimientos' ? 'cuentas' : 'movimientos'
+    setPestana(siguiente)
+    document.getElementById(`caja-pestana-${siguiente}`)?.focus()
   }
 
   return (
-    <FormularioApertura
-      fecha={fecha}
-      actual={r.apertura?.valor ?? null}
-      sugerida={r.apertura_sugerida}
-      onCancelar={r.apertura ? () => setCorrigiendo(false) : undefined}
-      onGuardada={(valor) => { setCorrigiendo(false); onGuardada(valor) }}
-    />
+    <section className="tarjeta-pagina caja-panel caja-panel-movimientos" aria-label="Movimientos del día">
+      <div className="caja-panel-cabeza">
+        <div className="pestanas caja-pestanas" role="tablist" aria-label="Movimientos del día" onKeyDown={mover}>
+          {pestanas.map((p) => (
+            <button
+              key={p.clave}
+              type="button"
+              role="tab"
+              id={`caja-pestana-${p.clave}`}
+              aria-selected={pestana === p.clave}
+              aria-controls={`caja-panel-${p.clave}`}
+              tabIndex={pestana === p.clave ? 0 : -1}
+              className={pestana === p.clave ? 'pestana activa' : 'pestana'}
+              onClick={() => setPestana(p.clave)}
+            >
+              {p.texto}
+              {p.clave === 'movimientos' && <span className="pestana-cuenta">{movimientos.length + recaudos.length + movimientosEmpleado.length}</span>}
+            </button>
+          ))}
+        </div>
+        {(onAgregar || onRecaudo || onEmpleados) && (
+          <div className="recaudo-acciones">
+            {onEmpleados && <button type="button" className="secundario boton-44" onClick={onEmpleados}>Empleados</button>}
+            {onRecaudo && <button type="button" className="secundario boton-44" onClick={onRecaudo}>Recaudo de cartera</button>}
+            {onAgregar && <button type="button" className="primario boton-44" onClick={onAgregar}>Agregar movimiento</button>}
+          </div>
+        )}
+      </div>
+      <div className="caja-panel-cuerpo" role="tabpanel" id={`caja-panel-${pestana}`} aria-labelledby={`caja-pestana-${pestana}`}>
+        {pestana === 'movimientos'
+          ? <ListaMovimientos movimientos={movimientos} recaudos={recaudos} movimientosEmpleado={movimientosEmpleado} totales={r.totales_movimientos} onAnular={onAnular} onAnularRecaudo={onAnularRecaudo} />
+          : <ResumenPorCuenta resumen={r} />}
+      </div>
+    </section>
+  )
+}
+
+const CAMPOS_CUENTA = ['ventas', 'recaudo', 'otros_ingresos', 'ingresos_externos', 'pagos_proveedores', 'egresos', 'devoluciones', 'neto'] as const
+
+/**
+ * Resumen por cuenta: por defecto solo las cuentas con algún valor distinto de 0. La aclaración de
+ * qué cuenta para la meta va en un botón de información (popover accesible con teclado).
+ */
+function ResumenPorCuenta({ resumen: r }: { resumen: ResumenCaja }) {
+  const [todas, setTodas] = useState(false)
+  const conValor = r.cuentas.filter((c) => CAMPOS_CUENTA.some((k) => Number(c[k]) !== 0)
+    || Number(c.abonos_empleados ?? 0) !== 0 || Number(c.prestamos_empleados ?? 0) !== 0)
+  const filas = todas ? r.cuentas : conValor
+
+  return (
+    <div className="caja-por-cuenta">
+      <div className="caja-por-cuenta-titulo">
+        <h3>Resumen por cuenta</h3>
+        <InfoCaja etiqueta="Qué cuenta para la meta">
+          Ventas a crédito del día: <strong>{pesos(r.ventas_credito)}</strong> (cuentan para la meta, no entran a ninguna cuenta). El recaudo de cartera y los ingresos externos no cuentan para la meta.
+        </InfoCaja>
+        <span className="caja-credito">Crédito del día <strong>{pesos(r.ventas_credito)}</strong></span>
+      </div>
+      {filas.length === 0 ? <p className="vacio caja-vacio">Sin movimiento por cuenta</p> : (
+        <table className="tabla-caja">
+          <caption className="solo-lector">Movimiento del día por cuenta</caption>
+          <thead>
+            <tr>
+              <th>Cuenta</th><th className="col-numero">Ventas</th><th className="col-numero">Recaudo cartera</th><th className="col-numero">Otros ingresos</th>
+              <th className="col-numero">Ingresos externos</th><th className="col-numero">Pagos a proveedores</th><th className="col-numero">Egresos</th>
+              <th className="col-numero">Devoluciones</th><th className="col-numero">Neto</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filas.map((c) => (
+              <tr key={c.cuenta_pago_id ?? 'sin'}>
+                <td>{c.nombre}{c.ventas_sin_detalle && Number(c.ventas_sin_detalle) > 0 && <small className="bloque">Incluye {pesos(c.ventas_sin_detalle)} de ventas sin detalle de pago</small>}</td>
+                <td className="col-numero">{pesos(c.ventas)}</td>
+                <td className="col-numero">{pesos(c.recaudo)}</td>
+                <td className="col-numero">{pesos(c.otros_ingresos)}</td>
+                <td className="col-numero">{pesos(c.ingresos_externos)}</td>
+                <td className="col-numero">{pesos(c.pagos_proveedores)}</td>
+                <td className="col-numero">{pesos(c.egresos)}</td>
+                <td className="col-numero">{pesos(c.devoluciones)}</td>
+                <td className="col-numero"><strong>{pesos(c.neto)}</strong></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {conValor.length < r.cuentas.length && (
+        <button type="button" className="enlace" onClick={() => setTodas((t) => !t)}>{todas ? 'Ver solo las cuentas con movimiento' : 'Ver todas las cuentas'}</button>
+      )}
+    </div>
+  )
+}
+
+/** Botón "i" con un popover de texto: se abre con clic o teclado y se cierra con Esc o al salir. */
+function InfoCaja({ etiqueta, children }: { etiqueta: string; children: ReactNode }) {
+  const [abierto, setAbierto] = useState(false)
+  const id = useId()
+  return (
+    <span className="caja-info" onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setAbierto(false) }}>
+      <button
+        type="button"
+        className="caja-info-boton"
+        aria-label={etiqueta}
+        aria-expanded={abierto}
+        aria-controls={id}
+        onClick={() => setAbierto((a) => !a)}
+        onKeyDown={(e) => { if (e.key === 'Escape' && abierto) { e.stopPropagation(); setAbierto(false) } }}
+      >i</button>
+      {abierto && <span id={id} role="note" className="caja-info-popover">{children}</span>}
+    </span>
+  )
+}
+
+/** Tres líneas visibles (neto, apertura, esperado) y el detalle del efectivo plegado. */
+function DesgloseEfectivo({ resumen: r }: { resumen: ResumenCaja }) {
+  const [detalle, setDetalle] = useState(false)
+  return (
+    <>
+      <dl className="desglose-efectivo caja-desglose">
+        <div className="subtotal"><dt>Efectivo neto del día</dt><dd>{pesos(r.efectivo.neto)}</dd></div>
+        <div><dt>+ Apertura de la caja</dt><dd>{r.apertura ? pesos(r.apertura.valor) : 'Sin registrar'}</dd></div>
+        <div className="total"><dt>Efectivo esperado</dt><dd>{r.efectivo_esperado !== null ? pesos(r.efectivo_esperado) : '—'}</dd></div>
+      </dl>
+      <button type="button" className="enlace caja-ver-detalle" aria-expanded={detalle} aria-controls="caja-detalle-efectivo" onClick={() => setDetalle((v) => !v)}>
+        {detalle ? 'Ocultar detalle' : 'Ver detalle'}
+      </button>
+      {detalle && (
+        <dl className="desglose-efectivo caja-desglose-detalle" id="caja-detalle-efectivo">
+          <div><dt>Ventas en efectivo</dt><dd>{pesos(r.efectivo.ventas)}</dd></div>
+          <div><dt>+ Recaudo de cartera en efectivo</dt><dd>{pesos(r.efectivo.recaudo)}</dd></div>
+          <div><dt>+ Otros ingresos en efectivo</dt><dd>{pesos(r.efectivo.otros_ingresos)}</dd></div>
+          <div><dt>+ Ingresos externos</dt><dd>{pesos(r.efectivo.ingresos_externos)}</dd></div>
+          {r.efectivo.abonos_empleados !== undefined && <div><dt>+ Abonos de empleados en efectivo</dt><dd>{pesos(r.efectivo.abonos_empleados)}</dd></div>}
+          <div><dt>− Devoluciones de contado</dt><dd>{pesos(r.efectivo.devoluciones)}</dd></div>
+          <div><dt>− Pagos a proveedores en efectivo</dt><dd>{pesos(r.efectivo.pagos_proveedores)}</dd></div>
+          <div><dt>− Egresos (gastos, fijos y cuotas)</dt><dd>{pesos(r.efectivo.egresos)}</dd></div>
+          {r.efectivo.prestamos_empleados !== undefined && <div><dt>− Préstamos a empleados</dt><dd>{pesos(r.efectivo.prestamos_empleados)}</dd></div>}
+        </dl>
+      )}
+    </>
   )
 }
 
@@ -312,13 +448,21 @@ function FormularioApertura({ fecha, actual, sugerida, onCancelar, onGuardada }:
           {onCancelar && <button type="button" className="secundario boton-44" disabled={guardar.isPending} onClick={onCancelar}>Cancelar</button>}
         </div>
       </form>
-      {confirmando && (
+      {confirmando && !corrigiendo && (
+        <DialogoConfirmarApertura
+          fecha={fecha}
+          valor={n ?? 0}
+          pendiente={guardar.isPending}
+          error={guardar.isError ? mensajeError(guardar.error) : null}
+          onConfirmar={() => guardar.mutate()}
+          onCancelar={() => { setConfirmando(false); guardar.reset() }}
+        />
+      )}
+      {confirmando && corrigiendo && (
         <Confirmar
-          titulo={corrigiendo ? `Corregir la apertura del ${formatearFecha(fecha)}` : `Abrir la caja del ${formatearFecha(fecha)}`}
-          texto={corrigiendo
-            ? `La apertura pasa de ${pesos(actual ?? 0)} a ${pesos(n ?? 0)}. El cambio queda en la auditoría.`
-            : `La caja abre con ${pesos(n ?? 0)} en efectivo. Se puede corregir mientras el día no esté cerrado.`}
-          accion={corrigiendo ? 'Guardar apertura' : 'Abrir caja'}
+          titulo={`Corregir la apertura del ${formatearFecha(fecha)}`}
+          texto={`La apertura pasa de ${pesos(actual ?? 0)} a ${pesos(n ?? 0)}. El cambio queda en la auditoría.`}
+          accion="Guardar apertura"
           pendiente={guardar.isPending}
           error={guardar.isError ? mensajeError(guardar.error) : null}
           onConfirmar={() => guardar.mutate()}
@@ -329,28 +473,241 @@ function FormularioApertura({ fecha, actual, sugerida, onCancelar, onGuardada }:
   )
 }
 
-function ListaMovimientos({ movimientos, onAnular }: { movimientos: MovimientoCaja[]; onAnular?: (m: MovimientoCaja) => void }) {
-  if (movimientos.length === 0) return <p className="vacio">No hay movimientos este día.</p>
+/** "miércoles 25 de noviembre de 2026": aaaa-mm-dd es un día del calendario, sin zona horaria. */
+const formatoDiaLargo = new Intl.DateTimeFormat('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+function diaLargo(fecha: string): string {
+  const [a, m, d] = fecha.split('-').map(Number)
+  return formatoDiaLargo.format(new Date(a, m - 1, d)).replace(',', '')
+}
+
+/**
+ * S-49: confirmación de la apertura de caja. Cuerpo propio (el subtítulo de Dialogo se corta en una
+ * línea). La regla de la ayuda es la de CajaService::fijarApertura y la ruta `solo_rol:mostrador`:
+ * la apertura se corrige mientras el día no tenga cierre vigente, y el cierre solo lo reabre el
+ * administrador. Una apertura de 0 es válida (valor >= 0).
+ */
+function DialogoConfirmarApertura({ fecha, valor, pendiente, error, onConfirmar, onCancelar }: {
+  fecha: string
+  valor: number
+  pendiente: boolean
+  error: string | null
+  onConfirmar: () => void
+  onCancelar: () => void
+}) {
+  const monto = `$ ${formatearDinero(formatoNumero(valor))}`
+
   return (
-    <table className="tabla-caja">
+    <Dialogo
+      titulo="Confirmar apertura de caja"
+      variante="confirmar"
+      alertdialog
+      confirmarSalida={false}
+      onCerrar={onCancelar}
+      pendiente={pendiente}
+      onEnviar={() => { if (!pendiente) onConfirmar() }}
+      pie={(
+        <>
+          <BotonCancelar className="secundario boton-44" />
+          <button type="submit" className="primario boton-44" autoFocus disabled={pendiente}>{pendiente ? 'Abriendo…' : 'Abrir caja'}</button>
+        </>
+      )}
+    >
+      <section className="modal-seccion apertura-confirmar">
+        <dl className="apertura-confirmar-datos">
+          <div>
+            <dt>Día</dt>
+            <dd>{diaLargo(fecha)}</dd>
+          </div>
+          <div>
+            <dt>Efectivo con que abre</dt>
+            <dd className="apertura-confirmar-monto">{valor === 0 ? `Abre con ${monto}` : monto}</dd>
+          </div>
+        </dl>
+        <p className="apertura-confirmar-ayuda">El mostrador puede corregirla hasta que cierre el día; después, solo si el administrador reabre la caja.</p>
+        {error && <p className="aviso error" role="alert">{error}</p>}
+      </section>
+    </Dialogo>
+  )
+}
+
+type FiltroMovimientos = 'todos' | 'gastos' | 'ingresos' | 'recaudos' | 'empleados'
+
+/** S-76: una fila de la lista: movimiento de caja, recaudo de documento o (RF-27) préstamo o abono de empleado, en orden de registro. */
+type FilaMovimiento = { clase: 'movimiento'; m: MovimientoCaja } | { clase: 'recaudo'; r: RecaudoDocumento } | { clase: 'empleado'; e: MovimientoEmpleadoDia }
+
+const creadaEn = (f: FilaMovimiento) => (f.clase === 'movimiento' ? f.m.created_at : f.clase === 'recaudo' ? f.r.created_at : f.e.created_at)
+
+const esIngreso = (m: MovimientoCaja) => m.grupo === 'otro_ingreso' || m.grupo === 'ingreso_externo'
+
+/** "−$ 20.000" / "+$ 200.000"; en cero, sin signo. */
+const conSigno = (signo: '−' | '+', valor: string) => (Number(valor) === 0 ? pesos(valor) : `${signo}${pesos(valor)}`)
+
+const VACIO_POR_FILTRO: Record<FiltroMovimientos, string> = {
+  todos: 'No hay movimientos este día.',
+  gastos: 'No hay gastos este día.',
+  ingresos: 'No hay ingresos este día.',
+  recaudos: 'No hay recaudos este día.',
+  empleados: 'No hay movimientos este día.',
+}
+
+/**
+ * S-75: filtro Todos / Gastos / Ingresos con cantidad y total (del servidor, sin anulados) y pie de
+ * totales siempre visible. El filtro es en el cliente: la lista ya viene en la misma respuesta.
+ */
+function ListaMovimientos({ movimientos, recaudos, movimientosEmpleado, totales, onAnular, onAnularRecaudo }: {
+  movimientos: MovimientoCaja[]
+  recaudos: RecaudoDocumento[]
+  movimientosEmpleado: MovimientoEmpleadoDia[]
+  totales?: ResumenCaja['totales_movimientos']
+  onAnular?: (m: MovimientoCaja) => void
+  onAnularRecaudo?: (r: RecaudoDocumento) => void
+}) {
+  const [filtro, setFiltro] = useState<FiltroMovimientos>('todos')
+  const gastos = totales?.gastos ?? { cantidad: 0, total: '0' }
+  const ingresos = totales?.ingresos ?? { cantidad: 0, total: '0' }
+  const totalRecaudos = totales?.recaudos ?? { cantidad: 0, total: '0' }
+  // RF-27: préstamos y abonos de empleados (sin anulados); ni gasto ni ingreso.
+  const cero = { cantidad: 0, total: '0' }
+  const emp = totales?.empleados ?? { prestamos: cero, abonos_caja: cero, abonos_nomina: cero }
+  const cantidadEmpleados = emp.prestamos.cantidad + emp.abonos_caja.cantidad + emp.abonos_nomina.cantidad
+  // S-76: movimientos, recaudos y movimientos de empleados en una sola lista, por hora de registro.
+  const filas = useMemo<FilaMovimiento[]>(() => [
+    ...movimientos.map((m) => ({ clase: 'movimiento' as const, m })),
+    ...recaudos.map((r) => ({ clase: 'recaudo' as const, r })),
+    ...movimientosEmpleado.map((e) => ({ clase: 'empleado' as const, e })),
+  ].sort((a, b) => {
+    const x = creadaEn(a)
+    const y = creadaEn(b)
+    return x < y ? -1 : x > y ? 1 : 0
+  }), [movimientos, recaudos, movimientosEmpleado])
+  const visibles = filtro === 'todos' ? filas : filas.filter((f) => (
+    filtro === 'recaudos' ? f.clase === 'recaudo'
+      : filtro === 'empleados' ? f.clase === 'empleado'
+        : f.clase === 'movimiento' && esIngreso(f.m) === (filtro === 'ingresos')
+  ))
+  const columnas = onAnular || onAnularRecaudo ? 5 : 4
+  const filaTotal = (tipo: 'gastos' | 'ingresos' | 'recaudos') => (
+    <tr key={tipo} className={`caja-total caja-total-${tipo}`}>
+      <th scope="row" colSpan={3}>{tipo === 'gastos' ? 'Total gastos' : tipo === 'ingresos' ? 'Total ingresos' : 'Total recaudos'}</th>
+      <td className="col-numero">{tipo === 'gastos' ? conSigno('−', gastos.total) : conSigno('+', (tipo === 'ingresos' ? ingresos : totalRecaudos).total)}</td>
+      {columnas === 5 && <td />}
+    </tr>
+  )
+
+  return (
+    <div className="caja-movimientos">
+      <div className="caja-filtro">
+        <ControlSegmentado<FiltroMovimientos>
+          id="caja-filtro-movimientos"
+          etiqueta="Mostrar"
+          valor={filtro}
+          onCambio={setFiltro}
+          opciones={[
+            { valor: 'todos', texto: `Todos (${gastos.cantidad + ingresos.cantidad + totalRecaudos.cantidad + cantidadEmpleados})` },
+            { valor: 'gastos', texto: <>Gastos ({gastos.cantidad}) · <span className="caja-gasto">{conSigno('−', gastos.total)}</span></> },
+            { valor: 'ingresos', texto: <>Ingresos ({ingresos.cantidad}) · <span className="caja-ingreso">{conSigno('+', ingresos.total)}</span></> },
+            { valor: 'recaudos', texto: <>Recaudos ({totalRecaudos.cantidad}) · <span className="caja-ingreso">{conSigno('+', totalRecaudos.total)}</span></> },
+            { valor: 'empleados', texto: `Empleados (${cantidadEmpleados})` },
+          ]}
+        />
+      </div>
+      {visibles.length === 0 ? <p className="vacio caja-vacio">{VACIO_POR_FILTRO[filtro]}</p> : (
+    <table className="tabla-caja caja-tabla-movimientos">
       <caption className="solo-lector">Movimientos de caja del día</caption>
-      <thead><tr><th>Tipo</th><th>Concepto</th><th>Cuenta</th><th className="col-numero">Valor</th>{onAnular && <th><span className="solo-lector">Acción</span></th>}</tr></thead>
+      <thead><tr><th>Tipo</th><th>Concepto</th><th>Cuenta</th><th className="col-numero">Valor</th>{columnas === 5 && <th><span className="solo-lector">Acción</span></th>}</tr></thead>
       <tbody>
-        {movimientos.map((m) => (
-          <tr key={m.id} className={m.anulacion ? 'reversado' : undefined}>
-            <td>{m.grupo_nombre}<small className="bloque">{m.categoria.nombre}</small></td>
-            <td>
-              {m.concepto}{m.referencia && <small className="bloque">Ref. {m.referencia}</small>}
-              <small className="bloque">{m.usuario.name} · {formatearFechaHora(m.created_at)}</small>
-              {m.anulacion && <small className="bloque">Anulado por {m.anulacion.usuario?.name ?? '—'}: «{m.anulacion.motivo}»</small>}
-            </td>
-            <td>{m.cuenta.nombre}</td>
-            <td className="col-numero">{m.grupo === 'otro_ingreso' || m.grupo === 'ingreso_externo' ? '+' : '−'}{pesos(m.valor)}</td>
-            {onAnular && <td>{!m.anulacion && <button type="button" className="enlace" onClick={() => onAnular(m)}>Anular</button>}</td>}
-          </tr>
+        {visibles.map((f) => f.clase === 'recaudo' ? (
+          <FilaRecaudo key={`r-${f.r.id}`} r={f.r} conAccion={columnas === 5} onAnular={onAnularRecaudo} />
+        ) : f.clase === 'empleado' ? (
+          <FilaEmpleado key={`e-${f.e.id}`} e={f.e} conAccion={columnas === 5} />
+        ) : (
+          <FilaMovimientoCaja key={`m-${f.m.id}`} m={f.m} conAccion={columnas === 5} onAnular={onAnular} />
         ))}
       </tbody>
+      <tfoot>
+        {(filtro === 'todos' || filtro === 'gastos') && filaTotal('gastos')}
+        {(filtro === 'todos' || filtro === 'ingresos') && filaTotal('ingresos')}
+        {(filtro === 'todos' || filtro === 'recaudos') && filaTotal('recaudos')}
+        {filtro === 'empleados' && (
+          <>
+            <tr className="caja-total empleado-total-prestamos">
+              <th scope="row" colSpan={3}>Total préstamos</th>
+              <td className="col-numero">{conSigno('−', emp.prestamos.total)}</td>
+              {columnas === 5 && <td />}
+            </tr>
+            <tr className="caja-total empleado-total-abonos">
+              <th scope="row" colSpan={3}>
+                Total abonos
+                {emp.abonos_nomina.cantidad > 0 && <small className="bloque empleado-total-nomina"><span className="chip empleado-nomina">Nómina</span> {pesos(emp.abonos_nomina.total)}</small>}
+              </th>
+              <td className="col-numero">{conSigno('+', emp.abonos_caja.total)}</td>
+              {columnas === 5 && <td />}
+            </tr>
+          </>
+        )}
+      </tfoot>
     </table>
+      )}
+    </div>
+  )
+}
+
+function FilaMovimientoCaja({ m, conAccion, onAnular }: { m: MovimientoCaja; conAccion: boolean; onAnular?: (m: MovimientoCaja) => void }) {
+  return (
+    <tr className={m.anulacion ? 'reversado' : undefined}>
+      <td>{m.grupo_nombre}<small className="bloque">{m.categoria.nombre}</small></td>
+      <td>
+        {m.concepto}{m.referencia && <small className="bloque">Ref. {m.referencia}</small>}
+        <small className="bloque">{m.usuario.name} · {formatearFechaHora(m.created_at)}</small>
+        {m.anulacion && <small className="bloque">Anulado por {m.anulacion.usuario?.name ?? '—'}: «{m.anulacion.motivo}»</small>}
+      </td>
+      <td>{m.cuenta.nombre}</td>
+      <td className="col-numero">{esIngreso(m) ? '+' : '−'}{pesos(m.valor)}</td>
+      {conAccion && <td>{onAnular && !m.anulacion && <button type="button" className="enlace" onClick={() => onAnular(m)}>Anular</button>}</td>}
+    </tr>
+  )
+}
+
+/** S-76: recaudo de documento en la lista del día: documento y observación debajo, en pequeño. */
+function FilaRecaudo({ r, conAccion, onAnular }: { r: RecaudoDocumento; conAccion: boolean; onAnular?: (r: RecaudoDocumento) => void }) {
+  return (
+    <tr className={r.anulacion ? 'reversado recaudo-fila' : 'recaudo-fila'}>
+      <td>Recaudo de cartera<small className="bloque">{r.documento}</small></td>
+      <td>
+        {r.observacion && <span className="recaudo-observacion">{r.observacion}</span>}
+        <small className="bloque">{r.usuario.name} · {formatearFechaHora(r.created_at)}</small>
+        {r.anulacion && <small className="bloque">Anulado por {r.anulacion.usuario?.name ?? '—'}: «{r.anulacion.motivo}»</small>}
+      </td>
+      <td>{r.cuenta.nombre}</td>
+      <td className="col-numero">+{pesos(r.valor)}</td>
+      {conAccion && <td>{onAnular && !r.anulacion && <button type="button" className="enlace" onClick={() => onAnular(r)}>Anular</button>}</td>}
+    </tr>
+  )
+}
+
+/**
+ * RF-27: préstamo (−) o abono (+) de empleado en la lista del día. El abono por nómina lleva la marca
+ * "Nómina": no suma al efectivo. Sin "Anular": solo el admin anula, desde la cuenta de empleados.
+ */
+function FilaEmpleado({ e, conAccion }: { e: MovimientoEmpleadoDia; conAccion: boolean }) {
+  const prestamo = e.tipo === 'prestamo'
+  const nomina = e.forma === 'nomina'
+  return (
+    <tr className={e.anulacion ? 'reversado empleado-fila' : 'empleado-fila'}>
+      <td>
+        {prestamo ? 'Préstamo a empleado' : 'Abono de empleado'}
+        {nomina && <small className="bloque"><span className="chip empleado-nomina">Nómina</span></small>}
+      </td>
+      <td>
+        {e.empleado.nombre}
+        {e.nota && <small className="bloque">{e.nota}</small>}
+        <small className="bloque">{e.usuario.name} · {formatearFechaHora(e.created_at)}</small>
+        {e.anulacion && <small className="bloque">Anulado por {e.anulacion.usuario?.name ?? '—'}: «{e.anulacion.motivo}»</small>}
+      </td>
+      <td>{e.cuenta?.nombre ?? '—'}</td>
+      <td className={nomina ? 'col-numero empleado-valor-nomina' : 'col-numero'}>{prestamo ? '−' : '+'}{pesos(e.valor)}</td>
+      {conAccion && <td />}
+    </tr>
   )
 }
 
@@ -367,10 +724,14 @@ function CierreGuardado({ cierre }: { cierre: CierreCaja }) {
   )
 }
 
-/** Efectivo contado con diferencia en vivo, observación y "Cerrar día" con confirmación. */
+/**
+ * Efectivo contado con diferencia en vivo, observación opcional (plegada tras "+ Agregar
+ * observación") y "Cerrar día" con confirmación. Va al pie de la tarjeta: siempre visible.
+ */
 function FormularioCierre({ fecha, esperado, bloqueado, onCerrado }: { fecha: string; esperado: string; bloqueado: boolean; onCerrado: () => void }) {
   const [contado, setContado] = useState('')
   const [observacion, setObservacion] = useState('')
+  const [conObservacion, setConObservacion] = useState(false)
   const [confirmando, setConfirmando] = useState(false)
   const n = leerNumero(contado)
   const valido = n !== null && !Number.isNaN(n) && n >= 0
@@ -382,25 +743,32 @@ function FormularioCierre({ fecha, esperado, bloqueado, onCerrado }: { fecha: st
   })
 
   return (
-    <form className="formulario cierre-dia" onSubmit={(e) => { e.preventDefault(); if (valido && !bloqueado) setConfirmando(true) }}>
-      <label>
-        <span className="etiqueta-campo">Efectivo contado<span className="obligatorio" aria-hidden="true">*</span></span>
-        <input inputMode="decimal" autoComplete="off" placeholder="Ej: 1.250.000" value={contado} aria-invalid={contado.trim() !== '' && !valido} aria-describedby="cierre-diferencia" onChange={(e) => { setContado(e.target.value); cerrar.reset() }} />
-        <small id="cierre-diferencia" className={diferencia !== null && diferencia !== 0 ? 'ayuda error' : 'ayuda'} role="status">
-          {contado.trim() !== '' && !valido ? 'Escriba un valor en pesos, 0 o mayor.'
-            : diferencia === null ? `Esperado ${pesos(esperado)}.`
-              : diferencia === 0 ? 'Cuadra con el efectivo esperado.'
-                : `${diferencia > 0 ? 'Sobran' : 'Faltan'} ${pesos(Math.abs(diferencia))}.`}
-        </small>
-      </label>
-      <label>
-        <span className="etiqueta-campo">Observación (opcional)</span>
-        <input maxLength={255} value={observacion} onChange={(e) => setObservacion(e.target.value)} />
-      </label>
+    <form className="caja-form-cierre" onSubmit={(e) => { e.preventDefault(); if (valido && !bloqueado) setConfirmando(true) }}>
+      <label htmlFor="caja-contado" className="etiqueta-campo">Efectivo contado<span className="obligatorio" aria-hidden="true">*</span></label>
+      <CampoMoneda
+        id="caja-contado"
+        placeholder="Ej: 1.250.000"
+        value={contado}
+        aria-invalid={contado.trim() !== '' && !valido}
+        aria-describedby="cierre-diferencia"
+        onChange={(e) => { setContado(e.target.value); cerrar.reset() }}
+      />
+      <small id="cierre-diferencia" className={diferencia !== null && diferencia !== 0 ? 'ayuda error' : 'ayuda'} role="status">
+        {contado.trim() !== '' && !valido ? 'Escriba un valor en pesos, 0 o mayor.'
+          : diferencia === null ? `Esperado ${pesos(esperado)}`
+            : diferencia === 0 ? 'Cuadra con el efectivo esperado.'
+              : `${diferencia > 0 ? 'Sobran' : 'Faltan'} ${pesos(Math.abs(diferencia))}.`}
+      </small>
+      {conObservacion ? (
+        <label className="caja-observacion">
+          <span className="etiqueta-campo">Observación (opcional)</span>
+          <input autoFocus maxLength={255} value={observacion} onChange={(e) => setObservacion(e.target.value)} />
+        </label>
+      ) : (
+        <button type="button" className="enlace caja-agregar-observacion" onClick={() => setConObservacion(true)}>+ Agregar observación</button>
+      )}
       {cerrar.isError && !confirmando && <div className="aviso error" role="alert">{mensajeError(cerrar.error)}</div>}
-      <div className="acciones">
-        <button type="submit" className="primario boton-44" disabled={!valido || bloqueado || cerrar.isPending}>Cerrar día</button>
-      </div>
+      <button type="submit" className="primario boton-44 caja-boton-cerrar" disabled={!valido || bloqueado || cerrar.isPending}>Cerrar día</button>
       {confirmando && (
         <Confirmar
           titulo={`Cerrar la caja del ${formatearFecha(fecha)}`}
@@ -421,6 +789,90 @@ function FormularioCierre({ fecha, esperado, bloqueado, onCerrado }: { fecha: st
  * externo, Otro ingreso); categoría, concepto, valor, cuenta y referencia. S-52: solo "Otro ingreso"
  * admite cuentas distintas de efectivo.
  */
+/**
+ * S-76: recaudo de una factura o remisión a crédito de Contapyme que no está en las ventas a crédito
+ * del sistema. Solo entra a la caja del día (no toca la cartera de clientes). El backend decide.
+ */
+function DialogoRecaudo({ fecha, onCerrar, onGuardado }: { fecha: string; onCerrar: () => void; onGuardado: () => void }) {
+  const [tipo, setTipo] = useState<TipoDocumentoVenta | ''>('')
+  const [numero, setNumero] = useState('')
+  const [valor, setValor] = useState('')
+  const [cuenta, setCuenta] = useState<number | ''>('')
+  const [observacion, setObservacion] = useState('')
+  const cuentas = useCuentasPago()
+  const activas = cuentas.data ?? []
+  const cuentaElegida = cuenta !== '' && activas.some((c) => c.id === cuenta) ? cuenta : (activas.find((c) => c.tipo === 'efectivo')?.id ?? '')
+  const n = leerNumero(valor)
+  const valorMalo = valor.trim() !== '' && (n === null || Number.isNaN(n) || n <= 0)
+  const listo = tipo !== '' && numero.trim() !== '' && n !== null && !Number.isNaN(n) && n > 0 && cuentaElegida !== ''
+
+  const guardar = useMutation({
+    mutationFn: async () => (await api.post(`/caja/dias/${fecha}/recaudos`, {
+      tipo_documento: tipo, numero_documento: numero.trim(), valor: n, cuenta_pago_id: cuentaElegida, observacion: observacion.trim() || null,
+    })).data,
+    onSuccess: onGuardado,
+  })
+  const errores = guardar.isError ? erroresCampo(guardar.error) : {}
+  const general = guardar.isError && Object.keys(errores).length === 0 ? mensajeError(guardar.error) : null
+
+  return (
+    <Dialogo
+      titulo="Recaudo de cartera"
+      descripcion="Para facturas a crédito que no están en ventas a crédito del sistema."
+      variante="ancha"
+      onCerrar={onCerrar}
+      pendiente={guardar.isPending}
+      onEnviar={() => { if (listo && !guardar.isPending) guardar.mutate() }}
+      pie={(
+        <>
+          <BotonCancelar />
+          <button type="submit" className="primario" disabled={!listo || guardar.isPending}>{guardar.isPending ? 'Guardando…' : 'Registrar recaudo'}</button>
+        </>
+      )}
+    >
+      <DialogoSeccion>
+        <div className="campos-dos">
+          <label>
+            <span className="etiqueta-campo">Tipo de documento<span className="obligatorio" aria-hidden="true">*</span></span>
+            <select autoFocus required value={tipo} aria-invalid={!!errores.tipo_documento} onChange={(e) => { setTipo(e.target.value as TipoDocumentoVenta | ''); guardar.reset() }}>
+              <option value="">Seleccione…</option>
+              <option value="factura">Factura</option>
+              <option value="remision">Remisión</option>
+            </select>
+            {errores.tipo_documento && <small className="ayuda error">{errores.tipo_documento}</small>}
+          </label>
+          <label>
+            <span className="etiqueta-campo">N.º del documento<span className="obligatorio" aria-hidden="true">*</span></span>
+            <input required maxLength={60} autoComplete="off" value={numero} aria-invalid={!!errores.numero_documento} onChange={(e) => { setNumero(e.target.value); guardar.reset() }} />
+            {errores.numero_documento && <small className="ayuda error">{errores.numero_documento}</small>}
+          </label>
+        </div>
+        <div className="campos-dos">
+          <label>
+            <span className="etiqueta-campo">Valor recaudado<span className="obligatorio" aria-hidden="true">*</span></span>
+            <CampoMoneda required placeholder="Ej: 150.000" value={valor} aria-invalid={valorMalo || !!errores.valor} onChange={(e) => { setValor(e.target.value); guardar.reset() }} />
+            {(valorMalo || errores.valor) && <small className="ayuda error">{errores.valor ?? 'Debe ser mayor que 0.'}</small>}
+          </label>
+          <label>
+            <span className="etiqueta-campo">Cuenta de pago<span className="obligatorio" aria-hidden="true">*</span></span>
+            <select value={cuentaElegida} aria-invalid={!!errores.cuenta_pago_id} onChange={(e) => { setCuenta(e.target.value === '' ? '' : Number(e.target.value)); guardar.reset() }}>
+              {cuentaElegida === '' && <option value="">{cuentas.isLoading ? 'Cargando…' : 'Seleccione…'}</option>}
+              {activas.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+            </select>
+            {errores.cuenta_pago_id && <small className="ayuda error">{errores.cuenta_pago_id}</small>}
+          </label>
+        </div>
+        <label>
+          <span className="etiqueta-campo">Observación (opcional)</span>
+          <textarea maxLength={500} rows={2} value={observacion} aria-invalid={!!errores.observacion} onChange={(e) => setObservacion(e.target.value)} />
+          {errores.observacion && <small className="ayuda error">{errores.observacion}</small>}
+        </label>
+        {general && <div className="aviso error" role="alert">{general}</div>}
+      </DialogoSeccion>
+    </Dialogo>
+  )
+}
+
 function DialogoMovimiento({ fecha, onCerrar, onGuardado }: { fecha: string; onCerrar: () => void; onGuardado: () => void }) {
   const [grupo, setGrupo] = useState<GrupoCaja>('vario')
   const [categoria, setCategoria] = useState<number | ''>('')
@@ -457,7 +909,7 @@ function DialogoMovimiento({ fecha, onCerrar, onGuardado }: { fecha: string; onC
       onEnviar={() => { if (listo && !guardar.isPending) guardar.mutate() }}
       pie={(
         <>
-          <button type="button" className="secundario" disabled={guardar.isPending} onClick={onCerrar}>Cancelar</button>
+          <BotonCancelar />
           <button type="submit" className="primario" disabled={!listo || guardar.isPending}>{guardar.isPending ? 'Guardando…' : 'Guardar'}</button>
         </>
       )}
@@ -503,6 +955,134 @@ function DialogoMovimiento({ fecha, onCerrar, onGuardado }: { fecha: string; onC
           <input maxLength={60} placeholder="Ej: FVE-1234" value={referencia} onChange={(e) => setReferencia(e.target.value)} />
         </label>
         {general && <div className="aviso error" role="alert">{general}</div>}
+      </DialogoSeccion>
+    </Dialogo>
+  )
+}
+
+type TipoEmpleado = 'prestamo' | 'abono'
+
+const sinTildes = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+
+/**
+ * RF-27 (S-55 a S-57): préstamo o abono de un empleado desde la caja de hoy (solo mostrador). Las
+ * reglas las decide el backend: el préstamo sale de Efectivo; el abono es por caja (cuenta activa) o
+ * por nómina (no mueve la caja); un abono mayor que la deuda lo rechaza el servidor. Sin saldos.
+ */
+function DialogoEmpleados({ onCerrar, onGuardado }: { onCerrar: () => void; onGuardado: () => void }) {
+  const [tipo, setTipo] = useState<TipoEmpleado>('prestamo')
+  const [empleado, setEmpleado] = useState<number | null>(null)
+  const [busca, setBusca] = useState('')
+  const [valor, setValor] = useState('')
+  const [forma, setForma] = useState<FormaAbonoEmpleado>('caja')
+  const [cuenta, setCuenta] = useState<number | ''>('')
+  const [nota, setNota] = useState('')
+  const empleados = useQuery({
+    queryKey: ['empleados', 'activos'],
+    queryFn: async () => (await api.get<{ data: EmpleadoOpcion[] }>('/empleados')).data.data,
+  })
+  const cuentas = useCuentasPago()
+  const activas = cuentas.data ?? []
+  const cuentaElegida = cuenta !== '' && activas.some((c) => c.id === cuenta) ? cuenta : (activas.find((c) => c.tipo === 'efectivo')?.id ?? '')
+  const termino = sinTildes(busca.trim())
+  const lista = (empleados.data ?? []).filter((e) => termino === '' || sinTildes(e.nombre).includes(termino) || (e.documento ?? '').includes(termino))
+  const n = leerNumero(valor)
+  const valorValido = n !== null && !Number.isNaN(n) && n > 0 && Number.isInteger(n)
+  const valorMalo = valor.trim() !== '' && !valorValido
+  const porCaja = tipo === 'abono' && forma === 'caja'
+  const listo = empleado !== null && valorValido && (!porCaja || cuentaElegida !== '')
+
+  const guardar = useMutation({
+    mutationFn: async () => (await api.post(`/empleados/${empleado}/${tipo === 'prestamo' ? 'prestamos' : 'abonos'}`, {
+      valor: n,
+      nota: nota.trim() || null,
+      ...(tipo === 'abono' ? { forma, cuenta_pago_id: porCaja ? cuentaElegida : null } : {}),
+    })).data,
+    onSuccess: onGuardado,
+  })
+  const errores = guardar.isError ? erroresCampo(guardar.error) : {}
+  const general = guardar.isError && Object.keys(errores).length === 0 ? mensajeError(guardar.error) : null
+  const ayuda = tipo === 'prestamo' ? 'El préstamo sale del efectivo de la caja.' : forma === 'nomina' ? 'Por nómina solo se registra; no mueve la caja.' : undefined
+
+  return (
+    <Dialogo
+      titulo="Cuenta de empleados"
+      descripcion={ayuda}
+      variante="ancha"
+      modificado={empleado !== null || valor.trim() !== '' || nota.trim() !== ''}
+      onCerrar={onCerrar}
+      pendiente={guardar.isPending}
+      onEnviar={() => { if (listo && !guardar.isPending) guardar.mutate() }}
+      pie={(
+        <>
+          <BotonCancelar />
+          <button type="submit" className="primario" disabled={!listo || guardar.isPending}>
+            {guardar.isPending ? 'Guardando…' : tipo === 'prestamo' ? 'Registrar préstamo' : 'Registrar abono'}
+          </button>
+        </>
+      )}
+    >
+      <DialogoSeccion>
+        <ControlSegmentado<TipoEmpleado>
+          id="empleado-tipo"
+          etiqueta="Tipo"
+          valor={tipo}
+          onCambio={(t) => { setTipo(t); guardar.reset() }}
+          opciones={[{ valor: 'prestamo', texto: 'Préstamo' }, { valor: 'abono', texto: 'Abono' }]}
+        />
+        <fieldset className="empleado-selector">
+          <legend className="etiqueta-campo">Empleado<span className="obligatorio" aria-hidden="true">*</span></legend>
+          <input
+            type="search"
+            autoFocus
+            autoComplete="off"
+            placeholder="Nombre o documento"
+            aria-label="Buscar empleado"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+          />
+          <div className="empleado-lista" role="radiogroup" aria-label="Empleado">
+            {empleados.isLoading && <p className="cargando">Cargando…</p>}
+            {lista.map((e) => (
+              <label key={e.id} className={empleado === e.id ? 'empleado-opcion elegida' : 'empleado-opcion'}>
+                <input type="radio" name="empleado" checked={empleado === e.id} onChange={() => { setEmpleado(e.id); guardar.reset() }} />
+                <span>{e.nombre}{e.documento && <small className="empleado-documento">{e.documento}</small>}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        <div className="campos-dos">
+          <label>
+            <span className="etiqueta-campo">Valor<span className="obligatorio" aria-hidden="true">*</span></span>
+            <CampoMoneda required placeholder="Ej: 50.000" value={valor} aria-invalid={valorMalo || !!errores.valor} onChange={(e) => { setValor(e.target.value); guardar.reset() }} />
+            {(valorMalo || errores.valor) && <small className="ayuda error">{errores.valor ?? 'Debe ser mayor que 0.'}</small>}
+          </label>
+          {tipo === 'abono' && (
+            <ControlSegmentado<FormaAbonoEmpleado>
+              id="empleado-forma"
+              etiqueta="Forma"
+              valor={forma}
+              onCambio={(f) => { setForma(f); guardar.reset() }}
+              opciones={[{ valor: 'caja', texto: 'Caja' }, { valor: 'nomina', texto: 'Nómina' }]}
+            />
+          )}
+        </div>
+        {porCaja && (
+          <label>
+            <span className="etiqueta-campo">Cuenta de pago<span className="obligatorio" aria-hidden="true">*</span></span>
+            <select value={cuentaElegida} aria-invalid={!!errores.cuenta_pago_id} onChange={(e) => { setCuenta(e.target.value === '' ? '' : Number(e.target.value)); guardar.reset() }}>
+              {cuentaElegida === '' && <option value="">{cuentas.isLoading ? 'Cargando…' : 'Seleccione…'}</option>}
+              {activas.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+            </select>
+            {errores.cuenta_pago_id && <small className="ayuda error">{errores.cuenta_pago_id}</small>}
+          </label>
+        )}
+        <label>
+          <span className="etiqueta-campo">Observación (opcional)</span>
+          <input maxLength={255} autoComplete="off" value={nota} aria-invalid={!!errores.nota} onChange={(e) => setNota(e.target.value)} />
+          {errores.nota && <small className="ayuda error">{errores.nota}</small>}
+        </label>
+        {(general || errores.forma) && <div className="aviso error" role="alert">{general ?? errores.forma}</div>}
       </DialogoSeccion>
     </Dialogo>
   )
