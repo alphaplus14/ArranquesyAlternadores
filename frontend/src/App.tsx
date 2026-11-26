@@ -17,7 +17,6 @@ const Cartera = lazy(() => import('./paginas/cartera/Cartera'))
 const CarteraCliente = lazy(() => import('./paginas/cartera/CarteraCliente'))
 const Ingresos = lazy(() => import('./paginas/logistica/Ingresos'))
 const IngresoDetalle = lazy(() => import('./paginas/logistica/IngresoDetalle'))
-const PreciosCompra = lazy(() => import('./paginas/logistica/PreciosCompra'))
 const Etiquetas = lazy(() => import('./paginas/logistica/Etiquetas'))
 const Ajustes = lazy(() => import('./paginas/logistica/Ajustes'))
 const Productos = lazy(() => import('./paginas/Productos'))
@@ -77,7 +76,7 @@ export default function App() {
         <Route element={<ConRol roles={['logistica']} />}>
           <Route path="/logistica/ingresos" element={<Ingresos />} />
           <Route path="/logistica/ingresos/:id" element={<IngresoDetalle />} />
-          <Route path={RUTA_PRECIOS_COMPRA} element={<PreciosCompra />} />
+          <Route path={RUTA_PRECIOS_COMPRA} element={<Navigate to={RUTA_COSTOS} replace />} />
           <Route path="/logistica/etiquetas" element={<Etiquetas />} />
         </Route>
         <Route element={<ConRol roles={['logistica', 'admin']} />}>

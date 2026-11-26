@@ -708,37 +708,6 @@ export interface FilaCompra {
   total: string
 }
 
-/** RF-32 / S-77: una compra que cuenta para el historial de precios. */
-export interface LineaPrecioCompra {
-  id: number
-  ingreso_id: number
-  fecha: string
-  tipo: TipoIngreso
-  numero_documento: string
-  proveedor: Opcion
-  referencia: {
-    id: number
-    codigo_referencia: string
-    descripcion: string | null
-    codigo_universal: { id: number; codigo: string } | null
-  }
-  costo_unitario: string
-  descuento_porcentaje: string
-  costo_neto: string
-  corregido: boolean
-}
-
-export interface ResumenPreciosCompra {
-  ultimo: LineaPrecioCompra | null
-  anterior: LineaPrecioCompra | null
-  /** Último costo unitario menos el anterior. Null si no hay anterior. */
-  variacion: string | null
-}
-
-export interface PaginaPreciosCompra extends Pagina<LineaPrecioCompra> {
-  resumen: ResumenPreciosCompra | null
-}
-
 export interface FilaVentaCredito {
   id: number
   cliente: Opcion
@@ -1308,7 +1277,7 @@ export interface FilaCosto {
   tipo: TipoIngreso
   numero_documento: string
   proveedor: Opcion
-  referencia: { id: number; codigo_referencia: string; calidad: Calidad | null }
+  referencia: { id: number; codigo_referencia: string; calidad: Calidad | null; descripcion?: string }
   cantidad: number
   costo_factura: string
   descuento_porcentaje: string
@@ -1321,7 +1290,10 @@ export interface FilaCosto {
   ultimo: boolean
   anterior: boolean
   sin_costo: boolean
+  /** RF-28: el documento tuvo una corrección. */
   corregida: boolean
+  /** RF-28: la corrección cambió el costo de esta línea (se muestra el vigente). */
+  costo_corregido: boolean
   /** RF-19: número de la factura que cubre esta remisión (su costo no cuenta). */
   cubierta_por: string | null
   /** RF-19: remisiones que cubre esta factura. */
@@ -1352,7 +1324,8 @@ export interface ProductoCostos {
 
 export interface CompraResumen { valor: string; fecha: string; ingreso_id: number; tipo: TipoIngreso; numero_documento: string }
 
+/** Sin producto elegido, `producto` y `resumen` llegan en null (lista general de compras). */
 export interface HistorialCostos extends Pagina<FilaCosto> {
-  producto: ProductoCostos
-  resumen: { ultimo: CompraResumen | null; anterior: CompraResumen | null; variacion: string | null; compras: number }
+  producto: ProductoCostos | null
+  resumen: { ultimo: CompraResumen | null; anterior: CompraResumen | null; variacion: string | null; compras: number } | null
 }

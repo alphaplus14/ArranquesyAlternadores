@@ -2,9 +2,11 @@
 
 use App\Enums\Rol;
 use App\Enums\TipoIngreso;
+use App\Models\Categoria;
 use App\Models\CodigoUniversal;
 use App\Models\Ingreso;
 use App\Models\IngresoItem;
+use App\Models\Proveedor;
 use App\Models\Referencia;
 use App\Models\User;
 use App\Services\IngresoService;
@@ -211,4 +213,117 @@ it('S-71: el escaneo de venta, las ventas y la ficha de una referencia no llevan
     foreach ([$escaneo, $venta, $ficha, $buscar] as $respuesta) {
         expect($respuesta->getContent())->not->toContain('ultimo_costo')->not->toContain('costo_neto');
     }
+});
+
+/*
+ * RF-32 / S-77 (de Franklin), integrado en S-71: lista general de compras con filtros y marca de
+ * costo corregido por línea. Sin producto elegido no hay resumen ni variación por fila.
+ */
+
+it('S-71 / RF-32: sin producto lista todas las compras, sin resumen ni variación, con la descripción', function () {
+    actuarComo(Rol::Admin);
+    $proveedor = Proveedor::factory()->create();
+    $a = Referencia::factory()->create(['proveedor_id' => $proveedor->id, 'descripcion' => 'Uno suelto', 'precio_venta' => 50000]);
+    $b = Referencia::factory()->create(['proveedor_id' => $proveedor->id, 'descripcion' => 'Otro suelto', 'precio_venta' => 50000]);
+    ingresoCostos($a, '2026-11-01', [['cantidad' => 1, 'costo_unitario' => 100]], ['numero_documento' => 'LA']);
+    ingresoCostos($b, '2026-11-02', [['cantidad' => 1, 'costo_unitario' => 200]], ['numero_documento' => 'LB']);
+
+    $r = historialCostos(['proveedor_id' => $proveedor->id])->assertOk();
+
+    expect($r->json('producto'))->toBeNull()
+        ->and($r->json('resumen'))->toBeNull()
+        ->and(collect($r->json('data'))->pluck('numero_documento')->all())->toBe(['LB', 'LA'])
+        ->and($r->json('data.0.referencia.descripcion'))->toBe('Otro suelto')
+        ->and($r->json('data.0.fecha'))->toBe('2026-11-02')
+        ->and($r->json('data.0.variacion'))->toBeNull()
+        ->and($r->json('data.0.ultimo'))->toBeFalse();
+});
+
+it('S-71 / RF-32: proveedor, categoría, texto y fechas acotan; fechas al revés o ids que no existen dan 422', function () {
+    actuarComo(Rol::Logistica);
+    $cat = Categoria::factory()->create();
+    $otra = Categoria::factory()->create();
+    $alfa = Proveedor::factory()->create();
+    $beta = Proveedor::factory()->create();
+    $buscada = Referencia::factory()->create(['proveedor_id' => $alfa->id, 'categoria_id' => $cat->id, 'descripcion' => 'Sensor de temperatura XZ', 'precio_venta' => 50000]);
+    $mismaCategoria = Referencia::factory()->create(['proveedor_id' => $beta->id, 'categoria_id' => $cat->id, 'precio_venta' => 50000]);
+    $otro = Referencia::factory()->create(['proveedor_id' => $alfa->id, 'categoria_id' => $otra->id, 'precio_venta' => 50000]);
+    ingresoCostos($buscada, '2026-01-15', [['cantidad' => 1, 'costo_unitario' => 1000]], ['numero_documento' => 'ENE']);
+    ingresoCostos($buscada, '2026-08-15', [['cantidad' => 1, 'costo_unitario' => 1100]], ['numero_documento' => 'AGO']);
+    ingresoCostos($mismaCategoria, '2026-08-15', [['cantidad' => 1, 'costo_unitario' => 900]], ['numero_documento' => 'BETA']);
+    ingresoCostos($otro, '2026-08-15', [['cantidad' => 1, 'costo_unitario' => 800]], ['numero_documento' => 'OTRA']);
+
+    $numeros = fn (array $p) => collect(historialCostos($p)->assertOk()->json('data'))->pluck('numero_documento')->sort()->values()->all();
+
+    expect($numeros(['proveedor_id' => $alfa->id, 'categoria_id' => $cat->id]))->toBe(['AGO', 'ENE'])
+        ->and($numeros(['q' => 'temperatura XZ']))->toBe(['AGO', 'ENE'])
+        ->and($numeros(['desde' => '2026-08-01', 'hasta' => '2026-08-31', 'categoria_id' => $cat->id]))->toBe(['AGO', 'BETA']);
+
+    historialCostos(['desde' => '2026-09-01', 'hasta' => '2026-01-01'])->assertUnprocessable()->assertJsonValidationErrors('hasta');
+    historialCostos(['proveedor_id' => 999999])->assertUnprocessable()->assertJsonValidationErrors('proveedor_id');
+});
+
+it('S-71 / RF-32: con un producto, las fechas acotan también el último y el anterior', function () {
+    actuarComo(Rol::Logistica);
+    $ref = refCostos();
+    ingresoCostos($ref, '2026-01-10', [['cantidad' => 1, 'costo_unitario' => 1000]]);
+    ingresoCostos($ref, '2026-03-10', [['cantidad' => 1, 'costo_unitario' => 1200]]);
+    ingresoCostos($ref, '2026-06-10', [['cantidad' => 1, 'costo_unitario' => 1500]]);
+
+    $r = historialCostos(['referencia_id' => $ref->id, 'hasta' => '2026-04-30'])->assertOk();
+
+    expect($r->json('resumen.ultimo.valor'))->toBe('1200.00')
+        ->and($r->json('resumen.anterior.valor'))->toBe('1000.00')
+        ->and($r->json('data'))->toHaveCount(2);
+});
+
+it('S-71 / RF-28: "Costo corregido" solo cuando la corrección cambió el costo de esa línea', function () {
+    actuarComo(Rol::Logistica);
+    $ref = refCostos();
+    $corregirCosto = ingresoCostos($ref, '2026-11-02', [['cantidad' => 1, 'costo_unitario' => 1000]]);
+    $soloFecha = ingresoCostos($ref, '2026-11-03', [['cantidad' => 1, 'costo_unitario' => 2000]]);
+    $corregir = function (Ingreso $ingreso, string $fecha, int $costo) {
+        $item = IngresoItem::where('ingreso_id', $ingreso->id)->first();
+        test()->postJson("/api/ingresos/{$ingreso->id}/correcciones", [
+            'numero_documento' => $ingreso->numero_documento,
+            'fecha' => $fecha,
+            'forma_pago' => 'contado',
+            'descuento_documento' => 0,
+            'items' => [['id' => $item->id, 'cantidad' => 1, 'costo_unitario' => $costo, 'descuento_porcentaje' => 0, 'iva_porcentaje' => 0]],
+            'motivo' => 'Prueba',
+        ])->assertSuccessful();
+    };
+    $corregir($corregirCosto, '2026-11-02', 1500);
+    $corregir($soloFecha, '2026-11-04', 2000);
+
+    $filas = collect(historialCostos(['referencia_id' => $ref->id])->assertOk()->json('data'))->keyBy('ingreso_id');
+
+    expect($filas[$corregirCosto->id]['costo_corregido'])->toBeTrue()
+        ->and($filas[$corregirCosto->id]['costo_factura'])->toBe('1500.00')
+        ->and($filas[$soloFecha->id]['corregida'])->toBeTrue()
+        ->and($filas[$soloFecha->id]['costo_corregido'])->toBeFalse();
+});
+
+it('S-71 / RF-32: editar el costo en el borrador no marca la compra como corregida', function () {
+    actuarComo(Rol::Logistica);
+    $ref = refCostos();
+    $ingreso = ingresoCostos($ref, '2026-11-02', [['cantidad' => 1, 'costo_unitario' => 1000]], confirmar: false);
+    $servicio = app(IngresoService::class);
+    $servicio->actualizarItem($ingreso, $ingreso->items()->sole(), ['costo_unitario' => 1300]);
+    $servicio->confirmar($ingreso->fresh(), User::findOrFail($ingreso->usuario_id));
+
+    $fila = historialCostos(['referencia_id' => $ref->id])->assertOk()->json('data.0');
+
+    expect($fila['costo_factura'])->toBe('1300.00')
+        ->and($fila['corregida'])->toBeFalse()
+        ->and($fila['costo_corregido'])->toBeFalse();
+});
+
+it('S-71 / RF-32: la lista general también es solo de admin y logística', function () {
+    actuarComo(Rol::Mostrador);
+    historialCostos([])->assertForbidden();
+    actuarComo(Rol::Contable);
+    historialCostos([])->assertForbidden();
+    actuarComo(Rol::Admin);
+    historialCostos([])->assertOk();
 });

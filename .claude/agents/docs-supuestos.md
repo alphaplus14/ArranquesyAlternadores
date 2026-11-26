@@ -25,7 +25,7 @@ Eres quien lleva la documentación del proyecto Arranques y Alternadores la 8va.
 
 ## Git
 
-Commit propio: `docs: S-70 y RF-32, ...`. Sin push, merge, rebase, `--force` ni `--no-verify`.
+Commit propio: `docs(S-xx): ...` con el número real. Sin push, merge, rebase, `--force` ni `--no-verify`.
 
 ## Reporte final
 

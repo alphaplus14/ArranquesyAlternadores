@@ -1,13 +1,14 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { api, mensajeError } from '../../api/cliente'
-import type { CompraResumen, FilaCosto, HistorialCostos, Pagina, Referencia } from '../../api/tipos'
+import type { CompraResumen, FilaCosto, HistorialCostos, Pagina, ProductoCostos, Referencia } from '../../api/tipos'
 import ChipCalidad from '../../componentes/ChipCalidad'
 import Icono from '../../componentes/Icono'
 import Paginacion from '../../componentes/Paginacion'
 import SelectorProveedor from '../../componentes/SelectorProveedor'
 import { formatoNumero } from '../../componentes/numeros'
+import { useCategorias } from '../../hooks/useCatalogos'
 import { useDebounce } from '../../hooks/useDebounce'
 import { useListaPaginada } from '../../hooks/useListaPaginada'
 import { useScanner } from '../../hooks/useScanner'
@@ -26,16 +27,24 @@ const porcentaje = (v: string) => `${Number(v).toLocaleString('es-CO', { maximum
 const documento = (c: { tipo: string; numero_documento: string }) => `${c.tipo === 'factura' ? 'Factura' : 'Remisión'} ${c.numero_documento}`
 
 /**
- * S-71: trazabilidad del costo de compra de una referencia o de un código universal (RF-02).
- * Solo consulta y solo en pantalla. Admin y logística (ver-historial-costos); la ruta y el
- * backend lo exigen. Las cifras (costo neto, con IVA, variación) vienen del backend.
+ * S-71: trazabilidad del costo de compra. Sin producto elegido, todas las compras confirmadas con
+ * filtros (lo que traía RF-32 / S-77, integrado aquí). Con una referencia o un código universal
+ * (RF-02), su historial con último, anterior y variación. Solo consulta y solo en pantalla. Admin y
+ * logística (ver-historial-costos); la ruta y el backend lo exigen. Las cifras vienen del backend.
  */
 export default function Costos() {
   const [params, setParams] = useSearchParams()
   const referenciaId = params.get('referencia')
   const universalId = referenciaId ? null : params.get('universal')
   const proveedorId = params.get('proveedor') ?? ''
+  const categoriaId = params.get('categoria') ?? ''
+  const desde = params.get('desde') ?? ''
+  const hasta = params.get('hasta') ?? ''
   const hay = referenciaId !== null || universalId !== null
+  // Sin producto elegido, lo escrito en el buscador también acota la lista general.
+  const [termino, setTermino] = useState('')
+  const q = hay || termino.length < 2 ? '' : termino
+  const categorias = useCategorias()
 
   const elegir = (cambios: Record<string, string | null>) => setParams((actual) => {
     const p = new URLSearchParams(actual)
@@ -47,87 +56,118 @@ export default function Costos() {
   })
 
   const { filas, resultado, irA, cargando } = useListaPaginada<FilaCosto>({
-    clave: ['costos', referenciaId, universalId, proveedorId],
-    filtros: [referenciaId, universalId, proveedorId],
-    enabled: hay,
+    clave: ['costos', referenciaId, universalId, proveedorId, categoriaId, desde, hasta, q],
+    filtros: [referenciaId, universalId, proveedorId, categoriaId, desde, hasta, q],
     porPagina: { defecto: 20, tope: 100 },
     traer: async (pagina, porPagina) => (await api.get<HistorialCostos>('/costos', {
       params: {
         referencia_id: referenciaId ?? undefined,
         codigo_universal_id: universalId ?? undefined,
         proveedor_id: proveedorId || undefined,
+        categoria_id: hay ? undefined : categoriaId || undefined,
+        desde: desde || undefined,
+        hasta: hasta || undefined,
+        q: q || undefined,
         page: pagina,
         por_pagina: porPagina,
       },
     })).data,
   })
   const historial = resultado as HistorialCostos | undefined
-  // Mientras llega otro producto, no se mezcla la cabecera anterior.
+  // Mientras llega otro producto (o la lista general), no se mezcla la cabecera anterior.
   const vigente = historial && (
-    (referenciaId && historial.producto.referencia?.id === Number(referenciaId))
-    || (universalId && historial.producto.universal?.id === Number(universalId))
+    (referenciaId && historial.producto?.referencia?.id === Number(referenciaId))
+    || (universalId && historial.producto?.universal?.id === Number(universalId))
   ) ? historial : undefined
-  const esUniversal = vigente?.producto.tipo === 'universal'
+  const esUniversal = vigente?.producto?.tipo === 'universal'
+  const conReferencia = esUniversal || !hay
+  // Las filas de otro modo (producto / lista general) no se muestran mientras llega el nuevo.
+  const filasVigentes = hay ? (vigente ? filas : []) : (historial && historial.producto === null ? filas : [])
 
   return (
     <div className="pila costos-pantalla">
       <div className="pagina-encabezado">
         <h1>Costos por producto</h1>
-        <p>Compras confirmadas de una referencia o de un código universal, con su costo neto sin IVA.</p>
+        <p>Compras confirmadas con su costo neto sin IVA. Elija una referencia o un código universal para ver su último costo, el anterior y la variación.</p>
       </div>
 
       <section className="tarjeta-pagina">
         <BuscadorProducto
+          onTermino={setTermino}
           onReferencia={(id) => elegir({ referencia: String(id), universal: null, page: null })}
           onUniversal={(id) => elegir({ universal: String(id), referencia: null, page: null })}
         />
       </section>
 
-      {hay && !vigente && !cargando && resultado === undefined && <div className="cargando">Cargando…</div>}
-      {vigente && (
+      {vigente?.producto && (
         <>
           <Cabecera
-            historial={vigente}
+            producto={vigente.producto}
             onReferencia={(id) => elegir({ referencia: String(id), universal: null, proveedor: null })}
             onUniversal={(id) => elegir({ universal: String(id), referencia: null, proveedor: null })}
           />
-          <Resumen resumen={vigente.resumen} />
-
-          <section className="tarjeta-pagina">
-            <div className="fila-titulo">
-              <h2>Compras</h2>
-              <SelectorProveedor
-                className="filtro costos-filtro"
-                aria-label="Proveedor"
-                value={proveedorId}
-                onChange={(v) => elegir({ proveedor: v || null })}
-                opcionTodos="Todos los proveedores"
-              />
-            </div>
-            {filas.length === 0 ? (
-              <p className="vacio">Este producto aún no tiene compras confirmadas.</p>
-            ) : (
-              <div className={`tabla-desplazable${cargando ? ' actualizando' : ''}`}>
-                <table className="tabla-lineas costos-tabla">
-                  <thead>
-                    <tr>
-                      <th>Fecha</th><th>Documento</th><th>Proveedor</th>{esUniversal && <th>Referencia</th>}
-                      <th className="col-numero">Cant.</th><th className="col-numero">Costo en factura</th>
-                      <th className="col-numero">Desc. %</th><th className="col-numero">IVA %</th>
-                      <th className="col-numero">Costo neto sin IVA</th><th className="col-numero">Costo con IVA</th>
-                      <th className="col-numero">Variación vs anterior</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filas.map((f) => <FilaCompra key={f.linea_id} f={f} esUniversal={esUniversal} />)}
-                  </tbody>
-                </table>
-              </div>
-            )}
-            <Paginacion pagina={resultado as Pagina<FilaCosto> | undefined} onCambiar={irA} />
-          </section>
+          {vigente.resumen && <Resumen resumen={vigente.resumen} />}
         </>
       )}
+
+      <section className="tarjeta-pagina">
+        <div className="fila-titulo">
+          <h2>{hay ? 'Compras' : 'Todas las compras'}</h2>
+          {hay && <button type="button" className="enlace" onClick={() => elegir({ referencia: null, universal: null, page: null })}>Ver todas las compras</button>}
+        </div>
+        <div className="costos-filtros">
+          <SelectorProveedor
+            className="filtro costos-filtro"
+            aria-label="Proveedor"
+            value={proveedorId}
+            onChange={(v) => elegir({ proveedor: v || null })}
+            opcionTodos="Todos los proveedores"
+          />
+          {!hay && (
+            <select className="filtro" aria-label="Categoría" value={categoriaId} onChange={(e) => elegir({ categoria: e.target.value || null })}>
+              <option value="">Todas las categorías</option>
+              {categorias.data?.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+            </select>
+          )}
+          <label className="costos-fecha">Desde
+            <input type="date" max={hasta || undefined} value={desde} onChange={(e) => elegir({ desde: e.target.value || null })} />
+          </label>
+          <label className="costos-fecha">Hasta
+            <input type="date" min={desde || undefined} value={hasta} onChange={(e) => elegir({ hasta: e.target.value || null })} />
+          </label>
+        </div>
+        {filasVigentes.length === 0 ? (
+          cargando || filas.length > 0 || resultado === undefined
+            ? <p className="cargando">Cargando…</p>
+            : <p className="vacio">{hay ? 'Este producto aún no tiene compras confirmadas con estos filtros.' : 'No hay compras confirmadas con estos filtros.'}</p>
+        ) : (
+          <div className={`tabla-desplazable${cargando ? ' actualizando' : ''}`}>
+            <table className="tabla-lineas costos-tabla">
+              <thead>
+                <tr>
+                  <th>Fecha</th><th>Documento</th><th>Proveedor</th>{conReferencia && <th>Referencia</th>}
+                  <th className="col-numero">Cant.</th><th className="col-numero">Costo en factura</th>
+                  <th className="col-numero">Desc. %</th><th className="col-numero">IVA %</th>
+                  <th className="col-numero">Costo neto sin IVA</th><th className="col-numero">Costo con IVA</th>
+                  {hay && <th className="col-numero">Variación vs anterior</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {filasVigentes.map((f) => (
+                  <FilaCompra
+                    key={f.linea_id}
+                    f={f}
+                    conReferencia={conReferencia}
+                    conVariacion={hay}
+                    onReferencia={hay ? undefined : (id) => elegir({ referencia: String(id), universal: null, page: null })}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <Paginacion pagina={resultado as Pagina<FilaCosto> | undefined} onCambiar={irA} />
+      </section>
     </div>
   )
 }
@@ -137,11 +177,12 @@ export default function Costos() {
  * referencias (RF-12) y, si el término es el comienzo de un código universal, ofrece verlo completo.
  * Un escaneo o Enter con una sola coincidencia exacta la abre directo.
  */
-function BuscadorProducto({ onReferencia, onUniversal }: { onReferencia: (id: number) => void; onUniversal: (id: number) => void }) {
+function BuscadorProducto({ onTermino, onReferencia, onUniversal }: { onTermino: (t: string) => void; onReferencia: (id: number) => void; onUniversal: (id: number) => void }) {
   const campo = useRef<HTMLInputElement>(null)
   const [q, setQ] = useState('')
   const termino = useDebounce(q.trim())
   const activo = termino.length >= 2
+  useEffect(() => { onTermino(termino) }, [termino, onTermino])
 
   const referencias = useQuery({
     queryKey: ['costos-buscar', termino],
@@ -226,8 +267,8 @@ function BuscadorProducto({ onReferencia, onUniversal }: { onReferencia: (id: nu
   )
 }
 
-function Cabecera({ historial, onReferencia, onUniversal }: { historial: HistorialCostos; onReferencia: (id: number) => void; onUniversal: (id: number) => void }) {
-  const { referencia: r, universal: u } = historial.producto
+function Cabecera({ producto, onReferencia, onUniversal }: { producto: ProductoCostos; onReferencia: (id: number) => void; onUniversal: (id: number) => void }) {
+  const { referencia: r, universal: u } = producto
   if (r) {
     return (
       <section className="tarjeta-pagina costos-cabecera">
@@ -284,7 +325,7 @@ function Variacion({ valor, corta = false }: { valor: string | null; corta?: boo
   )
 }
 
-function Resumen({ resumen }: { resumen: HistorialCostos['resumen'] }) {
+function Resumen({ resumen }: { resumen: NonNullable<HistorialCostos['resumen']> }) {
   const pie = (c: CompraResumen) => (
     <small>{formatearFecha(c.fecha)} · <Link to={`/logistica/ingresos/${c.ingreso_id}`}>{documento(c)}</Link></small>
   )
@@ -314,7 +355,13 @@ function Resumen({ resumen }: { resumen: HistorialCostos['resumen'] }) {
   )
 }
 
-function FilaCompra({ f, esUniversal }: { f: FilaCosto; esUniversal: boolean }) {
+function FilaCompra({ f, conReferencia, conVariacion, onReferencia }: {
+  f: FilaCosto
+  conReferencia: boolean
+  conVariacion: boolean
+  /** Lista general: abrir el historial de la referencia. */
+  onReferencia?: (id: number) => void
+}) {
   return (
     <tr className={f.ultimo ? 'costos-fila-ultima' : undefined}>
       <td data-label="Fecha">{formatearFecha(f.fecha)}</td>
@@ -324,15 +371,24 @@ function FilaCompra({ f, esUniversal }: { f: FilaCosto; esUniversal: boolean }) 
           {f.ultimo && <span className="chip costos-chip-ultimo">Último</span>}
           {f.anterior && <span className="chip">Anterior</span>}
           <span className="chip">{f.tipo === 'factura' ? 'Factura' : 'Remisión'}</span>
-          {f.corregida && <span className="chip corregida">Corregida</span>}
+          {/* RF-28: "Costo corregido" si la corrección cambió el costo de esta línea; si no, el documento. */}
+          {f.costo_corregido
+            ? <span className="chip corregida" title="Una corrección cambió este costo; se muestra el vigente">Costo corregido</span>
+            : f.corregida && <span className="chip corregida">Corregida</span>}
           {f.sin_costo && <span className="chip sin-precio">Sin costo</span>}
           {f.cubierta_por && <span className="chip" title="Su costo no cuenta: manda el de la factura">Remisión cubierta por factura {f.cubierta_por}</span>}
           {f.cubre_remisiones.map((n) => <span key={n} className="chip">Cubre remisión {n}</span>)}
         </span>
       </td>
       <td data-label="Proveedor">{f.proveedor.nombre}</td>
-      {esUniversal && (
-        <td data-label="Referencia">{f.referencia.codigo_referencia} {f.referencia.calidad && <ChipCalidad calidad={f.referencia.calidad} />}</td>
+      {conReferencia && (
+        <td data-label="Referencia">
+          {onReferencia
+            ? <button type="button" className="enlace" title="Ver su historial de costos" onClick={() => onReferencia(f.referencia.id)}>{f.referencia.codigo_referencia}</button>
+            : f.referencia.codigo_referencia}
+          {' '}{f.referencia.calidad && <ChipCalidad calidad={f.referencia.calidad} />}
+          {onReferencia && f.referencia.descripcion && <small className="costos-ref-descripcion">{f.referencia.descripcion}</small>}
+        </td>
       )}
       <td data-label="Cant." className="col-numero">{f.cantidad}</td>
       <td data-label="Costo en factura" className="col-numero">{f.sin_costo ? '—' : dinero(f.costo_factura)}</td>
@@ -340,7 +396,7 @@ function FilaCompra({ f, esUniversal }: { f: FilaCosto; esUniversal: boolean }) 
       <td data-label="IVA %" className="col-numero">{porcentaje(f.iva_porcentaje)}</td>
       <td data-label="Costo neto sin IVA" className="col-numero"><strong>{dinero(f.costo_neto)}</strong></td>
       <td data-label="Costo con IVA" className="col-numero">{dinero(f.costo_con_iva)}</td>
-      <td data-label="Variación vs anterior" className="col-numero"><Variacion valor={f.variacion} corta /></td>
+      {conVariacion && <td data-label="Variación vs anterior" className="col-numero"><Variacion valor={f.variacion} corta /></td>}
     </tr>
   )
 }

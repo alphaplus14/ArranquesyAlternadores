@@ -43,4 +43,9 @@
 .costos-tabla .col-numero { text-align: right; white-space: nowrap; }
 .costos-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 .costos-chip-ultimo { background: var(--acento-suave, var(--suave-fondo)); color: var(--primario); font-weight: 700; }
-.costos-fila-ultima td { background: #FBFCFF; }
+.costos-fila-ultima td { background: var(--suave-fondo); }
+
+/* Filtros de la lista (proveedor, categoría y fechas). */
+.costos-filtros { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; margin-bottom: 12px; }
+.costos-fecha { display: flex; flex-direction: column; gap: 2px; color: var(--suave); font-size: 0.82rem; }
+.costos-ref-descripcion { display: block; color: var(--suave); overflow-wrap: anywhere; }

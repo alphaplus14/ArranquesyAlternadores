@@ -73,7 +73,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/costos', [CostoController::class, 'index'])->middleware(['can:ver-historial-costos', 'medir:800']);
     Route::middleware('rol:admin,logistica')->group(function () {
         Route::get('/reportes/agotados', [ReporteController::class, 'agotados'])->middleware('medir:500'); // RF-08 / S-47
-        Route::get('/reportes/precios-compra', [ReporteController::class, 'preciosCompra'])->middleware('medir:500'); // RF-32 / S-77
         Route::get('/reportes/bajo-minimo', [ReporteController::class, 'bajoMinimo'])->middleware('medir:500'); // RF-22
     });
 
