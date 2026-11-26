@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\EstadoIngreso;
 use App\Enums\EstadoVenta;
 use App\Enums\FormaPago;
+use App\Enums\TipoDocumentoVenta;
 use App\Models\AbonoCliente;
 use App\Models\Cliente;
 use App\Models\Proveedor;
@@ -134,6 +135,9 @@ class CarteraService
                 return [
                     'id' => (int) $v->id,
                     'factura_contapyme' => $v->factura_contapyme,
+                    // S-73: venta a crédito de solo valor: "Factura N.º X", "Remisión N.º X" o "Factura sin número".
+                    'tipo_documento' => $v->tipo_documento,
+                    'documento' => $v->tipo_documento ? TipoDocumentoVenta::from($v->tipo_documento)->descripcion($v->factura_contapyme) : null,
                     // Instante con zona (ISO 8601, UTC): la pantalla lo muestra en hora de Bogotá.
                     'cerrada_at' => $v->cerrada_at ? Carbon::parse($v->cerrada_at, config('app.timezone'))->utc()->toIso8601ZuluString() : null,
                     'vence_el' => $v->vence_el,
@@ -286,6 +290,24 @@ class CarteraService
             ]);
         }
 
+        // S-73: ventas a crédito de solo valor (sin ítems): "Factura N.º X" por su valor_total.
+        $soloValor = DB::table('ventas as v')
+            ->where('v.cliente_id', $cliente->id)
+            ->where('v.forma_pago', FormaPago::Credito->value)
+            ->where('v.estado', EstadoVenta::Cerrada->value)
+            ->whereNotNull('v.valor_total')
+            ->get(['v.id', 'v.cerrada_at', 'v.vence_el', 'v.factura_contapyme', 'v.tipo_documento', 'v.valor_total']);
+
+        foreach ($soloValor as $v) {
+            $momento = $local($v->cerrada_at);
+            $movimientos->push([
+                'tipo' => 'venta', 'dia' => $momento->toDateString(), 'momento' => $momento->toIso8601String(), 'orden' => 1,
+                'descripcion' => TipoDocumentoVenta::from($v->tipo_documento)->descripcion($v->factura_contapyme)." · venta a crédito #{$v->id}",
+                'venta_id' => (int) $v->id, 'vence_el' => $v->vence_el,
+                'cargo' => (float) $v->valor_total, 'abono' => 0.0,
+            ]);
+        }
+
         // Reversos de esas ventas; nunca antes del cierre de la venta.
         $reversos = DB::table('reversos as r')
             ->join('ventas as v', 'v.id', '=', 'r.venta_id')
@@ -304,6 +326,26 @@ class CarteraService
             $movimientos->push([
                 'tipo' => 'reverso', 'dia' => $momento->toDateString(), 'momento' => $momento->toIso8601String(), 'orden' => 2,
                 'descripcion' => ($r->tipo === 'devolucion' ? 'Devolución' : 'Anulación')." de la venta #{$r->venta_id}",
+                'venta_id' => (int) $r->venta_id, 'reverso_id' => (int) $r->id, 'motivo' => $r->motivo, 'usuario' => $r->usuario,
+                'cargo' => 0.0, 'abono' => (float) $r->valor,
+            ]);
+        }
+
+        // S-73: anulación de una venta de solo valor (sin reverso_items): su monto está en reversos.valor.
+        $anulacionesSoloValor = DB::table('reversos as r')
+            ->join('ventas as v', 'v.id', '=', 'r.venta_id')
+            ->leftJoin('users as u', 'u.id', '=', 'r.usuario_id')
+            ->where('v.cliente_id', $cliente->id)
+            ->where('v.forma_pago', FormaPago::Credito->value)
+            ->where('v.estado', EstadoVenta::Cerrada->value)
+            ->whereNotNull('r.valor')
+            ->get(['r.id', 'r.venta_id', 'r.motivo', 'r.valor', 'u.name as usuario', DB::raw('GREATEST(r.created_at, v.cerrada_at) AS momento')]);
+
+        foreach ($anulacionesSoloValor as $r) {
+            $momento = $local($r->momento);
+            $movimientos->push([
+                'tipo' => 'reverso', 'dia' => $momento->toDateString(), 'momento' => $momento->toIso8601String(), 'orden' => 2,
+                'descripcion' => "Anulación de la venta #{$r->venta_id}",
                 'venta_id' => (int) $r->venta_id, 'reverso_id' => (int) $r->id, 'motivo' => $r->motivo, 'usuario' => $r->usuario,
                 'cargo' => 0.0, 'abono' => (float) $r->valor,
             ]);
@@ -486,7 +528,7 @@ class CarteraService
                 SUM(vn.neto - LEAST(COALESCE(d.dirigido, 0), vn.neto)) OVER (PARTITION BY vn.cliente_id ORDER BY vn.cerrada_at, vn.id) AS acumulado');
 
         return DB::query()->fromSub($conAcumulado, 'x')
-            ->selectRaw('x.id, x.cliente_id, x.cerrada_at, x.vence_el, x.factura_contapyme, x.neto, x.bruto, x.aplicado_dirigido,
+            ->selectRaw('x.id, x.cliente_id, x.cerrada_at, x.vence_el, x.factura_contapyme, x.tipo_documento, x.neto, x.bruto, x.aplicado_dirigido,
                 GREATEST(0, LEAST(x.neto - x.aplicado_dirigido, x.acumulado - x.pool)) AS pendiente,
                 COALESCE(DATEDIFF(?, x.vence_el), 0) AS dias', [$corte]);
     }
@@ -525,7 +567,7 @@ class CarteraService
         $fin = RangoFechas::finExclusivo($corte)->format('Y-m-d H:i:s');
 
         // Índice (forma_pago, cliente_id, vence_el) de ventas; venta_items y reverso_items por FK.
-        return DB::table('ventas as v')
+        $conItems = DB::table('ventas as v')
             ->join('venta_items as vi', 'vi.venta_id', '=', 'v.id')
             ->leftJoin('reverso_items as ri', 'ri.venta_item_id', '=', 'vi.id')
             ->leftJoin('reversos as r', fn ($j) => $j->on('r.id', '=', 'ri.reverso_id')->where('r.created_at', '<', $fin))
@@ -534,10 +576,33 @@ class CarteraService
             ->whereNotNull('v.cliente_id')
             ->where('v.cerrada_at', '<', $fin)
             ->when($clienteId, fn ($q, $id) => $q->where('v.cliente_id', $id))
-            ->groupBy('v.id', 'v.cliente_id', 'v.cerrada_at', 'v.vence_el', 'v.factura_contapyme')
-            ->selectRaw('v.id, v.cliente_id, v.cerrada_at, v.vence_el, v.factura_contapyme,
+            ->groupBy('v.id', 'v.cliente_id', 'v.cerrada_at', 'v.vence_el', 'v.factura_contapyme', 'v.tipo_documento')
+            ->selectRaw('v.id, v.cliente_id, v.cerrada_at, v.vence_el, v.factura_contapyme, v.tipo_documento,
                 SUM(CASE WHEN r.id IS NULL THEN COALESCE(vi.precio_unitario, 0) ELSE 0 END) AS neto,
                 SUM(COALESCE(vi.precio_unitario, 0)) AS bruto');
+
+        // S-73: ventas a crédito de solo valor (sin ítems: la consulta de arriba nunca las toma, no hay
+        // doble conteo). Neto = valor_total, o 0 si se anularon antes del corte (anulación total).
+        return $conItems->unionAll($this->soloValor($fin, $clienteId)
+            ->leftJoin('reversos as r', fn ($j) => $j->on('r.venta_id', '=', 'v.id')->where('r.created_at', '<', $fin))
+            ->selectRaw('v.id, v.cliente_id, v.cerrada_at, v.vence_el, v.factura_contapyme, v.tipo_documento,
+                CASE WHEN r.id IS NULL THEN v.valor_total ELSE 0 END AS neto,
+                v.valor_total AS bruto'));
+    }
+
+    /**
+     * S-73: ventas a crédito de solo valor cerradas antes de $fin (índice cliente_id, forma_pago,
+     * estado). Sin columnas: quien la usa elige qué seleccionar.
+     */
+    protected function soloValor(string $fin, ?int $clienteId = null): Builder
+    {
+        return DB::table('ventas as v')
+            ->where('v.forma_pago', FormaPago::Credito->value)
+            ->where('v.estado', EstadoVenta::Cerrada->value)
+            ->whereNotNull('v.cliente_id')
+            ->whereNotNull('v.valor_total')
+            ->where('v.cerrada_at', '<', $fin)
+            ->when($clienteId, fn ($q, $id) => $q->where('v.cliente_id', $id));
     }
 
     /** Abonos vigentes al corte por cliente (índice cliente_id, fecha). */
@@ -734,14 +799,29 @@ class CarteraService
                 'ventas.cerrada_at',
                 'ventas.vence_el',
                 DB::raw('SUM(venta_items.precio_unitario) as valor'),
+                DB::raw('NULL as tipo_documento'),
+                DB::raw('NULL as factura_contapyme'),
             )
             ->get()
+            // S-73: ventas a crédito de solo valor, por valor_total, si no estaban anuladas al corte.
+            ->concat(DB::table('ventas')
+                ->leftJoin('reversos', fn ($j) => $j->on('reversos.venta_id', '=', 'ventas.id')->where('reversos.created_at', '<=', $hasta))
+                ->where('ventas.forma_pago', FormaPago::Credito->value)
+                ->where('ventas.estado', EstadoVenta::Cerrada->value)
+                ->whereNotNull('ventas.valor_total')
+                ->where('ventas.cerrada_at', '<=', $hasta)
+                ->when($clienteIds !== null, fn ($q) => $q->whereIn('ventas.cliente_id', $clienteIds))
+                ->whereNull('reversos.id')
+                ->get(['ventas.id', 'ventas.cliente_id', 'ventas.cerrada_at', 'ventas.vence_el', 'ventas.valor_total as valor', 'ventas.tipo_documento', 'ventas.factura_contapyme']))
+            ->sortBy(fn ($v) => [$v->cerrada_at, $v->id])
             ->groupBy('cliente_id')
             ->map(fn (Collection $ventas) => $ventas->map(fn ($v) => [
                 'id' => (int) $v->id,
                 'fecha' => Carbon::parse($v->cerrada_at)->toDateString(),
                 'vence_el' => $v->vence_el,
                 'valor' => (string) $v->valor,
+                // S-73: "Factura N.º X" en una venta de solo valor; null en las de ítems.
+                'documento' => $v->tipo_documento ? TipoDocumentoVenta::from($v->tipo_documento)->descripcion($v->factura_contapyme) : null,
             ])->values());
     }
 

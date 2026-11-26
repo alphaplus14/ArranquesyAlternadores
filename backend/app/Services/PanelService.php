@@ -432,8 +432,24 @@ class PanelService
             ->join('users as us', 'us.id', '=', 'v.usuario_id')
             ->selectRaw('us.id, us.name, COUNT(DISTINCT v.id) as ventas, COUNT(*) as unidades, SUM(vi.precio_unitario) as total')
             ->groupBy('us.id', 'us.name')
-            ->orderByDesc('total')
             ->get();
+        // S-73: las ventas a crédito de solo valor cuentan como venta del usuario (sin unidades).
+        $soloValorPorUsuario = $this->creditosSoloValor($f)
+            ->join('users as us', 'us.id', '=', 'v.usuario_id')
+            ->selectRaw('us.id, us.name, COUNT(*) as ventas, 0 as unidades, SUM(v.valor_total) as total')
+            ->groupBy('us.id', 'us.name')
+            ->get();
+        $porUsuario = $porUsuario->concat($soloValorPorUsuario)
+            ->groupBy('id')
+            ->map(fn ($g) => (object) [
+                'id' => $g->first()->id,
+                'name' => $g->first()->name,
+                'ventas' => $g->sum(fn ($x) => (int) $x->ventas),
+                'unidades' => $g->sum(fn ($x) => (int) $x->unidades),
+                'total' => $g->reduce(fn ($t, $x) => bcadd($t, (string) $x->total, self::ESCALA), '0'),
+            ])
+            ->sortByDesc(fn ($u) => (float) $u->total)
+            ->values();
 
         // Estado actual (no depende del período ni de los filtros).
         // S-46: solo las abiertas CON ítems vigentes (las vacías se descartan solas y no avisan).
@@ -555,22 +571,26 @@ class PanelService
             ->groupBy('v.forma_pago')
             ->get()->keyBy('forma_pago');
 
-        $total = $g['total'] ?? '0.00';
-        $ventas = (int) $porForma->sum('ventas');
+        // S-73: ventas a crédito de solo valor (sin ítems): suman al total, al crédito, al conteo y al
+        // ticket; no a unidades, base, IVA ni margen (no tienen productos ni costo).
+        $sv = $this->creditosSoloValor($f)->selectRaw('COUNT(*) as ventas, COALESCE(SUM(v.valor_total), 0) as total')->first();
+        $totalItems = $g['total'] ?? '0.00';
+        $total = bcadd($totalItems, (string) $sv->total, self::ESCALA);
+        $ventas = (int) $porForma->sum('ventas') + (int) $sv->ventas;
         $unidades = $g['unidades'] ?? 0;
 
         return [
             'ventas' => [
                 'total' => $total,
                 'base' => $g['base'] ?? '0.00',
-                'iva_incluido' => bcsub($total, $g['base'] ?? '0.00', self::ESCALA),
+                'iva_incluido' => bcsub($totalItems, $g['base'] ?? '0.00', self::ESCALA),
                 'ventas' => $ventas,
                 'unidades' => $unidades,
                 'ticket_promedio' => $ventas > 0 ? TotalesIngreso::redondearAlPeso(bcdiv($total, (string) $ventas, 10)) : '0.00',
                 'contado' => bcadd((string) ($porForma['contado']->total ?? '0'), '0', self::ESCALA),
-                'credito' => bcadd((string) ($porForma['credito']->total ?? '0'), '0', self::ESCALA),
+                'credito' => bcadd((string) ($porForma['credito']->total ?? '0'), (string) $sv->total, self::ESCALA),
                 'ventas_contado' => (int) ($porForma['contado']->ventas ?? 0),
-                'ventas_credito' => (int) ($porForma['credito']->ventas ?? 0),
+                'ventas_credito' => (int) ($porForma['credito']->ventas ?? 0) + (int) $sv->ventas,
             ],
             'margen' => [
                 'margen' => $g['margen'] ?? null,
@@ -628,7 +648,40 @@ class PanelService
             $serie[$dia]['ventas']++;
         }
 
+        // S-73: ventas a crédito de solo valor, como crédito del día de su registro (sin unidades).
+        foreach ($this->creditosSoloValor($f)->get(['v.cerrada_at', 'v.valor_total']) as $v) {
+            $dia = RangoFechas::diaLocal($v->cerrada_at);
+            if (! isset($serie[$dia])) {
+                continue;
+            }
+            $serie[$dia]['credito'] = bcadd($serie[$dia]['credito'], (string) $v->valor_total, self::ESCALA);
+            $serie[$dia]['total'] = bcadd($serie[$dia]['total'], (string) $v->valor_total, self::ESCALA);
+            $serie[$dia]['ventas']++;
+        }
+
         return $serie;
+    }
+
+    /**
+     * S-73: ventas a crédito de solo valor cerradas en el período y sin anular (índice estado,
+     * cerrada_at). No tienen referencias: con un filtro de categoría o proveedor no se pueden
+     * atribuir y no entran.
+     */
+    private function creditosSoloValor(array $f): Builder
+    {
+        [$ini, $fin] = $this->limites($f);
+
+        // Índice ventas(forma_pago, estado, cerrada_at): solo las de crédito del período. La anulación,
+        // con LEFT JOIN por reversos.venta_id (un registro de solo valor tiene a lo sumo un reverso).
+        return DB::table('ventas as v')
+            ->leftJoin('reversos as rv', 'rv.venta_id', '=', 'v.id')
+            ->where('v.forma_pago', 'credito')
+            ->where('v.estado', EstadoVenta::Cerrada->value)
+            ->where('v.cerrada_at', '>=', $ini)
+            ->where('v.cerrada_at', '<', $fin)
+            ->whereNotNull('v.valor_total')
+            ->whereNull('rv.id')
+            ->when($f['categoria_id'] || $f['proveedor_id'], fn ($q) => $q->whereRaw('1 = 0'));
     }
 
     /** Clase ABC por valor de venta: acumulado ANTES de la referencia < 80 % → A, < 95 % → B, si no C. */

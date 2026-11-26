@@ -50,6 +50,8 @@ Catálogo de clientes con nombre, documento (opcional, único), teléfono y plaz
 **Aceptación.** Se crea un cliente; al cambiar su plazo, la auditoría muestra valor anterior, nuevo, usuario y fecha.
 
 ### RF-14. Venta a crédito y precios
+
+> **Cambiado el 25-nov-2026 por decisión del dueño (S-73, S-74 en `docs/supuestos.md`). Pendiente de reflejar en la adenda del Project.** La venta a crédito nueva ya no lleva ítems: es un registro de cartera con cliente, tipo de documento (factura o remisión), valor total con IVA incluido y número opcional. Nace cerrada, no baja inventario (los productos se descargan aparte con una venta normal de mostrador) y se anula completa con motivo. Las ventas a crédito con ítems anteriores siguen funcionando como se describe abajo; ya no se crean desde la pantalla.
 La venta de mostrador puede ser `contado` (por defecto, igual que hoy) o `credito`. El crédito exige cliente. Cada ítem guarda el precio y el IVA con que se vendió. Al cerrar una venta a crédito se fija su vencimiento: fecha de cierre + plazo del cliente. Se puede anotar de forma opcional el número de factura de Contapyme, solo como texto de referencia.
 
 **Precios.**

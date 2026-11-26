@@ -233,6 +233,8 @@ export interface Reverso {
   created_at: string
   usuario: { id: number; name: string }
   venta_item_ids: number[]
+  /** S-73: monto anulado de una venta a crédito de solo valor (null en los reversos con ítems). */
+  valor?: string | null
 }
 
 export interface Venta {
@@ -257,7 +259,18 @@ export interface Venta {
   totales?: TotalesVenta
   /** RF-24 (S-48): forma de pago de la venta de contado (vacía en crédito y en las anteriores). */
   pagos?: VentaPago[]
+  /** S-73: venta a crédito de solo valor (sin ítems): cliente + documento + valor total con IVA. */
+  solo_valor?: boolean
+  tipo_documento?: TipoDocumentoVenta | null
+  /** "Factura N.º X", "Remisión N.º X" o "Factura sin número". */
+  documento?: string | null
+  valor_total?: string | null
+  anulada?: boolean
 }
+
+/** S-73: documento con que se registra una venta a crédito de solo valor. */
+export type TipoDocumentoVenta = 'factura' | 'remision'
+export const NOMBRE_TIPO_DOCUMENTO: Record<TipoDocumentoVenta, string> = { factura: 'Factura', remision: 'Remisión' }
 
 /* RF-24 (S-48): cuentas de pago. */
 export type TipoCuentaPago = 'efectivo' | 'banco' | 'datafono' | 'billetera'

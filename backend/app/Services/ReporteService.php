@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\EstadoIngreso;
 use App\Enums\EstadoVenta;
 use App\Enums\FormaPago;
+use App\Enums\TipoDocumentoVenta;
 use App\Enums\TipoIngreso;
 use App\Models\Cliente;
 use App\Models\IngresoItem;
@@ -115,6 +116,8 @@ class ReporteService
     /**
      * 2. Ventas a crédito cerradas en el período, por cliente, netas de reversos. Una venta
      * reversada por completo no aparece. Base e IVA salen del precio con IVA incluido (S-33, TotalesVenta).
+     * S-73: las ventas de solo valor (sin ítems) entran con total = valor_total, su tipo y número, y
+     * base e IVA en null; los totales de base e IVA suman solo las ventas con ítems (sumar ignora null).
      *
      * @return array{filas: Collection<int, array<string, mixed>>, totales: array<string, string>}
      */
@@ -132,13 +135,39 @@ class ReporteService
             ->get(['venta_items.venta_id', 'venta_items.precio_unitario', 'venta_items.iva_porcentaje'])
             ->groupBy('venta_id');
 
+        // S-73: ventas a crédito de solo valor del período, si no están anuladas.
+        $soloValor = DB::table('ventas')
+            ->where('ventas.forma_pago', FormaPago::Credito->value)
+            ->where('ventas.estado', EstadoVenta::Cerrada->value)
+            ->whereNotNull('ventas.valor_total')
+            ->whereBetween('ventas.cerrada_at', [Carbon::instance($desde)->startOfDay(), Carbon::instance($hasta)->endOfDay()])
+            ->when($clienteId, fn ($q) => $q->where('ventas.cliente_id', $clienteId))
+            ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('reversos')->whereColumn('reversos.venta_id', 'ventas.id'))
+            ->pluck('ventas.id');
+
         $ventas = DB::table('ventas')
             ->join('clientes', 'clientes.id', '=', 'ventas.cliente_id')
-            ->whereIn('ventas.id', $items->keys())
+            ->whereIn('ventas.id', $items->keys()->merge($soloValor))
             ->orderBy('ventas.cerrada_at')->orderBy('ventas.id')
-            ->get(['ventas.id', 'ventas.cerrada_at', 'ventas.vence_el', 'ventas.factura_contapyme', 'ventas.cliente_id', 'clientes.nombre as cliente']);
+            ->get(['ventas.id', 'ventas.cerrada_at', 'ventas.vence_el', 'ventas.factura_contapyme', 'ventas.tipo_documento', 'ventas.valor_total', 'ventas.cliente_id', 'clientes.nombre as cliente']);
 
         $filas = $ventas->map(function ($v) use ($items) {
+            if ($v->valor_total !== null && $v->tipo_documento !== null) {
+                return [
+                    'id' => (int) $v->id,
+                    'cliente' => ['id' => (int) $v->cliente_id, 'nombre' => $v->cliente],
+                    'fecha' => Carbon::parse($v->cerrada_at)->toDateString(),
+                    'vence_el' => $v->vence_el,
+                    'factura_contapyme' => $v->factura_contapyme,
+                    'tipo_documento' => $v->tipo_documento,
+                    'documento' => TipoDocumentoVenta::from($v->tipo_documento)->descripcion($v->factura_contapyme),
+                    'items' => 0,
+                    'base' => null,
+                    'iva' => null,
+                    'total' => (string) $v->valor_total,
+                ];
+            }
+
             $valor = TotalesVenta::desglosar($items[$v->id]->map(fn ($i) => [
                 'precio' => $i->precio_unitario, 'iva' => $i->iva_porcentaje, 'vigente' => true,
             ]));
@@ -149,6 +178,8 @@ class ReporteService
                 'fecha' => Carbon::parse($v->cerrada_at)->toDateString(),
                 'vence_el' => $v->vence_el,
                 'factura_contapyme' => $v->factura_contapyme,
+                'tipo_documento' => null,
+                'documento' => null,
                 'items' => $items[$v->id]->count(),
                 'base' => $valor->base,
                 'iva' => $valor->ivaIncluido,

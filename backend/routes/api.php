@@ -232,6 +232,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::middleware('solo_rol:mostrador')->group(function () {
             // S-46: la venta nace con su primer escaneo (exige el payload de la lectura).
             Route::post('/ventas', [VentaController::class, 'store'])->middleware('medir:300')->name('ventas.abrir');
+            // RF-14 cambiado (S-73): venta a crédito de solo valor (sin ítems, ya cerrada).
+            Route::post('/ventas/credito', [VentaController::class, 'registrarCredito'])->name('ventas.credito');
             Route::post('/ventas/{venta}/escanear', [VentaController::class, 'escanear'])->middleware('medir:300')->name('ventas.escanear');
             Route::post('/ventas/{venta}/cerrar', [VentaController::class, 'cerrar']);
             // RF-14 / S-18: solo el precio de un ítem de una venta a crédito abierta.
