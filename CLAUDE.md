@@ -22,6 +22,7 @@ Cita los RF por número (RF-01, RF-02…) en commits (`feat(RF-06): ...`), en co
 - Tests: Pest. Cada criterio de aceptación de un RF implementado tiene al menos un test.
 - Código, tablas y columnas en español, snake_case.
 - Commits pequeños.
+- Trabajo con varios agentes en paralelo: `.claude/ORQUESTACION.md` (flujo del orquestador), `.claude/agents/` (agentes del proyecto) y `.claude/scripts/agentes.sh` (worktrees con base de tests propia).
 - Esta carpeta es `C:\Users\legri\OneDrive\Desktop\arranques`. En otro equipo el mismo proyecto se nombró `D:\arranquesyalternadors`.
 
 ## Arquitectura (respetarla en todo cambio)

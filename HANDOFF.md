@@ -1,21 +1,19 @@
-# HANDOFF — Requerimientos de César (24-nov-2026, RQ-01 a RQ-06)
+# HANDOFF — Orquestador de agentes (25-nov-2026)
 
-**Objetivo:** cumplir `Desktop\Requerimientos_Arranques.md`. Registrados como S-63 a S-68 en `docs/supuestos.md`.
+**Objetivo:** que Claude Code trabaje como orquestador de varios agentes en paralelo sobre la rama al día con César.
 
-**Hecho (rama `ajustes-cesar-nov`, sin commitear):**
-- S-63 menú: "Compras y remisiones" y "Movimientos" / "Historial de movimientos".
-- S-64: el nuevo ingreso (factura y remisión) abre en Crédito.
-- S-65: los avisos de acierto se cierran a los 5 s; el del ítem escaneado también cuando falta el costo.
-- S-66: descuento del documento aceptado en el borrador aun sin líneas; "≤ subtotal" solo al confirmar; `totales.descuento_excede_subtotal` y aviso.
-- Merge con `origin/cesar` reparado: tipos contables recuperados (`FilaVencimiento`, `Vencimientos`, campos de `DocumentoPendiente` y `MovimientoDinero`), imports con los nombres de César y pago a factura (RF-17) recuperado en `DialogoMovimiento`. `tsc` y build limpios.
-- S-67: `componentes/CampoMoneda.tsx` (separador de miles) en precio de venta, costo de línea, descuento $, abonos/pagos y precio a crédito.
+**Hecho:**
+- `rf-21-modulo-contable` adelantada a `origin/cesar` (`43e6e9b`): RF-24 a RF-28, RF-31 retirado, módulo contable renumerado a RF-29/RF-30 y S-62 a S-69. Lo de RQ-01 a RQ-05 (S-63 a S-67) ya está commiteado.
+- Agentes del proyecto en `.claude/agents/`, flujo en `.claude/ORQUESTACION.md`, worktrees aislados con `.claude/scripts/agentes.sh` (base de tests propia por agente).
+- Suite: 630 tests en verde (unos 195 s).
 
 **Pendiente:**
-- RQ-06 / S-68 "Saldo": esperar decisión de César.
-- Probar en el navegador.
-- Commits por RQ.
-- 3 archivos de backend modificados que no son de esta tarea (`CarteraService`, migración `ventas_descartada`, `Pest.php`).
+- RQ-06 / S-68 «Saldo»: esperar la decisión de César.
+- La base de desarrollo `inventario` tiene 6 migraciones pendientes (caja, empleados, correcciones): `cd backend && php artisan migrate` antes de probar en el navegador.
+- Push de la rama cuando Franklin decida.
 
-**Verificar:** `cd backend && php artisan test` (539 en verde), `cd frontend && npm run build`.
+**Decisiones:** worktrees en `C:\dev\arranques-wt`; commits locales sin push; agentes versionados en el repo.
 
-**Siguiente paso:** prueba manual de ingresos y del mostrador, luego commits.
+**Verificar:** `bash .claude/scripts/agentes.sh tests` y `cd frontend && npm run build`.
+
+**Siguiente paso:** la próxima petición sigue `.claude/ORQUESTACION.md`.

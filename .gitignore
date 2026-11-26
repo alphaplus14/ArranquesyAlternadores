@@ -3,6 +3,9 @@
 # Restos de cuando Laravel vivía en la raíz; se puede borrar.
 /vendor/
 
+# Claude Code: ajustes propios de cada equipo (los agentes de .claude/agents sí se versionan).
+.claude/settings.local.json
+
 # Editores y sistema
 .idea/
 .vscode/
