@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { api } from '../../api/cliente'
 import type { Auditoria as TAuditoria, Pagina } from '../../api/tipos'
@@ -9,6 +9,10 @@ import Medida from '../../componentes/Medida'
 import Resumen from '../../componentes/Resumen'
 import Paginacion from '../../componentes/Paginacion'
 import { formatearFechaHora } from '../../utilidades/fechas'
+import { camposDeFoto, etiquetaCampo, formatearValor, leerFoto, resumenFoto, type NombresAuditoria } from './auditoriaCampos'
+
+/** La página plana de Laravel más los nombres de apoyo (ids → nombre) que resuelve el endpoint. */
+type PaginaAuditoria = Pagina<TAuditoria> & { nombres?: NombresAuditoria }
 
 const TABLAS_AUDITORIA = [
   { valor: 'referencias', etiqueta: 'Referencias', detalle: 'Catálogo de productos' },
@@ -32,8 +36,9 @@ export default function Auditoria() {
   const { filas, resultado, info, irA } = useListaPaginada<TAuditoria>({
     clave: ['auditoria', tabla, registroId],
     filtros: [tabla, registroId],
-    traer: async (pagina) => (await api.get<Pagina<TAuditoria>>('/auditoria', {
-      params: { tabla: tabla || undefined, registro_id: registroId || undefined, page: pagina },
+    porPagina: { defecto: 50 }, // S-70
+    traer: async (pagina, porPagina) => (await api.get<PaginaAuditoria>('/auditoria', {
+      params: { tabla: tabla || undefined, registro_id: registroId || undefined, page: pagina, por_pagina: porPagina },
     })).data,
   })
 
@@ -41,6 +46,8 @@ export default function Auditoria() {
     const p = { tabla, registro_id: registroId, ...cambios }
     setParams(Object.fromEntries(Object.entries(p).filter(([, v]) => v !== '')))
   }
+
+  const nombres = (resultado as PaginaAuditoria | undefined)?.nombres ?? {}
 
   const etiquetaTabla = TABLAS_AUDITORIA.find((t) => t.valor === tabla)?.etiqueta ?? 'Todas las tablas'
 
@@ -101,9 +108,9 @@ export default function Auditoria() {
                 <td data-etiqueta="Usuario">{a.usuario?.name ?? 'sistema'}</td>
                 <td data-etiqueta="Tabla">{a.tabla}</td>
                 <td data-etiqueta="Registro">{a.registro_id}</td>
-                <td data-etiqueta="Campo">{a.campo}</td>
-                <td data-etiqueta="Antes" className="antes valor-auditoria">{a.valor_anterior}</td>
-                <td data-etiqueta="Después" className="despues valor-auditoria">{a.valor_nuevo}</td>
+                <td data-etiqueta="Campo"><CampoAuditado fila={a} /></td>
+                <td data-etiqueta="Antes" className="antes valor-auditoria"><ValorAuditado fila={a} valor={a.valor_anterior} nombres={nombres} /></td>
+                <td data-etiqueta="Después" className="despues valor-auditoria"><ValorAuditado fila={a} valor={a.valor_nuevo} nombres={nombres} /></td>
               </tr>
             ))}
             {resultado && filas.length === 0 && <tr><td colSpan={7} className="vacio">Sin ediciones registradas.</td></tr>}
@@ -113,6 +120,44 @@ export default function Auditoria() {
       <Paginacion pagina={resultado} onCambiar={irA} />
     </section>
     </div>
+  )
+}
+
+/**
+ * Campo "*": la fila guarda la foto completa del registro. Con solo valor nuevo es una creación;
+ * con solo valor anterior, un borrado (Auditable). Otro campo, con su nombre legible.
+ */
+function CampoAuditado({ fila }: { fila: TAuditoria }) {
+  if (fila.campo !== '*') return <span title={fila.campo}>{etiquetaCampo(fila.campo)}</span>
+  const tipo = fila.valor_anterior === null && fila.valor_nuevo !== null ? 'Creación'
+    : fila.valor_nuevo === null && fila.valor_anterior !== null ? 'Eliminación'
+      : null
+  return tipo ? <span className="chip auditoria-chip">{tipo}</span> : <span>*</span>
+}
+
+/** Antes o después: formateado; si es la foto JSON de "*", resumen y "Ver detalle". Vacío = nada. */
+function ValorAuditado({ fila, valor, nombres }: { fila: TAuditoria; valor: string | null; nombres: NombresAuditoria }) {
+  const [abierto, setAbierto] = useState(false)
+  const id = useId()
+  if (valor === null) return null
+  if (fila.campo !== '*') return <>{formatearValor(fila.tabla, fila.campo, valor, nombres)}</>
+
+  const foto = leerFoto(valor)
+  if (!foto) return <>{valor}</>
+  return (
+    <span className="auditoria-foto">
+      <span className="auditoria-resumen">{resumenFoto(fila.tabla, foto, nombres)}</span>
+      <button type="button" className="enlace auditoria-ver" aria-expanded={abierto} aria-controls={id} onClick={() => setAbierto((v) => !v)}>
+        {abierto ? 'Ocultar detalle' : 'Ver detalle'}
+      </button>
+      {abierto && (
+        <dl id={id} className="auditoria-detalle">
+          {camposDeFoto(fila.tabla, foto, nombres).map((c) => (
+            <div key={c.campo}><dt title={c.campo}>{c.etiqueta}:</dt> <dd>{c.valor}</dd></div>
+          ))}
+        </dl>
+      )}
+    </span>
   )
 }
 
@@ -206,6 +251,7 @@ function DialogoTablas({
       descripcion={subtitulo}
       marca={<Icono nombre="auditoria" />}
       variante="proveedor"
+      confirmarSalida={false}
       onCerrar={onCerrar}
     >
         <DialogoSeccion modo="selector">
