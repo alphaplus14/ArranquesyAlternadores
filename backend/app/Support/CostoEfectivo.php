@@ -39,13 +39,28 @@ final class CostoEfectivo
         $descuentos = Ingreso::query()->whereKey($ingresoIds)->pluck('descuento_documento', 'id');
         $items = IngresoItem::query()->whereIn('ingreso_id', $ingresoIds)->get()->groupBy('ingreso_id');
 
+        return self::deIngresos($items, $descuentos->all());
+    }
+
+    /**
+     * La regla sobre líneas ya cargadas, agrupadas por ingreso (todas las del ingreso: el
+     * descuento del documento se prorratea entre ellas). Sirve con modelos o con filas planas
+     * (id, cantidad, costo_unitario, descuento_porcentaje, iva_porcentaje). S-71 la usa con una
+     * sola consulta para el último costo del listado de Inventario.
+     *
+     * @param  iterable<int|string, iterable<object>>  $itemsPorIngreso
+     * @param  array<int|string, string|int|float|null>  $descuentos  descuento del documento en pesos, por ingreso
+     * @return array<int, string> costo por unidad, sin redondear, por id de línea
+     */
+    public static function deIngresos(iterable $itemsPorIngreso, array $descuentos): array
+    {
         $costos = [];
-        foreach ($items as $ingresoId => $lineas) {
+        foreach ($itemsPorIngreso as $ingresoId => $lineas) {
             // Confirmado, el descuento del documento queda en pesos (IngresoService::confirmar).
             $totales = TotalesIngreso::calcular($lineas, $descuentos[$ingresoId] ?? 0);
             foreach ($lineas as $linea) {
                 if ($linea->cantidad > 0 && isset($totales->lineas[$linea->id])) {
-                    $costos[$linea->id] = bcdiv($totales->lineas[$linea->id]['base'], (string) $linea->cantidad, self::ESCALA);
+                    $costos[(int) $linea->id] = bcdiv($totales->lineas[$linea->id]['base'], (string) $linea->cantidad, self::ESCALA);
                 }
             }
         }

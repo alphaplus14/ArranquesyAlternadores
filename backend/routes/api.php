@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\CategoriaController;
 use App\Http\Controllers\Api\ClienteController;
 use App\Http\Controllers\Api\CodigoUniversalController;
 use App\Http\Controllers\Api\ConfiguracionController;
+use App\Http\Controllers\Api\CostoController;
 use App\Http\Controllers\Api\CuentaController;
 use App\Http\Controllers\Api\CuentaPagoController;
 use App\Http\Controllers\Api\DevolucionController;
@@ -67,6 +68,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // S-26: logística también edita, desactiva y reactiva referencias. No hay DELETE (tienen historial).
     // RF-08 / RF-22 / S-28: agotados y stock mínimo son trabajo de reposición de logística y
     // administración; mostrador recibe 403 (ve la existencia en el listado de productos).
+    // S-71: historial de costos de compra (admin y logística; permiso en el enum Rol).
+    Route::get('/costos', [CostoController::class, 'index'])->middleware(['can:ver-historial-costos', 'medir:800']);
     Route::middleware('rol:admin,logistica')->group(function () {
         Route::get('/reportes/agotados', [ReporteController::class, 'agotados'])->middleware('medir:500'); // RF-08 / S-47
         Route::get('/reportes/bajo-minimo', [ReporteController::class, 'bajoMinimo'])->middleware('medir:500'); // RF-22

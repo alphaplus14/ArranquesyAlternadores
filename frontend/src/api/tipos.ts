@@ -90,6 +90,8 @@ export interface Referencia {
   /** RF-08 / S-47: solo en Agotados. Existencia de las demás referencias activas del universal (null sin universal). */
   universal_existencia?: number | null
   unidades_disponibles?: Unidad[]
+  /** S-71: solo en el listado de Inventario y con permiso; null = sin compras confirmadas. */
+  ultimo_costo?: UltimoCosto | null
 }
 
 export interface DesgloseUniversal {
@@ -1166,4 +1168,72 @@ type GrupoVencimiento = { cantidad: number; pendiente: string }
 export interface Vencimientos extends PaginaInforme<FilaVencimiento, { vencidas: GrupoVencimiento; por_vencer: GrupoVencimiento; todas: GrupoVencimiento }> {
   hoy: string
   aviso_dias: number
+}
+
+/**
+ * S-71: último costo de compra (neto unitario, sin IVA) de una referencia. Mostrador recibe solo
+ * el valor; admin y logística también el documento. Sin fecha: está en el historial.
+ */
+export interface UltimoCosto {
+  valor: string
+  ingreso_id?: number
+  tipo?: TipoIngreso
+  numero_documento?: string
+}
+
+/** S-71: una compra del historial de costos. Cifras en cadenas decimales del backend. */
+export interface FilaCosto {
+  linea_id: number
+  fecha: string
+  ingreso_id: number
+  tipo: TipoIngreso
+  numero_documento: string
+  proveedor: Opcion
+  referencia: { id: number; codigo_referencia: string; calidad: Calidad | null }
+  cantidad: number
+  costo_factura: string
+  descuento_porcentaje: string
+  iva_porcentaje: string
+  /** null = "Sin costo". */
+  costo_neto: string | null
+  costo_con_iva: string | null
+  /** % frente a la compra anterior que cuenta (null si no aplica). */
+  variacion: string | null
+  ultimo: boolean
+  anterior: boolean
+  sin_costo: boolean
+  corregida: boolean
+  /** RF-19: número de la factura que cubre esta remisión (su costo no cuenta). */
+  cubierta_por: string | null
+  /** RF-19: remisiones que cubre esta factura. */
+  cubre_remisiones: string[]
+}
+
+export interface ProductoCostos {
+  tipo: 'referencia' | 'universal'
+  referencia?: {
+    id: number
+    codigo_referencia: string
+    descripcion: string
+    proveedor: Opcion
+    calidad: Calidad | null
+    existencia: number
+    precio_venta: string
+    activo: boolean
+    codigo_universal: { id: number; codigo: string } | null
+  }
+  universal?: {
+    id: number
+    codigo: string
+    descripcion: string | null
+    existencia_total: number
+    referencias: { id: number; codigo_referencia: string; proveedor: Opcion; calidad: Calidad | null; existencia: number; activo: boolean }[]
+  }
+}
+
+export interface CompraResumen { valor: string; fecha: string; ingreso_id: number; tipo: TipoIngreso; numero_documento: string }
+
+export interface HistorialCostos extends Pagina<FilaCosto> {
+  producto: ProductoCostos
+  resumen: { ultimo: CompraResumen | null; anterior: CompraResumen | null; variacion: string | null; compras: number }
 }

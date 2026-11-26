@@ -28,6 +28,9 @@ class ReferenciaResource extends JsonResource
             'iva_venta_porcentaje' => $this->iva_venta_porcentaje,
             'existencia' => $this->existencia,
             'activo' => $this->activo, // S-26
+            // S-71: solo en el listado de Inventario. ReferenciaController::index lo carga en lote y
+            // solo con `ver-ultimo-costo`; sin `ver-historial-costos` (mostrador) trae solo valor y fecha.
+            'ultimo_costo' => $this->when($this->resource->relationLoaded('ultimoCosto'), fn () => $this->resource->getRelation('ultimoCosto')),
             // RF-22: stock_minimo propio (null = general; 0 = no maneja). Con universal, manda el del universal.
             $this->mergeWhen($verMinimo, fn () => [
                 'stock_minimo' => $this->stock_minimo,

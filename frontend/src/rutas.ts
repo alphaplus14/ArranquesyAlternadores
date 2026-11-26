@@ -31,6 +31,9 @@ export const RUTA_CAJA_ADMIN = '/admin/caja'
 /** RF-01 / S-59: códigos universales (admin y logística crean y editan; borrar es del admin). */
 export const RUTA_UNIVERSALES = '/universales'
 
+/** S-71: historial de costos de compra por producto (admin y logística). */
+export const RUTA_COSTOS = '/consulta/costos'
+
 /** RF-28: correcciones de ingresos confirmados (solo admin, solo consulta). */
 export const RUTA_CORRECCIONES = '/admin/correcciones'
 

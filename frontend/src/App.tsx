@@ -2,7 +2,7 @@ import { lazy, Suspense } from 'react'
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom'
 import type { Rol } from './api/tipos'
 import { useAuth } from './auth/AuthProvider'
-import { RUTA_AJUSTES, RUTA_CAJA, RUTA_CAJA_ADMIN, RUTA_CARTERA, RUTA_CORRECCIONES, RUTA_PANEL, RUTA_UNIVERSALES, rutaInicio } from './rutas'
+import { RUTA_AJUSTES, RUTA_CAJA, RUTA_CAJA_ADMIN, RUTA_CARTERA, RUTA_CORRECCIONES, RUTA_COSTOS, RUTA_PANEL, RUTA_UNIVERSALES, rutaInicio } from './rutas'
 import Layout from './componentes/Layout'
 import Login from './paginas/Login'
 
@@ -10,6 +10,7 @@ import Login from './paginas/Login'
 // logística, administración ni contabilidad). Layout las espera con un Suspense; main.tsx recarga
 // si, tras un despliegue, el paquete de una pantalla ya no existe.
 const Agotados = lazy(() => import('./paginas/Agotados'))
+const Costos = lazy(() => import('./paginas/consulta/Costos'))
 const Venta = lazy(() => import('./paginas/mostrador/Venta'))
 const CierreDia = lazy(() => import('./paginas/mostrador/CierreDia'))
 const Cartera = lazy(() => import('./paginas/cartera/Cartera'))
@@ -78,6 +79,8 @@ export default function App() {
         <Route element={<ConRol roles={['logistica', 'admin']} />}>
           <Route path={RUTA_AJUSTES} element={<Ajustes />} />
           <Route path="/agotados" element={<Agotados />} />
+          {/* S-71: historial de costos (ver-historial-costos: admin y logística; el mostrador vuelve a su inicio). */}
+          <Route path={RUTA_COSTOS} element={<Costos />} />
           {/* S-59: logística crea y edita códigos universales (mismas pantallas del admin, sin eliminar). */}
           <Route path={RUTA_UNIVERSALES} element={<Universales />} />
           <Route path={`${RUTA_UNIVERSALES}/:id`} element={<UniversalDetalle />} />

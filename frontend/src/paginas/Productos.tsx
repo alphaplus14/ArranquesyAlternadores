@@ -11,6 +11,7 @@ import Paginacion from '../componentes/Paginacion'
 import SelectorProveedor from '../componentes/SelectorProveedor'
 import SelectorCategoria from '../componentes/SelectorCategoria'
 import SelectorUniversal from '../componentes/SelectorUniversal'
+import Dialogo, { DialogoSeccion } from '../componentes/Dialogo'
 import CampoMoneda from '../componentes/CampoMoneda'
 import { formatoNumero, leerNumero } from '../componentes/numeros'
 import AvisoCoincidencias from '../componentes/AvisoCoincidencias'
@@ -21,6 +22,10 @@ import { useListaPaginada } from '../hooks/useListaPaginada'
 import { useScanner } from '../hooks/useScanner'
 import { useVentana } from '../hooks/useVentana'
 import { useAncho } from '../hooks/useAncho'
+import BotonCancelar from '../componentes/BotonCancelar'
+import { useVerCostos } from '../hooks/useVerCostos'
+import { RUTA_COSTOS } from '../rutas'
+import './consulta/costos.css'
 
 /** Filas por petición. El tope del API es 100; el DOM solo pinta las visibles. */
 const POR_PAGINA = 100
@@ -34,8 +39,10 @@ const ALTO_FILA = 56
  */
 type Modo = 'completa' | 'media' | 'tarjetas'
 const modoDe = (ancho: number): Modo => (ancho === 0 || ancho >= 1100 ? 'completa' : ancho >= 760 ? 'media' : 'tarjetas')
-/** Alto de cada tarjeta, con su separación: cabecera + 5 pares + acciones (admin). */
+/** Alto de cada tarjeta, con su separación: cabecera + 5 pares (6 con el costo, S-71) + acciones (admin). */
 const ALTO_TARJETA = { conAcciones: 252, otro: 192 }
+/** El par "Costo" es de una línea (solo el valor, sin fecha). */
+const ALTO_PAR_COSTO = 28
 
 /** Columnas por modo. La Descripción es la única flexible; el resto, ancho fijo. */
 /** Ancho de la columna Acciones según cuántos botones de 36 px muestra (0 = sin columna). */
@@ -43,11 +50,13 @@ function anchoAcciones(botones: number) {
   return botones === 0 ? '' : ` ${botones * 36 + (botones - 1) * 6 + 4}px`
 }
 
-function columnasDe(modo: Modo, botones: number) {
+function columnasDe(modo: Modo, botones: number, conCosto: boolean) {
   const acciones = anchoAcciones(botones)
+  // S-71: "Costo" (último costo de compra, sin IVA) entre Precio e IVA; la descripción absorbe el ancho.
+  const costo = conCosto ? ' 112px' : ''
   // RF-22: Existencia a 124 px para el chip "Bajo mínimo"; la descripción absorbe la diferencia.
-  if (modo === 'completa') return `176px minmax(0, 1fr) 150px 120px 104px 72px 124px${acciones}`
-  return `150px minmax(0, 1fr) 132px 104px 124px${acciones}`
+  if (modo === 'completa') return `164px minmax(0, 1fr) 140px 112px 104px${costo} 72px 124px${acciones}`
+  return `140px minmax(0, 1fr) 124px 100px${costo} 124px${acciones}`
 }
 
 type Formulario = {
@@ -87,10 +96,10 @@ function comoLista(valor: Busqueda['referencias'] | undefined): Referencia[] {
   return Array.isArray(valor) ? valor : valor.data ?? []
 }
 
-async function traerReferencias(termino: string, proveedorId: string, inactivas: boolean, pagina: number) {
+async function traerReferencias(termino: string, proveedorId: string, inactivas: boolean, pagina: number, porPagina: number) {
   const { data } = await api.get<Pagina<Referencia>>('/referencias', {
     // S-26: inactivas=1 las INCLUYE junto con las activas (solo admin y logística).
-    params: { q: termino || undefined, proveedor_id: proveedorId || undefined, inactivas: inactivas ? 1 : undefined, page: pagina, por_pagina: POR_PAGINA },
+    params: { q: termino || undefined, proveedor_id: proveedorId || undefined, inactivas: inactivas ? 1 : undefined, page: pagina, por_pagina: porPagina },
   })
   return data
 }
@@ -107,6 +116,7 @@ export default function Productos() {
   const esAdmin = tieneRol('admin')
   /** S-28: rol exacto (tieneRol también es verdadero para el admin). */
   const esMostrador = usuario?.rol === 'mostrador'
+  const verCostos = useVerCostos()
   // S-26: admin y logística crean, editan y desactivan referencias; mostrador solo consulta.
   const puedeGestionar = tieneRol('logistica') // el admin pasa siempre
   const [verInactivas, setVerInactivas] = useState(false)
@@ -124,16 +134,17 @@ export default function Productos() {
   const termino = useDebounce(q.trim())
 
   const { filas, resultado, info, pagina, irA, cargando } = useListaPaginada<Referencia>({
-    clave: ['referencias', termino, proveedorId, verInactivas, POR_PAGINA],
+    clave: ['referencias', termino, proveedorId, verInactivas],
     filtros: [q, proveedorId, verInactivas],
     prefetch: true,
-    traer: (n) => traerReferencias(termino, proveedorId, verInactivas, n),
+    porPagina: { defecto: POR_PAGINA }, // S-70
+    traer: (n, porPagina) => traerReferencias(termino, proveedorId, verInactivas, n, porPagina),
   })
 
   const agotadosPagina = filas.filter((r) => r.existencia === 0).length
   const tarjeta = useAncho<HTMLElement>()
   const modo = modoDe(tarjeta.ancho)
-  const alto = modo === 'tarjetas' ? (puedeGestionar ? ALTO_TARJETA.conAcciones : ALTO_TARJETA.otro) : ALTO_FILA
+  const alto = modo === 'tarjetas' ? (puedeGestionar ? ALTO_TARJETA.conAcciones : ALTO_TARJETA.otro) + (verCostos.ultimo ? ALTO_PAR_COSTO : 0) : ALTO_FILA
   const ventana = useVentana(filas, alto)
 
   const scroller = ventana.ref
@@ -239,7 +250,7 @@ export default function Productos() {
 
   // Acciones visibles: Editar + Desactivar/Reactivar (gestión) y Historial (solo admin: Auditoría es del admin).
   const botonesAcciones = puedeGestionar ? (esAdmin ? 3 : 2) : 0
-  const columnas = columnasDe(modo, botonesAcciones)
+  const columnas = columnasDe(modo, botonesAcciones, verCostos.ultimo)
 
   const enfocarCampo = () => setTimeout(() => lectorRef.current?.focus(), 0)
   const cambiarEstado = useMutation({
@@ -358,6 +369,7 @@ export default function Productos() {
             <div role="columnheader">Proveedor</div>
             {completa && <div role="columnheader">Categoría</div>}
             <div role="columnheader" className="col-numero" title="Precio de venta con IVA incluido">Precio (IVA incl.)</div>
+            {verCostos.ultimo && <div role="columnheader" className="col-numero" title="Último costo de compra, sin IVA">Costo</div>}
             {completa && <div role="columnheader" className="col-numero">IVA</div>}
             <div role="columnheader" className="col-numero">Existencia</div>
             {puedeGestionar && <div role="columnheader" className="col-acciones">Acciones</div>}
@@ -381,6 +393,11 @@ export default function Productos() {
                       <div role="cell" data-etiqueta="Proveedor" className="corta" title={r.proveedor?.nombre}>{r.proveedor?.nombre}</div>
                       {completa && <div role="cell" className="corta" title={r.categoria?.nombre}>{r.categoria?.nombre}</div>}
                       <div role="cell" data-etiqueta="Precio" className="col-numero">{sinPrecio(r) ? <span className="chip sin-precio" title="No se puede vender hasta que el administrador le asigne un precio">Sin precio</span> : Number(r.precio_venta).toLocaleString('es-CO')}</div>
+                      {verCostos.ultimo && (
+                        <div role="cell" data-etiqueta="Costo" className="col-numero costos-celda">
+                          <CeldaUltimoCosto r={r} conEnlace={verCostos.historial} />
+                        </div>
+                      )}
                       {(completa || modo === 'tarjetas') && <div role="cell" data-etiqueta="IVA" className="col-numero">{Number(r.iva_venta_porcentaje) === 0 ? <span className="chip">Sin IVA</span> : `${Number(r.iva_venta_porcentaje)} %`}</div>}
                       <div role="cell" data-etiqueta="Existencia" className={r.existencia === 0 ? 'agotado col-numero celda-existencia' : 'col-numero celda-existencia'}>
                         {/* S-28: el backend no lo envía a mostrador; tampoco se pinta. */}
@@ -448,6 +465,19 @@ export default function Productos() {
   )
 }
 
+/**
+ * S-71: último costo de compra (neto unitario sin IVA), solo el valor; la fecha está en el
+ * historial. Con ver-historial-costos (admin, logística) es enlace al historial; para el mostrador, texto.
+ */
+function CeldaUltimoCosto({ r, conEnlace }: { r: Referencia; conEnlace: boolean }) {
+  const c = r.ultimo_costo
+  if (!c) return <span className="costos-sin-dato" title="Sin compras confirmadas">—</span>
+  const valor = `$ ${formatoNumero(c.valor)}`
+  return conEnlace
+    ? <Link to={`${RUTA_COSTOS}?referencia=${r.id}`} title={`Ver el historial de costos de ${r.codigo_referencia}`}>{valor}</Link>
+    : <span>{valor}</span>
+}
+
 function FormularioReferencia({ id, inicial, onListo, onCerrar }: { id: number | null; inicial: Formulario; onListo: () => void; onCerrar: () => void }) {
   const [f, setF] = useState(inicial)
   /** S-25: códigos consultados al salir del campo (aviso si existen con otro proveedor). */
@@ -480,9 +510,20 @@ function FormularioReferencia({ id, inicial, onListo, onCerrar }: { id: number |
   const campo = (k: keyof Formulario) => ({ value: f[k], onChange: (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value }) })
 
   return (
-    <div className="modal">
-      <form className="modal-caja" onSubmit={(e) => { e.preventDefault(); guardar.mutate() }}>
-        <h2>{id ? 'Editar referencia' : 'Nueva referencia'}</h2>
+    // Marco compartido: X de cerrar, Escape, foco atrapado y bloqueo del scroll.
+    <Dialogo
+      titulo={id ? 'Editar referencia' : 'Nueva referencia'}
+      pendiente={guardar.isPending}
+      onCerrar={onCerrar}
+      onEnviar={() => guardar.mutate()}
+      pie={(
+        <>
+          <BotonCancelar />
+          <button type="submit" className="primario" disabled={guardar.isPending || errorPrecioVenta !== null || (!universalElegido && errorMinimo !== null)}>Guardar</button>
+        </>
+      )}
+    >
+      <DialogoSeccion>
         <label>Referencia del proveedor
           <input required={f.codigo_fabricante.trim() === ''} maxLength={80} aria-describedby={f.codigo_fabricante.trim() ? 'referencia-ayuda' : undefined} onBlur={consultar} {...campo('codigo_referencia')} />
         </label>
@@ -528,11 +569,7 @@ function FormularioReferencia({ id, inicial, onListo, onCerrar }: { id: number |
           </>
         )}
         {guardar.isError && <div className="aviso error">{mensajeError(guardar.error)}</div>}
-        <div className="acciones">
-          <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
-          <button className="primario" disabled={guardar.isPending || errorPrecioVenta !== null || (!universalElegido && errorMinimo !== null)}>Guardar</button>
-        </div>
-      </form>
-    </div>
+      </DialogoSeccion>
+    </Dialogo>
   )
 }

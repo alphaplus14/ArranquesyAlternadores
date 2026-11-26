@@ -1,0 +1,46 @@
+/* S-71: historial de costos de compra y columna "Costo" de Inventario. Prefijo costos-. */
+
+/* Columna "Costo" de Inventario: solo el valor (las fechas están en el historial). */
+.costos-celda { min-width: 0; white-space: nowrap; }
+.costos-sin-dato { color: var(--suave); }
+
+.costos-buscador { display: flex; flex-direction: column; gap: 8px; }
+.costos-opciones { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border: 1px solid var(--borde); border-radius: 10px; max-height: 320px; overflow: auto; }
+.costos-opciones li + li { border-top: 1px solid var(--borde); }
+.costos-opcion { width: 100%; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 14px; border: 0; background: none; text-align: left; font: inherit; color: var(--texto); cursor: pointer; }
+.costos-opcion:hover, .costos-opcion:focus-visible { background: var(--suave-fondo); }
+.costos-opcion small { color: var(--suave); min-width: 0; overflow-wrap: anywhere; }
+.costos-opcion.universal strong { color: var(--primario); }
+
+.costos-cabecera { display: flex; flex-direction: column; gap: 6px; }
+.costos-cabecera-titulo { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.costos-cabecera-titulo h2 { margin: 0; }
+.costos-descripcion { margin: 0; color: var(--suave); }
+.costos-datos { display: flex; flex-wrap: wrap; gap: 6px 28px; margin: 4px 0 0; }
+.costos-datos dt { color: var(--suave); font-size: 0.8rem; }
+.costos-datos dd { margin: 0; font-weight: 600; }
+.costos-desglose { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 4px; }
+.costos-desglose li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.costos-desglose-existencia { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+/* Resumen en una fila (se apila en pantallas angostas). */
+.costos-tarjetas { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 899px) { .costos-tarjetas { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 479px) { .costos-tarjetas { grid-template-columns: minmax(0, 1fr); } }
+.costos-tarjeta { background: var(--panel); border-radius: var(--radio); padding: 10px 14px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.costos-tarjeta-etiqueta { color: var(--suave); font-size: 0.82rem; font-weight: 600; }
+.costos-tarjeta strong { font-size: 1.35rem; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.costos-tarjeta small { color: var(--suave); font-size: 0.8rem; overflow-wrap: anywhere; }
+
+.costos-variacion { font-weight: 700; white-space: nowrap; }
+.costos-variacion.sube { color: var(--peligro); }
+.costos-variacion.baja { color: var(--ok); }
+.costos-variacion.neutra { color: var(--suave); font-weight: 600; }
+
+.costos-filtro { min-width: 14rem; max-width: 100%; }
+.costos-tabla { margin-top: 0; }
+.costos-tabla td { vertical-align: top; }
+.costos-tabla .col-numero { text-align: right; white-space: nowrap; }
+.costos-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.costos-chip-ultimo { background: var(--acento-suave, var(--suave-fondo)); color: var(--primario); font-weight: 700; }
+.costos-fila-ultima td { background: #FBFCFF; }

@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Models\AjusteInventario;
 use App\Models\Ingreso;
+use App\Models\User;
 use App\Models\Reverso;
 use App\Models\Venta;
 use App\Rules\NombreUsuario;
@@ -12,6 +13,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
@@ -42,6 +44,10 @@ class AppServiceProvider extends ServiceProvider
         Model::preventLazyLoading(! $this->app->isProduction());
 
         JsonResource::withoutWrapping();
+
+        // S-71: permisos de costos; la regla vive solo en el enum Rol.
+        Gate::define('ver-ultimo-costo', fn (User $usuario) => $usuario->rol->puedeVerUltimoCosto());
+        Gate::define('ver-historial-costos', fn (User $usuario) => $usuario->rol->puedeVerHistorialCostos());
 
         // Login: 5 intentos por minuto por usuario + IP. Al pasarse, 429 con los segundos que faltan.
         RateLimiter::for('login', function (Request $request) {
