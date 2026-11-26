@@ -33,7 +33,9 @@ export default function Informes() {
   const { data, isFetching } = useQuery({
     queryKey: ['informe', informe, params, pagina],
     queryFn: async () => (await api.get<PaginaInforme<unknown>>(RUTA[informe], { params: { ...params, page: pagina, por_pagina: 50 } })).data,
-    placeholderData: (previo) => previo,
+    // Solo se conservan los datos previos del mismo informe (cambio de página o de fechas). Con otro
+    // informe la forma de las filas cambia (compras traen proveedor; ventas, cliente): se espera.
+    placeholderData: (previo, consultaPrevia) => (consultaPrevia?.queryKey[1] === informe ? previo : undefined),
   })
   const reiniciar = <T,>(fijar: (v: T) => void) => (v: T) => { fijar(v); setPagina(1) }
 
@@ -64,6 +66,7 @@ export default function Informes() {
           )}
         </div>
         <div className="tabla-desplazable" aria-busy={isFetching}>
+          {!data && <div className="cargando">Cargando…</div>}
           {data && informe === 'compras' && <TablaCompras datos={data as PaginaInforme<FilaCompra>} />}
           {data && informe === 'ventas-credito' && <TablaVentas datos={data as PaginaInforme<FilaVentaCredito>} />}
           {data && informe === 'remisiones-pendientes' && <TablaRemisiones datos={data as PaginaInforme<FilaRemisionPendiente>} />}

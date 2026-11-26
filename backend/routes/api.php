@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\CategoriaController;
 use App\Http\Controllers\Api\ClienteController;
 use App\Http\Controllers\Api\CodigoUniversalController;
 use App\Http\Controllers\Api\ConfiguracionController;
+use App\Http\Controllers\Api\CostoController;
 use App\Http\Controllers\Api\CuentaController;
 use App\Http\Controllers\Api\CuentaPagoController;
 use App\Http\Controllers\Api\DevolucionController;
@@ -18,6 +19,7 @@ use App\Http\Controllers\Api\EmpleadoController;
 use App\Http\Controllers\Api\EtiquetaController;
 use App\Http\Controllers\Api\IngresoController;
 use App\Http\Controllers\Api\MovimientoCajaController;
+use App\Http\Controllers\Api\RecaudoDocumentoController;
 use App\Http\Controllers\Api\PagoController;
 use App\Http\Controllers\Api\PanelController;
 use App\Http\Controllers\Api\ProveedorController;
@@ -40,6 +42,8 @@ Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:lo
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me'])->middleware('rol:admin,logistica,mostrador,contable');
+    // S-70: preferencias de pantalla; el mostrador no las tiene (403).
+    Route::patch('/me/preferencias', [AuthController::class, 'preferencias'])->middleware(['rol:admin,logistica,contable', 'throttle:30,1']);
 
     // S-25: aviso de que un código ya existe con otro proveedor. Antes de /referencias/{referencia}.
     Route::get('/referencias/coincidencias', [ReferenciaController::class, 'coincidencias'])->middleware('rol:admin,logistica');
@@ -47,7 +51,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Listas de proveedores y clientes: también las usa el módulo contable (RF-29).
     Route::middleware('rol:admin,logistica,mostrador,contable')->group(function () {
         Route::get('/proveedores', [ProveedorController::class, 'index']);
-        Route::get('/clientes', [ClienteController::class, 'index']); // RF-13
+        Route::get('/clientes', [ClienteController::class, 'index'])->middleware('medir:800'); // RF-13; S-72 búsqueda rápida
     });
 
     // Lectura común a los tres módulos de operación.
@@ -65,9 +69,10 @@ Route::middleware('auth:sanctum')->group(function () {
     // S-26: logística también edita, desactiva y reactiva referencias. No hay DELETE (tienen historial).
     // RF-08 / RF-22 / S-28: agotados y stock mínimo son trabajo de reposición de logística y
     // administración; mostrador recibe 403 (ve la existencia en el listado de productos).
+    // S-71: historial de costos de compra (admin y logística; permiso en el enum Rol).
+    Route::get('/costos', [CostoController::class, 'index'])->middleware(['can:ver-historial-costos', 'medir:800']);
     Route::middleware('rol:admin,logistica')->group(function () {
         Route::get('/reportes/agotados', [ReporteController::class, 'agotados'])->middleware('medir:500'); // RF-08 / S-47
-        Route::get('/reportes/precios-compra', [ReporteController::class, 'preciosCompra'])->middleware('medir:500'); // RF-32 / S-70
         Route::get('/reportes/bajo-minimo', [ReporteController::class, 'bajoMinimo'])->middleware('medir:500'); // RF-22
     });
 
@@ -228,6 +233,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::middleware('solo_rol:mostrador')->group(function () {
             // S-46: la venta nace con su primer escaneo (exige el payload de la lectura).
             Route::post('/ventas', [VentaController::class, 'store'])->middleware('medir:300')->name('ventas.abrir');
+            // RF-14 cambiado (S-73): venta a crédito de solo valor (sin ítems, ya cerrada).
+            Route::post('/ventas/credito', [VentaController::class, 'registrarCredito'])->name('ventas.credito');
             Route::post('/ventas/{venta}/escanear', [VentaController::class, 'escanear'])->middleware('medir:300')->name('ventas.escanear');
             Route::post('/ventas/{venta}/cerrar', [VentaController::class, 'cerrar']);
             // RF-14 / S-18: solo el precio de un ítem de una venta a crédito abierta.
@@ -254,6 +261,9 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::middleware('solo_rol:mostrador')->group(function () {
                 Route::post('/movimientos', [MovimientoCajaController::class, 'store']);
                 Route::post('/movimientos/{movimiento}/anulaciones', [MovimientoCajaController::class, 'anular']);
+                // S-76: recaudo de documentos de Contapyme (no son ventas a crédito del sistema).
+                Route::post('/dias/{fecha}/recaudos', [RecaudoDocumentoController::class, 'store'])->where('fecha', '\d{4}-\d{2}-\d{2}');
+                Route::post('/recaudos/{recaudo}/anular', [RecaudoDocumentoController::class, 'anular']);
                 Route::post('/cierres', [CajaController::class, 'cerrar']);
                 // S-49: apertura diaria de la caja (crear o corregir mientras el día no esté cerrado).
                 Route::put('/dias/{fecha}/apertura', [CajaController::class, 'fijarApertura'])->where('fecha', '\d{4}-\d{2}-\d{2}');
@@ -267,6 +277,9 @@ Route::middleware('auth:sanctum')->group(function () {
             });
         });
     });
+
+    // S-76: consulta de recaudos de documentos para la contadora (admin pasa). Solo en pantalla.
+    Route::get('/recaudos-documento', [RecaudoDocumentoController::class, 'index'])->middleware(['rol:contable', 'medir:800']);
 
     // RF-27 (S-55 a S-57): cuenta de empleados, independiente de la cartera de clientes. Logística 403.
     // Mostrador: elige empleado (sin saldos) y registra préstamos y abonos. Admin: crea y edita

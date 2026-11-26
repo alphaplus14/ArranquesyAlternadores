@@ -54,31 +54,6 @@ class ReporteController extends Controller
         return AgotadoResource::collection($this->reportes->agotados($filtros, min(max((int) $request->query('por_pagina', 50), 1), 200)));
     }
 
-    /**
-     * RF-32 / S-70: historial de precios de compra, en pantalla. El último y el anterior salen
-     * cuando la búsqueda identifica un producto (una referencia o un código universal).
-     */
-    public function preciosCompra(Request $request): JsonResponse
-    {
-        $filtros = $request->validate([
-            'q' => ['nullable', 'string', 'max:80'],
-            'proveedor_id' => ['nullable', 'integer', 'exists:proveedores,id'],
-            'categoria_id' => ['nullable', 'integer', 'exists:categorias,id'],
-            'referencia_id' => ['nullable', 'integer', 'exists:referencias,id'],
-            'codigo_universal_id' => ['nullable', 'integer', 'exists:codigos_universales,id'],
-            'desde' => ['nullable', 'date_format:Y-m-d'],
-            'hasta' => ['nullable', 'date_format:Y-m-d'],
-        ]);
-
-        if (isset($filtros['desde'], $filtros['hasta']) && $filtros['desde'] > $filtros['hasta']) {
-            throw ValidationException::withMessages(['hasta' => 'La fecha final no puede ser anterior a la inicial.']);
-        }
-
-        $informe = $this->reportes->preciosCompra($filtros, min(max((int) $request->query('por_pagina', 50), 1), 200));
-
-        return response()->json([...$informe['pagina']->toArray(), 'resumen' => $informe['resumen']]);
-    }
-
     public function compras(Request $request): JsonResponse
     {
         [$desde, $hasta] = $this->periodo($request, Carbon::today()->startOfMonth());

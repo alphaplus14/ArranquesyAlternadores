@@ -4,12 +4,14 @@ namespace App\Http\Controllers\Api;
 
 use App\Enums\EstadoVenta;
 use App\Enums\Rol;
+use App\Enums\TipoDocumentoVenta;
 use App\Enums\TipoReverso;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\AbrirVentaRequest;
 use App\Http\Requests\CambiarPrecioItemRequest;
 use App\Http\Requests\CerrarVentaRequest;
 use App\Http\Requests\EscanearVentaRequest;
+use App\Http\Requests\RegistrarCreditoRequest;
 use App\Http\Resources\VentaItemResource;
 use App\Http\Resources\VentaResource;
 use App\Models\Venta;
@@ -48,6 +50,8 @@ class VentaController extends Controller
         $pagina = Venta::query()
             ->with('usuario:id,name', 'cliente:id,nombre,plazo_dias')
             ->withCount(['items as items_count' => fn ($q) => $q->whereDoesntHave('reversoItem')])
+            // S-73: un registro de solo valor (sin ítems) muestra su valor_total; anulada = tiene reverso.
+            ->withExists('reversos as anulada')
             ->addSelect(['total' => DB::table('venta_items as vi')
                 ->leftJoin('reverso_items as ri', 'ri.venta_item_id', '=', 'vi.id')
                 ->whereColumn('vi.venta_id', 'ventas.id')
@@ -84,6 +88,23 @@ class VentaController extends Controller
             ...$this->datosEscaneo($request, $items),
             'venta' => new VentaResource($this->cargar($items->last()->venta)),
         ], 201);
+    }
+
+    /**
+     * RF-14 cambiado (S-73): registra una venta a crédito de solo valor (cliente + factura o remisión +
+     * valor total con IVA). Nace cerrada; no toca inventario ni caja.
+     */
+    public function registrarCredito(RegistrarCreditoRequest $request): JsonResponse
+    {
+        $venta = $this->ventas->registrarCredito(
+            (int) $request->validated('cliente_id'),
+            TipoDocumentoVenta::from($request->validated('tipo_documento')),
+            (string) $request->validated('valor_total'),
+            $request->validated('numero_documento'),
+            $request->user(),
+        );
+
+        return (new VentaResource($this->cargar($venta)))->response()->setStatusCode(201);
     }
 
     public function show(Venta $venta): VentaResource

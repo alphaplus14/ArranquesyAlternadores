@@ -50,7 +50,20 @@ class User extends Authenticatable
             'password' => 'hashed',
             'rol' => Rol::class,
             'activo' => 'boolean',
+            'preferencias' => 'array', // S-70
         ];
+    }
+
+    /** S-70: las preferencias de pantalla no son datos del negocio: no se auditan. */
+    protected function camposSinAuditoria(): array
+    {
+        return ['preferencias'];
+    }
+
+    /** S-70: solo estos roles tienen preferencias de pantalla (el mostrador se ve igual para todos). */
+    public function admitePreferencias(): bool
+    {
+        return in_array($this->rol, [Rol::Admin, Rol::Logistica, Rol::Contable], true);
     }
 
     /** Nombre de usuario con que se inicia sesión: siempre recortado y en minúsculas. */

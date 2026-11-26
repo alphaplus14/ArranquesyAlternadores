@@ -31,7 +31,8 @@ export default function CorreccionesIngreso() {
   const { filas, resultado, irA, cargando } = useListaPaginada<CorreccionIngreso>({
     clave: ['correcciones-ingreso', filtros],
     filtros,
-    traer: async (pagina) => (await api.get<Pagina<CorreccionIngreso>>('/ingresos/correcciones', { params: { ...filtros, page: pagina } })).data,
+    porPagina: { defecto: 25 }, // S-70
+    traer: async (pagina, porPagina) => (await api.get<Pagina<CorreccionIngreso>>('/ingresos/correcciones', { params: { ...filtros, page: pagina, por_pagina: porPagina } })).data,
   })
 
   return (

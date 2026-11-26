@@ -4,6 +4,7 @@ import { AxiosError } from 'axios'
 import { api, erroresCampo, mensajeError } from '../api/cliente'
 import type { Proveedor } from '../api/tipos'
 import DialogoApilado from './DialogoApilado'
+import BotonCancelar from './BotonCancelar'
 
 /** Texto que parece un NIT: solo dígitos, puntos, guiones o espacios, de 5 caracteres o más. */
 const PARECE_NIT = /^[\d.\-\s]{5,}$/
@@ -84,7 +85,7 @@ export default function DialogoProveedor({ proveedor, texto = '', onGuardado, on
       onEnviar={() => { if (listo) guardar.mutate() }}
       pie={(
         <>
-          <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
+          <BotonCancelar />
           <button type="submit" className="primario" disabled={!listo}>
             {guardar.isPending ? 'Guardando…' : editando ? 'Guardar' : onUsar ? 'Crear y usar' : 'Crear'}
           </button>

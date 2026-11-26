@@ -39,7 +39,9 @@ export default function Saldos({ de }: { de: keyof typeof TEXTOS }) {
   const { data, isFetching } = useQuery({
     queryKey: [t.clave, corte, pagina],
     queryFn: async () => (await api.get<PaginaInforme<FilaCartera, TotalesCartera>>(t.ruta, { params: { corte, page: pagina, por_pagina: 50 } })).data,
-    placeholderData: (previo) => previo,
+    // Las dos rutas usan esta misma pantalla: al pasar de proveedores a clientes no se muestran las
+    // filas del otro (ni sus enlaces); solo se conservan al cambiar de página o de corte.
+    placeholderData: (previo, consultaPrevia) => (consultaPrevia?.queryKey[0] === t.clave ? previo : undefined),
   })
 
   return (

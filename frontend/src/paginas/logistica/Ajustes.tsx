@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
@@ -34,12 +34,13 @@ import ImprimirEtiquetas from '../../componentes/ImprimirEtiquetas'
 import Icono from '../../componentes/Icono'
 import DialogoElegirReferencia from '../../componentes/mostrador/DialogoElegirReferencia'
 import Paginacion from '../../componentes/Paginacion'
-import { atraparTab } from '../../componentes/foco'
+import Dialogo, { DialogoSeccion } from '../../componentes/Dialogo'
 import { pesos } from '../../componentes/numeros'
 import FiltroPeriodo, { type ValorPeriodo } from '../../componentes/FiltroPeriodo'
 import { PERIODO_POR_DEFECTO, errorRango, esPeriodo, hoyEnBogota, rangoDe } from '../../utilidades/periodos'
 import { formatearFechaHora } from '../../utilidades/fechas'
 import { textoSaldo } from '../../utilidades/cartera'
+import BotonCancelar from '../../componentes/BotonCancelar'
 
 /*
  * RF-21 (S-27): logística y admin sacan unidades del inventario (salidas), registran devoluciones
@@ -1025,9 +1026,10 @@ function Historial({ puedeReintegrar }: { puedeReintegrar: boolean }) {
     clave: ['ajustes', filtros],
     filtros,
     enabled: errorFechas === null,
-    traer: async (page) => (await api.get<Pagina<AjusteInventario>>('/ajustes', {
+    porPagina: { defecto: 20 }, // S-70
+    traer: async (page, porPagina) => (await api.get<Pagina<AjusteInventario>>('/ajustes', {
       // "todo" no envía fechas; el backend las toma como días de Bogotá, hasta inclusivo.
-      params: { tipo: tipo || undefined, motivo: motivo || undefined, desde: rango.desde ?? undefined, hasta: rango.hasta ?? undefined, page },
+      params: { tipo: tipo || undefined, motivo: motivo || undefined, desde: rango.desde ?? undefined, hasta: rango.hasta ?? undefined, page, por_pagina: porPagina },
     })).data,
   })
 
@@ -1155,22 +1157,23 @@ function DialogoReintegro({ baja, onCerrar, onListo }: {
     },
   })
 
-  const alTeclear = (e: KeyboardEvent<HTMLFormElement>) => {
-    if (e.key === 'Escape') onCerrar()
-    atraparTab(e)
-  }
-
+  // Marco compartido: X de cerrar, Escape, foco atrapado y bloqueo del scroll.
   return (
-    <div className="modal">
-      <form
-        className="modal-caja"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="reintegro-titulo"
-        onKeyDown={alTeclear}
-        onSubmit={(e) => { e.preventDefault(); if (!faltaNota) reintegrar.mutate() }}
-      >
-        <h2 id="reintegro-titulo">Reintegrar la salida #{baja.id}</h2>
+    <Dialogo
+      titulo={`Reintegrar la salida #${baja.id}`}
+      pendiente={reintegrar.isPending}
+      onCerrar={onCerrar}
+      onEnviar={() => { if (!faltaNota) reintegrar.mutate() }}
+      pie={(
+        <>
+          <BotonCancelar className="secundario boton-44" />
+          <button type="submit" className="primario boton-44" autoFocus disabled={faltaNota || reintegrar.isPending}>
+            {reintegrar.isPending ? 'Reintegrando…' : 'Confirmar reintegro'}
+          </button>
+        </>
+      )}
+    >
+      <DialogoSeccion>
         <p>
           {unidades.length === 1 ? 'La unidad vuelve' : `Las ${unidades.length} unidades vuelven`} al inventario y suben la existencia.
           La salida no se borra: queda el reintegro con su usuario, fecha y motivo.
@@ -1191,13 +1194,7 @@ function DialogoReintegro({ baja, onCerrar, onListo }: {
           <textarea rows={2} maxLength={500} value={nota} onChange={(e) => setNota(e.target.value)} autoFocus={false} />
         </label>
         {reintegrar.isError && <div className="aviso error">{mensajeError(reintegrar.error)}</div>}
-        <div className="acciones">
-          <button type="button" className="secundario boton-44" onClick={onCerrar}>Cancelar</button>
-          <button className="primario boton-44" autoFocus disabled={faltaNota || reintegrar.isPending}>
-            {reintegrar.isPending ? 'Reintegrando…' : 'Confirmar reintegro'}
-          </button>
-        </div>
-      </form>
-    </div>
+      </DialogoSeccion>
+    </Dialogo>
   )
 }

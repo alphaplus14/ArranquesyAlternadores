@@ -37,13 +37,15 @@ export default function Cartera() {
   const { filas, resultado, info, irA, cargando } = useListaPaginada<ResumenCartera>({
     clave: ['cartera', filtros],
     filtros: { q, soloConSaldo, soloVencidos, corte },
-    traer: async (page) => (await api.get<ListaCartera>('/cartera', {
+    porPagina: { defecto: 25 }, // S-70
+    traer: async (page, porPagina) => (await api.get<ListaCartera>('/cartera', {
       params: {
         busqueda: termino || undefined,
         solo_con_saldo: soloConSaldo ? 1 : 0,
         solo_vencidos: soloVencidos ? 1 : 0,
         corte: corte || undefined,
         page,
+        por_pagina: porPagina,
       },
     })).data,
   })

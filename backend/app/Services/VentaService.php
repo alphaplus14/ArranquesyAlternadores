@@ -6,6 +6,7 @@ use App\Enums\EstadoVenta;
 use App\Enums\FormaPago;
 use App\Enums\MetodoCaptura;
 use App\Enums\OrigenCodigo;
+use App\Enums\TipoDocumentoVenta;
 use App\Exceptions\ReglaInventarioException;
 use App\Models\Auditoria;
 use App\Models\Cliente;
@@ -390,6 +391,86 @@ class VentaService
             ->where('vi.venta_id', $ventaId)
             ->get(['vi.precio_unitario', 'vi.iva_porcentaje', 'ri.id as reverso'])
             ->map(fn ($f) => ['precio' => $f->precio_unitario, 'iva' => $f->iva_porcentaje, 'vigente' => $f->reverso === null]));
+    }
+
+    /**
+     * RF-14 cambiado (S-73): venta a crédito de solo valor. Registro de cartera SIN ítems: cliente +
+     * tipo de documento + valor total con IVA incluido (+ número opcional en factura_contapyme). Nace
+     * cerrada, con vence_el = cierre + plazo del cliente (misma regla que cerrar). El inventario no baja
+     * (los productos se descargan aparte con una venta de mostrador) y no entra a ninguna cuenta de
+     * pago. Como cerrar una venta, exige la caja de hoy abierta (S-53). Si llega el número, no puede
+     * haber otro registro vigente (no anulado) del mismo cliente, tipo y número.
+     */
+    public function registrarCredito(int $clienteId, TipoDocumentoVenta $tipo, string|int|float $valor, ?string $numero, User $usuario): Venta
+    {
+        $valor = (string) $valor;
+        if (! is_numeric($valor) || bccomp($valor, '0', 2) <= 0) {
+            throw new ReglaInventarioException('El valor total debe ser mayor que 0.', 422, ['errors' => ['valor_total' => ['El valor total debe ser mayor que 0.']]]);
+        }
+        if (preg_match('/\.\d{3,}$/', $valor)) {
+            throw new ReglaInventarioException('El valor total admite máximo 2 decimales.', 422, ['errors' => ['valor_total' => ['El valor total admite máximo 2 decimales.']]]);
+        }
+        $numero = trim((string) $numero);
+        $numero = $numero === '' ? null : $numero;
+
+        return DB::transaction(function () use ($clienteId, $tipo, $valor, $numero, $usuario) {
+            // El bloqueo del cliente serializa dos registros con el mismo número al mismo tiempo.
+            $cliente = Cliente::query()->lockForUpdate()->find($clienteId);
+            if (! $cliente || ! $cliente->activo) {
+                throw new ReglaInventarioException('Elija un cliente activo.', 422, ['errors' => ['cliente_id' => ['Elija un cliente activo.']]]);
+            }
+
+            if ($numero !== null && Venta::query()
+                ->where('cliente_id', $cliente->id)
+                ->where('forma_pago', FormaPago::Credito->value)
+                ->where('tipo_documento', $tipo->value)
+                ->where('factura_contapyme', $numero)
+                ->whereDoesntHave('reversos')
+                ->exists()) {
+                throw new ReglaInventarioException(
+                    "Ya hay una venta a crédito vigente de {$cliente->nombre} con la {$tipo->descripcion($numero)}.",
+                    422,
+                    ['errors' => ['numero_documento' => ['Ese número ya está registrado para este cliente.']]],
+                );
+            }
+
+            $this->caja->exigirDiaAbierto('registrar ventas a crédito');
+
+            $venta = new Venta([
+                'usuario_id' => $usuario->id,
+                'forma_pago' => FormaPago::Credito,
+                'cliente_id' => $cliente->id,
+                'factura_contapyme' => $numero,
+                'tipo_documento' => $tipo,
+                'valor_total' => $valor,
+            ]);
+            $venta->estado = EstadoVenta::Cerrada;
+            $venta->cerrada_at = now();
+            // RF-14 / S-11: vence = fecha de cierre + plazo del cliente (igual que al cerrar).
+            $venta->vence_el = $venta->cerrada_at->copy()->startOfDay()->addDays((int) $cliente->plazo_dias);
+            $venta->save();
+
+            // RF-11: auditoría de la creación (campo "*", foto del registro), como en Auditable.
+            Auditoria::insert([
+                'tabla' => 'ventas',
+                'registro_id' => $venta->id,
+                'campo' => '*',
+                'valor_anterior' => null,
+                'valor_nuevo' => json_encode([
+                    'forma_pago' => FormaPago::Credito->value,
+                    'cliente_id' => $cliente->id,
+                    'tipo_documento' => $tipo->value,
+                    'factura_contapyme' => $numero,
+                    'valor_total' => CajaService::dinero($valor),
+                    'estado' => EstadoVenta::Cerrada->value,
+                    'vence_el' => $venta->vence_el->toDateString(),
+                ], JSON_UNESCAPED_UNICODE),
+                'usuario_id' => $usuario->id,
+                'created_at' => now(),
+            ]);
+
+            return $venta;
+        });
     }
 
     /**

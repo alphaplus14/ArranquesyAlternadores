@@ -1,6 +1,7 @@
-import { useRef, type KeyboardEvent } from 'react'
+import { useRef, type KeyboardEvent, type ReactNode } from 'react'
 
-export interface OpcionSegmento<T extends string> { valor: T; texto: string }
+/** `texto` puede ser una muestra (p. ej. "Aa" en otro tamaño); entonces `nombre` da el nombre accesible. */
+export interface OpcionSegmento<T extends string> { valor: T; texto: ReactNode; nombre?: string }
 
 /**
  * Control segmentado accesible: un radiogroup con botones role="radio" y foco itinerante.
@@ -46,6 +47,8 @@ export default function ControlSegmentado<T extends string>({ id, etiqueta, opci
       <div role="radiogroup" aria-labelledby={`${id}-etiqueta`} className="segmentado">
         {opciones.map((o, i) => {
           const elegida = o.valor === valor
+          // Sin opción elegida (p. ej. una preferencia sin guardar), la primera recibe el Tab.
+          const conFoco = elegida || (i === 0 && !opciones.some((x) => x.valor === valor))
           return (
             <button
               key={o.valor}
@@ -53,7 +56,8 @@ export default function ControlSegmentado<T extends string>({ id, etiqueta, opci
               type="button"
               role="radio"
               aria-checked={elegida}
-              tabIndex={elegida ? 0 : -1}
+              tabIndex={conFoco ? 0 : -1}
+              aria-label={o.nombre}
               className={elegida ? 'segmento elegido' : 'segmento'}
               onClick={() => onCambio(o.valor)}
               onKeyDown={(e) => alPulsar(e, i)}

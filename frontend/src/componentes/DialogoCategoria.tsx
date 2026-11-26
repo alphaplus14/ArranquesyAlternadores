@@ -4,6 +4,7 @@ import { AxiosError } from 'axios'
 import { api, erroresCampo, mensajeError } from '../api/cliente'
 import type { Categoria } from '../api/tipos'
 import DialogoApilado from './DialogoApilado'
+import BotonCancelar from './BotonCancelar'
 
 /** Categoría existente que devuelve el 422 por nombre repetido (S-24). */
 function existenteDe(error: unknown): { id: number; nombre: string } | null {
@@ -45,7 +46,7 @@ export default function DialogoCategoria({ onCreada, onUsar, onCerrar }: {
       onEnviar={() => { if (listo) crear.mutate() }}
       pie={(
         <>
-          <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
+          <BotonCancelar />
           <button type="submit" className="primario" disabled={!listo}>{crear.isPending ? 'Creando…' : 'Crear y usar'}</button>
         </>
       )}

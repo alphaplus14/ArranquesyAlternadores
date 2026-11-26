@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\ReferenciaRequest;
 use App\Http\Resources\ReferenciaResource;
 use App\Models\Referencia;
+use App\Services\CostoCompraService;
 use App\Services\ReferenciaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -29,7 +30,7 @@ class ReferenciaController extends Controller
         ];
     }
 
-    public function index(Request $request): AnonymousResourceCollection
+    public function index(Request $request, CostoCompraService $costos): AnonymousResourceCollection
     {
         $q = trim((string) $request->query('q'));
 
@@ -45,6 +46,11 @@ class ReferenciaController extends Controller
             // Con q: prefijo del código o todas las palabras de la descripción, por relevancia (RF-12).
             ->when($q !== '', fn ($query) => $query->buscarTexto($q), fn ($query) => $query->orderBy('codigo_referencia'))
             ->paginate(min((int) $request->query('por_pagina', 25), 100));
+
+        // S-71: último costo de compra, en lote para la página, solo con `ver-ultimo-costo`.
+        if ($request->user()?->can('ver-ultimo-costo')) {
+            $costos->adjuntarUltimoCosto($pagina->getCollection(), conDocumento: $request->user()->can('ver-historial-costos'));
+        }
 
         return ReferenciaResource::collection($pagina);
     }

@@ -9,6 +9,7 @@ import Dialogo, { DialogoSeccion } from './Dialogo'
 import Icono from './Icono'
 import CampoMoneda from './CampoMoneda'
 import { formatoNumero, leerNumero } from './numeros'
+import BotonCancelar from './BotonCancelar'
 
 /**
  * RF-01, RF-14, RF-20, S-15, S-18, S-20, S-23.
@@ -125,7 +126,7 @@ export default function FichaReferencia(props: FichaReferenciaProps) {
       onEnviar={() => { if (completo && !guardar.isPending) guardar.mutate() }}
       pie={(
         <>
-          <button type="button" className="secundario" onClick={props.onCerrar}>Cancelar</button>
+          <BotonCancelar />
           <button type="submit" className="primario" disabled={!completo || guardar.isPending}>{etiquetaBoton}</button>
         </>
       )}

@@ -20,6 +20,17 @@ trait Auditable
     protected const VALOR_OCULTO = '••••';
 
     /**
+     * Campos propios del modelo que no son datos del negocio y no se auditan (S-70: las preferencias
+     * de pantalla del usuario). Se suman a $auditoriaExcluidos.
+     *
+     * @return list<string>
+     */
+    protected function camposSinAuditoria(): array
+    {
+        return [];
+    }
+
+    /**
      * Si es true, la creación también se audita (campo "*", valor nuevo = la foto del registro).
      * Apagado por defecto: hoy solo lo piden proveedores y categorías (S-24).
      */
@@ -41,7 +52,7 @@ trait Auditable
                 'campo' => '*',
                 'valor_anterior' => null,
                 'valor_nuevo' => json_encode(
-                    collect($modelo->getAttributes())->except([...static::$auditoriaExcluidos, ...static::$auditoriaOcultos]),
+                    collect($modelo->getAttributes())->except([...static::$auditoriaExcluidos, ...$modelo->camposSinAuditoria(), ...static::$auditoriaOcultos]),
                     JSON_UNESCAPED_UNICODE
                 ),
                 'usuario_id' => Auth::id(),
@@ -54,7 +65,7 @@ trait Auditable
             $ahora = now();
 
             foreach (array_keys($modelo->getChanges()) as $campo) {
-                if (in_array($campo, static::$auditoriaExcluidos, true)) {
+                if (in_array($campo, static::$auditoriaExcluidos, true) || in_array($campo, $modelo->camposSinAuditoria(), true)) {
                     continue;
                 }
 
@@ -83,7 +94,7 @@ trait Auditable
                 'registro_id' => $modelo->getKey(),
                 'campo' => '*',
                 'valor_anterior' => json_encode(
-                    collect($modelo->getRawOriginal())->except([...static::$auditoriaExcluidos, ...static::$auditoriaOcultos]),
+                    collect($modelo->getRawOriginal())->except([...static::$auditoriaExcluidos, ...$modelo->camposSinAuditoria(), ...static::$auditoriaOcultos]),
                     JSON_UNESCAPED_UNICODE
                 ),
                 'valor_nuevo' => null,

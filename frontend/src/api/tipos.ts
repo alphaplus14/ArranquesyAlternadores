@@ -9,6 +9,8 @@ export interface Usuario {
   usuario: string
   rol: Rol
   activo?: boolean
+  /** S-70: preferencias de pantalla guardadas (solo admin, logística y contable; {} si no hay). */
+  preferencias?: Record<string, unknown>
 }
 
 /** RF-13: no se borra; se desactiva. */
@@ -88,6 +90,8 @@ export interface Referencia {
   /** RF-08 / S-47: solo en Agotados. Existencia de las demás referencias activas del universal (null sin universal). */
   universal_existencia?: number | null
   unidades_disponibles?: Unidad[]
+  /** S-71: solo en el listado de Inventario y con permiso; null = sin compras confirmadas. */
+  ultimo_costo?: UltimoCosto | null
 }
 
 export interface DesgloseUniversal {
@@ -229,6 +233,8 @@ export interface Reverso {
   created_at: string
   usuario: { id: number; name: string }
   venta_item_ids: number[]
+  /** S-73: monto anulado de una venta a crédito de solo valor (null en los reversos con ítems). */
+  valor?: string | null
 }
 
 export interface Venta {
@@ -253,7 +259,18 @@ export interface Venta {
   totales?: TotalesVenta
   /** RF-24 (S-48): forma de pago de la venta de contado (vacía en crédito y en las anteriores). */
   pagos?: VentaPago[]
+  /** S-73: venta a crédito de solo valor (sin ítems): cliente + documento + valor total con IVA. */
+  solo_valor?: boolean
+  tipo_documento?: TipoDocumentoVenta | null
+  /** "Factura N.º X", "Remisión N.º X" o "Factura sin número". */
+  documento?: string | null
+  valor_total?: string | null
+  anulada?: boolean
 }
+
+/** S-73: documento con que se registra una venta a crédito de solo valor. */
+export type TipoDocumentoVenta = 'factura' | 'remision'
+export const NOMBRE_TIPO_DOCUMENTO: Record<TipoDocumentoVenta, string> = { factura: 'Factura', remision: 'Remisión' }
 
 /* RF-24 (S-48): cuentas de pago. */
 export type TipoCuentaPago = 'efectivo' | 'banco' | 'datafono' | 'billetera'
@@ -691,37 +708,6 @@ export interface FilaCompra {
   total: string
 }
 
-/** RF-32 / S-70: una compra que cuenta para el historial de precios. */
-export interface LineaPrecioCompra {
-  id: number
-  ingreso_id: number
-  fecha: string
-  tipo: TipoIngreso
-  numero_documento: string
-  proveedor: Opcion
-  referencia: {
-    id: number
-    codigo_referencia: string
-    descripcion: string | null
-    codigo_universal: { id: number; codigo: string } | null
-  }
-  costo_unitario: string
-  descuento_porcentaje: string
-  costo_neto: string
-  corregido: boolean
-}
-
-export interface ResumenPreciosCompra {
-  ultimo: LineaPrecioCompra | null
-  anterior: LineaPrecioCompra | null
-  /** Último costo unitario menos el anterior. Null si no hay anterior. */
-  variacion: string | null
-}
-
-export interface PaginaPreciosCompra extends Pagina<LineaPrecioCompra> {
-  resumen: ResumenPreciosCompra | null
-}
-
 export interface FilaVentaCredito {
   id: number
   cliente: Opcion
@@ -953,6 +939,32 @@ export interface MovimientoCaja {
   anulacion: { motivo: string; created_at: string; usuario: { id: number; name: string } | null } | null
 }
 
+/**
+ * S-76: recaudo de una factura o remisión a crédito de Contapyme que no está en las ventas a crédito
+ * del sistema. Entra a la caja (con el recaudo de cartera); no toca la cartera de clientes.
+ */
+export interface RecaudoDocumento {
+  id: number
+  fecha: string
+  tipo_documento: TipoDocumentoVenta
+  numero_documento: string
+  /** "Factura N.º 12345" / "Remisión N.º 45". */
+  documento: string
+  valor: string
+  cuenta: { id: number; nombre: string; tipo: TipoCuentaPago }
+  observacion: string | null
+  usuario: { id: number; name: string }
+  created_at: string
+  anulacion: { motivo: string; created_at: string; usuario: { id: number; name: string } | null } | null
+}
+
+/** S-76: consulta del contable: totales vigentes del rango, en total y por cuenta. */
+export interface TotalesRecaudos {
+  total_vigente: string
+  cantidad_vigente: number
+  por_cuenta: { cuenta_pago_id: number; nombre: string; tipo: TipoCuentaPago; total: string; cantidad: number }[]
+}
+
 export interface FilaCuentaCaja {
   cuenta_pago_id: number | null
   nombre: string
@@ -966,6 +978,9 @@ export interface FilaCuentaCaja {
   ingresos_externos: string
   egresos: string
   devoluciones: string
+  /** RF-27: abonos y préstamos de empleados por cuenta. */
+  abonos_empleados?: string
+  prestamos_empleados?: string
   neto: string
 }
 
@@ -995,6 +1010,23 @@ export interface ResumenCaja {
   efectivo_esperado: string | null
   meta_venta_diaria: string
   faltante_meta: string
+  /**
+   * S-75: totales de la pestaña Movimientos, sin anulados. Gastos = egresos.total; ingresos = otros
+   * ingresos + ingresos externos de todas las cuentas. Solo en el resumen del día.
+   */
+  totales_movimientos?: {
+    gastos: TotalMovimientos
+    ingresos: TotalMovimientos
+    recaudos?: TotalMovimientos
+    /** RF-27: préstamos y abonos de empleados del día, sin anulados; ni gasto ni ingreso. Nómina no mueve la caja. */
+    empleados?: { prestamos: TotalMovimientos; abonos_caja: TotalMovimientos; abonos_nomina: TotalMovimientos }
+  }
+}
+
+/** S-75: cantidad y total (sin anulados) de un tipo de movimiento de caja. */
+export interface TotalMovimientos {
+  cantidad: number
+  total: string
 }
 
 /** S-49: apertura diaria de la caja. */
@@ -1026,6 +1058,10 @@ export interface DiaCaja {
   hoy: string
   resumen: ResumenCaja
   movimientos: MovimientoCaja[]
+  /** S-76: recaudos de documentos del día (con los demás movimientos). */
+  recaudos: RecaudoDocumento[]
+  /** RF-27: préstamos y abonos de empleados del día (sin la apertura); nunca saldos (S-57). */
+  movimientos_empleado?: MovimientoEmpleadoDia[]
   cierre: CierreCaja | null
   cierres_reabiertos: CierreCaja[]
   ventas_abiertas: { id: number; forma_pago: FormaPago; items_count: number; usuario: string | null }[]
@@ -1079,6 +1115,31 @@ export interface ResumenEmpleados extends Pagina<EmpleadoResumen> {
 }
 
 export type TipoFilaEmpleado = 'prestamo' | 'abono' | 'anulacion'
+
+export type FormaAbonoEmpleado = 'caja' | 'nomina'
+
+/** Empleado activo para elegir (mostrador): sin saldo (S-57). */
+export interface EmpleadoOpcion {
+  id: number
+  nombre: string
+  documento: string | null
+}
+
+/** Préstamo o abono de empleado en la caja del día. Anulado sigue visible. */
+export interface MovimientoEmpleadoDia {
+  id: number
+  empleado_id: number
+  empleado: { id: number; nombre: string }
+  tipo: 'prestamo' | 'abono'
+  fecha: string
+  valor: string
+  forma: FormaAbonoEmpleado | null
+  cuenta: { id: number; nombre: string } | null
+  nota: string | null
+  usuario: { id: number; name: string }
+  created_at: string
+  anulacion: { motivo: string; created_at: string; usuario: { id: number; name: string } | null } | null
+}
 
 /** Fila del estado de cuenta: un préstamo, un abono o la anulación de uno de ellos, con saldo corrido. */
 export interface FilaEstadoEmpleado {
@@ -1195,4 +1256,76 @@ type GrupoVencimiento = { cantidad: number; pendiente: string }
 export interface Vencimientos extends PaginaInforme<FilaVencimiento, { vencidas: GrupoVencimiento; por_vencer: GrupoVencimiento; todas: GrupoVencimiento }> {
   hoy: string
   aviso_dias: number
+}
+
+/**
+ * S-71: último costo de compra (neto unitario, sin IVA) de una referencia. Mostrador recibe solo
+ * el valor; admin y logística también el documento. Sin fecha: está en el historial.
+ */
+export interface UltimoCosto {
+  valor: string
+  ingreso_id?: number
+  tipo?: TipoIngreso
+  numero_documento?: string
+}
+
+/** S-71: una compra del historial de costos. Cifras en cadenas decimales del backend. */
+export interface FilaCosto {
+  linea_id: number
+  fecha: string
+  ingreso_id: number
+  tipo: TipoIngreso
+  numero_documento: string
+  proveedor: Opcion
+  referencia: { id: number; codigo_referencia: string; calidad: Calidad | null; descripcion?: string }
+  cantidad: number
+  costo_factura: string
+  descuento_porcentaje: string
+  iva_porcentaje: string
+  /** null = "Sin costo". */
+  costo_neto: string | null
+  costo_con_iva: string | null
+  /** % frente a la compra anterior que cuenta (null si no aplica). */
+  variacion: string | null
+  ultimo: boolean
+  anterior: boolean
+  sin_costo: boolean
+  /** RF-28: el documento tuvo una corrección. */
+  corregida: boolean
+  /** RF-28: la corrección cambió el costo de esta línea (se muestra el vigente). */
+  costo_corregido: boolean
+  /** RF-19: número de la factura que cubre esta remisión (su costo no cuenta). */
+  cubierta_por: string | null
+  /** RF-19: remisiones que cubre esta factura. */
+  cubre_remisiones: string[]
+}
+
+export interface ProductoCostos {
+  tipo: 'referencia' | 'universal'
+  referencia?: {
+    id: number
+    codigo_referencia: string
+    descripcion: string
+    proveedor: Opcion
+    calidad: Calidad | null
+    existencia: number
+    precio_venta: string
+    activo: boolean
+    codigo_universal: { id: number; codigo: string } | null
+  }
+  universal?: {
+    id: number
+    codigo: string
+    descripcion: string | null
+    existencia_total: number
+    referencias: { id: number; codigo_referencia: string; proveedor: Opcion; calidad: Calidad | null; existencia: number; activo: boolean }[]
+  }
+}
+
+export interface CompraResumen { valor: string; fecha: string; ingreso_id: number; tipo: TipoIngreso; numero_documento: string }
+
+/** Sin producto elegido, `producto` y `resumen` llegan en null (lista general de compras). */
+export interface HistorialCostos extends Pagina<FilaCosto> {
+  producto: ProductoCostos | null
+  resumen: { ultimo: CompraResumen | null; anterior: CompraResumen | null; variacion: string | null; compras: number } | null
 }

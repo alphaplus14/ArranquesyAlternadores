@@ -1,6 +1,7 @@
 import type { OpcionReferenciaVenta } from '../../api/tipos'
 import DialogoApilado from '../DialogoApilado'
 import ChipCalidad from '../ChipCalidad'
+import BotonCancelar from '../BotonCancelar'
 
 /**
  * S-31: el código escaneado es el del proveedor y está en varias referencias (varios proveedores).
@@ -21,7 +22,8 @@ export default function DialogoElegirReferencia({ titulo = '¿Cuál referencia s
       nota={<p className="nota-obligatorio nota-referencias">El código <strong className="mono">{codigo}</strong> está en {referencias.length} referencias. Elija una.</p>}
       onCerrar={onCerrar}
       onEnviar={() => {}}
-      pie={<button type="button" className="secundario boton-44" onClick={onCerrar}>Cancelar</button>}
+      confirmarSalida={false}
+      pie={<BotonCancelar className="secundario boton-44" />}
     >
       <ul className="opciones-referencia">
         {referencias.map((r, n) => (

@@ -34,6 +34,7 @@ class AjusteController extends Controller
             'desde' => ['nullable', 'date_format:Y-m-d'],
             'hasta' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:desde'],
             'usuario_id' => ['nullable', 'integer'],
+            'por_pagina' => ['nullable', 'integer', 'min:1', 'max:100'], // S-70
         ]);
 
         return AjusteResource::collection($this->ajustes->historial($filtros));

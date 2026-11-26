@@ -22,13 +22,15 @@ export interface PuntoArea {
 
 const ALTO = 240
 const M = { arriba: 12, derecha: 12, abajo: 28, izquierda: 64 }
+/** Separación mínima entre los centros de dos fechas del eje X ("24/11" mide unos 30 px). */
+const SEPARACION_EJE = 56
 
 /**
  * RF-23: áreas apiladas por día (contado abajo, crédito encima). SVG propio que se ajusta al
  * ancho del contenedor. Teclado: foco en el gráfico y ← → Inicio Fin recorren los días; el valor
  * del día activo se anuncia en una región viva.
  */
-export default function GraficoAreas({ datos, series, formato, resumen, alto = ALTO }: {
+export default function GraficoAreas({ datos, series, formato, resumen, alto = ALTO, leyendaArriba = false }: {
   datos: PuntoArea[]
   series: SerieArea[]
   formato: (n: number) => string
@@ -36,6 +38,8 @@ export default function GraficoAreas({ datos, series, formato, resumen, alto = A
   resumen: string
   /** Alto del lienzo en px. El del panel es más bajo para no dejar un bloque vacío. */
   alto?: number
+  /** La leyenda va arriba del gráfico (junto al subtítulo) y no al pie de la tarjeta. */
+  leyendaArriba?: boolean
 }) {
   const { ref, ancho } = useAncho<HTMLDivElement>()
   const uid = useId().replace(/:/g, '')
@@ -61,7 +65,15 @@ export default function GraficoAreas({ datos, series, formato, resumen, alto = A
   const linea = (k: number) => `M${acumulados[k].map((v, i) => `${x(i)},${y(v)}`).join(' L')}`
 
   const rayas = [0, 0.25, 0.5, 0.75, 1].map((f) => f * tope)
-  const cadaCuanto = Math.max(1, Math.ceil(datos.length / Math.max(2, Math.floor(anchoUtil / 70))))
+  // Fechas del eje X: una cada `paso` días, con al menos SEPARACION_EJE px entre centros, y siempre la
+  // última. Si la última queda muy cerca de la marca anterior, se quita esa marca (no se encima).
+  const ultimo = datos.length - 1
+  const anchoPorDia = ultimo > 0 ? anchoUtil / ultimo : anchoUtil
+  const paso = ultimo > 0 ? Math.max(1, Math.ceil(SEPARACION_EJE / Math.max(anchoPorDia, 1))) : 1
+  const marcas: number[] = []
+  for (let i = 0; i < ultimo; i += paso) marcas.push(i)
+  while (marcas.length > 0 && (ultimo - marcas[marcas.length - 1]) * anchoPorDia < SEPARACION_EJE) marcas.pop()
+  if (datos.length > 0) marcas.push(ultimo)
 
   const alMover = (e: MouseEvent<SVGSVGElement>) => {
     if (datos.length === 0 || anchoUtil <= 0) return
@@ -75,8 +87,18 @@ export default function GraficoAreas({ datos, series, formato, resumen, alto = A
     ? `${activo.detalle}: ${series.map((s) => `${s.nombre} ${formato(activo.valores[s.clave] ?? 0)}`).join(', ')}; total ${formato(totales[indice!])}`
     : ''
 
+  // Corta: la muestra ya distingue el rayado (no depende solo del color); el detalle va en el tooltip.
+  const leyenda = (
+    <figcaption className={leyendaArriba ? 'grafico-leyenda panel-leyenda-arriba' : 'grafico-leyenda'}>
+      {series.map((s) => (
+        <span key={s.clave}><i className={`grafico-muestra${s.rayas ? ' rayas' : ''}`} style={{ background: s.color }} aria-hidden /> {s.nombre}{s.rayas ? ' (rayado)' : ''}</span>
+      ))}
+    </figcaption>
+  )
+
   return (
     <figure className="grafico">
+      {leyendaArriba && leyenda}
       <div className="grafico-lienzo" ref={ref}>
         {ancho > 0 && (
           <svg
@@ -111,8 +133,9 @@ export default function GraficoAreas({ datos, series, formato, resumen, alto = A
                 <path d={linea(k)} style={{ stroke: s.color }} className="grafico-linea" strokeDasharray={s.rayas ? '6 4' : undefined} />
               </g>
             ))}
-            {datos.map((d, i) => (i % cadaCuanto === 0 || i === datos.length - 1) && (
-              <text key={d.etiqueta + i} x={x(i)} y={alto - 8} className="grafico-eje" textAnchor="middle">{d.etiqueta}</text>
+            {marcas.map((i) => (
+              // La última se alinea a la derecha para no salirse del lienzo.
+              <text key={i} x={x(i)} y={alto - 8} className="grafico-eje" textAnchor={i === ultimo && ultimo > 0 ? 'end' : 'middle'}>{datos[i].etiqueta}</text>
             ))}
             {indice !== null && (
               <g>
@@ -138,11 +161,7 @@ export default function GraficoAreas({ datos, series, formato, resumen, alto = A
           </div>
         )}
       </div>
-      <figcaption className="grafico-leyenda">
-        {series.map((s) => (
-          <span key={s.clave}><i className={`grafico-muestra${s.rayas ? ' rayas' : ''}`} style={{ background: s.color }} aria-hidden /> {s.nombre}{s.rayas ? ' (rayado, línea punteada)' : ' (sólido)'}</span>
-        ))}
-      </figcaption>
+      {!leyendaArriba && leyenda}
       <p className="solo-lector" aria-live="polite">{textoActivo}</p>
     </figure>
   )

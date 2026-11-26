@@ -38,8 +38,9 @@ export default function Clientes() {
   const { filas, resultado, info, irA, cargando } = useListaPaginada<Cliente>({
     clave: ['clientes', termino, activo],
     filtros: [q, activo],
-    traer: async (pagina) => (await api.get<Pagina<Cliente>>('/clientes', {
-      params: { q: termino || undefined, activo: activo || undefined, page: pagina },
+    porPagina: { defecto: 25 }, // S-70
+    traer: async (pagina, porPagina) => (await api.get<Pagina<Cliente>>('/clientes', {
+      params: { q: termino || undefined, activo: activo || undefined, page: pagina, por_pagina: porPagina },
     })).data,
   })
   const refrescar = () => qc.invalidateQueries({ queryKey: ['clientes'] })

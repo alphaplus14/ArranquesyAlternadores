@@ -17,11 +17,12 @@ class Reverso extends Model
 
     protected $table = 'reversos';
 
-    protected $fillable = ['venta_id', 'tipo', 'motivo', 'usuario_id'];
+    // S-73: valor solo en la anulación de un registro de solo valor (sin reverso_items).
+    protected $fillable = ['venta_id', 'tipo', 'motivo', 'valor', 'usuario_id'];
 
     protected function casts(): array
     {
-        return ['tipo' => TipoReverso::class];
+        return ['tipo' => TipoReverso::class, 'valor' => 'decimal:2'];
     }
 
     public function venta(): BelongsTo

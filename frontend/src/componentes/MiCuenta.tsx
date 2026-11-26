@@ -7,6 +7,7 @@ import { errorUsuario, normalizarUsuario } from '../auth/nombreUsuario'
 import { useAviso, useAvisoTexto } from './Avisos'
 import Confirmar from './Confirmar'
 import Dialogo, { DialogoSeccion } from './Dialogo'
+import BotonCancelar from './BotonCancelar'
 
 const vacias = { password_actual: '', password: '', password_confirmation: '' }
 
@@ -74,7 +75,7 @@ export default function MiCuenta({ onCerrar }: { onCerrar: () => void }) {
       onEnviar={() => { guardar.reset(); setConfirmando(true) }}
       pie={(
         <>
-          <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
+          <BotonCancelar />
           <button type="submit" className="primario" disabled={guardar.isPending || sinCambios || noCoinciden || errorDeUsuario !== null}>
             {guardar.isPending ? 'Guardando…' : 'Guardar cambios'}
           </button>

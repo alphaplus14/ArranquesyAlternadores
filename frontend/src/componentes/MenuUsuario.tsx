@@ -25,10 +25,12 @@ function mismoTexto(a: string, b: string) {
  * Home/End y Tab circulan dentro; Escape, clic fuera, elegir un ítem o cambiar de ruta lo
  * cierran y el foco vuelve al botón (salvo al abrir un diálogo, que toma el foco).
  */
-export default function MenuUsuario({ usuario, onEditarCuenta, onSalir }: {
+export default function MenuUsuario({ usuario, onEditarCuenta, onPreferencias, onSalir }: {
   usuario: Usuario
   /** Solo se ofrece si llega (hoy, solo para el admin: PATCH /cuenta es del admin). */
   onEditarCuenta?: () => void
+  /** S-70: solo admin, logística y contable (el mostrador no tiene preferencias de pantalla). */
+  onPreferencias?: () => void
   onSalir: () => void
 }) {
   const [abierto, setAbierto] = useState(false)
@@ -160,6 +162,22 @@ export default function MenuUsuario({ usuario, onEditarCuenta, onSalir }: {
               >
                 <Icono nombre="editar" />
                 <span>Editar mi cuenta</span>
+              </button>
+            </>
+          )}
+          {onPreferencias && (
+            <>
+              {!onEditarCuenta && <div className="menu-usuario-separador" role="separator" />}
+              <button
+                type="button"
+                role="menuitem"
+                tabIndex={-1}
+                className="menu-usuario-item"
+                // El diálogo toma el foco; no se devuelve al botón.
+                onClick={() => { cerrar(false); onPreferencias() }}
+              >
+                <Icono nombre="configuracion" />
+                <span>Preferencias</span>
               </button>
             </>
           )}

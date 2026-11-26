@@ -3,8 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { RUTA_CARTERA, rutaInicio } from '../../rutas'
 import { AxiosError } from 'axios'
-import { api, mensajeError } from '../../api/cliente'
-import { NOMBRE_CALIDAD, type Calidad, type Cliente, type MetodoCaptura, type OpcionReferenciaVenta, type PagoVentaNuevo, type Pagina, type Referencia, type RespuestaEscaneo, type Venta as TVenta, type VentaAbierta, type VentaItem } from '../../api/tipos'
+import { api, erroresCampo, mensajeError } from '../../api/cliente'
+import { NOMBRE_CALIDAD, NOMBRE_TIPO_DOCUMENTO, type Calidad, type Cliente, type MetodoCaptura, type OpcionReferenciaVenta, type PagoVentaNuevo, type Pagina, type Referencia, type RespuestaEscaneo, type TipoDocumentoVenta, type Venta as TVenta, type VentaAbierta, type VentaItem } from '../../api/tipos'
 import { useAviso } from '../../componentes/Avisos'
 import { useAuth } from '../../auth/AuthProvider'
 import CampoCantidad from '../../componentes/CampoCantidad'
@@ -13,10 +13,10 @@ import ChipCalidad from '../../componentes/ChipCalidad'
 import Dialogo, { DialogoSeccion } from '../../componentes/Dialogo'
 import ListaEleccion, { type FilaEleccion } from '../../componentes/ListaEleccion'
 import DialogoElegirReferencia from '../../componentes/mostrador/DialogoElegirReferencia'
+import SelectorCliente from '../../componentes/mostrador/SelectorCliente' // S-72
 import FormaPagoVenta from '../../componentes/mostrador/FormaPagoVenta'
 import { aPagos, evaluarPago, filasIniciales, type FilaPago } from '../../utilidades/formaPago'
 import { useCuentasPago } from '../../hooks/useCatalogos'
-import Paginacion from '../../componentes/Paginacion'
 import { useScanner } from '../../hooks/useScanner'
 import { useAngosta } from '../../hooks/useAngosta'
 import { CLAVE_ABIERTAS, esDeDiaAnterior, useVentasAbiertas } from '../../hooks/useVentasAbiertas'
@@ -24,9 +24,9 @@ import { hoyEnBogota } from '../../utilidades/periodos'
 import { formatearFecha, formatearFechaHora, formatearHora } from '../../utilidades/fechas'
 import { rotuloIvaIncluido } from '../../utilidades/cartera'
 import { useDebounce } from '../../hooks/useDebounce'
-import { useListaPaginada } from '../../hooks/useListaPaginada'
 import { formatoNumero, leerNumero, pesos } from '../../componentes/numeros'
 import CampoMoneda from '../../componentes/CampoMoneda' // S-67
+import BotonCancelar from '../../componentes/BotonCancelar'
 
 interface ReversoPendiente { item?: VentaItem; tipo: 'devolucion' | 'anulacion' }
 interface DatosCredito { cliente_id: number; factura_contapyme: string | null; cliente: { id: number; nombre: string; documento: string | null } }
@@ -38,9 +38,6 @@ type Borrador = { forma_pago: 'contado' } | { forma_pago: 'credito'; credito: Da
 const BORRADOR_CONTADO: Borrador = { forma_pago: 'contado' }
 /** A dónde va una lectura: una venta abierta (id) o un borrador (crea la venta). */
 type Destino = number | Borrador
-
-/** El mostrador elige de a 15: el diálogo no carga el padrón entero. */
-const CLIENTES_POR_PAGINA = 15
 
 /** vence_el llega como aaaa-mm-dd: es un día del calendario, no se convierte de zona (S-38). */
 const fechaCorta = formatearFecha
@@ -167,12 +164,13 @@ export default function Venta() {
     if (existente) setDuplicada({ existente, abrirOtra: () => empezar(BORRADOR_CONTADO) })
     else empezar(BORRADOR_CONTADO)
   }
-  const nuevaCredito = (datos: DatosCredito) => {
-    const existente = propias.find((a) => a.forma_pago === 'credito' && a.cliente?.id === datos.cliente_id && a.items_count > 0)
+  // S-73: la venta a crédito es un registro de solo valor que nace cerrado: no abre escaneo. Aparece
+  // de inmediato arriba en "Ventas cerradas recientes" y en la cartera.
+  const creditoRegistrado = () => {
     setEligiendoCliente(false)
-    const nueva: Borrador = { forma_pago: 'credito', credito: datos }
-    if (existente) setDuplicada({ existente, abrirOtra: () => empezar(nueva) })
-    else empezar(nueva)
+    qc.invalidateQueries({ queryKey: ['ventas', 'cerradas'] })
+    qc.invalidateQueries({ queryKey: ['cartera'] })
+    enfocarLector()
   }
   const cambiarA = useCallback((id: number) => {
     setVentaId(id)
@@ -318,6 +316,8 @@ export default function Venta() {
   const v = venta.data
   const abierta = v?.estado === 'abierta'
   const credito = v?.forma_pago === 'credito'
+  // S-73: venta a crédito de solo valor: sin escáner ni tabla de ítems; detalle propio.
+  const soloValor = !!v?.solo_valor
   // S-18: el precio solo se cambia en crédito abierto y en ítems vigentes. Si la venta se cierra
   // o el ítem se reversa mientras se edita, la edición deja de contar.
   const precioEditable = (i: VentaItem) => !consulta && credito && abierta && !i.reverso_id
@@ -406,6 +406,9 @@ export default function Venta() {
             {v && !abierta && vigentes.length > 0 && (
               <button type="button" className="peligro boton-44" onClick={() => setReverso({ tipo: 'anulacion' })}>Anular venta completa</button>
             )}
+            {v && soloValor && !v.anulada && (
+              <button type="button" className="peligro boton-44" onClick={() => setReverso({ tipo: 'anulacion' })}>Anular</button>
+            )}
           </div>
         </div>
 
@@ -438,7 +441,9 @@ export default function Venta() {
           <p className="venta-credito">Descartada el {formatearFecha(v.descartada_at ?? v.created_at)} (no tenía ítems vigentes).</p>
         )}
 
-        {v && credito && (
+        {v && soloValor && <DetalleCreditoSoloValor venta={v} />}
+
+        {v && credito && !soloValor && (
           <p className="venta-credito">
             Cliente: <strong>{v.cliente?.nombre ?? '—'}</strong>
             {v.cliente?.documento && <> · {v.cliente.documento}</>}
@@ -447,7 +452,7 @@ export default function Venta() {
           </p>
         )}
 
-        {!consulta && (
+        {!consulta && !soloValor && (
         <div className="lector-con-cantidad venta-lector">
           <div className="lector-campo">
             <input
@@ -476,7 +481,7 @@ export default function Venta() {
         )}
         {consulta && venta.isError && <p className="aviso error" role="alert">{mensajeError(venta.error)}</p>}
         {enBorrador && <p className="venta-borrador vacio">Escanee el primer producto: la venta se crea con él.</p>}
-        {v && (
+        {v && !soloValor && (
           <div className="venta-cuerpo">
             {/* La tabla se desplaza por dentro: la página nunca se desborda. */}
             <div className="tabla-venta-scroll">
@@ -527,7 +532,10 @@ export default function Venta() {
             <ul className="reversos">
               {v.reversos.map((r) => (
                 <li key={r.id}>
-                  <strong>{r.tipo}</strong> de {r.venta_item_ids.length} ítem(s) · {r.usuario.name} · {formatearFechaHora(r.created_at)} — “{r.motivo}”
+                  {soloValor
+                    ? <><strong>anulación</strong> por {pesos(r.valor ?? 0)}</>
+                    : <><strong>{r.tipo}</strong> de {r.venta_item_ids.length} ítem(s)</>}
+                  {' '}· {r.usuario.name} · {formatearFechaHora(r.created_at)} — “{r.motivo}”
                 </li>
               ))}
             </ul>
@@ -563,7 +571,7 @@ export default function Venta() {
 
       {eligiendoCliente && (
         <DialogoCredito
-          onConfirmar={nuevaCredito}
+          onRegistrada={creditoRegistrado}
           onCerrar={() => setEligiendoCliente(false)}
         />
       )}
@@ -572,6 +580,7 @@ export default function Venta() {
         <Dialogo
           titulo={duplicada.existente.forma_pago === 'credito' ? 'Ya hay una venta a crédito abierta de este cliente' : 'Ya tienes una venta de contado abierta'}
           variante="confirmar"
+          confirmarSalida={false}
           onCerrar={() => setDuplicada(null)}
           pie={(
             <>
@@ -625,6 +634,10 @@ interface VentaReciente {
   total: string | number
   forma_pago: TVenta['forma_pago']
   cliente: { id: number; nombre: string } | null
+  /** S-73: venta a crédito de solo valor. */
+  tipo_documento?: TipoDocumentoVenta | null
+  valor_total?: string | null
+  anulada?: boolean
 }
 
 /**
@@ -644,10 +657,14 @@ const VentasRecientes = memo(function VentasRecientes({ ventas, onElegir }: {
             <span className="reciente-linea">
               <button className="enlace" onClick={() => onElegir(r.id)}>#{r.id}</button>
               {r.forma_pago === 'credito' ? <span className="chip credito">Crédito</span> : <span className="chip">Contado</span>}
+              {r.tipo_documento && <span className="credito-documento">{NOMBRE_TIPO_DOCUMENTO[r.tipo_documento]}</span>}
               {r.forma_pago === 'credito' && <span className="reciente-cliente">{r.cliente?.nombre}</span>}
             </span>
-            <small className="reciente-detalle">
-              {r.items_count} {r.items_count === 1 ? 'ítem' : 'ítems'} · <span title="Total con IVA incluido">{pesos(r.total)}</span> · {formatearFechaHora(r.created_at)}
+            <small className={r.anulada ? 'reciente-detalle credito-anulada' : 'reciente-detalle'}>
+              {r.tipo_documento && r.valor_total
+                ? <span title="Valor total con IVA incluido">{pesos(r.valor_total)}</span>
+                : <>{r.items_count} {r.items_count === 1 ? 'ítem' : 'ítems'} · <span title="Total con IVA incluido">{pesos(r.total)}</span></>}
+              {' '}· {formatearFechaHora(r.created_at)}
             </small>
           </li>
         ))}
@@ -807,8 +824,9 @@ function ListadoVentasAbiertas({ ventas, titulo, activa, conUsuario, onElegir, o
       titulo={titulo}
       descripcion="Elija la venta para seguir escaneando."
       variante="ancha"
+      confirmarSalida={false}
       onCerrar={onCerrar}
-      pie={<button type="button" className="secundario boton-44" onClick={onCerrar}>Cerrar</button>}
+      pie={<BotonCancelar className="secundario boton-44">Cerrar</BotonCancelar>}
     >
       <DialogoSeccion>
         <input autoFocus placeholder="N.º de venta o cliente" aria-label="Buscar venta por número o cliente" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -997,6 +1015,9 @@ function DialogoCerrarVenta({ venta: v, vieja, pendiente, onCerrarVenta, onSegui
         </p>
       )}
       variante="cierre"
+      // A crédito los precios se guardan al salir de cada campo: no hay nada sin guardar. De contado,
+      // la detección automática cubre las filas de pago (estado local hasta confirmar).
+      modificado={credito ? false : undefined}
       onCerrar={onSeguir}
       pendiente={pendiente}
       pie={(
@@ -1010,7 +1031,7 @@ function DialogoCerrarVenta({ venta: v, vieja, pendiente, onCerrarVenta, onSegui
             </dl>
           </div>
           <div className="cierre-botones">
-            <button type="button" className="secundario boton-44" disabled={pendiente} onClick={onSeguir}>Volver</button>
+            <BotonCancelar className="secundario boton-44">Volver</BotonCancelar>
             <button
               type="button"
               className="primario boton-44"
@@ -1118,8 +1139,9 @@ function BusquedaRespaldo({ onElegir, onCerrar }: { onElegir: (codigo: string) =
       titulo="Buscar sin escáner"
       descripcion="Código de barras, referencia, universal o descripción"
       variante="ancha"
+      confirmarSalida={false}
       onCerrar={onCerrar}
-      pie={<button type="button" className="secundario" onClick={onCerrar}>Cerrar</button>}
+      pie={<BotonCancelar>Cerrar</BotonCancelar>}
     >
       <DialogoSeccion>
         <input autoFocus placeholder="Ej. alternador hilux" aria-label="Buscar unidad" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -1166,7 +1188,7 @@ function DialogoReverso({ ventaId, pendiente, onListo, onCerrar }: {
       onEnviar={() => reversar.mutate()}
       pie={(
         <>
-          <button type="button" className="secundario" disabled={reversar.isPending} onClick={onCerrar}>Cancelar</button>
+          <BotonCancelar />
           <button type="submit" className="peligro" disabled={motivo.trim().length < 3 || reversar.isPending}>Confirmar reverso</button>
         </>
       )}
@@ -1181,116 +1203,94 @@ function DialogoReverso({ ventaId, pendiente, onListo, onCerrar }: {
 }
 
 /**
- * RF-14: la venta a crédito exige un cliente activo (RF-13). El mostrador puede crearlo al vuelo;
- * editarlo es del admin. La factura de Contapyme es solo un texto de referencia.
+ * RF-14 cambiado (S-73): la venta a crédito es un registro de cartera sin ítems: cliente + factura o
+ * remisión + valor total con IVA incluido. No baja inventario (los productos se descargan aparte con
+ * una venta normal de mostrador). Nace cerrada; tipo y valor no se editan: se anula con motivo y se
+ * registra de nuevo. El número es solo una referencia: este sistema no factura.
  */
-function DialogoCredito({ onConfirmar, onCerrar }: {
-  onConfirmar: (datos: DatosCredito) => void
+function DialogoCredito({ onRegistrada, onCerrar }: {
+  onRegistrada: (venta: TVenta) => void
   onCerrar: () => void
 }) {
-  const qc = useQueryClient()
-  const avisos = useAviso()
-  const [q, setQ] = useState('')
   const [elegido, setElegido] = useState<Cliente | null>(null)
-  const [factura, setFactura] = useState('')
-  const [creando, setCreando] = useState(false)
-  const [nuevo, setNuevo] = useState({ nombre: '', documento: '', telefono: '' })
-  const termino = useDebounce(q.trim())
+  const [selectorSucio, setSelectorSucio] = useState(false)
+  const [tipo, setTipo] = useState<TipoDocumentoVenta | ''>('')
+  const [valor, setValor] = useState('')
+  const [numero, setNumero] = useState('')
+  const n = leerNumero(valor)
+  const valorValido = n !== null && !Number.isNaN(n) && n > 0
 
-  const { filas: clientes, resultado, info, irA, cargando } = useListaPaginada<Cliente>({
-    clave: ['clientes', 'activos', termino],
-    filtros: q,
-    traer: async (pagina) => (await api.get<Pagina<Cliente>>('/clientes', {
-      params: { q: termino || undefined, activo: 1, page: pagina, por_pagina: CLIENTES_POR_PAGINA },
+  const registrar = useMutation({
+    mutationFn: async () => (await api.post<TVenta>('/ventas/credito', {
+      cliente_id: elegido?.id,
+      tipo_documento: tipo,
+      valor_total: n,
+      numero_documento: numero.trim() || null,
     })).data,
+    onSuccess: onRegistrada,
   })
-
-  const crear = useMutation({
-    mutationFn: async () => (await api.post<Cliente>('/clientes', {
-      nombre: nuevo.nombre.trim(),
-      documento: nuevo.documento.trim() || null,
-      telefono: nuevo.telefono.trim() || null,
-    })).data,
-    onSuccess: (c) => {
-      setElegido(c)
-      setCreando(false)
-      setNuevo({ nombre: '', documento: '', telefono: '' })
-      qc.invalidateQueries({ queryKey: ['clientes'] })
-    },
-    onError: (e) => avisos.mostrar('error', mensajeError(e)),
-  })
-
-  const filas: FilaEleccion[] = clientes.map((c) => ({
-    id: c.id,
-    titulo: c.nombre,
-    meta: [c.documento, `plazo ${c.plazo_dias} días`].filter(Boolean).join(' · '),
-    onElegir: () => setElegido(c),
-  }))
+  const errores = registrar.isError ? erroresCampo(registrar.error) : {}
+  const listo = !!elegido && tipo !== '' && valorValido && !registrar.isPending
+  const limpiarError = () => { if (registrar.isError) registrar.reset() }
 
   return (
     <Dialogo
       titulo="Nueva venta a crédito"
-      descripcion="La venta se crea con el primer escaneo. La factura de Contapyme es solo una referencia: este sistema no factura."
       variante="ancha"
       onCerrar={onCerrar}
+      pendiente={registrar.isPending}
+      // S-72: texto en el buscador o un alta a medias cuentan como cambios, igual que los campos.
+      modificado={selectorSucio || elegido !== null || tipo !== '' || valor.trim() !== '' || numero.trim() !== ''}
       pie={(
         <>
-          <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
-          <button
-            type="button"
-            className="primario"
-            disabled={!elegido}
-            onClick={() => elegido && onConfirmar({
-              cliente_id: elegido.id,
-              factura_contapyme: factura.trim() || null,
-              cliente: { id: elegido.id, nombre: elegido.nombre, documento: elegido.documento ?? null },
-            })}
-          >
-            Empezar venta a crédito
+          <BotonCancelar />
+          <button type="button" className="primario" disabled={!listo} onClick={() => registrar.mutate()}>
+            {registrar.isPending ? 'Registrando…' : 'Registrar venta a crédito'}
           </button>
         </>
       )}
     >
-      <DialogoSeccion titulo={creando ? 'Crear cliente rápido' : 'Cliente'}>
-        {creando ? (
-          <form className="formulario" onSubmit={(e) => { e.preventDefault(); crear.mutate() }}>
-            <label>Nombre<input autoFocus required maxLength={150} value={nuevo.nombre} onChange={(e) => setNuevo({ ...nuevo, nombre: e.target.value })} /></label>
-            <label>Documento (opcional)<input maxLength={30} value={nuevo.documento} onChange={(e) => setNuevo({ ...nuevo, documento: e.target.value })} /></label>
-            <label>Teléfono (opcional)<input maxLength={30} inputMode="tel" value={nuevo.telefono} onChange={(e) => setNuevo({ ...nuevo, telefono: e.target.value })} /></label>
-            <p className="ayuda">El sistema le pone el plazo por defecto; el administrador lo cambia en Clientes.</p>
-            <div className="acciones">
-              <button type="button" className="secundario" onClick={() => { setCreando(false); crear.reset() }}>Volver a buscar</button>
-              <button className="primario" disabled={crear.isPending || nuevo.nombre.trim() === ''}>Crear y elegir</button>
-            </div>
-          </form>
-        ) : (
-          <>
-            {!elegido && (
-              <>
-                <input autoFocus placeholder="Buscar cliente por nombre o documento" aria-label="Buscar cliente" value={q} onChange={(e) => setQ(e.target.value)} />
-                <button type="button" className="eleccion-alta" onClick={() => { setCreando(true); setNuevo((n) => ({ ...n, nombre: q.trim() })) }}>
-                  Crear cliente rápido
-                </button>
-              </>
-            )}
-            <ListaEleccion
-              filas={filas}
-              pendiente={cargando && !elegido}
-              vacio={resultado ? 'Sin clientes activos para esta búsqueda.' : undefined}
-              elegida={elegido ? {
-                titulo: elegido.nombre,
-                meta: [elegido.documento, `plazo ${elegido.plazo_dias} días`].filter(Boolean).join(' · '),
-                onCambiar: () => setElegido(null),
-              } : undefined}
-            />
-            {!elegido && info && info.ultima > 1 && <Paginacion pagina={resultado} onCambiar={irA} />}
-          </>
-        )}
-        <label>Factura de Contapyme (opcional)
-          <input maxLength={40} value={factura} onChange={(e) => setFactura(e.target.value)} />
-        </label>
+      <DialogoSeccion titulo="Cliente">
+        <SelectorCliente elegido={elegido} onElegir={(c) => { setElegido(c); limpiarError() }} onSucio={setSelectorSucio} />
+        {errores.cliente_id && <small className="ayuda error">{errores.cliente_id}</small>}
+      </DialogoSeccion>
+      <DialogoSeccion titulo="Documento">
+        <div className="credito-campos">
+          <label>Tipo de documento
+            <select required value={tipo} aria-invalid={!!errores.tipo_documento} onChange={(e) => { setTipo(e.target.value as TipoDocumentoVenta | ''); limpiarError() }}>
+              <option value="" disabled>Seleccione…</option>
+              <option value="factura">Factura</option>
+              <option value="remision">Remisión</option>
+            </select>
+            {errores.tipo_documento && <small className="ayuda error">{errores.tipo_documento}</small>}
+          </label>
+          <label>Valor total (IVA incluido)
+            <CampoMoneda required value={valor} aria-invalid={(valor.trim() !== '' && !valorValido) || !!errores.valor_total} onChange={(e) => { setValor(e.target.value); limpiarError() }} />
+            {errores.valor_total && <small className="ayuda error">{errores.valor_total}</small>}
+          </label>
+          <label>N.º de la factura o remisión (opcional)
+            <input maxLength={40} value={numero} aria-invalid={!!errores.numero_documento} onChange={(e) => { setNumero(e.target.value); limpiarError() }} />
+            {errores.numero_documento && <small className="ayuda error">{errores.numero_documento}</small>}
+          </label>
+        </div>
+        {registrar.isError && Object.keys(errores).length === 0 && <div className="aviso error" role="alert">{mensajeError(registrar.error)}</div>}
       </DialogoSeccion>
     </Dialogo>
+  )
+}
+
+/** S-73: detalle de una venta a crédito de solo valor (sin ítems ni escáner). */
+function DetalleCreditoSoloValor({ venta }: { venta: TVenta }) {
+  return (
+    <dl className="datos-fijos credito-detalle">
+      <div><dt>Cliente</dt><dd>{venta.cliente?.nombre ?? '—'}{venta.cliente?.documento ? ` · ${venta.cliente.documento}` : ''}</dd></div>
+      <div><dt>Tipo</dt><dd>{venta.tipo_documento ? NOMBRE_TIPO_DOCUMENTO[venta.tipo_documento] : '—'}</dd></div>
+      <div><dt>Número</dt><dd>{venta.factura_contapyme || '—'}</dd></div>
+      <div><dt>Valor total (IVA incluido)</dt><dd><strong>{pesos(venta.valor_total ?? 0)}</strong></dd></div>
+      <div><dt>Vencimiento</dt><dd>{venta.vence_el ? fechaCorta(venta.vence_el) : '—'}</dd></div>
+      <div><dt>Usuario</dt><dd>{venta.usuario?.name ?? '—'}</dd></div>
+      <div><dt>Estado</dt><dd>{venta.anulada ? 'Anulada' : 'Vigente'}</dd></div>
+    </dl>
   )
 }
 

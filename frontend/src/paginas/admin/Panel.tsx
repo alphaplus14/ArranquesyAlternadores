@@ -63,7 +63,10 @@ type Filtros = { desde?: string; hasta?: string; categoria_id?: string; proveedo
 
 const pct = (n: number | null | undefined) => (n === null || n === undefined ? '—' : `${n.toLocaleString('es-CO', { maximumFractionDigits: 1 })} %`)
 const miles = (n: number) => n.toLocaleString('es-CO')
-const unidades = (n: number) => `${miles(n)} ${n === 1 ? 'unidad' : 'unidades'}`
+/** Conteo con su sustantivo en singular o plural: "1 venta", "3 ventas". */
+const cuenta = (n: number, singular: string, plural: string) => `${miles(n)} ${n === 1 ? singular : plural}`
+const unidades = (n: number) => cuenta(n, 'unidad', 'unidades')
+const textoDias = (n: number) => cuenta(n, 'día', 'días')
 const diaCorto = (dia: string) => `${dia.slice(8, 10)}/${dia.slice(5, 7)}`
 
 function usePanel<T>(informe: string, filtros: Filtros, extra: Record<string, string | number>, forzar: { current: boolean }, activo: boolean) {
@@ -176,13 +179,16 @@ export default function Panel() {
 
   return (
     <div className="pila panel-gestion">
+      {/* Primera pantalla: encabezado, filtros, medidas y la zona Ventas por día | Reabastecer, que
+          llena el alto que queda (>= 1100 px). El resto del panel sigue debajo. */}
+      <div className="panel-pantalla">
       <div className="pagina-encabezado">
         <h1>Panel de gestión</h1>
         <p>Lo vendido, lo que hay que reponer y lo que lleva tiempo quieto.</p>
       </div>
 
       <section className="tarjeta-pagina panel-filtros-caja" aria-label="Filtros del panel">
-        <div className="formulario en-linea panel-filtros">
+        <div className="formulario en-linea panel-filtros panel-franja">
           <FiltroPeriodo id="panel-periodo" valor={periodo} onCambio={cambiarPeriodo} periodos={PERIODOS_PANEL} />
           <label>Categoría
             <select name="categoria" autoComplete="off" value={categoriaId} onChange={(e) => cambiar({ categoria: e.target.value || null, page: null })}>
@@ -200,6 +206,12 @@ export default function Panel() {
               limpiable
             />
           </label>
+          {resumen.data && (
+            <RangoPeriodo>
+              Del {formatearFecha(resumen.data.desde)} al {formatearFecha(resumen.data.hasta)} ({resumen.data.dias_periodo} días); se compara con
+              {' '}{formatearFecha(resumen.data.periodo_anterior.desde)} – {formatearFecha(resumen.data.periodo_anterior.hasta)}.
+            </RangoPeriodo>
+          )}
           <div className="panel-actualizado">
             <Actualizado generado={resumen.data?.generado_at} />
             <button type="button" className="secundario boton-44" onClick={actualizar} disabled={actualizando || !activo}>
@@ -208,20 +220,14 @@ export default function Panel() {
           </div>
         </div>
         {errorFechas && <p className="aviso error" role="alert">{errorFechas}</p>}
-        {resumen.data && (
-          <p className="ayuda panel-rango">
-            Del {formatearFecha(resumen.data.desde)} al {formatearFecha(resumen.data.hasta)} ({resumen.data.dias_periodo} días); se compara con
-            {' '}{formatearFecha(resumen.data.periodo_anterior.desde)} – {formatearFecha(resumen.data.periodo_anterior.hasta)}.
-          </p>
-        )}
       </section>
 
       {/* (1) Medidas */}
-      <Bloque titulo="Resumen" consulta={resumen} plano tituloOculto alto={120}>
+      <Bloque titulo="Resumen" consulta={resumen} plano tituloOculto alto={196}>
         {(r) => (
           <div className="panel-medidas">
             <Tarjeta tono="azul" icono="venta" etiqueta="Ventas" valor={pesos(r.ventas.total)} variacion={r.ventas.variacion_total}
-              lineas={[`${miles(r.ventas.ventas)} ventas · ticket ${pesos(r.ventas.ticket_promedio)}`, `Contado ${pesos(r.ventas.contado)} · crédito ${pesos(r.ventas.credito)}`]} />
+              linea={`${cuenta(r.ventas.ventas, 'venta', 'ventas')} · ticket ${pesos(r.ventas.ticket_promedio)}`} />
             <Tarjeta
               tono="naranja" icono="panel"
               etiqueta="Margen estimado"
@@ -230,28 +236,30 @@ export default function Panel() {
               etiquetaValor={r.margen.margen === null ? 'Margen estimado sin datos de costo' : `Margen estimado ${pesos(r.margen.margen)}, ${pct(r.margen.margen_porcentaje)}`}
               sufijo="estimado"
               negativo={r.margen.margen !== null && Number(r.margen.margen) < 0}
-              variacion={r.margen.variacion}
-              lineas={[`${pct(r.margen.margen_porcentaje)} sin IVA`]}
+              variacion={r.margen.variacion === null && r.ventas.variacion_total === null ? undefined : r.margen.variacion}
+              linea={`${pct(r.margen.margen_porcentaje)} sin IVA`}
             />
             <Tarjeta tono="teal" icono="inventario" etiqueta="Inventario" valor={pesos(r.inventario.valor_costo)} sufijo="a costo"
-              lineas={[unidades(r.inventario.unidades)]} />
-            <Tarjeta tono="violeta" icono="ingreso" etiqueta="Compras" valor={pesos(r.compras.total)} lineas={['Del período']} />
-            <Tarjeta tono="verde" icono="billetera" etiqueta="Por cobrar" valor={pesos(r.cartera.por_cobrar)} lineas={[`Vencida ${pesos(r.cartera.vencida)}`]} enlace={{ a: RUTA_CARTERA, texto: 'Abrir cartera' }} />
-            <Tarjeta tono="rosa" icono="caja" etiqueta="Por pagar" valor={pesos(r.cuentas_por_pagar.por_pagar)} lineas={[`Vencidas ${pesos(r.cuentas_por_pagar.vencidas)}`]} />
-            <Tarjeta tono="rojo" icono="agotados" etiqueta="Agotadas" valor={miles(r.agotados)} lineas={['Activas en cero']} enlace={{ a: '/agotados', texto: 'Ver agotados' }} />
-            <Tarjeta tono="ambar" icono="configuracion" etiqueta="Bajo mínimo" valor={miles(r.bajo_minimo)} lineas={['En el mínimo o por debajo']} enlace={{ a: '/agotados', texto: 'Ver mínimos' }} />
+              linea={unidades(r.inventario.unidades)} />
+            <Tarjeta tono="violeta" icono="ingreso" etiqueta="Compras" valor={pesos(r.compras.total)} linea="Del período" />
+            <Tarjeta tono="verde" icono="billetera" etiqueta="Por cobrar" valor={pesos(r.cartera.por_cobrar)} linea={`Vencida ${pesos(r.cartera.vencida)}`} enlace={{ a: RUTA_CARTERA, texto: 'Abrir cartera' }} />
+            <Tarjeta tono="rosa" icono="caja" etiqueta="Por pagar" valor={pesos(r.cuentas_por_pagar.por_pagar)} linea={`Vencidas ${pesos(r.cuentas_por_pagar.vencidas)}`} />
+            <Tarjeta tono="rojo" icono="agotados" etiqueta="Agotadas" valor={miles(r.agotados)} linea="Activas en cero" enlace={{ a: '/agotados', texto: 'Ver agotados' }} />
+            <Tarjeta tono="ambar" icono="configuracion" etiqueta="Bajo mínimo" valor={miles(r.bajo_minimo)} linea="En el mínimo o por debajo" enlace={{ a: '/agotados', texto: 'Ver mínimos' }} />
           </div>
         )}
       </Bloque>
 
       {/* (2) Ventas por día */}
       <div className="panel-duo">
-      <Bloque titulo="Ventas por día" consulta={porDia} esVacio={(d) => d.totales.ventas === 0} vacio="Sin ventas en el período." alto={200}>
+      <Bloque titulo="Ventas por día" consulta={porDia} esVacio={(d) => d.totales.ventas === 0} vacio="Sin ventas en el período." alto={200} clase="panel-bloque-grafico">
         {(d) => (
           <>
-            <p className="ayuda">Total {pesos(d.totales.total)}: contado {pesos(d.totales.contado)}, crédito {pesos(d.totales.credito)} · {unidades(d.totales.unidades)}.</p>
+            <p className="ayuda panel-grafico-total">Total {pesos(d.totales.total)}: contado {pesos(d.totales.contado)}, crédito {pesos(d.totales.credito)} · {unidades(d.totales.unidades)}.</p>
+            <LienzoAdaptable>{(alto) => (
             <GraficoAreas
-              alto={180}
+              alto={alto}
+              leyendaArriba
               datos={d.serie.map((x) => ({ etiqueta: diaCorto(x.dia), detalle: formatearFecha(x.dia), valores: { contado: Number(x.contado), credito: Number(x.credito) } }))}
               series={[
                 { clave: 'contado', nombre: 'Contado', color: 'var(--grafico-contado)' },
@@ -260,10 +268,11 @@ export default function Panel() {
               formato={(n) => pesos(n)}
               resumen={`Ventas por día del ${formatearFecha(d.desde)} al ${formatearFecha(d.hasta)}: total ${pesos(d.totales.total)}, contado ${pesos(d.totales.contado)} y crédito ${pesos(d.totales.credito)}`}
             />
+            )}</LienzoAdaptable>
           </>
         )}
       </Bloque>
-        <Bloque titulo="Reabastecer" consulta={reabastecer} esVacio={(d) => d.filas.length === 0} vacio="Nada urgente: ninguna referencia que rote está agotada, bajo mínimo o por acabarse.">
+        <Bloque titulo="Reabastecer" consulta={reabastecer} clase="panel-bloque-reponer" esVacio={(d) => d.filas.length === 0} vacio="Nada urgente: ninguna referencia que rote está agotada, bajo mínimo o por acabarse.">
           {(d) => (
             <>
               <ul className="panel-reponer">
@@ -271,7 +280,7 @@ export default function Panel() {
                   <li key={f.referencia.id}>
                     {celdaRef(f.referencia)}
                     <span className={`chip motivo-${f.motivo}`}>{NOMBRE_REABASTECER[f.motivo]}</span>
-                    <span className="panel-reponer-dato">{miles(f.existencia)} en stock · {miles(f.vendidas)} vendidas · {f.existencia === 0 ? '0 días' : `${miles(Math.round(f.cobertura_dias))} días`}</span>
+                    <span className="panel-reponer-dato">{miles(f.existencia)} en stock · {cuenta(f.vendidas, 'vendida', 'vendidas')} · {f.existencia === 0 ? textoDias(0) : textoDias(Math.round(f.cobertura_dias))}</span>
                   </li>
                 ))}
               </ul>
@@ -279,6 +288,7 @@ export default function Panel() {
             </>
           )}
         </Bloque>
+      </div>
       </div>
 
       <Bloque
@@ -343,7 +353,7 @@ export default function Panel() {
         <EstadoConsulta consulta={estancado} vacio="Ninguna referencia con existencia lleva tanto tiempo sin venderse." esVacio={(d) => d.total === 0} alto={60} anidado>
           {(d) => (
             <p className="panel-total-estancado">
-              <strong>{miles(d.totales.referencias)}</strong> referencias · <strong>{unidades(d.totales.unidades)}</strong> · <strong>{pesos(d.totales.valor_costo)}</strong> a costo
+              <strong>{miles(d.totales.referencias)}</strong> {d.totales.referencias === 1 ? 'referencia' : 'referencias'} · <strong>{unidades(d.totales.unidades)}</strong> · <strong>{pesos(d.totales.valor_costo)}</strong> a costo
               {d.totales.unidades_sin_costo > 0 && <> · {miles(d.totales.unidades_sin_costo)} sin costo</>}
               <small> (sin venta desde el {formatearFecha(d.desde_limite)})</small>
             </p>
@@ -359,7 +369,7 @@ export default function Panel() {
                   etiqueta: NOMBRE_RANGO[x.rango] ?? x.rango,
                   valor: x.unidades,
                   texto: miles(x.unidades),
-                  detalle: `${NOMBRE_RANGO[x.rango] ?? x.rango}: ${unidades(x.unidades)}, ${pesos(x.valor_costo)} a costo, ${miles(x.referencias)} referencias${x.unidades_sin_costo ? `, ${x.unidades_sin_costo} sin costo` : ''}`,
+                  detalle: `${NOMBRE_RANGO[x.rango] ?? x.rango}: ${unidades(x.unidades)}, ${pesos(x.valor_costo)} a costo, ${cuenta(x.referencias, 'referencia', 'referencias')}${x.unidades_sin_costo ? `, ${x.unidades_sin_costo} sin costo` : ''}`,
                 }))}
               />
             </>
@@ -433,7 +443,7 @@ export default function Panel() {
                       <td data-etiqueta="Existencia" className="col-numero">{miles(f.existencia)}</td>
                       <td data-etiqueta="Valor a costo" className="col-numero">{pesos(f.valor_costo)}</td>
                       <td data-etiqueta="Cobertura" className="col-numero">
-                        {f.cobertura_dias === null ? 'Sin rotación' : `${miles(Math.round(f.cobertura_dias))} días`}
+                        {f.cobertura_dias === null ? 'Sin rotación' : textoDias(Math.round(f.cobertura_dias))}
                         {f.sobrestock && <> <span className="chip marca-grafico">Sobrestock</span></>}
                       </td>
                       {agrupar === 'proveedor' && <td data-etiqueta="Compras" className="col-numero">{pesos(f.compras ?? 0)}</td>}
@@ -493,20 +503,20 @@ function BloqueControl({ c }: { c: PanelControl }) {
       </article>
       <article className="panel-control-tarjeta tono-rojo">
         <h3><span className="panel-medida-icono tono-rojo"><Icono nombre="reactivar" /></span>Reversos</h3>
-        <p className="panel-control-cifra">{miles(c.reversos.devolucion.reversos)} devoluciones · {pesos(c.reversos.devolucion.valor)}</p>
-        <p>{miles(c.reversos.anulacion.reversos)} anulaciones · {pesos(c.reversos.anulacion.valor)} ({unidades(c.reversos.anulacion.items)})</p>
+        <p className="panel-control-cifra">{cuenta(c.reversos.devolucion.reversos, 'devolución', 'devoluciones')} · {pesos(c.reversos.devolucion.valor)}</p>
+        <p>{cuenta(c.reversos.anulacion.reversos, 'anulación', 'anulaciones')} · {pesos(c.reversos.anulacion.valor)} ({unidades(c.reversos.anulacion.items)})</p>
         <Link to="/admin/auditoria">Auditoría</Link>
       </article>
       <article className="panel-control-tarjeta tono-teal">
         <h3><span className="panel-medida-icono tono-teal"><Icono nombre="etiqueta" /></span>Capturas digitadas</h3>
         <p className="panel-control-cifra">{pct(c.capturas.porcentaje_digitado)}</p>
-        <p>{miles(c.capturas.digitadas)} de {unidades(c.capturas.total)} vendidas se digitaron en vez de escanearse.</p>
+        <p>{miles(c.capturas.digitadas)} de {unidades(c.capturas.total)} {c.capturas.total === 1 ? 'vendida' : 'vendidas'} {c.capturas.digitadas === 1 ? 'se digitó' : 'se digitaron'} en vez de escanearse.</p>
       </article>
       <article className="panel-control-tarjeta tono-azul">
         <h3><span className="panel-medida-icono tono-azul"><Icono nombre="usuarios" /></span>Ventas por usuario</h3>
         {c.ventas_por_usuario.length === 0 ? <p className="vacio">Sin ventas en el período.</p> : (
           <ul className="lista">
-            {c.ventas_por_usuario.map((u) => <li key={u.usuario.id}><strong>{u.usuario.nombre}</strong>: {miles(u.ventas)} ventas · {pesos(u.total)}</li>)}
+            {c.ventas_por_usuario.map((u) => <li key={u.usuario.id}><strong>{u.usuario.nombre}</strong>: {cuenta(u.ventas, 'venta', 'ventas')} · {pesos(u.total)}</li>)}
           </ul>
         )}
       </article>
@@ -531,12 +541,13 @@ function BloqueControl({ c }: { c: PanelControl }) {
 
 type Tono = 'azul' | 'naranja' | 'teal' | 'violeta' | 'verde' | 'rosa' | 'rojo' | 'ambar'
 
-function Tarjeta({ tono, icono, etiqueta, valor, lineas = [], variacion, ayuda, sufijo, etiquetaValor, enlace, negativo = false }: {
+function Tarjeta({ tono, icono, etiqueta, valor, linea, variacion, ayuda, sufijo, etiquetaValor, enlace, negativo = false }: {
   tono: Tono
   icono: IconoNombre
   etiqueta: string
   valor: string
-  lineas?: string[]
+  /** Una sola línea secundaria; el enlace, si hay, va a su derecha. */
+  linea?: string
   /** % contra el período anterior; null = sin base para comparar. undefined = no aplica. */
   variacion?: number | null
   ayuda?: ReactNode
@@ -548,16 +559,19 @@ function Tarjeta({ tono, icono, etiqueta, valor, lineas = [], variacion, ayuda, 
   negativo?: boolean
 }) {
   return (
-    <article className={`panel-medida tono-${tono}`}>
-      <span className={`panel-medida-icono tono-${tono}`}><Icono nombre={icono} /></span>
-      <div className="panel-medida-cuerpo">
+    <article className={`panel-medida panel-kpi tono-${tono}`}>
+      <div className="panel-kpi-cabeza">
+        <span className={`panel-medida-icono tono-${tono}`}><Icono nombre={icono} /></span>
         <span className="panel-medida-etiqueta">{etiqueta}{ayuda}</span>
-        <strong className={negativo ? 'panel-medida-valor negativo' : 'panel-medida-valor'} aria-label={etiquetaValor}>{valor}{sufijo ? <small> {sufijo}</small> : null}</strong>
         {variacion !== undefined ? <Variacion valor={variacion} sinSubida={negativo} /> : null}
-        {lineas[0] ? <span className="panel-medida-linea">{lineas[0]}</span> : null}
-        {lineas[1] ? <span className="panel-medida-linea">{lineas[1]}</span> : null}
-        {enlace ? <Link to={enlace.a} className="panel-medida-enlace">{enlace.texto}</Link> : null}
       </div>
+      <strong className={negativo ? 'panel-medida-valor negativo' : 'panel-medida-valor'} aria-label={etiquetaValor}>{valor}{sufijo ? <small> {sufijo}</small> : null}</strong>
+      {(linea || enlace) && (
+        <div className="panel-kpi-pie">
+          {linea ? <span className="panel-medida-linea" title={linea}>{linea}</span> : null}
+          {enlace ? <Link to={enlace.a} className="panel-medida-enlace">{enlace.texto}</Link> : null}
+        </div>
+      )}
     </article>
   )
 }
@@ -567,7 +581,64 @@ function Variacion({ valor, sinSubida = false }: { valor: number | null; sinSubi
   if (valor === null) return <span className="panel-variacion neutra">Sin base para comparar</span>
   const clase = valor < 0 ? 'baja' : valor > 0 && !sinSubida ? 'sube' : 'neutra'
   const flecha = valor > 0 ? '▲' : valor < 0 ? '▼' : '='
-  return <span className={`panel-variacion ${clase}`}><span aria-hidden>{flecha}</span> {valor > 0 ? 'Sube' : valor < 0 ? 'Baja' : 'Igual'} {pct(Math.abs(valor))} vs. período anterior</span>
+  const frase = `${valor > 0 ? 'Sube' : valor < 0 ? 'Baja' : 'Igual'} ${pct(Math.abs(valor))} vs. período anterior`
+  return (
+    <span className={`panel-variacion ${clase}`} title={frase}>
+      <span aria-hidden>{flecha} {pct(Math.abs(valor))}</span>
+      <span className="solo-lector">{frase}</span>
+    </span>
+  )
+}
+
+/**
+ * El gráfico toma el alto que deja su tarjeta (ResizeObserver sobre el contenedor), con un mínimo
+ * de 220 px. La leyenda va dentro de la figura, encima del lienzo.
+ */
+const ALTO_MIN_GRAFICO = 220
+const ALTO_LEYENDA = 30
+function LienzoAdaptable({ children }: { children: (alto: number) => ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [alto, setAlto] = useState(ALTO_MIN_GRAFICO)
+  useEffect(() => {
+    const el = ref.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const medir = () => setAlto(Math.max(ALTO_MIN_GRAFICO, Math.floor(el.clientHeight) - ALTO_LEYENDA))
+    medir()
+    const obs = new ResizeObserver(medir)
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [])
+  return <div ref={ref} className="panel-grafico">{children(alto)}</div>
+}
+
+/**
+ * Rango del período en una línea dentro de la franja de filtros. Si no cabe, se corta con "…" y
+ * aparece un icono de información con el texto completo (foco o puntero).
+ */
+function RangoPeriodo({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLSpanElement>(null)
+  const id = useId()
+  const [cortado, setCortado] = useState(false)
+  useEffect(() => {
+    const el = ref.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const medir = () => setCortado(el.scrollWidth > el.clientWidth + 1)
+    medir()
+    const obs = new ResizeObserver(medir)
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [children])
+  return (
+    <span className="panel-rango">
+      <span ref={ref} className="panel-rango-texto">{children}</span>
+      {cortado && (
+        <span className="ayuda-margen">
+          <button type="button" className="ayuda-icono" aria-label="Rango del período" aria-describedby={id}>i</button>
+          <span role="tooltip" id={id} className="ayuda-burbuja panel-rango-burbuja">{children}</span>
+        </span>
+      )}
+    </span>
+  )
 }
 
 function AyudaMargen() {
@@ -592,7 +663,7 @@ function Actualizado({ generado }: { generado?: string }) {
 }
 
 /** Bloque con título, acciones, esqueleto de carga, vacío y error aislado (los demás bloques siguen). */
-function Bloque<T>({ titulo, consulta, children, esVacio, vacio = 'Sin datos en el período.', acciones, ayuda, plano = false, tituloOculto = false, diferido = false, alto = 180 }: {
+function Bloque<T>({ titulo, consulta, children, esVacio, vacio = 'Sin datos en el período.', acciones, ayuda, plano = false, tituloOculto = false, diferido = false, alto = 180, clase: claseExtra }: {
   titulo: string
   consulta: UseQueryResult<T>
   children: (datos: T) => ReactNode
@@ -607,9 +678,11 @@ function Bloque<T>({ titulo, consulta, children, esVacio, vacio = 'Sin datos en 
   /** Debajo del pliegue: el navegador aplaza el layout hasta que el bloque se acerca. */
   diferido?: boolean
   alto?: number
+  /** Clase propia del bloque (prefijo panel-). */
+  clase?: string
 }) {
   const id = useId()
-  const clase = [plano ? 'panel-bloque sin-caja' : 'panel-bloque', diferido ? 'panel-diferido' : ''].filter(Boolean).join(' ')
+  const clase = [plano ? 'panel-bloque sin-caja' : 'panel-bloque', diferido ? 'panel-diferido' : '', claseExtra ?? ''].filter(Boolean).join(' ')
   return (
     <section className={clase} aria-labelledby={id}>
       <div className={tituloOculto ? 'solo-lector' : 'panel-bloque-cabeza'}>

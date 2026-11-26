@@ -49,7 +49,8 @@ class VencimientoService
             $nombres = Cliente::query()->whereKey($documentos->keys())->pluck('nombre', 'id');
             $filas = $filas->concat($this->filas(
                 $documentos, $this->cartera->abonado(null, $hoy), $nombres, $hoy, $limite, self::POR_COBRAR,
-                fn (array $d) => 'Venta #'.$d['id'],
+                // S-73: una venta a crédito de solo valor se nombra por su documento.
+                fn (array $d) => $d['documento'] ?? 'Venta #'.$d['id'],
             ));
         }
 

@@ -5,9 +5,9 @@ namespace App\Services;
 use App\Enums\EstadoIngreso;
 use App\Enums\EstadoVenta;
 use App\Enums\FormaPago;
+use App\Enums\TipoDocumentoVenta;
 use App\Enums\TipoIngreso;
 use App\Models\Cliente;
-use App\Models\IngresoCorreccion;
 use App\Models\IngresoItem;
 use App\Models\Proveedor;
 use App\Models\Referencia;
@@ -16,7 +16,6 @@ use App\Support\TotalesIngreso;
 use App\Support\TotalesVenta;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
-use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -74,181 +73,6 @@ class ReporteService
     }
 
     /**
-     * RF-32 / S-70: cada fila es una compra que cuenta (factura confirmada, o remisión confirmada
-     * que ninguna factura confirmada cubre). Una línea en cantidad 0 no entra. El costo que se
-     * compara es el unitario vigente; `costo_neto` le resta solo el descuento de la línea.
-     * `corregido` marca un costo cambiado por RF-28, no una edición del borrador.
-     * El último y el anterior se calculan sobre el filtro completo, no sobre la página.
-     * No cambia `IngresoService::ultimoCosto` (el prellenado al escanear).
-     *
-     * @param  array{q?: string|null, proveedor_id?: int|null, categoria_id?: int|null, referencia_id?: int|null, codigo_universal_id?: int|null, desde?: string|null, hasta?: string|null}  $filtros
-     * @return array{pagina: LengthAwarePaginator, resumen: array{ultimo: array<string, mixed>|null, anterior: array<string, mixed>|null, variacion: string|null}|null}
-     */
-    public function preciosCompra(array $filtros, int $porPagina): array
-    {
-        $consulta = $this->consultaPrecios($filtros);
-        $resumir = $this->quiereResumenPrecios($consulta, $filtros);
-        $orden = fn (Builder $q) => $q->orderByDesc('ingresos.fecha')->orderByDesc('ingresos.id')->orderByDesc('ingreso_items.id');
-
-        $top = $resumir ? $orden(clone $consulta)->limit(2)->get() : collect();
-        $pagina = $orden(clone $consulta)->paginate($porPagina);
-
-        $corregidos = $this->costosCorregidos(
-            $pagina->getCollection()->pluck('ingreso_id')->merge($top->pluck('ingreso_id')),
-        );
-        $pagina->setCollection($pagina->getCollection()->map(fn ($fila) => $this->filaPrecio($fila, $corregidos))->values());
-
-        $topFilas = $top->map(fn ($fila) => $this->filaPrecio($fila, $corregidos))->values();
-
-        return [
-            'pagina' => $pagina,
-            'resumen' => $resumir ? [
-                'ultimo' => $topFilas[0] ?? null,
-                'anterior' => $topFilas[1] ?? null,
-                'variacion' => isset($topFilas[1]) ? bcsub($topFilas[0]['costo_unitario'], $topFilas[1]['costo_unitario'], 2) : null,
-            ] : null,
-        ];
-    }
-
-    /**
-     * @param  array{q?: string|null, proveedor_id?: int|null, categoria_id?: int|null, referencia_id?: int|null, codigo_universal_id?: int|null, desde?: string|null, hasta?: string|null}  $filtros
-     */
-    private function consultaPrecios(array $filtros): Builder
-    {
-        $q = trim((string) ($filtros['q'] ?? ''));
-        $like = $q === '' ? null : '%'.addcslashes($q, '%_\\').'%';
-
-        return DB::table('ingreso_items')
-            ->join('ingresos', 'ingresos.id', '=', 'ingreso_items.ingreso_id')
-            ->leftJoin('ingresos as facturas', 'facturas.id', '=', 'ingresos.factura_id')
-            ->join('referencias', 'referencias.id', '=', 'ingreso_items.referencia_id')
-            ->join('proveedores', 'proveedores.id', '=', 'ingresos.proveedor_id')
-            ->leftJoin('codigos_universales', 'codigos_universales.id', '=', 'referencias.codigo_universal_id')
-            ->where('ingresos.estado', EstadoIngreso::Confirmado->value)
-            ->where('ingreso_items.cantidad', '>', 0)
-            // RF-19 / S-61: la remisión cubierta por una factura confirmada no es otra compra.
-            // Si la factura sigue en borrador, la remisión sigue siendo el precio que hay.
-            ->where(fn (Builder $w) => $w
-                ->whereNull('ingresos.factura_id')
-                ->orWhere('facturas.estado', '!=', EstadoIngreso::Confirmado->value))
-            ->when($filtros['proveedor_id'] ?? null, fn (Builder $w, $id) => $w->where('ingresos.proveedor_id', $id))
-            ->when($filtros['categoria_id'] ?? null, fn (Builder $w, $id) => $w->where('referencias.categoria_id', $id))
-            ->when($filtros['referencia_id'] ?? null, fn (Builder $w, $id) => $w->where('ingreso_items.referencia_id', $id))
-            ->when($filtros['codigo_universal_id'] ?? null, fn (Builder $w, $id) => $w->where('referencias.codigo_universal_id', $id))
-            ->when($filtros['desde'] ?? null, fn (Builder $w, $fecha) => $w->where('ingresos.fecha', '>=', $fecha))
-            ->when($filtros['hasta'] ?? null, fn (Builder $w, $fecha) => $w->where('ingresos.fecha', '<=', $fecha))
-            ->when($like, fn (Builder $w) => $w->where(fn (Builder $c) => $c
-                ->where('referencias.codigo_referencia', 'like', $like)
-                ->orWhere('referencias.descripcion', 'like', $like)
-                ->orWhere('codigos_universales.codigo', 'like', $like)))
-            ->select([
-                'ingreso_items.id',
-                'ingreso_items.ingreso_id',
-                'ingreso_items.costo_unitario',
-                'ingreso_items.descuento_porcentaje',
-                'ingreso_items.referencia_id',
-                'ingresos.tipo',
-                'ingresos.numero_documento',
-                'ingresos.fecha',
-                'ingresos.proveedor_id',
-                'proveedores.nombre as proveedor_nombre',
-                'referencias.codigo_referencia',
-                'referencias.descripcion',
-                'referencias.codigo_universal_id',
-                'codigos_universales.codigo as universal_codigo',
-            ]);
-    }
-
-    /**
-     * @param  array{q?: string|null, proveedor_id?: int|null, categoria_id?: int|null, referencia_id?: int|null, codigo_universal_id?: int|null, desde?: string|null, hasta?: string|null}  $filtros
-     */
-    private function quiereResumenPrecios(Builder $consulta, array $filtros): bool
-    {
-        if (! empty($filtros['referencia_id']) || ! empty($filtros['codigo_universal_id'])) {
-            return true;
-        }
-        if (trim((string) ($filtros['q'] ?? '')) === '') {
-            return false;
-        }
-
-        $conteo = (clone $consulta)
-            ->reorder()
-            ->select(DB::raw('COUNT(DISTINCT ingreso_items.referencia_id) as referencias, COUNT(DISTINCT referencias.codigo_universal_id) as universales'))
-            ->first();
-
-        return (int) $conteo->referencias === 1 || (int) $conteo->universales === 1;
-    }
-
-    /**
-     * Ids de líneas cuyo costo unitario cambió en una corrección (RF-28). Una edición del borrador
-     * también queda en auditoría y no cuenta.
-     *
-     * @param  Collection<int, mixed>  $ingresoIds
-     * @return array<int, true>
-     */
-    private function costosCorregidos(Collection $ingresoIds): array
-    {
-        $ids = $ingresoIds->filter()->unique()->values();
-        if ($ids->isEmpty()) {
-            return [];
-        }
-
-        $corregidos = [];
-        foreach (IngresoCorreccion::query()->whereIn('ingreso_id', $ids)->get(['antes', 'despues']) as $correccion) {
-            $antes = collect($correccion->antes['lineas'] ?? [])->keyBy('id');
-            foreach ($correccion->despues['lineas'] ?? [] as $linea) {
-                $id = $linea['id'] ?? null;
-                $previo = $id === null ? null : $antes->get($id);
-                if ($previo !== null && bccomp((string) $previo['costo_unitario'], (string) $linea['costo_unitario'], 2) !== 0) {
-                    $corregidos[(int) $id] = true;
-                }
-            }
-        }
-
-        return $corregidos;
-    }
-
-    /**
-     * @param  array<int, true>  $corregidos
-     * @return array<string, mixed>
-     */
-    private function filaPrecio(object $fila, array $corregidos): array
-    {
-        $costo = bcadd((string) $fila->costo_unitario, '0', 2);
-        $descuento = bcadd((string) $fila->descuento_porcentaje, '0', 2);
-
-        return [
-            'id' => (int) $fila->id,
-            'ingreso_id' => (int) $fila->ingreso_id,
-            'fecha' => substr((string) $fila->fecha, 0, 10),
-            'tipo' => $fila->tipo,
-            'numero_documento' => $fila->numero_documento,
-            'proveedor' => ['id' => (int) $fila->proveedor_id, 'nombre' => $fila->proveedor_nombre],
-            'referencia' => [
-                'id' => (int) $fila->referencia_id,
-                'codigo_referencia' => $fila->codigo_referencia,
-                'descripcion' => $fila->descripcion,
-                'codigo_universal' => $fila->codigo_universal_id === null ? null : [
-                    'id' => (int) $fila->codigo_universal_id,
-                    'codigo' => $fila->universal_codigo,
-                ],
-            ],
-            'costo_unitario' => $costo,
-            'descuento_porcentaje' => $descuento,
-            'costo_neto' => $this->costoNetoUnitario($costo, $descuento),
-            'corregido' => isset($corregidos[(int) $fila->id]),
-        ];
-    }
-
-    /** Costo unitario menos el descuento de la línea. El descuento del documento no entra (S-70). */
-    private function costoNetoUnitario(string $costo, string $descuento): string
-    {
-        $factor = bcsub('1', bcdiv($descuento, '100', 10), 10);
-
-        return bcadd(bcmul($costo, $factor, 10), '0', 2);
-    }
-
-    /**
      * 1. Compras por período (fecha del documento) y proveedor, de contado y a crédito. Una
      * remisión cubierta por una factura confirmada no cuenta: cuenta la factura (RF-19).
      *
@@ -292,6 +116,8 @@ class ReporteService
     /**
      * 2. Ventas a crédito cerradas en el período, por cliente, netas de reversos. Una venta
      * reversada por completo no aparece. Base e IVA salen del precio con IVA incluido (S-33, TotalesVenta).
+     * S-73: las ventas de solo valor (sin ítems) entran con total = valor_total, su tipo y número, y
+     * base e IVA en null; los totales de base e IVA suman solo las ventas con ítems (sumar ignora null).
      *
      * @return array{filas: Collection<int, array<string, mixed>>, totales: array<string, string>}
      */
@@ -309,13 +135,39 @@ class ReporteService
             ->get(['venta_items.venta_id', 'venta_items.precio_unitario', 'venta_items.iva_porcentaje'])
             ->groupBy('venta_id');
 
+        // S-73: ventas a crédito de solo valor del período, si no están anuladas.
+        $soloValor = DB::table('ventas')
+            ->where('ventas.forma_pago', FormaPago::Credito->value)
+            ->where('ventas.estado', EstadoVenta::Cerrada->value)
+            ->whereNotNull('ventas.valor_total')
+            ->whereBetween('ventas.cerrada_at', [Carbon::instance($desde)->startOfDay(), Carbon::instance($hasta)->endOfDay()])
+            ->when($clienteId, fn ($q) => $q->where('ventas.cliente_id', $clienteId))
+            ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('reversos')->whereColumn('reversos.venta_id', 'ventas.id'))
+            ->pluck('ventas.id');
+
         $ventas = DB::table('ventas')
             ->join('clientes', 'clientes.id', '=', 'ventas.cliente_id')
-            ->whereIn('ventas.id', $items->keys())
+            ->whereIn('ventas.id', $items->keys()->merge($soloValor))
             ->orderBy('ventas.cerrada_at')->orderBy('ventas.id')
-            ->get(['ventas.id', 'ventas.cerrada_at', 'ventas.vence_el', 'ventas.factura_contapyme', 'ventas.cliente_id', 'clientes.nombre as cliente']);
+            ->get(['ventas.id', 'ventas.cerrada_at', 'ventas.vence_el', 'ventas.factura_contapyme', 'ventas.tipo_documento', 'ventas.valor_total', 'ventas.cliente_id', 'clientes.nombre as cliente']);
 
         $filas = $ventas->map(function ($v) use ($items) {
+            if ($v->valor_total !== null && $v->tipo_documento !== null) {
+                return [
+                    'id' => (int) $v->id,
+                    'cliente' => ['id' => (int) $v->cliente_id, 'nombre' => $v->cliente],
+                    'fecha' => Carbon::parse($v->cerrada_at)->toDateString(),
+                    'vence_el' => $v->vence_el,
+                    'factura_contapyme' => $v->factura_contapyme,
+                    'tipo_documento' => $v->tipo_documento,
+                    'documento' => TipoDocumentoVenta::from($v->tipo_documento)->descripcion($v->factura_contapyme),
+                    'items' => 0,
+                    'base' => null,
+                    'iva' => null,
+                    'total' => (string) $v->valor_total,
+                ];
+            }
+
             $valor = TotalesVenta::desglosar($items[$v->id]->map(fn ($i) => [
                 'precio' => $i->precio_unitario, 'iva' => $i->iva_porcentaje, 'vigente' => true,
             ]));
@@ -326,6 +178,8 @@ class ReporteService
                 'fecha' => Carbon::parse($v->cerrada_at)->toDateString(),
                 'vence_el' => $v->vence_el,
                 'factura_contapyme' => $v->factura_contapyme,
+                'tipo_documento' => null,
+                'documento' => null,
                 'items' => $items[$v->id]->count(),
                 'base' => $valor->base,
                 'iva' => $valor->ivaIncluido,

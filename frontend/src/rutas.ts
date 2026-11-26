@@ -16,7 +16,7 @@ const inicio: Record<Rol, string> = {
 /** RF-21: salidas, reintegros y devoluciones de clientes (logística y admin). */
 export const RUTA_AJUSTES = '/logistica/ajustes'
 
-/** RF-32 / S-70: historial de precios de compra (logística y admin, solo en pantalla). */
+/** RF-32 / S-77 (integrado en S-71): la ruta vieja de Precios de compra lleva a Costos por producto. */
 export const RUTA_PRECIOS_COMPRA = '/logistica/precios-compra'
 
 /** RF-23 / S-45: panel de gestión del administrador (su inicio). */
@@ -33,6 +33,9 @@ export const RUTA_CAJA_ADMIN = '/admin/caja'
 
 /** RF-01 / S-59: códigos universales (admin y logística crean y editan; borrar es del admin). */
 export const RUTA_UNIVERSALES = '/universales'
+
+/** S-71: historial de costos de compra por producto (admin y logística). */
+export const RUTA_COSTOS = '/consulta/costos'
 
 /** RF-28: correcciones de ingresos confirmados (solo admin, solo consulta). */
 export const RUTA_CORRECCIONES = '/admin/correcciones'

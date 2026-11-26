@@ -189,7 +189,7 @@ class AjusteService
             ->when($filtros['usuario_id'] ?? null, fn ($q, $v) => $q->where('usuario_id', $v))
             ->orderByDesc('created_at')
             ->orderByDesc('id')
-            ->paginate(self::POR_PAGINA);
+            ->paginate((int) ($filtros['por_pagina'] ?? self::POR_PAGINA)); // S-70
 
         $this->marcarReintegrables($pagina->getCollection());
 

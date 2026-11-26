@@ -48,6 +48,28 @@ class ReversoService
                 throw new ReglaInventarioException($venta->motivoNoAbierta(), 422);
             }
 
+            // S-73: un registro de solo valor (sin ítems) solo se anula, y entero: un reverso con el monto
+            // (= valor_total) y sin reverso_items. No mueve inventario ni caja (es crédito).
+            if ($venta->esSoloValor()) {
+                if ($tipo !== TipoReverso::Anulacion) {
+                    throw new ReglaInventarioException('Una venta a crédito registrada por su valor no tiene productos que devolver: anúlela.', 422);
+                }
+                if ($ventaItemId !== null) {
+                    throw new ReglaInventarioException('Una venta a crédito registrada por su valor se anula completa.', 422);
+                }
+                if (Reverso::where('venta_id', $venta->id)->exists()) {
+                    throw new ReglaInventarioException("La venta #{$venta->id} ya fue anulada.", 422);
+                }
+
+                return Reverso::create([
+                    'venta_id' => $venta->id,
+                    'tipo' => TipoReverso::Anulacion,
+                    'motivo' => $motivo,
+                    'valor' => $venta->valor_total,
+                    'usuario_id' => $usuario->id,
+                ])->load('items');
+            }
+
             // S-50 / S-53: revertir una venta de contado ya cerrada devuelve dinero de la caja de hoy.
             if ($venta->estado === EstadoVenta::Cerrada && ! $venta->esCredito()) {
                 $this->caja->exigirDiaAbierto('registrar devoluciones de ventas de contado');

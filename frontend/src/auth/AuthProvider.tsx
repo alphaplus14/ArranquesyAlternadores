@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import { api, pedirCsrf } from '../api/cliente'
 import type { Rol, Usuario } from '../api/tipos'
+import { iniciarPreferencias } from '../preferencias/preferencias'
 
 interface AuthContexto {
   usuario: Usuario | null
@@ -19,20 +20,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [cargando, setCargando] = useState(true)
 
   useEffect(() => {
+    // S-70: las preferencias de pantalla vienen en la misma respuesta (sin peticiones nuevas).
     api.get<Usuario>('/me')
-      .then((r) => setUsuario(r.data))
-      .catch(() => setUsuario(null))
+      .then((r) => { iniciarPreferencias(r.data.rol, r.data.preferencias); setUsuario(r.data) })
+      .catch(() => { iniciarPreferencias(null); setUsuario(null) })
       .finally(() => setCargando(false))
   }, [])
 
   const entrar = useCallback(async (usuario: string, password: string) => {
     await pedirCsrf()
     const r = await api.post<Usuario>('/login', { usuario, password })
+    iniciarPreferencias(r.data.rol, r.data.preferencias)
     setUsuario(r.data)
   }, [])
 
   const salir = useCallback(async () => {
     await api.post('/logout')
+    iniciarPreferencias(null)
     setUsuario(null)
   }, [])
 

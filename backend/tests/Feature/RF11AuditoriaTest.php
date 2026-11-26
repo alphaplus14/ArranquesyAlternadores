@@ -4,6 +4,9 @@ use App\Enums\Rol;
 use App\Exceptions\RegistroInmutableException;
 use App\Models\Auditoria;
 use App\Models\Proveedor;
+use App\Models\Referencia;
+use App\Models\User;
+use Illuminate\Support\Facades\DB;
 
 beforeEach(fn () => sembrarDemo());
 
@@ -63,4 +66,38 @@ it('RF-11: solo el admin consulta la auditoría', function () {
     actuarComo(Rol::Mostrador);
 
     $this->getJson('/api/auditoria')->assertForbidden();
+});
+
+it('RF-11: el historial resuelve los ids a nombres en lote, sin tocar valor anterior ni nuevo', function () {
+    actuarComo(Rol::Admin);
+    $base = referencia('RN-4410');
+    $nueva = Referencia::create([
+        'codigo_referencia' => 'AUD-001', 'proveedor_id' => $base->proveedor_id, 'categoria_id' => $base->categoria_id,
+        'descripcion' => 'Regulador de prueba', 'precio_venta' => 50000,
+    ]);
+    $confirmador = compra($base, 1, 40000)->fresh()->confirmado_por; // confirmado_por, total, estado… del ingreso.
+
+    DB::enableQueryLog();
+    $respuesta = $this->getJson('/api/auditoria')->assertOk();
+    $consultas = collect(DB::getQueryLog())->pluck('query');
+    DB::disableQueryLog();
+
+    // valor_anterior y valor_nuevo llegan tal como están guardados.
+    $creacion = collect($respuesta->json('data'))->first(fn ($f) => $f['tabla'] === 'referencias' && $f['registro_id'] === $nueva->id && $f['campo'] === '*');
+    $guardada = Auditoria::where('tabla', 'referencias')->where('registro_id', $nueva->id)->where('campo', '*')->first();
+    expect($creacion['valor_nuevo'])->toBe($guardada->valor_nuevo)
+        ->and($creacion['valor_anterior'])->toBeNull();
+
+    // Nombres de apoyo: los ids de la foto JSON y de los campos sueltos.
+    $nombres = $respuesta->json('nombres');
+    expect($nombres['proveedor_id'][(string) $base->proveedor_id])->toBe($base->proveedor->nombre)
+        ->and($nombres['categoria_id'][(string) $base->categoria_id])->toBe($base->categoria->nombre)
+        ->and($nombres['confirmado_por'][(string) $confirmador])->toBe(User::find($confirmador)->name);
+
+    // En lote: una sola consulta a proveedores, a categorías y a usuarios para los nombres
+    // (más la del eager loading de usuario), sin importar cuántas filas tenga la página.
+    $a = fn (string $tabla) => $consultas->filter(fn ($q) => str_contains($q, "from `{$tabla}`"))->count();
+    expect($a('proveedores'))->toBe(1)
+        ->and($a('categorias'))->toBe(1)
+        ->and($a('users'))->toBeLessThanOrEqual(2);
 });

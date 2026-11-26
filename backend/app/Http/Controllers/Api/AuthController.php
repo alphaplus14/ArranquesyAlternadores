@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\PreferenciasRequest;
 use App\Models\User;
+use App\Services\PreferenciasService;
 use App\Rules\NombreUsuario;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -73,6 +75,19 @@ class AuthController extends Controller
     {
         $u = $request->user();
 
-        return response()->json(['id' => $u->id, 'name' => $u->name, 'usuario' => $u->usuario, 'rol' => $u->rol]);
+        return response()->json([
+            'id' => $u->id,
+            'name' => $u->name,
+            'usuario' => $u->usuario,
+            'rol' => $u->rol,
+            // S-70: viajan aquí (misma consulta del usuario, sin peticiones nuevas); {} para mostrador.
+            'preferencias' => PreferenciasService::paraRespuesta($u),
+        ]);
+    }
+
+    /** S-70: guarda las preferencias de pantalla (merge; null borra la clave). Sin auditoría. */
+    public function preferencias(PreferenciasRequest $request, PreferenciasService $servicio): JsonResponse
+    {
+        return response()->json(['preferencias' => (object) $servicio->actualizar($request->user(), $request->validated())]);
     }
 }

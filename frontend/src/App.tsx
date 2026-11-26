@@ -2,7 +2,7 @@ import { lazy, Suspense } from 'react'
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom'
 import type { Rol } from './api/tipos'
 import { useAuth } from './auth/AuthProvider'
-import { RUTA_AJUSTES, RUTA_CAJA, RUTA_CAJA_ADMIN, RUTA_CARTERA, RUTA_CORRECCIONES, RUTA_PANEL, RUTA_PRECIOS_COMPRA, RUTA_UNIVERSALES, rutaInicio } from './rutas'
+import { RUTA_AJUSTES, RUTA_CAJA, RUTA_CAJA_ADMIN, RUTA_CARTERA, RUTA_CORRECCIONES, RUTA_COSTOS, RUTA_PANEL, RUTA_PRECIOS_COMPRA, RUTA_UNIVERSALES, rutaInicio } from './rutas'
 import Layout from './componentes/Layout'
 import Login from './paginas/Login'
 
@@ -10,13 +10,13 @@ import Login from './paginas/Login'
 // logística, administración ni contabilidad). Layout las espera con un Suspense; main.tsx recarga
 // si, tras un despliegue, el paquete de una pantalla ya no existe.
 const Agotados = lazy(() => import('./paginas/Agotados'))
+const Costos = lazy(() => import('./paginas/consulta/Costos'))
 const Venta = lazy(() => import('./paginas/mostrador/Venta'))
 const CierreDia = lazy(() => import('./paginas/mostrador/CierreDia'))
 const Cartera = lazy(() => import('./paginas/cartera/Cartera'))
 const CarteraCliente = lazy(() => import('./paginas/cartera/CarteraCliente'))
 const Ingresos = lazy(() => import('./paginas/logistica/Ingresos'))
 const IngresoDetalle = lazy(() => import('./paginas/logistica/IngresoDetalle'))
-const PreciosCompra = lazy(() => import('./paginas/logistica/PreciosCompra'))
 const Etiquetas = lazy(() => import('./paginas/logistica/Etiquetas'))
 const Ajustes = lazy(() => import('./paginas/logistica/Ajustes'))
 const Productos = lazy(() => import('./paginas/Productos'))
@@ -34,6 +34,7 @@ const Saldos = lazy(() => import('./paginas/contable/Saldos'))
 const ProveedorCuenta = lazy(() => import('./paginas/contable/ProveedorCuenta'))
 const ClienteCuenta = lazy(() => import('./paginas/contable/ClienteCuenta'))
 const Informes = lazy(() => import('./paginas/contable/Informes'))
+const RecaudosContable = lazy(() => import('./paginas/contable/Recaudos')) // S-76
 // RF-23: el panel (con sus gráficos) también; tiene su propio aviso de carga.
 const Panel = lazy(() => import('./paginas/admin/Panel'))
 
@@ -61,6 +62,7 @@ export default function App() {
           <Route path="/contable/cartera" element={<Saldos de="clientes" />} />
           <Route path="/contable/clientes/:id" element={<ClienteCuenta />} />
           <Route path="/contable/informes" element={<Informes />} />
+          <Route path="/contable/recaudos" element={<RecaudosContable />} />
         </Route>
         <Route element={<ConRol roles={['mostrador']} />}>
           <Route path="/mostrador/venta" element={<Venta />} />
@@ -74,12 +76,14 @@ export default function App() {
         <Route element={<ConRol roles={['logistica']} />}>
           <Route path="/logistica/ingresos" element={<Ingresos />} />
           <Route path="/logistica/ingresos/:id" element={<IngresoDetalle />} />
-          <Route path={RUTA_PRECIOS_COMPRA} element={<PreciosCompra />} />
+          <Route path={RUTA_PRECIOS_COMPRA} element={<Navigate to={RUTA_COSTOS} replace />} />
           <Route path="/logistica/etiquetas" element={<Etiquetas />} />
         </Route>
         <Route element={<ConRol roles={['logistica', 'admin']} />}>
           <Route path={RUTA_AJUSTES} element={<Ajustes />} />
           <Route path="/agotados" element={<Agotados />} />
+          {/* S-71: historial de costos (ver-historial-costos: admin y logística; el mostrador vuelve a su inicio). */}
+          <Route path={RUTA_COSTOS} element={<Costos />} />
           {/* S-59: logística crea y edita códigos universales (mismas pantallas del admin, sin eliminar). */}
           <Route path={RUTA_UNIVERSALES} element={<Universales />} />
           <Route path={`${RUTA_UNIVERSALES}/:id`} element={<UniversalDetalle />} />

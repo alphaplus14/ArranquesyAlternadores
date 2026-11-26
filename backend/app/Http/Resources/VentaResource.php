@@ -23,6 +23,12 @@ class VentaResource extends JsonResource
                 'plazo_dias' => $this->cliente->plazo_dias,
             ] : null),
             'factura_contapyme' => $this->factura_contapyme,
+            // S-73: venta a crédito de solo valor (sin ítems): documento y valor total con IVA.
+            'solo_valor' => $this->esSoloValor(),
+            'tipo_documento' => $this->tipo_documento,
+            'documento' => $this->tipo_documento?->descripcion($this->factura_contapyme),
+            'valor_total' => $this->valor_total,
+            'anulada' => $this->esSoloValor() && $this->relationLoaded('reversos') && $this->reversos->isNotEmpty(),
             'usuario' => $this->whenLoaded('usuario', fn () => ['id' => $this->usuario->id, 'name' => $this->usuario->name]),
             'created_at' => $this->created_at,
             'cerrada_at' => $this->cerrada_at,
@@ -47,6 +53,7 @@ class VentaResource extends JsonResource
                 'id' => $r->id,
                 'tipo' => $r->tipo,
                 'motivo' => $r->motivo,
+                'valor' => $r->valor, // S-73: monto anulado de un registro de solo valor
                 'created_at' => $r->created_at,
                 'usuario' => ['id' => $r->usuario->id, 'name' => $r->usuario->name],
                 'venta_item_ids' => $r->items->pluck('venta_item_id'),

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, erroresCampo, mensajeError } from '../../../api/cliente'
 import type { EmpleadoResumen, EstadoCuentaEmpleado, FilaEstadoEmpleado, ResumenEmpleados } from '../../../api/tipos'
 import { useAvisoTexto } from '../../../componentes/Avisos'
-import Dialogo from '../../../componentes/Dialogo'
+import Dialogo, { DialogoSeccion } from '../../../componentes/Dialogo'
 import DialogoApilado from '../../../componentes/DialogoApilado'
 import Icono from '../../../componentes/Icono'
 import Medida from '../../../componentes/Medida'
@@ -12,6 +12,7 @@ import { fechaCorta, hoy } from '../../../componentes/fechas'
 import { leerNumero, pesos } from '../../../componentes/numeros'
 import { useDebounce } from '../../../hooks/useDebounce'
 import { useListaPaginada } from '../../../hooks/useListaPaginada'
+import BotonCancelar from '../../../componentes/BotonCancelar'
 
 const CLAVE = ['empleados'] as const
 
@@ -30,7 +31,8 @@ export default function EmpleadosCaja() {
   const { filas, resultado, irA, cargando } = useListaPaginada<EmpleadoResumen>({
     clave: [...CLAVE, 'resumen', termino],
     filtros: [q],
-    traer: async (pagina) => (await api.get<ResumenEmpleados>('/empleados/resumen', { params: { q: termino || undefined, page: pagina } })).data,
+    porPagina: { defecto: 50 }, // S-70
+    traer: async (pagina, porPagina) => (await api.get<ResumenEmpleados>('/empleados/resumen', { params: { q: termino || undefined, page: pagina, por_pagina: porPagina } })).data,
   })
   const totales = (resultado as ResumenEmpleados | undefined)?.totales
   const refrescar = () => qc.invalidateQueries({ queryKey: CLAVE })
@@ -108,18 +110,17 @@ function DialogoNuevoEmpleado({ onCerrar, onCreado }: { onCerrar: () => void; on
   return (
     <Dialogo
       titulo="Nuevo empleado"
-      descripcion="El saldo de apertura es lo que ya debía antes de usar el sistema: no mueve la caja y solo se registra ahora."
       onCerrar={onCerrar}
       pendiente={crear.isPending}
       onEnviar={() => { if (listo) crear.mutate() }}
       pie={(
         <>
-          <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
+          <BotonCancelar />
           <button type="submit" className="primario" disabled={!listo}>{crear.isPending ? 'Creando…' : 'Crear empleado'}</button>
         </>
       )}
     >
-      <div className="formulario">
+      <DialogoSeccion>
         <label>
           <span className="etiqueta-campo">Nombre<span className="obligatorio" aria-hidden="true">*</span></span>
           <input required autoFocus maxLength={120} value={nombre} aria-invalid={!!errores.nombre} onChange={(e) => { setNombre(e.target.value); crear.reset() }} />
@@ -132,7 +133,9 @@ function DialogoNuevoEmpleado({ onCerrar, onCreado }: { onCerrar: () => void; on
         </label>
         <label>
           <span className="etiqueta-campo">Saldo de apertura (opcional)</span>
-          <input inputMode="numeric" placeholder="$ 0" value={saldo} aria-invalid={saldoInvalido || !!errores.saldo_apertura} onChange={(e) => { setSaldo(e.target.value); crear.reset() }} />
+          <input inputMode="numeric" placeholder="$ 0" value={saldo} aria-invalid={saldoInvalido || !!errores.saldo_apertura} aria-describedby="saldo-apertura-ayuda" onChange={(e) => { setSaldo(e.target.value); crear.reset() }} />
+          {/* S-55: antes era el subtítulo de la cabecera (se truncaba); ahora va completo bajo su campo. */}
+          <small id="saldo-apertura-ayuda" className="ayuda">Es lo que ya debía antes de usar el sistema: no mueve la caja y solo se registra ahora.</small>
           {saldoInvalido && <small className="ayuda error">Escriba un valor en pesos enteros mayor que 0.</small>}
           {!saldoInvalido && valor ? <small className="ayuda">{pesos(valor)}</small> : null}
           {errores.saldo_apertura && <small className="ayuda error">{errores.saldo_apertura}</small>}
@@ -144,7 +147,7 @@ function DialogoNuevoEmpleado({ onCerrar, onCreado }: { onCerrar: () => void; on
           </label>
         ) : null}
         {crear.isError && Object.keys(errores).length === 0 && <div className="aviso error" role="alert">{mensajeError(crear.error)}</div>}
-      </div>
+      </DialogoSeccion>
     </Dialogo>
   )
 }
@@ -170,9 +173,12 @@ function DialogoEstadoCuenta({ empleado, onCerrar, onCambio }: { empleado: Emple
       descripcion={estado.data ? `Saldo: ${pesos(estado.data.saldo)}` : 'Cargando…'}
       variante="ancha"
       onCerrar={onCerrar}
-      pie={<button type="button" className="secundario" onClick={onCerrar}>Cerrar</button>}
+      confirmarSalida={false}
+      pie={<BotonCancelar>Cerrar</BotonCancelar>}
     >
+      <DialogoSeccion>
       {estado.isError && <div className="aviso error" role="alert">{mensajeError(estado.error)}</div>}
+      <div className="tabla-desplazable">
       <table className="tabla-apilable tabla-empleados">
         <thead><tr><th>Fecha</th><th>Movimiento</th><th className="col-numero">Préstamo</th><th className="col-numero">Abono</th><th className="col-numero">Saldo</th><th><span className="solo-lector">Acciones</span></th></tr></thead>
         <tbody>
@@ -199,6 +205,8 @@ function DialogoEstadoCuenta({ empleado, onCerrar, onCambio }: { empleado: Emple
           {filas.length === 0 && !estado.isLoading && <tr><td colSpan={6} className="vacio">Sin movimientos.</td></tr>}
         </tbody>
       </table>
+      </div>
+      </DialogoSeccion>
 
       {anulando && (
         <DialogoAnularMovimiento
@@ -230,7 +238,7 @@ function DialogoAnularMovimiento({ fila, onCerrar, onAnulado }: { fila: FilaEsta
       onEnviar={() => { if (listo) anular.mutate() }}
       pie={(
         <>
-          <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
+          <BotonCancelar />
           <button type="submit" className="peligro" disabled={!listo}>{anular.isPending ? 'Anulando…' : 'Anular'}</button>
         </>
       )}

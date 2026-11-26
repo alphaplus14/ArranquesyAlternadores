@@ -8,6 +8,7 @@ import Paginacion from '../../componentes/Paginacion'
 import DialogoProveedor from '../../componentes/DialogoProveedor'
 import { filtrarProveedores } from '../../componentes/filtroProveedores'
 import { useCategorias, useProveedores } from '../../hooks/useCatalogos'
+import { useFilasPorPagina } from '../../preferencias/preferencias'
 
 /** Proveedores y categorías se muestran de a 15. Los selectores siguen usando la lista completa. */
 const CATALOGO_POR_PAGINA = 15
@@ -27,6 +28,8 @@ export default function Catalogos() {
   const proveedores = useProveedores()
   const categorias = useCategorias()
   const [activa, setActiva] = useState<Clave>('proveedores')
+  // S-70: filas por página del usuario (15 si no guardó una); cambiarla vuelve a la página 1 (key).
+  const porPagina = useFilasPorPagina(CATALOGO_POR_PAGINA)
 
   const datos: Record<Clave, { filas: Array<Proveedor | Categoria>; cargando: boolean }> = {
     proveedores: { filas: proveedores.data ?? [], cargando: proveedores.isLoading },
@@ -73,7 +76,7 @@ export default function Catalogos() {
           <ListaProveedores filas={proveedores.data ?? []} cargando={proveedores.isLoading} />
         ) : (
           <Catalogo
-            key={pestana.clave}
+            key={`${pestana.clave}-${porPagina}`}
             titulo={pestana.titulo}
             singular={pestana.singular}
             alta={pestana.alta}
@@ -82,7 +85,7 @@ export default function Catalogos() {
             filas={datos[pestana.clave].filas}
             cargando={datos[pestana.clave].cargando}
             esCategoria
-            porPagina={CATALOGO_POR_PAGINA}
+            porPagina={porPagina}
           />
         )}
       </section>

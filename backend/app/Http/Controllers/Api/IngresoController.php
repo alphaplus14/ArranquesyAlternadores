@@ -41,7 +41,8 @@ class IngresoController extends Controller
             ->when($request->query('estado'), fn ($q, $v) => $q->where('estado', $v))
             ->when($request->boolean('corregidos'), fn ($q) => $q->has('correcciones'))
             ->orderByDesc('id')
-            ->paginate(25);
+            // S-70: filas por página del usuario (25 por defecto, tope 100).
+            ->paginate(min(max((int) $request->query('por_pagina', 25), 1), 100));
         $pagina->getCollection()->each(fn (Ingreso $i) => $i->setAttribute('corregido', $i->correcciones_count > 0));
 
         return response()->json($pagina);
@@ -192,7 +193,7 @@ class IngresoController extends Controller
             ->when($f['usuario_id'] ?? null, fn ($q, $v) => $q->where('usuario_id', $v))
             ->when($f['ingreso_id'] ?? null, fn ($q, $v) => $q->where('ingreso_id', $v))
             ->orderByDesc('id')
-            ->paginate(25);
+            ->paginate(min(max((int) $request->query('por_pagina', 25), 1), 100)); // S-70
 
         return IngresoCorreccionResource::collection($pagina);
     }

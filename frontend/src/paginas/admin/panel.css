@@ -70,9 +70,9 @@
 .panel-contenido { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .panel-contenido.actualizando { opacity: 0.7; }
 .panel-vacio { margin: 0; }
-/* Gráfico de ventas junto a lo que hay que comprar. Por debajo de 860 px se apilan. */
+/* Gráfico de ventas junto a lo que hay que comprar. Por debajo de 1100 px se apilan. */
 .panel-duo { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; align-items: stretch; }
-@media (min-width: 860px) { .panel-duo { grid-template-columns: minmax(0, 1.35fr) minmax(16rem, 0.9fr); } }
+@media (min-width: 1100px) { .panel-duo { grid-template-columns: minmax(0, 1.5fr) minmax(18rem, 1fr); } }
 .panel-duo > .panel-bloque { height: 100%; }
 .panel-duo .panel-tabla { max-height: 280px; overflow: auto; }
 .panel-reponer { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; max-height: 280px; overflow: auto; overscroll-behavior: contain; }
@@ -158,4 +158,58 @@
   .panel-filtros > label { flex: 1 1 100%; }
   .panel-filtros .filtro { min-width: 0; width: 100%; }
   .ayuda-burbuja { left: auto; right: -4rem; transform: none; width: min(16rem, calc(100vw - 48px)); }
+}
+/* Ventas por día: la leyenda va arriba del gráfico, junto al subtítulo, y nunca queda cortada al pie. */
+.panel-leyenda-arriba { margin: 0 0 6px; }
+
+/* ── Primera pantalla compacta: encabezado, franja de filtros, 8 medidas y la zona Ventas por día |
+   Reabastecer. En >= 1100 px ocupa el alto visible (barra 4rem + 20 px arriba y abajo) y la zona
+   inferior llena lo que queda; por debajo, todo se apila con el scroll normal. ── */
+.panel-pantalla { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.panel-pantalla > * { min-width: 0; }
+.panel-gestion .panel-pantalla .pagina-encabezado h1 { margin: 0; }
+
+/* Filtros en una franja: etiqueta a la izquierda del campo. */
+.panel-gestion .panel-filtros-caja { padding: 6px 14px; }
+.formulario.en-linea.panel-franja { align-items: center; gap: 6px 14px; margin-bottom: 0; }
+.panel-franja > label { flex-direction: row; align-items: center; gap: 8px; white-space: nowrap; }
+.panel-franja select, .panel-franja input, .panel-franja .selector > input { min-height: 40px; height: 40px; }
+.panel-franja select { width: auto; max-width: 11rem; }
+.panel-franja .filtro { min-width: 11rem; max-width: 15rem; }
+.panel-rango { flex: 1 1 0; min-width: 0; margin: 0; display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--suave); }
+.panel-rango-texto { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.panel-rango-burbuja { left: auto; right: 0; transform: none; }
+.panel-franja .panel-actualizado { flex-wrap: nowrap; white-space: nowrap; gap: 8px; }
+.panel-franja .panel-actualizado .ayuda { font-size: 0.8rem; }
+
+/* Medidas: icono pequeño junto a la etiqueta, cifra destacada y una sola línea secundaria. */
+.panel-pantalla .panel-medidas { gap: 10px; }
+.panel-kpi { flex-direction: column; align-items: stretch; gap: 2px; padding: 9px 12px 8px; }
+.panel-kpi-cabeza { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.panel-kpi .panel-medida-icono { width: 1.75rem; height: 1.75rem; border-radius: 8px; }
+.panel-kpi .panel-medida-icono svg { width: 16px; height: 16px; }
+.panel-kpi .panel-medida-etiqueta { font-size: 0.85rem; flex: none; }
+.panel-kpi .panel-variacion { margin-left: auto; min-width: 0; font-size: 0.72rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.panel-kpi .panel-medida-valor { font-size: 1.5rem; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.panel-kpi-pie { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.panel-kpi-pie .panel-medida-linea { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.panel-kpi-pie .panel-medida-enlace { margin-top: 0; flex: none; white-space: nowrap; }
+
+/* Zona inferior: mismas alturas; el gráfico toma el alto de su tarjeta y la lista se desplaza dentro. */
+.panel-pantalla .panel-duo .panel-bloque { padding: 12px 16px; gap: 8px; }
+.panel-grafico-total { margin: 0; }
+.panel-grafico { height: 256px; min-width: 0; overflow: hidden; }
+.panel-bloque-reponer .panel-vacio { padding: 0; text-align: left; }
+@media (min-width: 1100px) {
+  /* Alto mínimo = el visible: la zona inferior llena lo que queda. Si no alcanza para el gráfico
+     (340 px), la página crece un poco en vez de recortarlo. */
+  .panel-pantalla { min-height: calc(100vh - 4rem - 40px); }
+  .panel-pantalla > .panel-duo { flex: 1; min-height: 340px; grid-template-rows: minmax(0, 1fr); }
+  .panel-pantalla .panel-duo > .panel-bloque { height: auto; min-height: 0; overflow: hidden; }
+  .panel-pantalla .panel-duo .panel-bloque > .panel-contenido { flex: 1; min-height: 0; }
+  .panel-bloque-grafico .panel-grafico { flex: 1; height: auto; min-height: 0; }
+  .panel-bloque-reponer .panel-reponer { flex: 1; min-height: 0; max-height: none; }
+}
+@media (max-width: 1099px) {
+  .panel-franja > label { white-space: normal; }
 }

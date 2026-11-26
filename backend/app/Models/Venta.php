@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\EstadoVenta;
 use App\Enums\FormaPago;
+use App\Enums\TipoDocumentoVenta;
 use App\Exceptions\RegistroInmutableException;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -14,12 +15,14 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * cerrada, fijando en ese mismo cierre vence_el) y, S-46, descartarla (abierta a descartada, solo
  * con descartada_at y descartada_por) cuando no tiene ítems vigentes; eso lo decide VentaService.
  * forma_pago, cliente_id y factura_contapyme se fijan al crear.
+ * S-73: una venta a crédito "de solo valor" (tipo_documento y valor_total no nulos) nace ya cerrada,
+ * sin ítems ni movimientos de inventario; tipo y valor no se editan: se anula y se registra de nuevo.
  */
 class Venta extends Model
 {
     protected $table = 'ventas';
 
-    protected $fillable = ['usuario_id', 'forma_pago', 'cliente_id', 'factura_contapyme'];
+    protected $fillable = ['usuario_id', 'forma_pago', 'cliente_id', 'factura_contapyme', 'tipo_documento', 'valor_total'];
 
     protected $attributes = ['estado' => 'abierta', 'forma_pago' => 'contado'];
 
@@ -31,6 +34,8 @@ class Venta extends Model
             'descartada_at' => 'datetime',
             'forma_pago' => FormaPago::class,
             'vence_el' => 'date',
+            'tipo_documento' => TipoDocumentoVenta::class, // S-73
+            'valor_total' => 'decimal:2',
         ];
     }
 
@@ -81,6 +86,12 @@ class Venta extends Model
     public function pagos(): HasMany
     {
         return $this->hasMany(VentaPago::class);
+    }
+
+    /** S-73: registro de cartera sin ítems (cliente + documento + valor total con IVA). */
+    public function esSoloValor(): bool
+    {
+        return $this->tipo_documento !== null && $this->valor_total !== null;
     }
 
     public function esCredito(): bool

@@ -1,5 +1,7 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { useId, useRef, type KeyboardEvent, type ReactNode } from 'react'
 import { useBloquearScroll } from '../hooks/useBloquearScroll'
+import { ATRIBUTO_DIALOGO, ContextoCierreDialogo, useClicEnFondo, useEscape, useSalidaDialogo, useTope } from './dialogoCierre'
+import DialogoSalir from './DialogoSalir'
 
 const ENFOCABLES = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
@@ -21,7 +23,7 @@ function atraparTab(e: KeyboardEvent<HTMLElement>) {
   }
 }
 
-export type VarianteDialogo = 'cuenta' | 'ancha' | 'ficha' | 'ingreso' | 'proveedor' | 'confirmar' | 'cierre'
+export type VarianteDialogo = 'cuenta' | 'ancha' | 'ficha' | 'ingreso' | 'proveedor' | 'confirmar' | 'cierre' | 'salir'
 
 const FONDO: Record<VarianteDialogo, string> = {
   cuenta: 'modal',
@@ -32,6 +34,8 @@ const FONDO: Record<VarianteDialogo, string> = {
   confirmar: 'modal confirmar',
   // S-41: centrado, cabecera y pie fijos, cuerpo con scroll.
   cierre: 'modal modal-cierre',
+  // ¿Salir sin guardar?: encima de cualquier modal, también de un diálogo apilado.
+  salir: 'modal confirmar dialogo-salir',
 }
 
 const CAJA: Record<VarianteDialogo, string> = {
@@ -42,42 +46,15 @@ const CAJA: Record<VarianteDialogo, string> = {
   proveedor: 'modal-caja cuenta-modal proveedor-modal',
   confirmar: 'modal-caja cuenta-modal',
   cierre: 'modal-caja cuenta-modal cierre-modal',
-}
-
-/** El de encima es el único que atiende Escape. Así una confirmación no cierra el diálogo de abajo. */
-const pila: number[] = []
-const oyentes = new Set<() => void>()
-let secuenciaDialogo = 0
-
-function notificar() {
-  oyentes.forEach((fn) => fn())
-}
-
-function useTope() {
-  const id = useRef(0)
-  if (id.current === 0) id.current = ++secuenciaDialogo
-  const [, pintar] = useState(0)
-
-  useEffect(() => {
-    const propio = id.current
-    pila.push(propio)
-    const actualizar = () => pintar((n) => n + 1)
-    oyentes.add(actualizar)
-    notificar()
-    return () => {
-      const i = pila.lastIndexOf(propio)
-      if (i >= 0) pila.splice(i, 1)
-      oyentes.delete(actualizar)
-      notificar()
-    }
-  }, [])
-
-  return pila[pila.length - 1] === id.current
+  salir: 'modal-caja cuenta-modal',
 }
 
 /**
- * Marco de un diálogo: overlay, Escape, foco, scroll y las bandas de cabeza y pie.
- * El cuerpo lo trae quien llama, en una o varias secciones.
+ * Marco de un diálogo: overlay, foco, scroll y las bandas de cabeza y pie. El cuerpo lo trae quien
+ * llama, en una o varias secciones.
+ * Un solo camino para cerrar: la X, Esc, el clic en el fondo y los "Cancelar" (`BotonCancelar` o
+ * `useCerrarDialogo`) pasan por `solicitarCierre`, que pregunta si hay cambios sin guardar. Con un
+ * envío en curso (`pendiente`) nada cierra. Al cerrar, el foco vuelve a quien abrió la modal.
  */
 export default function Dialogo({
   titulo,
@@ -87,6 +64,8 @@ export default function Dialogo({
   pendiente = false,
   variante = 'cuenta',
   alertdialog = false,
+  modificado,
+  confirmarSalida = true,
   onEnviar,
   pie,
   children,
@@ -95,31 +74,28 @@ export default function Dialogo({
   descripcion?: ReactNode
   /** Contenido del círculo de la cabeza (inicial o icono). El marco lo pone este module. */
   marca?: ReactNode
+  /** Cierre directo (sin preguntar): lo usa el padre también después de guardar con éxito. */
   onCerrar: () => void
-  /** Con una petición en curso, Escape y la X no cierran. */
+  /** Con una petición en curso, la X, Esc, el fondo y Cancelar no cierran. */
   pendiente?: boolean
   variante?: VarianteDialogo
   alertdialog?: boolean
+  /** Fuerza si hay cambios sin guardar (modales con listas u otro estado que no son campos). */
+  modificado?: boolean
+  /** false: confirmaciones de sí/no y vistas de solo lectura cierran directo, sin preguntar. */
+  confirmarSalida?: boolean
   /** Si viene, el diálogo es un formulario y Enter lo envía. */
   onEnviar?: () => void
   pie?: ReactNode
   children?: ReactNode
 }) {
   const tituloId = useId()
+  const cajaRef = useRef<HTMLElement | null>(null)
   const esTope = useTope()
   useBloquearScroll()
-
-  useEffect(() => {
-    if (!esTope) return
-    const alPulsar = (e: globalThis.KeyboardEvent) => {
-      if (e.key !== 'Escape' || pendiente) return
-      e.preventDefault()
-      e.stopPropagation()
-      onCerrar()
-    }
-    document.addEventListener('keydown', alPulsar, true)
-    return () => document.removeEventListener('keydown', alPulsar, true)
-  }, [esTope, pendiente, onCerrar])
+  const { contexto, preguntando, seguirEditando } = useSalidaDialogo({ cajaRef, onCerrar, pendiente, modificado, confirmarSalida })
+  useEscape(esTope, contexto.solicitarCierre)
+  const fondo = useClicEnFondo(contexto.solicitarCierre)
 
   const caja = (
     <>
@@ -129,7 +105,7 @@ export default function Dialogo({
           <h2 id={tituloId}>{titulo}</h2>
           {descripcion && (typeof descripcion === 'string' ? <p>{descripcion}</p> : descripcion)}
         </div>
-        <button type="button" className="icono-boton modal-cerrar" aria-label="Cerrar" disabled={pendiente} onClick={onCerrar}>
+        <button type="button" className="icono-boton modal-cerrar" aria-label="Cerrar" title="Cerrar" disabled={pendiente} onClick={contexto.solicitarCierre}>
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6L6 18" /></svg>
         </button>
       </header>
@@ -143,15 +119,19 @@ export default function Dialogo({
     role: alertdialog ? 'alertdialog' as const : 'dialog' as const,
     'aria-modal': true as const,
     'aria-labelledby': tituloId,
+    [ATRIBUTO_DIALOGO]: '',
     onKeyDown: (e: KeyboardEvent<HTMLElement>) => { if (esTope) atraparTab(e) },
   }
 
   return (
-    <div className={FONDO[variante]}>
-      {onEnviar
-        ? <form {...props} onSubmit={(e) => { e.preventDefault(); onEnviar() }}>{caja}</form>
-        : <div {...props}>{caja}</div>}
-    </div>
+    <ContextoCierreDialogo.Provider value={contexto}>
+      <div className={FONDO[variante]} onMouseDown={fondo.onMouseDown} onClick={fondo.onClick}>
+        {onEnviar
+          ? <form ref={(el) => { cajaRef.current = el }} {...props} onSubmit={(e) => { e.preventDefault(); onEnviar() }}>{caja}</form>
+          : <div ref={(el) => { cajaRef.current = el }} {...props}>{caja}</div>}
+      </div>
+      {preguntando && <DialogoSalir onSeguir={seguirEditando} onSalir={contexto.cerrarSinPreguntar} />}
+    </ContextoCierreDialogo.Provider>
   )
 }
 
