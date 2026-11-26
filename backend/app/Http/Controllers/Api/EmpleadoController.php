@@ -40,8 +40,8 @@ class EmpleadoController extends Controller
 
     public function resumen(Request $request): JsonResponse
     {
-        $datos = $request->validate(['q' => ['nullable', 'string', 'max:120'], 'page' => ['nullable', 'integer', 'min:1']]);
-        $r = $this->empleados->resumen(trim((string) ($datos['q'] ?? '')) ?: null);
+        $datos = $request->validate(['q' => ['nullable', 'string', 'max:120'], 'page' => ['nullable', 'integer', 'min:1'], 'por_pagina' => ['nullable', 'integer', 'min:1', 'max:100']]);
+        $r = $this->empleados->resumen(trim((string) ($datos['q'] ?? '')) ?: null, (int) ($datos['por_pagina'] ?? 50)); // S-70
         $p = $r['pagina'];
 
         return response()->json([

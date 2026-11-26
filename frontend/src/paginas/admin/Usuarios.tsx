@@ -13,6 +13,7 @@ import Icono from '../../componentes/Icono'
 import Medida from '../../componentes/Medida'
 import Resumen from '../../componentes/Resumen'
 import Paginacion from '../../componentes/Paginacion'
+import BotonCancelar from '../../componentes/BotonCancelar'
 
 type Confirmacion =
   | { tipo: 'rol'; id: number; nombre: string; desde: Rol; hacia: Rol }
@@ -33,7 +34,8 @@ export default function Usuarios() {
 
   const { filas, resultado, info, irA } = useListaPaginada<Usuario>({
     clave: ['usuarios'],
-    traer: async (pagina) => (await api.get<Pagina<Usuario>>('/usuarios', { params: { page: pagina } })).data,
+    porPagina: { defecto: 50 }, // S-70
+    traer: async (pagina, porPagina) => (await api.get<Pagina<Usuario>>('/usuarios', { params: { page: pagina, por_pagina: porPagina } })).data,
   })
   const refrescar = () => qc.invalidateQueries({ queryKey: ['usuarios'] })
 
@@ -199,7 +201,7 @@ function CambiarClave({ usuario, onCerrar }: { usuario: Usuario; onCerrar: () =>
         onEnviar={() => { guardar.reset(); setSeguro(true) }}
         pie={(
           <>
-            <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
+            <BotonCancelar />
             <button type="submit" className="primario" disabled={guardar.isPending}>Guardar</button>
           </>
         )}

@@ -40,6 +40,8 @@ Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:lo
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me'])->middleware('rol:admin,logistica,mostrador,contable');
+    // S-70: preferencias de pantalla; el mostrador no las tiene (403).
+    Route::patch('/me/preferencias', [AuthController::class, 'preferencias'])->middleware(['rol:admin,logistica,contable', 'throttle:30,1']);
 
     // S-25: aviso de que un código ya existe con otro proveedor. Antes de /referencias/{referencia}.
     Route::get('/referencias/coincidencias', [ReferenciaController::class, 'coincidencias'])->middleware('rol:admin,logistica');

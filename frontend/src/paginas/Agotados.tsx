@@ -38,8 +38,9 @@ export default function Agotados() {
     clave: ['agotados', proveedorId, categoriaId],
     filtros: [proveedorId, categoriaId],
     enabled: vista === 'agotados',
-    traer: async (pagina) => (await api.get<Pagina<Referencia>>('/reportes/agotados', {
-      params: { proveedor_id: proveedorId || undefined, categoria_id: categoriaId || undefined, page: pagina, por_pagina: 50 },
+    porPagina: { defecto: 50 }, // S-70
+    traer: async (pagina, porPagina) => (await api.get<Pagina<Referencia>>('/reportes/agotados', {
+      params: { proveedor_id: proveedorId || undefined, categoria_id: categoriaId || undefined, page: pagina, por_pagina: porPagina },
     })).data,
   })
 
@@ -47,8 +48,9 @@ export default function Agotados() {
     clave: ['bajo-minimo', proveedorId, categoriaId],
     filtros: [proveedorId, categoriaId],
     enabled: vista === 'bajo-minimo',
-    traer: async (pagina) => (await api.get<Pagina<FilaBajoMinimo>>('/reportes/bajo-minimo', {
-      params: { proveedor_id: proveedorId || undefined, categoria_id: categoriaId || undefined, page: pagina, por_pagina: 50 },
+    porPagina: { defecto: 50 }, // S-70
+    traer: async (pagina, porPagina) => (await api.get<Pagina<FilaBajoMinimo>>('/reportes/bajo-minimo', {
+      params: { proveedor_id: proveedorId || undefined, categoria_id: categoriaId || undefined, page: pagina, por_pagina: porPagina },
     })).data,
   })
 

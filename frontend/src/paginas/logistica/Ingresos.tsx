@@ -16,6 +16,7 @@ import Medida from '../../componentes/Medida'
 import Resumen from '../../componentes/Resumen'
 import Paginacion from '../../componentes/Paginacion'
 import Icono from '../../componentes/Icono'
+import BotonCancelar from '../../componentes/BotonCancelar'
 
 interface FilaIngreso {
   id: number
@@ -62,7 +63,8 @@ export default function Ingresos() {
   const { filas, resultado, info, irA } = useListaPaginada<FilaIngreso>({
     clave: ['ingresos', soloCorregidos],
     filtros: soloCorregidos,
-    traer: async (pagina) => (await api.get<Pagina<FilaIngreso>>('/ingresos', { params: { page: pagina, corregidos: soloCorregidos ? 1 : undefined } })).data,
+    porPagina: { defecto: 25 }, // S-70
+    traer: async (pagina, porPagina) => (await api.get<Pagina<FilaIngreso>>('/ingresos', { params: { page: pagina, por_pagina: porPagina, corregidos: soloCorregidos ? 1 : undefined } })).data,
   })
 
   const borradores = filas.filter((i) => i.estado === 'borrador').length
@@ -201,7 +203,7 @@ function DialogoNuevoIngreso({ onCerrar }: { onCerrar: () => void }) {
       onEnviar={() => crear.mutate()}
       pie={(
         <>
-          <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
+          <BotonCancelar />
           <button type="submit" className="primario" disabled={!completo || crear.isPending}>{crear.isPending ? 'Creando…' : 'Crear y escanear'}</button>
         </>
       )}

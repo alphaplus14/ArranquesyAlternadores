@@ -29,7 +29,8 @@ export default function Universales() {
   const { filas, resultado, info, irA } = useListaPaginada<FilaUniversal>({
     clave: ['universales', termino],
     filtros: q,
-    traer: async (pagina) => (await api.get<Pagina<FilaUniversal>>('/codigos-universales', { params: { q: termino || undefined, page: pagina } })).data,
+    porPagina: { defecto: 25 }, // S-70
+    traer: async (pagina, porPagina) => (await api.get<Pagina<FilaUniversal>>('/codigos-universales', { params: { q: termino || undefined, page: pagina, por_pagina: porPagina } })).data,
   })
 
   const crear = useMutation({

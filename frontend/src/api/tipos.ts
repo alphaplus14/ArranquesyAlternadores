@@ -9,6 +9,8 @@ export interface Usuario {
   usuario: string
   rol: Rol
   activo?: boolean
+  /** S-70: preferencias de pantalla guardadas (solo admin, logística y contable; {} si no hay). */
+  preferencias?: Record<string, unknown>
 }
 
 /** RF-13: no se borra; se desactiva. */

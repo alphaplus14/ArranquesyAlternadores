@@ -1,0 +1,8 @@
+{
+  "azul": { "nombre": "Azul", "acento": "#001870", "hover": "#002894", "suave": "#E4EBFA", "texto": "#FFFFFF" },
+  "verde": { "nombre": "Verde", "acento": "#0B5D3B", "hover": "#0D6E46", "suave": "#E2F1E9", "texto": "#FFFFFF" },
+  "morado": { "nombre": "Morado", "acento": "#4B2A8C", "hover": "#5A34A3", "suave": "#ECE6F7", "texto": "#FFFFFF" },
+  "naranja": { "nombre": "Naranja oscuro", "acento": "#8C3800", "hover": "#A04000", "suave": "#FBE9DD", "texto": "#FFFFFF" },
+  "vino": { "nombre": "Rojo vino", "acento": "#7A1530", "hover": "#8E1D3A", "suave": "#F6E3E8", "texto": "#FFFFFF" },
+  "grafito": { "nombre": "Grafito", "acento": "#2F3E55", "hover": "#3B4C66", "suave": "#E6EAF0", "texto": "#FFFFFF" }
+}

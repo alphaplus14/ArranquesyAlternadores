@@ -2,11 +2,15 @@ import { Suspense, useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
 import { useVencimientos } from '../hooks/useVencimientos'
-import { RUTA_AJUSTES, RUTA_CAJA, RUTA_CAJA_ADMIN, RUTA_CARTERA, RUTA_CORRECCIONES, RUTA_PANEL, RUTA_UNIVERSALES, rutaInicio } from '../rutas'
+import { RUTA_AJUSTES, RUTA_CAJA, RUTA_CAJA_ADMIN, RUTA_CARTERA, RUTA_CORRECCIONES, RUTA_COSTOS, RUTA_PANEL, RUTA_UNIVERSALES, rutaInicio } from '../rutas'
+import { useVerCostos } from '../hooks/useVerCostos'
 import logo from '../assets/logo-la8va.jpg'
 import Icono, { type IconoNombre } from './Icono'
 import MiCuenta from './MiCuenta'
+import DialogoPreferencias from '../preferencias/DialogoPreferencias'
+import { admitePreferencias, useMenuPlegado } from '../preferencias/preferencias'
 import MenuUsuario from './MenuUsuario'
+import ErrorPantalla from './ErrorPantalla'
 import { esDeDiaAnterior, useVentasAbiertas } from '../hooks/useVentasAbiertas'
 
 interface ItemMenu {
@@ -27,9 +31,12 @@ export default function Layout() {
   const [editandoCuenta, setEditandoCuenta] = useState(false)
   // Admin: grupos del menú desplegados a mano. Solo en memoria del componente (no se guarda en el navegador).
   const [gruposAbiertos, setGruposAbiertos] = useState<Record<string, boolean>>({})
+  const [editandoPreferencias, setEditandoPreferencias] = useState(false)
+  const menuPlegado = useMenuPlegado()
 
   const esContable = tieneRol('contable')
   const vencimientos = useVencimientos({ enabled: esContable })
+  const verCostos = useVerCostos()
   const avisos = vencimientos.data?.totales.todas.cantidad
 
   useEffect(() => {
@@ -67,10 +74,12 @@ export default function Layout() {
           etiqueta: 'Logística',
           items: [
             { to: '/logistica/ingresos', texto: 'Compras', icono: 'ingreso', fin: true },
-            { to: '/logistica/etiquetas', texto: 'Etiquetas', icono: 'etiqueta' },
+            // El admin no la tiene en el menú (no la usa en el día a día); la ruta sigue abierta por URL.
+            ...(usuario?.rol === 'admin' ? [] : [{ to: '/logistica/etiquetas', texto: 'Etiquetas', icono: 'etiqueta' } as ItemMenu]),
             // RF-21. S-44: el admin solo consulta el historial. S-63: "Ajustes" se llama "Movimientos".
             { to: RUTA_AJUSTES, texto: usuario?.rol === 'admin' ? 'Historial de movimientos' : 'Movimientos', icono: 'inventario' },
-            // S-59: logística crea y edita universales; el admin los tiene en Administración.
+            // S-59: logística crea y edita universales. El admin entra a /universales por URL o enlaces
+            // internos, sin ítem de menú.
             ...(usuario?.rol === 'logistica' ? [{ to: RUTA_UNIVERSALES, texto: 'Códigos universales', icono: 'universal' } as ItemMenu] : []),
           ],
         }
@@ -79,7 +88,6 @@ export default function Layout() {
       ? {
           etiqueta: 'Administración',
           items: [
-            { to: RUTA_UNIVERSALES, texto: 'Universales', icono: 'universal' },
             { to: '/admin/catalogos', texto: 'Catálogos', icono: 'catalogo' },
             { to: '/admin/clientes', texto: 'Clientes', icono: 'persona' },
             { to: '/admin/usuarios', texto: 'Usuarios', icono: 'usuarios' },
@@ -97,14 +105,26 @@ export default function Layout() {
             { to: '/contable/cuentas-por-pagar', texto: 'Cuentas por pagar', icono: 'ingreso' },
             { to: '/contable/cartera', texto: 'Cartera de clientes', icono: 'persona' },
             { to: '/contable/informes', texto: 'Informes', icono: 'auditoria' },
+            { to: '/contable/recaudos', texto: 'Recaudos de cartera', icono: 'billetera' }, // S-76
           ],
         }
       : null,
     // S-28: agotados y mínimos son de logística y admin; sin ellos, la sección Consulta no aparece.
-    tieneRol('logistica') ? { etiqueta: 'Consulta', items: [{ to: '/agotados', texto: 'Agotados y mínimos', icono: 'agotados' }] } : null,
+    // S-71: "Costos por producto" solo con ver-historial-costos (admin y logística); el mostrador no tiene Consulta.
+    tieneRol('logistica')
+      ? {
+          etiqueta: 'Consulta',
+          items: [
+            { to: '/agotados', texto: 'Agotados y mínimos', icono: 'agotados' },
+            ...(verCostos.historial ? [{ to: RUTA_COSTOS, texto: 'Costos por producto', icono: 'ingreso' } as ItemMenu] : []),
+          ],
+        }
+      : null,
   ].filter((g): g is { etiqueta: string; items: ItemMenu[] } => g !== null)
 
-  const plegable = usuario?.rol === 'admin'
+  // S-70: grupos plegables según la preferencia del usuario (admin: sí por defecto, como antes;
+  // logística y contable: no). El mostrador no tiene preferencias.
+  const plegable = menuPlegado
   const esRutaActiva = (item: ItemMenu) => (item.fin
     ? ubicacion.pathname === item.to
     : ubicacion.pathname === item.to || ubicacion.pathname.startsWith(`${item.to}/`))
@@ -123,6 +143,7 @@ export default function Layout() {
           <MenuUsuario
             usuario={usuario}
             onEditarCuenta={usuario.rol === 'admin' ? () => setEditandoCuenta(true) : undefined}
+            onPreferencias={admitePreferencias(usuario.rol) ? () => setEditandoPreferencias(true) : undefined}
             onSalir={() => salir()}
           />
         )}
@@ -174,12 +195,16 @@ export default function Layout() {
         <button type="button" className="velo" aria-label="Cerrar el menú" tabIndex={-1} onClick={() => setAbierto(false)} />
         <main className="contenido">
           {/* Cada pantalla llega en su propio paquete (App.tsx): el menú se queda mientras carga. */}
-          <Suspense fallback={<div className="cargando">Cargando…</div>}>
-            <Outlet />
-          </Suspense>
+          {/* Si una pantalla falla, aviso con "Recargar" en vez de dejar todo en blanco. */}
+          <ErrorPantalla clave={ubicacion.pathname}>
+            <Suspense fallback={<div className="cargando">Cargando…</div>}>
+              <Outlet />
+            </Suspense>
+          </ErrorPantalla>
         </main>
       </div>
       {editandoCuenta && <MiCuenta onCerrar={() => setEditandoCuenta(false)} />}
+      {editandoPreferencias && <DialogoPreferencias onCerrar={() => setEditandoPreferencias(false)} />}
     </div>
   )
 }
