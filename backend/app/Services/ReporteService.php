@@ -8,6 +8,7 @@ use App\Enums\FormaPago;
 use App\Enums\TipoDocumentoVenta;
 use App\Enums\TipoIngreso;
 use App\Models\Cliente;
+use App\Models\IngresoCorreccion;
 use App\Models\IngresoItem;
 use App\Models\Proveedor;
 use App\Models\Referencia;
@@ -16,6 +17,7 @@ use App\Support\TotalesIngreso;
 use App\Support\TotalesVenta;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -70,6 +72,181 @@ class ReporteService
         ));
 
         return $pagina;
+    }
+
+    /**
+     * RF-32 / S-77: cada fila es una compra que cuenta (factura confirmada, o remisión confirmada
+     * que ninguna factura confirmada cubre). Una línea en cantidad 0 no entra. El costo que se
+     * compara es el unitario vigente; `costo_neto` le resta solo el descuento de la línea.
+     * `corregido` marca un costo cambiado por RF-28, no una edición del borrador.
+     * El último y el anterior se calculan sobre el filtro completo, no sobre la página.
+     * No cambia `IngresoService::ultimoCosto` (el prellenado al escanear).
+     *
+     * @param  array{q?: string|null, proveedor_id?: int|null, categoria_id?: int|null, referencia_id?: int|null, codigo_universal_id?: int|null, desde?: string|null, hasta?: string|null}  $filtros
+     * @return array{pagina: LengthAwarePaginator, resumen: array{ultimo: array<string, mixed>|null, anterior: array<string, mixed>|null, variacion: string|null}|null}
+     */
+    public function preciosCompra(array $filtros, int $porPagina): array
+    {
+        $consulta = $this->consultaPrecios($filtros);
+        $resumir = $this->quiereResumenPrecios($consulta, $filtros);
+        $orden = fn (Builder $q) => $q->orderByDesc('ingresos.fecha')->orderByDesc('ingresos.id')->orderByDesc('ingreso_items.id');
+
+        $top = $resumir ? $orden(clone $consulta)->limit(2)->get() : collect();
+        $pagina = $orden(clone $consulta)->paginate($porPagina);
+
+        $corregidos = $this->costosCorregidos(
+            $pagina->getCollection()->pluck('ingreso_id')->merge($top->pluck('ingreso_id')),
+        );
+        $pagina->setCollection($pagina->getCollection()->map(fn ($fila) => $this->filaPrecio($fila, $corregidos))->values());
+
+        $topFilas = $top->map(fn ($fila) => $this->filaPrecio($fila, $corregidos))->values();
+
+        return [
+            'pagina' => $pagina,
+            'resumen' => $resumir ? [
+                'ultimo' => $topFilas[0] ?? null,
+                'anterior' => $topFilas[1] ?? null,
+                'variacion' => isset($topFilas[1]) ? bcsub($topFilas[0]['costo_unitario'], $topFilas[1]['costo_unitario'], 2) : null,
+            ] : null,
+        ];
+    }
+
+    /**
+     * @param  array{q?: string|null, proveedor_id?: int|null, categoria_id?: int|null, referencia_id?: int|null, codigo_universal_id?: int|null, desde?: string|null, hasta?: string|null}  $filtros
+     */
+    private function consultaPrecios(array $filtros): Builder
+    {
+        $q = trim((string) ($filtros['q'] ?? ''));
+        $like = $q === '' ? null : '%'.addcslashes($q, '%_\\').'%';
+
+        return DB::table('ingreso_items')
+            ->join('ingresos', 'ingresos.id', '=', 'ingreso_items.ingreso_id')
+            ->leftJoin('ingresos as facturas', 'facturas.id', '=', 'ingresos.factura_id')
+            ->join('referencias', 'referencias.id', '=', 'ingreso_items.referencia_id')
+            ->join('proveedores', 'proveedores.id', '=', 'ingresos.proveedor_id')
+            ->leftJoin('codigos_universales', 'codigos_universales.id', '=', 'referencias.codigo_universal_id')
+            ->where('ingresos.estado', EstadoIngreso::Confirmado->value)
+            ->where('ingreso_items.cantidad', '>', 0)
+            // RF-19 / S-61: la remisión cubierta por una factura confirmada no es otra compra.
+            // Si la factura sigue en borrador, la remisión sigue siendo el precio que hay.
+            ->where(fn (Builder $w) => $w
+                ->whereNull('ingresos.factura_id')
+                ->orWhere('facturas.estado', '!=', EstadoIngreso::Confirmado->value))
+            ->when($filtros['proveedor_id'] ?? null, fn (Builder $w, $id) => $w->where('ingresos.proveedor_id', $id))
+            ->when($filtros['categoria_id'] ?? null, fn (Builder $w, $id) => $w->where('referencias.categoria_id', $id))
+            ->when($filtros['referencia_id'] ?? null, fn (Builder $w, $id) => $w->where('ingreso_items.referencia_id', $id))
+            ->when($filtros['codigo_universal_id'] ?? null, fn (Builder $w, $id) => $w->where('referencias.codigo_universal_id', $id))
+            ->when($filtros['desde'] ?? null, fn (Builder $w, $fecha) => $w->where('ingresos.fecha', '>=', $fecha))
+            ->when($filtros['hasta'] ?? null, fn (Builder $w, $fecha) => $w->where('ingresos.fecha', '<=', $fecha))
+            ->when($like, fn (Builder $w) => $w->where(fn (Builder $c) => $c
+                ->where('referencias.codigo_referencia', 'like', $like)
+                ->orWhere('referencias.descripcion', 'like', $like)
+                ->orWhere('codigos_universales.codigo', 'like', $like)))
+            ->select([
+                'ingreso_items.id',
+                'ingreso_items.ingreso_id',
+                'ingreso_items.costo_unitario',
+                'ingreso_items.descuento_porcentaje',
+                'ingreso_items.referencia_id',
+                'ingresos.tipo',
+                'ingresos.numero_documento',
+                'ingresos.fecha',
+                'ingresos.proveedor_id',
+                'proveedores.nombre as proveedor_nombre',
+                'referencias.codigo_referencia',
+                'referencias.descripcion',
+                'referencias.codigo_universal_id',
+                'codigos_universales.codigo as universal_codigo',
+            ]);
+    }
+
+    /**
+     * @param  array{q?: string|null, proveedor_id?: int|null, categoria_id?: int|null, referencia_id?: int|null, codigo_universal_id?: int|null, desde?: string|null, hasta?: string|null}  $filtros
+     */
+    private function quiereResumenPrecios(Builder $consulta, array $filtros): bool
+    {
+        if (! empty($filtros['referencia_id']) || ! empty($filtros['codigo_universal_id'])) {
+            return true;
+        }
+        if (trim((string) ($filtros['q'] ?? '')) === '') {
+            return false;
+        }
+
+        $conteo = (clone $consulta)
+            ->reorder()
+            ->select(DB::raw('COUNT(DISTINCT ingreso_items.referencia_id) as referencias, COUNT(DISTINCT referencias.codigo_universal_id) as universales'))
+            ->first();
+
+        return (int) $conteo->referencias === 1 || (int) $conteo->universales === 1;
+    }
+
+    /**
+     * Ids de líneas cuyo costo unitario cambió en una corrección (RF-28). Una edición del borrador
+     * también queda en auditoría y no cuenta.
+     *
+     * @param  Collection<int, mixed>  $ingresoIds
+     * @return array<int, true>
+     */
+    private function costosCorregidos(Collection $ingresoIds): array
+    {
+        $ids = $ingresoIds->filter()->unique()->values();
+        if ($ids->isEmpty()) {
+            return [];
+        }
+
+        $corregidos = [];
+        foreach (IngresoCorreccion::query()->whereIn('ingreso_id', $ids)->get(['antes', 'despues']) as $correccion) {
+            $antes = collect($correccion->antes['lineas'] ?? [])->keyBy('id');
+            foreach ($correccion->despues['lineas'] ?? [] as $linea) {
+                $id = $linea['id'] ?? null;
+                $previo = $id === null ? null : $antes->get($id);
+                if ($previo !== null && bccomp((string) $previo['costo_unitario'], (string) $linea['costo_unitario'], 2) !== 0) {
+                    $corregidos[(int) $id] = true;
+                }
+            }
+        }
+
+        return $corregidos;
+    }
+
+    /**
+     * @param  array<int, true>  $corregidos
+     * @return array<string, mixed>
+     */
+    private function filaPrecio(object $fila, array $corregidos): array
+    {
+        $costo = bcadd((string) $fila->costo_unitario, '0', 2);
+        $descuento = bcadd((string) $fila->descuento_porcentaje, '0', 2);
+
+        return [
+            'id' => (int) $fila->id,
+            'ingreso_id' => (int) $fila->ingreso_id,
+            'fecha' => substr((string) $fila->fecha, 0, 10),
+            'tipo' => $fila->tipo,
+            'numero_documento' => $fila->numero_documento,
+            'proveedor' => ['id' => (int) $fila->proveedor_id, 'nombre' => $fila->proveedor_nombre],
+            'referencia' => [
+                'id' => (int) $fila->referencia_id,
+                'codigo_referencia' => $fila->codigo_referencia,
+                'descripcion' => $fila->descripcion,
+                'codigo_universal' => $fila->codigo_universal_id === null ? null : [
+                    'id' => (int) $fila->codigo_universal_id,
+                    'codigo' => $fila->universal_codigo,
+                ],
+            ],
+            'costo_unitario' => $costo,
+            'descuento_porcentaje' => $descuento,
+            'costo_neto' => $this->costoNetoUnitario($costo, $descuento),
+            'corregido' => isset($corregidos[(int) $fila->id]),
+        ];
+    }
+
+    /** Costo unitario menos el descuento de la línea. El descuento del documento no entra (S-77). */
+    private function costoNetoUnitario(string $costo, string $descuento): string
+    {
+        $factor = bcsub('1', bcdiv($descuento, '100', 10), 10);
+
+        return bcadd(bcmul($costo, $factor, 10), '0', 2);
     }
 
     /**

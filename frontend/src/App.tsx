@@ -2,7 +2,7 @@ import { lazy, Suspense } from 'react'
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom'
 import type { Rol } from './api/tipos'
 import { useAuth } from './auth/AuthProvider'
-import { RUTA_AJUSTES, RUTA_CAJA, RUTA_CAJA_ADMIN, RUTA_CARTERA, RUTA_CORRECCIONES, RUTA_COSTOS, RUTA_PANEL, RUTA_UNIVERSALES, rutaInicio } from './rutas'
+import { RUTA_AJUSTES, RUTA_CAJA, RUTA_CAJA_ADMIN, RUTA_CARTERA, RUTA_CORRECCIONES, RUTA_COSTOS, RUTA_PANEL, RUTA_PRECIOS_COMPRA, RUTA_UNIVERSALES, rutaInicio } from './rutas'
 import Layout from './componentes/Layout'
 import Login from './paginas/Login'
 
@@ -17,6 +17,7 @@ const Cartera = lazy(() => import('./paginas/cartera/Cartera'))
 const CarteraCliente = lazy(() => import('./paginas/cartera/CarteraCliente'))
 const Ingresos = lazy(() => import('./paginas/logistica/Ingresos'))
 const IngresoDetalle = lazy(() => import('./paginas/logistica/IngresoDetalle'))
+const PreciosCompra = lazy(() => import('./paginas/logistica/PreciosCompra'))
 const Etiquetas = lazy(() => import('./paginas/logistica/Etiquetas'))
 const Ajustes = lazy(() => import('./paginas/logistica/Ajustes'))
 const Productos = lazy(() => import('./paginas/Productos'))
@@ -76,6 +77,7 @@ export default function App() {
         <Route element={<ConRol roles={['logistica']} />}>
           <Route path="/logistica/ingresos" element={<Ingresos />} />
           <Route path="/logistica/ingresos/:id" element={<IngresoDetalle />} />
+          <Route path={RUTA_PRECIOS_COMPRA} element={<PreciosCompra />} />
           <Route path="/logistica/etiquetas" element={<Etiquetas />} />
         </Route>
         <Route element={<ConRol roles={['logistica', 'admin']} />}>

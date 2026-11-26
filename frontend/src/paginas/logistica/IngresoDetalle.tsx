@@ -11,7 +11,6 @@ import DetalleCorreccion from '../../componentes/ingresos/DetalleCorreccion'
 import { formatearFechaHora } from '../../utilidades/fechas'
 import { fechaCorta, sumarDias } from '../../componentes/fechas'
 import CampoDescuento, { type ModoDescuento } from '../../componentes/CampoDescuento'
-import Medida from '../../componentes/Medida'
 import { formatoNumero, leerNumero, pesos } from '../../componentes/numeros'
 import CampoMoneda from '../../componentes/CampoMoneda'
 import { useCategorias } from '../../hooks/useCatalogos'
@@ -20,7 +19,6 @@ import ControlSegmentado, { type OpcionSegmento } from '../../componentes/Contro
 import AvisoCoincidencias from '../../componentes/AvisoCoincidencias'
 import { UMBRAL_RAFAGA_MS, useScanner } from '../../hooks/useScanner'
 import { useAuth } from '../../auth/AuthProvider'
-import Resumen from '../../componentes/Resumen'
 import Icono from '../../componentes/Icono'
 import BotonCancelar from '../../componentes/BotonCancelar'
 
@@ -286,8 +284,6 @@ export default function IngresoDetalle() {
   const pendiente = i.totales ? Number(i.totales.descuento_pendiente) : 0
   const descuentoDoc = Number(i.descuento_documento)
 
-  const unidades = i.items.reduce((suma, it) => suma + it.cantidad, 0)
-  const lineasSinCosto = i.items.filter((it) => Number(it.costo_unitario) <= 0).length
 
   /** Quitar: directo con cantidad 1 y sin costo; si no, confirmación breve en la fila. */
   const pedirQuitar = (it: IngresoItem) => {
@@ -297,27 +293,11 @@ export default function IngresoDetalle() {
   accionesRef.current = { abrir: abrirFila, pedirQuitar, cancelarQuitar: () => setQuitando(null), quitar: (itemId) => quitar.mutate(itemId) }
 
   return (
-    <div className="pila">
+    <div className="pila detalle-compra">
       <div className="pagina-encabezado">
         <h1>{i.tipo === 'factura' ? 'Factura' : 'Remisión'} {i.numero_documento}</h1>
         <p>{i.proveedor?.nombre} · {i.fecha.slice(0, 10)}{i.proveedor?.asesor && <small className="asesor">Asesor: {i.proveedor.asesor}</small>}</p>
       </div>
-      <Resumen
-        clave="ingreso-detalle-resumen"
-        compacto={(
-          <>
-            <span>Estado <strong>{i.estado}</strong></span>
-            <span>Unidades <strong>{unidades}</strong></span>
-            <span>Total <strong>{totalMostrado}</strong></span>
-            <span className={lineasSinCosto > 0 ? 'resumen-agotados' : ''}>Sin costo <strong>{lineasSinCosto}</strong></span>
-          </>
-        )}
-      >
-        <Medida etiqueta="Estado" valor={i.estado} tono={borrador ? 'amarillo' : 'verde'} icono="ingreso" />
-        <Medida etiqueta="Unidades" valor={unidades} pie={`${i.items.length} línea(s)`} tono="azul" icono="caja" />
-        <Medida etiqueta="Total" valor={totalMostrado} pie={i.total ? 'fijado al confirmar' : undefined} tono="verde" icono="etiqueta" />
-        <Medida etiqueta="Sin costo" valor={lineasSinCosto} pie="líneas por completar" tono={lineasSinCosto > 0 ? 'rojo' : 'amarillo'} icono="agotados" />
-      </Resumen>
       {corregido && !corrigiendo && (
         <div className="aviso ok" role="status">
           Corrección guardada: {corregido.unidades_creadas} unidad(es) creada(s) y {corregido.unidades_retiradas} retirada(s). Total {pesos(corregido.total_nuevo)}.
@@ -366,6 +346,32 @@ export default function IngresoDetalle() {
             </button>
           )}
         </div>
+
+        {i.totales && (
+          <div className="totales" aria-label="Totales del documento">
+            <div><span>Subtotal</span><strong>{pesos(i.totales.subtotal_bruto)}</strong></div>
+            <div><span>Descuento de líneas</span><strong>{pesos(i.totales.descuento_lineas)}</strong></div>
+            <div><span>Descuento del documento</span><strong>{pesos(borrador ? i.totales.descuento_aplicado : i.totales.descuento_documento)}</strong></div>
+            {borrador && pendiente > 0 && <div><span>Descuento por aplicar</span><strong>{pesos(i.totales.descuento_pendiente)}</strong></div>}
+            <div><span>Base gravada</span><strong>{pesos(i.totales.base_gravada)}</strong></div>
+            <div><span>Base sin IVA</span><strong>{pesos(i.totales.base_sin_iva)}</strong></div>
+            <div><span>IVA</span><strong>{pesos(i.totales.iva)}</strong></div>
+            <div><span>Líneas sin IVA</span><strong>{i.totales.lineas_sin_iva}</strong></div>
+            <div className="totales-total"><span>Total</span><strong>{pesos(borrador ? i.totales.total_visible : i.totales.total)}</strong></div>
+            {i.total && <div><span>Total guardado al confirmar</span><strong>{pesos(i.total)}</strong></div>}
+          </div>
+        )}
+        {borrador && i.totales && i.items.length === 0 && descuentoDoc > 0 && (
+          <p className="aviso info" role="status">
+            El descuento de {pesos(i.totales.descuento_documento)} se guardó y se aplicará cuando agregue las líneas.
+          </p>
+        )}
+        {borrador && i.totales && i.items.length > 0 && pendiente > 0 && (
+          <p className="aviso atencion" role="status">
+            El descuento ({pesos(i.totales.descuento_documento)}) es mayor que el subtotal de las líneas ({pesos(i.totales.subtotal_neto)}):
+            faltan {pesos(i.totales.descuento_pendiente)} por aplicar. Agregue líneas o corrija el descuento antes de confirmar.
+          </p>
+        )}
 
         {borrador && (
           <div ref={zonaLector} className="ingreso-lector">
@@ -416,32 +422,6 @@ export default function IngresoDetalle() {
           </tbody>
         </table>
         </div>
-
-        {i.totales && (
-          <dl className="totales">
-            <dt>Subtotal</dt><dd>{pesos(i.totales.subtotal_bruto)}</dd>
-            <dt>Descuento de líneas</dt><dd>{pesos(i.totales.descuento_lineas)}</dd>
-            <dt>Descuento del documento</dt><dd>{pesos(borrador ? i.totales.descuento_aplicado : i.totales.descuento_documento)}</dd>
-            {borrador && pendiente > 0 && <><dt>Descuento por aplicar</dt><dd>{pesos(i.totales.descuento_pendiente)}</dd></>}
-            <dt>Base gravada</dt><dd>{pesos(i.totales.base_gravada)}</dd>
-            <dt>Base sin IVA</dt><dd>{pesos(i.totales.base_sin_iva)}</dd>
-            <dt>IVA</dt><dd>{pesos(i.totales.iva)}</dd>
-            <dt>Líneas sin IVA</dt><dd>{i.totales.lineas_sin_iva}</dd>
-            <dt>Total</dt><dd><strong>{pesos(borrador ? i.totales.total_visible : i.totales.total)}</strong></dd>
-            {i.total && <><dt>Total guardado al confirmar</dt><dd><strong>{pesos(i.total)}</strong></dd></>}
-          </dl>
-        )}
-        {borrador && i.totales && i.items.length === 0 && descuentoDoc > 0 && (
-          <p className="aviso info" role="status">
-            El descuento de {pesos(i.totales.descuento_documento)} se guardó y se aplicará cuando agregue las líneas.
-          </p>
-        )}
-        {borrador && i.totales && i.items.length > 0 && pendiente > 0 && (
-          <p className="aviso atencion" role="status">
-            El descuento ({pesos(i.totales.descuento_documento)}) es mayor que el subtotal de las líneas ({pesos(i.totales.subtotal_neto)}):
-            faltan {pesos(i.totales.descuento_pendiente)} por aplicar. Agregue líneas o corrija el descuento antes de confirmar.
-          </p>
-        )}
 
         {borrador ? (
           // Barra fija al pie del área visible: con muchas líneas el botón sigue a la vista.
@@ -823,7 +803,7 @@ function DialogoReferencia({ codigo, proveedor, onCreada, onCerrar }: {
           selectRef={campoCategoria}
           autoFocus
           value={f.categoria_id}
-          onChange={(categoria_id) => setF((v) => ({ ...v, categoria_id }))}
+          onChange={(categoria_id) => setF((v) => ({ ...v, categoria_id, codigo_universal_id: '' }))}
           alElegir={() => campoCalidad.current?.focus()}
         />
         <label>Calidad (opcional)
@@ -833,14 +813,16 @@ function DialogoReferencia({ codigo, proveedor, onCreada, onCerrar }: {
             <option value="generico">Genérico</option>
           </select>
         </label>
-        {admiteUniversal && (
-          // S-59: logística elige o crea el universal en línea.
+        {admiteUniversal ? (
+          // S-59: logística elige o crea el universal en línea, sin salir de la factura.
           <SelectorUniversal
             etiqueta="Código universal (opcional)"
             categoriaId={f.categoria_id}
             value={f.codigo_universal_id}
             onChange={(codigo_universal_id) => setF((v) => ({ ...v, codigo_universal_id }))}
           />
+        ) : f.categoria_id !== '' && (
+          <p className="ayuda">Esta categoría no usa código universal. Si este repuesto debería unificarse (regulador, portadiodo u otro que el administrador haya marcado), pídale que active esa opción en Catálogos.</p>
         )}
         <label>Descripción<input required maxLength={255} {...campo('descripcion')} /></label>
         <label>Precio de venta

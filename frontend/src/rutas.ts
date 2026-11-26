@@ -16,6 +16,9 @@ const inicio: Record<Rol, string> = {
 /** RF-21: salidas, reintegros y devoluciones de clientes (logística y admin). */
 export const RUTA_AJUSTES = '/logistica/ajustes'
 
+/** RF-32 / S-77: historial de precios de compra (logística y admin, solo en pantalla). */
+export const RUTA_PRECIOS_COMPRA = '/logistica/precios-compra'
+
 /** RF-23 / S-45: panel de gestión del administrador (su inicio). */
 export const RUTA_PANEL = '/admin/panel'
 
