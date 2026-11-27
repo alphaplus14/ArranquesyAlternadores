@@ -85,19 +85,24 @@ it('RF-15 (e): una venta de contado no cuenta en la cartera', function () {
         ->and($this->getJson('/api/cartera?solo_con_saldo=0')->json('totales.cartera_total'))->toBe('0.00');
 });
 
-it('RF-15 (f) / criterio 8: un abono mayor al saldo deja saldo negativo, mostrado como saldo a favor', function () {
+it('RF-15 (f) / criterio 8 / S-79: un abono nuevo no supera el pendiente; el saldo a favor antiguo se sigue mostrando', function () {
     $cliente = Cliente::factory()->create();
     ventaCredito($cliente, [100]);
 
     actuarComo(Rol::Mostrador);
-    abonar($cliente, 130)->assertCreated()->assertJsonPath('resumen.saldo', '-30.00')->assertJsonPath('resumen.saldo_a_favor', true);
+    // S-79: ya no se crea saldo a favor nuevo: el abono no puede superar lo pendiente de la venta.
+    abonar($cliente, 130)->assertUnprocessable()->assertJsonPath('pendiente', '100.00');
+
+    // Un abono antiguo sin venta (anterior a S-79) mayor al saldo sigue quedando a favor.
+    abonoHistorico($cliente, 130);
+    expect(app(\App\Services\CarteraService::class)->resumenDe($cliente))->toMatchArray(['saldo' => '-30.00', 'saldo_a_favor' => true]);
 
     $this->getJson('/api/cartera?solo_con_saldo=1')->assertOk()->assertJsonCount(0, 'data');
     expect(filaCartera($cliente))->toMatchArray(['saldo' => '-30.00', 'saldo_a_favor' => true])
         ->and($this->getJson('/api/cartera?solo_con_saldo=0')->json('totales.saldo_a_favor'))->toBe('30.00');
 });
 
-it('RF-15 (g) / S-12 / S-13: FIFO salda la venta vencida primero; vencido 0 y el resto al día', function () {
+it('RF-15 (g) / S-12 / S-13 / S-79: un abono antiguo sin venta se lee FIFO: salda la vencida primero; vencido 0 y el resto al día', function () {
     $cliente = Cliente::factory()->create();
     $hoy = Carbon::now('America/Bogota')->startOfDay();
     [$vieja] = ventaCredito($cliente, [60]);
@@ -112,7 +117,7 @@ it('RF-15 (g) / S-12 / S-13: FIFO salda la venta vencida primero; vencido 0 y el
         'antiguedad' => ['al_dia' => '50.00', 'd1_30' => '0.00', 'd31_60' => '60.00', 'd61_90' => '0.00', 'mas_90' => '0.00'],
     ]);
 
-    abonar($cliente, 70)->assertCreated();
+    abonoHistorico($cliente, 70); // registro anterior a S-79 (sin venta)
 
     expect(filaCartera($cliente))->toMatchArray([
         'saldo' => '40.00', 'vencido' => '0.00', 'proximo_vencimiento' => $hoy->copy()->addDays(25)->toDateString(),
@@ -220,13 +225,13 @@ it('RF-15 / criterio 5: la lista busca por nombre o documento, filtra solo con s
     $this->getJson('/api/cartera?busqueda=Taller')->assertJsonCount(0, 'data'); // sin comodín inicial
 });
 
-it('RF-15: CarteraDemoSeeder deja tres clientes de ejemplo (vencido saldado por FIFO, saldo a favor y vencida)', function () {
+it('RF-15: CarteraDemoSeeder deja tres clientes de ejemplo (vencida saldada por un abono dirigido, saldo a favor antiguo y vencida)', function () {
     $this->seed(CarteraDemoSeeder::class);
     actuarComo(Rol::Admin);
 
     $filas = collect($this->getJson('/api/cartera?solo_con_saldo=0')->assertOk()->json('data'))->keyBy('cliente.nombre');
     expect($filas->keys()->sort()->values()->all())->toBe(['Motos y Repuestos Juan', 'Taller El Pistón', 'Transportes La Flota'])
-        ->and($filas['Taller El Pistón'])->toMatchArray(['saldo' => '40000.00', 'vencido' => '0.00'])
+        ->and($filas['Taller El Pistón'])->toMatchArray(['saldo' => '50000.00', 'vencido' => '0.00'])
         ->and($filas['Motos y Repuestos Juan'])->toMatchArray(['saldo' => '-5000.00', 'saldo_a_favor' => true])
         ->and($filas['Transportes La Flota'])->toMatchArray(['saldo' => '200000.00', 'vencido' => '200000.00']);
 });

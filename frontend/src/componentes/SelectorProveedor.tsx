@@ -16,6 +16,7 @@ type Via = 'enter' | 'clic' | 'tab'
 
 /**
  * Combobox de proveedor con búsqueda por nombre o NIT (patrón ARIA combobox + listbox).
+ * S-83: el mostrador ve y busca solo por nombre (la API no le manda NIT ni asesor).
  * Filtra en el navegador la lista que ya trae useProveedores. El valor es el id como string
  * ('' = ninguno). Escribir reinicia la selección; salir sin elegir vuelve al valor anterior.
  * La lista va en un portal con posición fija: no la recorta el overflow de una modal y abre
@@ -48,6 +49,8 @@ export default function SelectorProveedor({
   const proveedores = useProveedores()
   const { tieneRol } = useAuth()
   const puedeCrear = !!permitirCrear && tieneRol('logistica') // el admin pasa siempre
+  /** S-83: NIT y asesor solo para admin y logística (el admin pasa siempre). */
+  const verDetalle = tieneRol('logistica')
   /** Texto con que se abrió "Nuevo proveedor"; null = cerrado. */
   const [creando, setCreando] = useState<string | null>(null)
   const base = useId()
@@ -64,7 +67,7 @@ export default function SelectorProveedor({
   const anterior = useRef(value)
 
   const seleccionado = proveedores.data?.find((p) => String(p.id) === value)
-  const filtrados = useMemo(() => filtrarProveedores(proveedores.data ?? [], texto ?? ''), [proveedores.data, texto])
+  const filtrados = useMemo(() => filtrarProveedores(proveedores.data ?? [], texto ?? '', !verDetalle), [proveedores.data, texto, verDetalle])
   // Crear solo si lo escrito no coincide exacto con un nombre o un NIT existente.
   const escrito = (texto ?? '').trim()
   const coincideExacto = escrito !== '' && (proveedores.data ?? []).some((p) =>
@@ -72,8 +75,8 @@ export default function SelectorProveedor({
   const ofrecerCrear = puedeCrear && escrito !== '' && !coincideExacto
   const encontrados: Opcion[] = useMemo(() => [
     ...(opcionTodos && !texto ? [{ valor: '', nombre: opcionTodos }] : []),
-    ...filtrados.slice(0, MAXIMO).map((p) => ({ valor: String(p.id), nombre: p.nombre, nit: p.nit, asesor: p.asesor })),
-  ], [filtrados, opcionTodos, texto])
+    ...filtrados.slice(0, MAXIMO).map((p) => ({ valor: String(p.id), nombre: p.nombre, ...(verDetalle ? { nit: p.nit, asesor: p.asesor } : {}) })),
+  ], [filtrados, opcionTodos, texto, verDetalle])
   const opciones: Opcion[] = ofrecerCrear ? [...encontrados, { valor: CREAR, nombre: escrito }] : encontrados
   const hayMas = filtrados.length > MAXIMO
   const conLimpiar = (opcionTodos !== undefined || limpiable) && value !== '' && texto === null
@@ -220,7 +223,7 @@ export default function SelectorProveedor({
           autoComplete="off"
           autoFocus={autoFocus}
           required={required}
-          placeholder={placeholder ?? opcionTodos ?? 'Nombre o NIT'}
+          placeholder={placeholder ?? opcionTodos ?? (verDetalle ? 'Nombre o NIT' : 'Proveedor')}
           value={texto ?? seleccionado?.nombre ?? ''}
           onChange={(e) => alEscribir(e.target.value)}
           onKeyDown={alPulsar}

@@ -7,7 +7,9 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /*
- * RF-15 / RF-18 (S-32, reemplaza S-12): abonos generales (FIFO) o dirigidos a una venta a crédito.
+ * RF-15 / RF-18 (S-32, reemplaza S-12): abonos dirigidos a una venta a crédito. S-79: todo abono
+ * nuevo es dirigido; los generales (FIFO) son registros antiguos que se siguen leyendo
+ * (`abonoHistorico`, escritos directo como quedaron en la base).
  */
 
 beforeEach(fn () => sembrarDemo());
@@ -33,13 +35,19 @@ function cartera(Cliente $cliente): array
     return [collect($r->json('ventas'))->keyBy('id'), $r->json('resumen')];
 }
 
-it('S-32 (a): un abono general de 40 se aplica a la venta más antigua: pendientes 20 y 50', function () {
+it('S-32 (a) / S-79: un abono general antiguo de 40 se lee aplicado a la venta más antigua: pendientes 20 y 50', function () {
     [$cliente, $vieja, $nueva] = dosVentas();
     actuarComo(Rol::Mostrador);
 
-    abonar($cliente, 40)->assertCreated()
-        ->assertJsonPath('abono.venta_id', null)
-        ->assertJsonPath('abono.aplicado_a', 'General');
+    // S-79: la API ya no crea abonos generales; sin venta responde 422 y no crea nada.
+    abonar($cliente, 40, ['venta_id' => null])->assertUnprocessable()
+        ->assertJsonValidationErrors(['venta_id' => 'Elija la factura o remisión a la que se aplica el abono.']);
+    expect(AbonoCliente::where('cliente_id', $cliente->id)->count())->toBe(0);
+
+    $historico = abonoHistorico($cliente, 40);
+    $this->getJson("/api/clientes/{$cliente->id}/cartera")
+        ->assertJsonPath('abonos.0.id', $historico->id)
+        ->assertJsonPath('abonos.0.aplicado_a', 'General');
 
     [$ventas, $resumen] = cartera($cliente);
     expect($ventas[$vieja]['pendiente'])->toBe('20.00')
@@ -84,7 +92,7 @@ it('S-32 (c): dirigido mayor al pendiente, a una venta de otro cliente, abierta 
     cerrarVenta($contado)->assertOk();
 
     abonar($cliente, 51, ['venta_id' => $nueva])->assertUnprocessable()
-        ->assertJsonPath('message', "El abono supera lo pendiente de la venta #{$nueva} (\$50). Registre hasta \$50 a esta venta y el resto como abono general.")
+        ->assertJsonPath('message', "El abono supera lo pendiente de la venta #{$nueva} (\$50). Registre hasta \$50.")
         ->assertJsonPath('campo', 'valor');
     abonar($cliente, 5, ['venta_id' => $ajena])->assertUnprocessable()->assertJsonPath('message', "La venta #{$ajena} no es de este cliente.");
     abonar($cliente, 5, ['venta_id' => $abierta])->assertUnprocessable()->assertJsonPath('message', "La venta #{$abierta} está abierta: ciérrela antes de abonarle.");
@@ -99,8 +107,8 @@ it('S-32 (d): dirigir a una venta ya pagada (sin pendiente) responde 422', funct
     [$cliente, $vieja] = dosVentas();
     actuarComo(Rol::Mostrador);
 
-    // Un general de 60 salda la vieja por FIFO.
-    abonar($cliente, 60)->assertCreated();
+    // Un abono de 60 dirigido a la vieja la cancela.
+    abonar($cliente, 60, ['venta_id' => $vieja])->assertCreated();
     abonar($cliente, 1, ['venta_id' => $vieja])->assertUnprocessable()
         ->assertJsonPath('message', "La venta #{$vieja} no tiene saldo pendiente.");
 });
@@ -142,31 +150,32 @@ it('S-32 (f): anular un abono dirigido devuelve el pendiente a su venta y el abo
         ->and($r->json('abonos.0.aplicado_a'))->toBe("Venta #{$nueva}");
 });
 
-it('S-32 (g): el saldo del cliente es idéntico dirigiendo o no los abonos', function () {
-    [$dirigido, , $nuevaD] = dosVentas();
+it('S-32 (g) / S-79: el saldo del cliente es idéntico con abonos dirigidos o con generales antiguos', function () {
+    [$dirigido, $viejaD, $nuevaD] = dosVentas();
     [$general] = dosVentas();
     actuarComo(Rol::Mostrador);
 
     abonar($dirigido, 45, ['venta_id' => $nuevaD])->assertCreated();
-    abonar($dirigido, 25)->assertCreated();
-    abonar($general, 45)->assertCreated();
-    abonar($general, 25)->assertCreated();
+    abonar($dirigido, 25, ['venta_id' => $viejaD])->assertCreated();
+    abonoHistorico($general, 45);
+    abonoHistorico($general, 25);
 
     [$vD, $rD] = cartera($dirigido);
     [$vG, $rG] = cartera($general);
     $suma = fn ($v) => number_format($v->sum(fn ($x) => (float) $x['pendiente']), 2, '.', '');
     expect($rD['saldo'])->toBe('40.00')->and($rG['saldo'])->toBe('40.00')
         ->and($suma($vD))->toBe('40.00')->and($suma($vG))->toBe('40.00')
-        // Cambia el reparto: dirigido deja la vieja con 35 vencidos; general la salda.
+        // Cambia el reparto: dirigido deja la vieja con 35 vencidos; el FIFO antiguo la salda.
         ->and($rD['vencido'])->toBe('35.00')->and($rG['vencido'])->toBe('0.00');
 });
 
-it('S-32 (h): un abono general mayor al saldo total sigue dejando saldo a favor', function () {
+it('S-32 (h) / S-79: un abono general antiguo mayor al saldo total sigue dejando saldo a favor', function () {
     [$cliente, $vieja, $nueva] = dosVentas();
     actuarComo(Rol::Mostrador);
 
     abonar($cliente, 50, ['venta_id' => $nueva])->assertCreated();
-    abonar($cliente, 100)->assertCreated()
+    abonoHistorico($cliente, 100);
+    $this->getJson("/api/clientes/{$cliente->id}/cartera")
         ->assertJsonPath('resumen.saldo', '-40.00')
         ->assertJsonPath('resumen.saldo_a_favor', true);
 

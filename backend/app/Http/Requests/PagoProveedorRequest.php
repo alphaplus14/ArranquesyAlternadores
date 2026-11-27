@@ -3,8 +3,9 @@
 namespace App\Http\Requests;
 
 /**
- * RF-17: pago a un proveedor. RF-17 (ajuste): `ingreso_id` opcional para aplicarlo a una factura
- * elegida; las reglas de negocio (proveedor, crédito, pendiente) las valida PagoService.
+ * RF-17: pago a un proveedor. S-79: `ingreso_id` obligatorio, todo pago nuevo va a una factura o
+ * remisión a crédito elegida (sin FIFO). Las reglas de negocio (proveedor, crédito, pendiente) las
+ * valida PagoService con el documento bloqueado.
  */
 class PagoProveedorRequest extends MovimientoDineroRequest
 {
@@ -12,7 +13,15 @@ class PagoProveedorRequest extends MovimientoDineroRequest
     {
         return [
             ...parent::rules(),
-            'ingreso_id' => ['nullable', 'integer'],
+            'ingreso_id' => ['required', 'integer'],
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            ...parent::messages(),
+            'ingreso_id.required' => 'Elija la factura que va a pagar.',
         ];
     }
 }

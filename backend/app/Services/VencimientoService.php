@@ -13,8 +13,9 @@ use Illuminate\Support\Collection;
 /**
  * RF-30: bandeja de vencimientos. Documentos con saldo pendiente hoy que ya vencieron o vencen
  * dentro de los próximos `cartera.aviso_dias` días (S-28):
- *  - por pagar: ingresos a crédito de proveedores, con los pagos a cada factura y el resto FIFO;
- *  - por cobrar: ventas a crédito cerradas de clientes, con los abonos FIFO.
+ *  - por pagar: ingresos a crédito de proveedores, con los pagos a cada factura (y, en pagos
+ *    anteriores a S-79 sin factura, su FIFO de lectura);
+ *  - por cobrar: ventas a crédito cerradas de clientes, con sus abonos (FIFO de lectura en los antiguos).
  * Solo lectura. Un documento cancelado (pendiente 0) no aparece.
  */
 class VencimientoService
@@ -85,6 +86,7 @@ class VencimientoService
                 'dias_para_vencer' => $d['dias_para_vencer'],
                 'valor' => $d['valor'],
                 'pendiente' => $d['pendiente'],
+                'abonado' => $d['abonado'], // S-79: pagos parciales ya hechos al documento
             ]));
     }
 

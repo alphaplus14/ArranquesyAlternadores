@@ -776,11 +776,16 @@ class CarteraService
      * Valor neto de cada venta a crédito cerrada hasta el corte, agrupado por cliente.
      *
      * @param  list<int>|null  $clienteIds  null = todos
-     * @return Collection<int, Collection<int, array{id:int, fecha:string, vence_el:?string, valor:string}>>
+     * S-79: cada venta trae `aplicado` (abonos dirigidos a ella, vigentes al corte), igual que los
+     * ingresos de un proveedor: Antiguedad lo descuenta de esa venta y solo reparte FIFO el resto
+     * (los abonos antiguos sin venta), como el detalle de la cartera.
+     *
+     * @return Collection<int, Collection<int, array{id:int, fecha:string, vence_el:?string, valor:string, aplicado:string}>>
      */
     public function ventasCredito(?array $clienteIds, CarbonInterface $corte): Collection
     {
         $hasta = Carbon::instance($corte)->endOfDay();
+        $aplicado = $this->abonadoPorVenta($clienteIds, $corte);
 
         return DB::table('venta_items')
             ->join('ventas', 'ventas.id', '=', 'venta_items.venta_id')
@@ -820,9 +825,21 @@ class CarteraService
                 'fecha' => Carbon::parse($v->cerrada_at)->toDateString(),
                 'vence_el' => $v->vence_el,
                 'valor' => (string) $v->valor,
+                'aplicado' => $aplicado[(int) $v->id] ?? '0',
                 // S-73: "Factura N.º X" en una venta de solo valor; null en las de ítems.
                 'documento' => $v->tipo_documento ? TipoDocumentoVenta::from($v->tipo_documento)->descripcion($v->factura_contapyme) : null,
             ])->values());
+    }
+
+    /**
+     * S-79: abonos dirigidos vigentes al corte, sumados por venta.
+     *
+     * @param  list<int>|null  $clienteIds  null = todos
+     * @return array<int, string>
+     */
+    public function abonadoPorVenta(?array $clienteIds, CarbonInterface $corte): array
+    {
+        return $this->movimientosVigentes('abonos_clientes', 'abono_anulaciones', 'abono_id', 'cliente_id', $clienteIds, $corte, 'venta_id');
     }
 
     /**

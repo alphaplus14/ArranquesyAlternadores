@@ -34,6 +34,8 @@ No ve inventario, ingresos, ventas, etiquetas, catálogo, usuarios ni auditoría
 **Aceptación.** Un usuario `contable` consulta cuentas por pagar y registra un pago; recibe 403 en `/ventas`, `/ingresos`, `/usuarios` y `/pagos/{id}/anulaciones`.
 
 ### RF-17 (ajuste). Pago a una factura elegida
+> **Ajustado el 26-nov-2026 por S-79 (`docs/supuestos.md`):** `ingreso_id` es obligatorio en todo pago nuevo; ya no hay pago FIFO al crear ni saldo a favor nuevo. Los pagos anteriores sin ingreso se siguen leyendo FIFO. El criterio 1 queda: "sin elegir factura, el pago se rechaza (422)".
+
 Un pago puede ligarse a un ingreso a crédito concreto del mismo proveedor (`ingreso_id`, opcional). Su valor no puede superar lo pendiente de ese ingreso; se admiten varios pagos parciales. Un pago sin ingreso se aplica FIFO como antes. Al calcular la antigüedad, primero se descuenta de cada ingreso lo pagado a él y el resto de pagos se reparte FIFO. Un ingreso queda **cancelado** cuando su pendiente llega a 0. Si el ingreso deja de contar (una remisión cubierta luego por una factura, RF-19), lo pagado a él pasa al pago FIFO.
 **Aceptación.**
 1. Facturas A (vence primero, 100) y B (200). Un pago de 200 a B deja A pendiente 100 y B cancelada; sin elegir factura, el mismo pago cancela A y deja B en 100.
@@ -72,4 +74,4 @@ Cada fila: titular, documento, vencimiento, días para vencer o días de mora, v
 |---|---|
 | S-27 | El contable no anula pagos ni registra o anula abonos de clientes; lo hace el admin (y el mostrador en abonos). Si se equivoca en un pago, lo anula el admin. |
 | S-28 | El aviso es de 1 día y es el mismo para proveedores y clientes. Un documento sin vencimiento usa su fecha. |
-| S-29 | Un pago se liga a lo sumo a un ingreso; para pagar varias facturas se registra un pago por factura. |
+| S-29 | Un pago se liga a lo sumo a un ingreso; para pagar varias facturas se registra un pago por factura. **Ajustado por S-79 (26-nov-2026):** todo pago nuevo se liga a exactamente un ingreso (sin FIFO). |

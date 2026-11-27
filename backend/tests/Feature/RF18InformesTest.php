@@ -109,7 +109,7 @@ it('RF-18: cartera de clientes con saldo y antigüedad; los totales suman las fi
     ventaCreditoCerrada($beto, 1, 200);
     ventaCreditoCerrada($saldado, 1, 100);
     actuarComo(Rol::Admin);
-    $this->postJson("/api/clientes/{$saldado->id}/abonos", ['valor' => 100, 'cuenta_pago_id' => cuentaEfectivo()->id])->assertCreated();
+    abonar($saldado, 100)->assertCreated();
 
     $r = $this->getJson('/api/reportes/cartera-clientes')->assertOk();
 
@@ -156,7 +156,7 @@ it('RF-18: estado de cuenta del cliente con saldo anterior, saldo corrido y sald
     $admin = actuarComo(Rol::Admin);
     $this->travel(1)->minutes();
     app(ReversoService::class)->reversar($venta, TipoReverso::Devolucion, 'Devolvió una', $venta->items()->value('id'), $admin);
-    $this->postJson("/api/clientes/{$cliente->id}/abonos", ['valor' => 30, 'cuenta_pago_id' => cuentaEfectivo()->id])->assertCreated();
+    abonar($cliente, 30)->assertCreated();
 
     // Merge cesar + legri: el estado de cuenta del cliente es el de la cartera (S-30).
     $desde = now('America/Bogota')->subDays(5)->toDateString();
@@ -188,7 +188,7 @@ it('RF-18 / RF-19: el estado de cuenta del proveedor descuenta la remisión cubi
     app(IngresoService::class)->confirmar($factura, User::factory()->rol(Rol::Logistica)->create());
     actuarComo(Rol::Admin);
     $proveedor = $remision->proveedor_id;
-    $this->postJson("/api/proveedores/{$proveedor}/pagos", ['valor' => 500, 'cuenta_pago_id' => cuentaBanco()->id])->assertCreated();
+    pagar($proveedor, 500, ['cuenta_pago_id' => cuentaBanco()->id])->assertCreated();
 
     $r = $this->getJson("/api/proveedores/{$proveedor}/estado-cuenta")->assertOk();
 

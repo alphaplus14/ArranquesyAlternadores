@@ -7,9 +7,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * RF-25 (S-49): efectivo con que abre la caja un día. Lo registra el mostrador; se corrige mientras
- * el día no tenga cierre vigente. Una por fecha. Auditable: la creación y cada corrección quedan en
- * la auditoría (valor anterior, nuevo, usuario y fecha). No se borra.
+ * RF-25 (S-49, S-84): apertura MANUAL de la caja de un día. Desde S-84 la apertura es automática (el
+ * efectivo contado del último cierre vigente anterior); esta fila solo existe cuando el mostrador la
+ * cambia (con motivo si difiere de la del cierre anterior) o en el primer día sin cierres. Una por
+ * fecha; se cambia mientras el día no tenga cierre vigente. Auditable: la creación y cada cambio
+ * quedan en la auditoría (valor y motivo anterior y nuevo, usuario y fecha). No se borra.
  */
 class AperturaCaja extends Model
 {
@@ -17,7 +19,7 @@ class AperturaCaja extends Model
 
     protected $table = 'aperturas_caja';
 
-    protected $fillable = ['fecha', 'valor', 'usuario_id'];
+    protected $fillable = ['fecha', 'valor', 'motivo', 'usuario_id'];
 
     protected function casts(): array
     {

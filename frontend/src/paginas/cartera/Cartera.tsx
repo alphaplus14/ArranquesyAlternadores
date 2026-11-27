@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import BotonFila from '../../componentes/BotonFila'
 import { useQueryClient } from '@tanstack/react-query'
 import { api } from '../../api/cliente'
 import type { ListaCartera, ResumenCartera } from '../../api/tipos'
@@ -100,7 +100,7 @@ export default function Cartera() {
         ) : (
           <table className={cargando ? 'tabla-apilable tabla-cartera actualizando' : 'tabla-apilable tabla-cartera'}>
             <caption className="solo-lector">Clientes con su saldo, mayor saldo primero</caption>
-            <thead><tr><th>Cliente</th><th className="col-numero">Saldo</th><th className="col-numero">Vencido</th><th>Próximo vencimiento</th><th><span className="solo-lector">Acciones</span></th></tr></thead>
+            <thead><tr><th>Cliente</th><th className="col-numero">Saldo</th><th className="col-numero">Vencido</th><th>Próximo vencimiento</th><th className="boton-fila-columna boton-fila-doble">Acciones</th></tr></thead>
             <tbody>
               {filas.map((f) => f.cliente && (
                 <tr key={f.cliente.id}>
@@ -119,18 +119,22 @@ export default function Cartera() {
                   </td>
                   <td data-etiqueta="Vencido" className={Number(f.vencido) > 0 ? 'col-numero agotado' : 'col-numero'}>{pesos(f.vencido)}</td>
                   <td data-etiqueta="Próximo vencimiento">{f.proximo_vencimiento ? fechaCorta(f.proximo_vencimiento) : '—'}</td>
-                  <td className="celda-accion">
-                    <div className="acciones-fila">
-                      <Link className="boton secundario boton-44" to={f.coincidencia ? `/cartera/${f.cliente.id}?q=${encodeURIComponent(`#${f.coincidencia.venta_id}`)}` : `/cartera/${f.cliente.id}`}
-                        aria-label={f.coincidencia ? `Ver la venta #${f.coincidencia.venta_id} de ${f.cliente.nombre}` : `Ver la cartera de ${f.cliente.nombre}`}>Ver</Link>
-                      <button
-                        type="button"
-                        className="primario boton-44"
-                        disabled={!f.cliente.activo}
-                        title={f.cliente.activo ? undefined : 'Cliente inactivo'}
-                        aria-label={`Abonar a ${f.cliente.nombre}`}
+                  <td className="celda-accion boton-fila-columna boton-fila-doble">
+                    <div className="acciones-fila boton-fila-acciones">
+                      <BotonFila
+                        variante="ver"
+                        to={f.coincidencia ? `/cartera/${f.cliente.id}?q=${encodeURIComponent(`#${f.coincidencia.venta_id}`)}` : `/cartera/${f.cliente.id}`}
+                        descripcion={f.coincidencia ? `Ver la venta #${f.coincidencia.venta_id} de ${f.cliente.nombre}` : `Ver la cartera de ${f.cliente.nombre}`}
+                      />
+                      <BotonFila
+                        variante="pagar"
+                        etiqueta="Abonar"
+                        // S-79: el abono va a una venta con saldo; sin saldo no hay a cuál.
+                        disabled={!f.cliente.activo || Number(f.saldo) <= 0}
+                        title={!f.cliente.activo ? 'Cliente inactivo' : Number(f.saldo) <= 0 ? 'Este cliente no tiene facturas con saldo.' : undefined}
+                        descripcion={`Abonar a ${f.cliente.nombre}`}
                         onClick={(e) => { disparador.current = e.currentTarget; setAviso(null); setAbonando(f) }}
-                      >Abonar</button>
+                      />
                     </div>
                   </td>
                 </tr>
@@ -150,7 +154,7 @@ export default function Cartera() {
           onGuardado={(abono, resumen) => {
             qc.invalidateQueries({ queryKey: ['cartera'] })
             qc.invalidateQueries({ queryKey: ['cartera-cliente', abono.cliente_id] })
-            setAviso(`Abono de ${pesos(abono.valor)} registrado a ${resumen.cliente?.nombre} (${abono.aplicado_a === 'General' ? 'a las ventas más antiguas' : `a la venta ${abono.aplicado_a.replace(/^Venta /, '')}`}). Saldo: ${textoSaldo(resumen.saldo)}.`)
+            setAviso(`Abono de ${pesos(abono.valor)} registrado a ${resumen.cliente?.nombre} (a la venta ${abono.aplicado_a.replace(/^Venta /, '')}). Saldo: ${textoSaldo(resumen.saldo)}.`)
             cerrarAbono()
           }}
         />

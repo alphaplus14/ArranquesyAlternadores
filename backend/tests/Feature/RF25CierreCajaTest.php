@@ -49,9 +49,10 @@ function pago(CuentaPago $cuenta, $valor): array
 }
 
 /** PUT de la apertura del día como el usuario en sesión. */
-function apertura(string $fecha, $valor)
+function apertura(string $fecha, $valor, ?string $motivo = null)
 {
-    return test()->putJson("/api/caja/dias/{$fecha}/apertura", ['valor' => $valor]);
+    // S-84: el motivo es obligatorio cuando el valor difiere de lo que dejó el cierre anterior.
+    return test()->putJson("/api/caja/dias/{$fecha}/apertura", ['valor' => $valor, ...($motivo !== null ? ['motivo' => $motivo] : [])]);
 }
 
 /** Cierre del día como el usuario en sesión. */
@@ -69,13 +70,14 @@ function diaDeEjemplo()
     [$venta1, $items1] = ventaContado(2, [pago(cuentaEfectivo(), 100000)]);
     ventaContado(1, [pago(cuentaEfectivo(), 30000), pago(nequi(), 20000)]);
     // Crédito de 70.000: cuenta para el total del día, no para el efectivo.
-    ventaCredito(Cliente::factory()->create(), [70000]);
+    $deudor = Cliente::factory()->create();
+    ventaCredito($deudor, [70000]);
 
     $mostrador = actuarComo(Rol::Mostrador);
     // Devolución de una unidad de la primera venta (S-50): sale del efectivo, no se digita como gasto.
     test()->postJson("/api/ventas/{$venta1}/reversos", ['tipo' => 'devolucion', 'motivo' => 'Pieza equivocada', 'venta_item_id' => $items1[0]])->assertOk();
     // Recaudo de cartera en efectivo (S-51: no cuenta para la meta).
-    abonar(Cliente::factory()->create(), 40000)->assertCreated();
+    abonar($deudor, 40000)->assertCreated(); // S-79: dirigido a la venta a crédito del deudor
     // Movimientos de caja.
     movimientoCaja('EMPRESA', 10000)->assertCreated();
     $anulado = movimientoCaja('PERSONAL', 9999)->json('id');
@@ -87,7 +89,9 @@ function diaDeEjemplo()
 
     // Pago a proveedor en efectivo (admin).
     actuarComo(Rol::Admin);
-    test()->postJson('/api/proveedores/'.referencia('RN-4410')->proveedor_id.'/pagos', ['valor' => 25000, 'cuenta_pago_id' => cuentaEfectivo()->id])->assertCreated();
+    // S-79: el pago va a una factura a crédito (la compra no mueve la caja).
+    compra(referencia('RN-4410'), 1, 25000, aCredito());
+    pagar(referencia('RN-4410')->proveedor_id, 25000)->assertCreated();
 
     test()->actingAs($mostrador);
 
@@ -155,21 +159,23 @@ it('RF-25 / S-49: sin apertura el día no se cierra; con apertura 0 sí', functi
         ->assertJsonPath('diferencia', '0.00');
 });
 
-it('RF-25 / S-49: la sugerencia de apertura es el efectivo contado del último cierre vigente anterior', function () {
+it('RF-25 / S-84: la apertura arrastra el efectivo contado del último cierre vigente anterior', function () {
     actuarComo(Rol::Mostrador);
-    $this->getJson('/api/caja/dias/2026-11-20')->assertJsonPath('resumen.apertura_sugerida', null);
+    $this->getJson('/api/caja/dias/2026-11-20')->assertJsonPath('resumen.apertura', null);
 
     apertura('2026-11-18', 0)->assertOk();
     cerrarDia('2026-11-18', 0)->assertCreated();
     apertura('2026-11-19', 0)->assertOk();
     $c19 = cerrarDia('2026-11-19', 12345)->assertCreated()->json('id');
 
-    $this->getJson('/api/caja/dias/2026-11-20')->assertJsonPath('resumen.apertura_sugerida', '12345.00');
+    $this->getJson('/api/caja/dias/2026-11-20')->assertJsonPath('resumen.apertura.valor', '12345.00')
+        ->assertJsonPath('resumen.apertura.origen', 'arrastre')->assertJsonPath('resumen.apertura.desde_cierre', '2026-11-19');
 
-    // Reabierto el 19, la sugerencia sale del cierre vigente anterior (el 18).
+    // Reabierto el 19, la apertura sale del cierre vigente anterior (el 18).
     actuarComo(Rol::Admin);
     $this->postJson("/api/caja/cierres/{$c19}/reaperturas", ['motivo' => 'Recontar'])->assertCreated();
-    $this->getJson('/api/caja/dias/2026-11-20')->assertJsonPath('resumen.apertura_sugerida', '0.00');
+    $this->getJson('/api/caja/dias/2026-11-20')->assertJsonPath('resumen.apertura.valor', '0.00')
+        ->assertJsonPath('resumen.apertura.desde_cierre', '2026-11-18');
 });
 
 /* ───────────────────────── Resumen del día y cierre ───────────────────────── */
@@ -224,14 +230,15 @@ it('RF-25 / S-49: el cierre guarda apertura, esperado = apertura + neto y el arq
         ->assertJsonPath('cierre.usuario.name', $mostrador->name);
 });
 
-it('RF-25 / S-49: días con aperturas distintas dan cierres independientes (sin saldo encadenado)', function () {
+it('RF-25 / S-49 / S-84: un cambio manual de apertura da un cierre independiente del arrastre', function () {
     actuarComo(Rol::Mostrador);
     apertura('2026-11-19', 50000)->assertOk();
     movimientoCaja('EMPRESA', 10000, extra: ['fecha' => '2026-11-19'])->assertCreated();
     cerrarDia('2026-11-19', 40000)->assertCreated()->assertJsonPath('efectivo_esperado', '40000.00')->assertJsonPath('diferencia', '0.00');
 
-    // El 20 abre con otro valor: lo del 19 no se arrastra.
-    apertura('2026-11-20', 70000)->assertOk();
+    // El 20 se cambia a mano a otro valor (con motivo): manda el cambio, no lo que dejó el 19.
+    apertura('2026-11-20', 70000)->assertUnprocessable()->assertJsonPath('campo', 'motivo');
+    apertura('2026-11-20', 70000, 'Llegó efectivo de la Caja General antes de abrir')->assertOk()->assertJsonPath('apertura.origen', 'manual');
     cerrarDia('2026-11-20', 70500)->assertCreated()
         ->assertJsonPath('apertura', '70000.00')
         ->assertJsonPath('efectivo_esperado', '70000.00')
@@ -335,8 +342,9 @@ it('RF-25 / S-48: una venta de contado sin detalle de pago y un abono viejo sin 
 
 it('RF-25 / S-49: una anulación de abono resta en el día en que se anula; el día siguiente no arrastra nada', function () {
     $cliente = Cliente::factory()->create();
+    ventaCredito($cliente, [30000]);
     actuarComo(Rol::Mostrador);
-    $abono = abonar($cliente, 30000)->json('abono.id');
+    $abono = abonar($cliente, 30000)->assertCreated()->json('abono.id');
 
     Carbon::setTestNow('2026-11-21 15:00:00');
     actuarComo(Rol::Admin);
@@ -367,9 +375,9 @@ it('RF-25 / S-49: los cierres anteriores a la apertura diaria (con saldo encaden
     $fila = collect($this->getJson('/api/caja/meses/2026-11')->assertOk()->json('dias'))->firstWhere('fecha', '2026-11-19');
     expect($fila)->toMatchArray(['cerrado' => true, 'apertura' => null, 'efectivo_esperado' => '50000.00', 'efectivo_contado' => '300000.00', 'diferencia' => '250000.00']);
 
-    // Y sugiere abrir el 20 con lo contado en ese cierre.
+    // Y el 20 abre solo con lo contado en ese cierre (S-84).
     actuarComo(Rol::Mostrador);
-    $this->getJson('/api/caja/dias/2026-11-20')->assertJsonPath('resumen.apertura_sugerida', '300000.00');
+    $this->getJson('/api/caja/dias/2026-11-20')->assertJsonPath('resumen.apertura.valor', '300000.00')->assertJsonPath('resumen.apertura.origen', 'arrastre');
 });
 
 it('RF-25: el cuadre mensual trae apertura, esperado, contado y diferencia por día, marca los sin cerrar y acumula el neto desde 0', function () {
@@ -378,7 +386,7 @@ it('RF-25: el cuadre mensual trae apertura, esperado, contado y diferencia por d
 
     Carbon::setTestNow('2026-11-21 15:00:00');
     test()->actingAs($mostrador);
-    apertura('2026-11-21', 150000)->assertOk();
+    apertura('2026-11-21', 150000, 'Se retiró dinero de la caja')->assertOk();
     movimientoCaja('Plan celulares', 20000)->assertCreated();
 
     actuarComo(Rol::Admin);

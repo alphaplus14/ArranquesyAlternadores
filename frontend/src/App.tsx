@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { Navigate, Outlet, Route, Routes } from 'react-router-dom'
+import { Navigate, Outlet, Route, Routes, useParams } from 'react-router-dom'
 import type { Rol } from './api/tipos'
 import { useAuth } from './auth/AuthProvider'
 import { RUTA_AJUSTES, RUTA_CAJA, RUTA_CAJA_ADMIN, RUTA_CARTERA, RUTA_CORRECCIONES, RUTA_COSTOS, RUTA_PANEL, RUTA_PRECIOS_COMPRA, RUTA_UNIVERSALES, rutaInicio } from './rutas'
@@ -20,8 +20,6 @@ const IngresoDetalle = lazy(() => import('./paginas/logistica/IngresoDetalle'))
 const Etiquetas = lazy(() => import('./paginas/logistica/Etiquetas'))
 const Ajustes = lazy(() => import('./paginas/logistica/Ajustes'))
 const Productos = lazy(() => import('./paginas/Productos'))
-const Universales = lazy(() => import('./paginas/admin/Universales'))
-const UniversalDetalle = lazy(() => import('./paginas/admin/UniversalDetalle'))
 const Catalogos = lazy(() => import('./paginas/admin/Catalogos'))
 const Usuarios = lazy(() => import('./paginas/admin/Usuarios'))
 const Clientes = lazy(() => import('./paginas/admin/Clientes'))
@@ -55,6 +53,11 @@ export default function App() {
       <Route element={usuario ? <Layout /> : <Navigate to="/login" replace />}>
         <Route path="/" element={<Navigate to={usuario ? rutaInicio(usuario.rol) : '/login'} replace />} />
         <Route path="/productos" element={<Productos />} />
+        {/* S-82: los universales viven en Inventario; los enlaces viejos llevan allá (con el grupo desplegado). */}
+        <Route path={RUTA_UNIVERSALES} element={<Navigate to="/productos" replace />} />
+        <Route path={`${RUTA_UNIVERSALES}/:id`} element={<RedirigirUniversal />} />
+        <Route path="/admin/universales" element={<Navigate to="/productos" replace />} />
+        <Route path="/admin/universales/:id" element={<RedirigirUniversal />} />
         <Route element={<ConRol roles={['contable']} />}>
           <Route path="/contable/vencimientos" element={<Vencimientos />} />
           <Route path="/contable/cuentas-por-pagar" element={<Saldos de="proveedores" />} />
@@ -84,16 +87,10 @@ export default function App() {
           <Route path="/agotados" element={<Agotados />} />
           {/* S-71: historial de costos (ver-historial-costos: admin y logística; el mostrador vuelve a su inicio). */}
           <Route path={RUTA_COSTOS} element={<Costos />} />
-          {/* S-59: logística crea y edita códigos universales (mismas pantallas del admin, sin eliminar). */}
-          <Route path={RUTA_UNIVERSALES} element={<Universales />} />
-          <Route path={`${RUTA_UNIVERSALES}/:id`} element={<UniversalDetalle />} />
         </Route>
         <Route element={<ConRol roles={['admin']} />}>
           <Route path={RUTA_PANEL} element={<Suspense fallback={<div className="cargando">Cargando el panel…</div>}><Panel /></Suspense>} />
           <Route path="/admin/referencias" element={<Navigate to="/productos" replace />} />
-          {/* Enlaces viejos del admin: S-59 movió los universales a RUTA_UNIVERSALES. */}
-          <Route path="/admin/universales" element={<Navigate to={RUTA_UNIVERSALES} replace />} />
-          <Route path="/admin/universales/:id" element={<UniversalDetalle />} />
           <Route path="/admin/catalogos" element={<Catalogos />} />
           <Route path="/admin/usuarios" element={<Usuarios />} />
           <Route path="/admin/clientes" element={<Clientes />} />
@@ -108,4 +105,10 @@ export default function App() {
       </Route>
     </Routes>
   )
+}
+
+/** S-82: /universales/:id (y /admin/universales/:id) abre Inventario con ese universal desplegado. */
+function RedirigirUniversal() {
+  const { id } = useParams()
+  return <Navigate to={id && /^\d+$/.test(id) ? `/productos?universal=${id}` : '/productos'} replace />
 }

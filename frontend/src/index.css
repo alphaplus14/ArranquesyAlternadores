@@ -545,6 +545,14 @@ tr.reversado td:has(.icono-accion) { text-decoration: none; }
   overflow: hidden;
 }
 .detalle-compra > .panel-correccion { overflow: auto; }
+/* Un panel oculto (el de solo lectura mientras se corrige, RF-28) no se muestra: el display:flex de
+   arriba le ganaba al atributo hidden. */
+.detalle-compra > .panel[hidden] { display: none; }
+/* RF-28: en corrección no hay alto fijo ni scroll anidado: un solo scroll, el de la página, para que
+   el lector, la cabecera de la tabla y la barra (sticky) se peguen a la ventana. El borrador y el
+   documento confirmado en solo lectura siguen con el alto fijo de arriba. */
+.detalle-compra.corrigiendo { height: auto; min-height: 0; overflow: visible; }
+.detalle-compra.corrigiendo > .panel-correccion { overflow: visible; flex: none; }
 .detalle-compra .tabla-desplazable {
   flex: 1 1 auto;
   min-height: 0;
@@ -1190,8 +1198,62 @@ button.celda-editable.pendiente:hover, button.celda-editable.pendiente:focus-vis
 .listado-tarjetas [data-etiqueta]::before { content: attr(data-etiqueta); flex: none; color: var(--suave); font-size: 0.8rem; font-weight: 400; text-align: left; }
 .listado-tarjetas .acciones-fila { margin-top: auto; display: flex; justify-content: flex-end; gap: 8px; }
 
+/*
+ * S-82: códigos universales dentro de Inventario. La fila del universal agrupa (chevron que despliega,
+ * fondo suave); desplegado, él y sus referencias forman un bloque con una barra de acento continua a la
+ * izquierda (::after de cada fila, que también cubre el borde inferior) y una línea al final. Todas las
+ * filas conservan el mismo alto (la lista sigue virtualizada).
+ */
+.tabla-fila.fila-universal { cursor: pointer; background: var(--suave-fondo); }
+.tabla-fila.fila-universal:hover { background: var(--acento-suave); }
+.tabla-fila.fila-universal.resaltada { background: #FFF8DC; box-shadow: inset 3px 0 0 var(--resalte); }
+.tabla-rejilla .celda-universal { flex-wrap: nowrap; white-space: nowrap; overflow: hidden; gap: 4px; }
+.tabla-rejilla .celda-universal > strong { flex: 0 1 auto; }
+.tabla-rejilla .celda-universal > .chip-universal { flex: none; }
+.flecha-universal {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; min-height: 36px; padding: 0; margin: 0 -4px 0 -8px;
+  border: 0; border-radius: 8px; background: transparent; color: var(--acento); cursor: pointer;
+}
+.flecha-universal svg { transition: transform 150ms ease; }
+.flecha-universal.abierta svg { transform: rotate(90deg); }
+.flecha-universal:hover { background: var(--acento-suave); }
+.flecha-universal:focus-visible { outline: 2px solid var(--resalte); outline-offset: 0; }
+@media (prefers-reduced-motion: reduce) { .flecha-universal svg { transition: none; } }
+.chip.chip-universal { background: var(--acento-suave); color: var(--acento); font-weight: 600; white-space: nowrap; }
+/* Bloque del grupo desplegado: barra continua y fondo claro en las hijas; la última cierra el bloque. */
+.tabla-fila.fila-universal.desplegada::after,
+.tabla-fila.fila-hija::after {
+  content: ''; position: absolute; left: 0; top: 0; bottom: -1px; width: 3px; background: var(--acento); pointer-events: none;
+}
+.tabla-fila.fila-hija { background: var(--panel); }
+.tabla-fila.fila-hija.ultima { border-bottom: 2px solid var(--acento-suave); }
+.tabla-fila.fila-hija.ultima::after { bottom: -2px; }
+.tabla-fila.fila-hija.resaltada::after { background: var(--resalte); }
+.tabla-fila.fila-hija > .celda-referencia { padding-left: 34px; position: relative; }
+.tabla-fila.fila-hija > .celda-referencia::before {
+  content: ''; position: absolute; left: 20px; top: 0; bottom: 0; width: 2px; background: var(--acento-suave);
+}
+.tabla-fila.fila-hija.ultima > .celda-referencia::before { bottom: 50%; }
+/* Agotadas e inactivas al final del grupo, atenuadas (la existencia 0 sigue en rojo y la inactiva con su chip). */
+.tabla-fila.fila-hija.agotada > [role='cell']:not(.celda-existencia):not(.acciones-fila) { color: var(--suave); }
+.desplegar-todos { font-weight: 600; }
+.listado-tarjetas .tabla-rejilla.tabla-fila.fila-hija { margin-left: 18px; width: calc(100% - 18px); box-sizing: border-box; box-shadow: inset 3px 0 0 var(--acento), inset 0 0 0 1px var(--borde); }
+.listado-tarjetas .tabla-rejilla.tabla-fila.fila-hija.ultima { border-bottom-width: 10px; border-bottom-color: var(--panel); }
+.listado-tarjetas .tabla-fila.fila-hija::after,
+.listado-tarjetas .tabla-fila.fila-universal.desplegada::after { display: none; }
+.listado-tarjetas .tabla-fila.fila-hija > .celda-referencia { padding-left: 0; }
+.listado-tarjetas .tabla-fila.fila-hija > .celda-referencia::before { display: none; }
+.listado-tarjetas .tabla-rejilla.tabla-fila.fila-universal { box-shadow: inset 0 0 0 1px var(--acento-suave); }
+.listado-tarjetas .tabla-rejilla.tabla-fila.fila-universal.desplegada { box-shadow: inset 3px 0 0 var(--acento), inset 0 0 0 1px var(--acento-suave); }
+/* Modal del universal: botón de peligro secundario y confirmación en línea. */
+button.texto-peligro { color: var(--peligro); border-color: var(--peligro); margin-right: auto; }
+.confirmar-en-linea { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-right: auto; color: var(--peligro); font-weight: 600; }
+
 /* Productos: un solo campo para escanear y buscar, con lupa y botón para limpiar; proveedor al lado. */
-.barra-busqueda { display: flex; gap: 10px; align-items: flex-start; }
+.barra-busqueda { display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+/* S-82: con "Nuevo universal" y "Nueva referencia" el campo conserva un ancho útil; si no cabe, los controles bajan. */
+.barra-busqueda > .campo-unico { flex: 1 1 320px; }
 .barra-busqueda .selector.filtro { width: 240px; flex: none; }
 .barra-busqueda .selector.filtro input { min-height: 50px; }
 .barra-busqueda .controles-listado { margin-bottom: 8px; }
@@ -1247,7 +1309,7 @@ button.busca-limpiar:hover { background: var(--suave-fondo); color: var(--texto)
 
 /* S-26: controles del listado (proveedor, ver inactivas, nueva referencia), filas inactivas y
    confirmación/errores flotando sobre la fila (la fila tiene alto fijo por la virtualización). */
-.controles-listado { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; flex: none; }
+.controles-listado { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; flex: 0 1 auto; }
 .controles-listado .primario { min-height: 50px; }
 .ver-inactivas { white-space: nowrap; color: var(--texto); font-size: 0.9rem; gap: 6px; }
 .tabla-fila { position: relative; }
@@ -1418,7 +1480,6 @@ input[aria-invalid='true']:not([type='checkbox']):not([type='radio']):focus-visi
 .vacio-con-accion p { margin: 0; }
 .coincidencia-venta { color: var(--primario); font-weight: 600; }
 /* S-32: aplicar el abono a una factura. */
-.campo-aplicar { display: flex; flex-direction: column; gap: 6px; }
 .selector-factura { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .selector-factura legend { padding: 0; margin-bottom: 6px; }
 .selector-factura .busca input { min-width: 0; width: 100%; min-height: 44px; box-sizing: border-box; padding-left: 34px; }
@@ -1614,7 +1675,6 @@ small.bloque { display: block; font-size: 0.8rem; }
 a.boton { display: inline-flex; align-items: center; justify-content: center; }
 .tabla-cartera .acciones-fila { justify-content: flex-end; }
 .datos-abono { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.confirmar-exceso { margin-top: 8px; color: var(--texto); font-weight: 600; gap: 8px; min-height: 44px; }
 @media (max-width: 639px) {
   .cartera-antiguedad-rangos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .filtros-cartera .busca, .filtros-cartera .campo-corte { width: 100%; }
@@ -1706,6 +1766,62 @@ a.boton { display: inline-flex; align-items: center; justify-content: center; }
 .filtros-correcciones { margin-bottom: 12px; }
 .filtros-correcciones label { display: flex; flex-direction: column; gap: 2px; }
 
+/*
+ * S-78: botón de acción de una fila (componentes/BotonFila.tsx) en la columna final "Acciones".
+ * Alto ligado a la densidad (S-70): 36 px cómoda (--espacio-fila 11 px), 32 px compacta (8 px); 44 px
+ * en táctil o pantalla angosta. El tamaño de letra sigue a la escala (rem).
+ */
+.boton.boton-fila {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: calc(var(--espacio-fila) * 1.3334 + 21.33px); padding: 4px 12px;
+  font-size: 0.85rem; line-height: 1.2; white-space: nowrap; text-decoration: none; vertical-align: middle;
+}
+.boton.boton-fila svg { width: 16px; height: 16px; flex: none; }
+.boton.boton-fila:focus-visible { outline: 2px solid var(--resalte); outline-offset: 2px; }
+.boton.boton-fila.boton-fila-compacto { min-height: 28px; padding: 2px 10px; font-size: 0.8rem; gap: 4px; }
+.boton.boton-fila.boton-fila-compacto svg { width: 14px; height: 14px; }
+th.boton-fila-columna, td.boton-fila-columna { width: 140px; text-align: right; white-space: nowrap; }
+th.boton-fila-columna.boton-fila-doble, td.boton-fila-columna.boton-fila-doble { width: 200px; }
+.boton-fila-acciones { display: inline-flex; gap: 8px; justify-content: flex-end; align-items: center; }
+/* En una tarjeta (columna flex), el botón compacto conserva su ancho y va bajo el texto. */
+.boton.boton-fila.boton-fila-compacto { align-self: flex-start; margin-top: 4px; }
+@media (max-width: 639px), (pointer: coarse) {
+  .boton.boton-fila { min-height: 44px; }
+}
+@media (max-width: 639px) {
+  .tabla-apilable td.boton-fila-columna { width: auto; text-align: left; white-space: normal; }
+  .tabla-apilable td.boton-fila-columna[data-etiqueta] { display: block; }
+  .tabla-apilable td.boton-fila-columna[data-etiqueta]::before { display: block; margin-bottom: 4px; }
+  .tabla-apilable td.boton-fila-columna:empty { display: none; }
+  .tabla-lineas td.boton-fila-columna { display: block; width: 100%; text-align: left; white-space: normal; }
+  .tabla-lineas td.boton-fila-columna::before { display: block; margin-bottom: 4px; }
+  .tabla-lineas td.boton-fila-columna > .boton-fila { width: 100%; box-sizing: border-box; }
+  .tabla-apilable .boton-fila-acciones { display: flex; width: 100%; }
+  .tabla-apilable .boton-fila-acciones > .boton-fila, .tabla-apilable td.boton-fila-columna > .boton-fila { flex: 1; width: 100%; box-sizing: border-box; }
+}
+
+/* S-79: "Anular" en una fila: secundario con texto y borde de peligro y fondo suave. */
+.boton.boton-fila.boton-fila-anular { color: var(--peligro); border-color: var(--peligro); background: var(--error-fondo); }
+.boton.boton-fila.boton-fila-anular:hover:not(:disabled) { background: var(--peligro); color: var(--panel); }
+
+/* S-79: pagos y abonos dirigidos. "Abonado" bajo el valor del documento; resumen del documento en el diálogo. */
+.abonado-documento { display: block; color: var(--suave); font-size: 0.78rem; font-weight: 400; white-space: nowrap; }
+.documento-a-pagar { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 0; padding: 8px 12px; border-radius: 8px; background: var(--suave-fondo); color: var(--suave); }
+.documento-a-pagar strong { color: var(--texto); font-variant-numeric: tabular-nums; }
+/* Botón de la cabecera con su motivo cuando está deshabilitado (p. ej. sin facturas con saldo). */
+.accion-encabezado { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; max-width: 18rem; text-align: right; }
+.accion-encabezado > .primario { min-height: 44px; }
+@media (max-width: 639px) {
+  .accion-encabezado { align-items: stretch; max-width: none; text-align: left; }
+  .accion-encabezado > .primario { width: 100%; }
+}
+/* S-79: tarjetas de antigüedad: "Saldo" resaltado; más de 30 días con valor, en advertencia. */
+.antiguedad .antiguedad-saldo { border-width: 2px; border-color: var(--acento); }
+.antiguedad .antiguedad-saldo strong { font-size: 1.1rem; }
+.antiguedad .antiguedad-alerta { border-color: var(--aviso); background: var(--aviso-fondo); }
+.antiguedad .antiguedad-alerta span, .antiguedad .antiguedad-alerta strong { color: var(--aviso); }
+.antiguedad .antiguedad-alerta strong { font-weight: 800; }
+
 /* S-69: botón "Abrir" de cada compra en la tabla Documentos (compacto; 44 px de toque en móvil). */
 .boton.boton-abrir { padding: 4px 12px; font-size: 0.85rem; white-space: nowrap; min-height: 34px; }
 @media (max-width: 639px) {
@@ -1713,10 +1829,6 @@ a.boton { display: inline-flex; align-items: center; justify-content: center; }
 }
 
 /* RF-25 (S-49): apertura diaria de la caja. */
-.apertura-linea { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0; color: var(--suave); }
-.apertura-linea strong { color: var(--texto); }
-.apertura-caja .formulario { display: grid; gap: 6px; max-width: 420px; }
-.apertura-caja input { width: 100%; box-sizing: border-box; min-height: 44px; }
 .desglose-efectivo .subtotal { font-weight: 600; border-bottom-style: solid; }
 
 /* RF-09 / RF-16 / S-66 (ajuste): condiciones del documento de un ingreso, en chips, y aviso informativo. */
@@ -1731,15 +1843,6 @@ a.boton { display: inline-flex; align-items: center; justify-content: center; }
   .condiciones-documento > button { width: 100%; justify-content: center; }
 }
 
-/* S-49: confirmación de la apertura de caja (cuerpo propio: nada se corta). */
-.modal.confirmar .cuenta-modal:has(.apertura-confirmar) { max-width: 480px; }
-.apertura-confirmar { padding: 22px 26px; gap: 16px; }
-.apertura-confirmar-datos { margin: 0; display: grid; gap: 14px; }
-.apertura-confirmar-datos dt { font-size: 0.8rem; color: var(--suave); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
-.apertura-confirmar-datos dd { margin: 2px 0 0; font-size: 1rem; }
-.apertura-confirmar-datos .apertura-confirmar-monto { font-size: 1.9rem; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--texto); }
-.apertura-confirmar-ayuda { margin: 0; color: var(--suave); font-size: 0.9rem; line-height: 1.4; white-space: normal; overflow-wrap: anywhere; }
-
 /* RF-25 / RF-26: caja del día en una pantalla (solo presentación). Escritorio (>= 1100 px): la vista
    del mostrador ocupa el alto útil (100vh − barra superior 4rem − relleno 2 × 20 px) y cada columna
    desplaza su propio contenido; por debajo, todo se apila y la página se desplaza normal. */
@@ -1747,7 +1850,32 @@ a.boton { display: inline-flex; align-items: center; justify-content: center; }
 .caja-encabezado { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; }
 .caja-encabezado h1 { margin: 0; font-size: 1.45rem; }
 .caja-encabezado-fecha input { min-height: 40px; }
-.caja-chip-apertura { display: inline-flex; align-items: center; gap: 8px; }
+/* S-84: apertura automática en el encabezado: texto con su origen y "Cambiar apertura" al lado; si no
+   cabe, el botón baja a otra línea. El motivo de un cambio manual va en un desplegable (teclado). */
+.caja-apertura { display: inline-flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; min-width: 0; }
+.caja-apertura-texto { display: inline-flex; align-items: baseline; gap: 4px 6px; flex-wrap: wrap; min-width: 0; color: var(--suave); }
+.caja-apertura-texto strong { color: var(--texto); font-variant-numeric: tabular-nums; }
+.caja-apertura-detalle { position: relative; }
+.caja-apertura-detalle > summary { cursor: pointer; color: var(--acento); text-decoration: underline; text-underline-offset: 2px; list-style: none; }
+.caja-apertura-detalle > summary::-webkit-details-marker { display: none; }
+.caja-apertura-detalle > summary:focus-visible { outline: 2px solid var(--resalte); outline-offset: 2px; border-radius: 4px; }
+.caja-apertura-popover {
+  position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; min-width: 240px; max-width: min(340px, 80vw);
+  padding: 10px 12px; border: 1px solid var(--borde); border-radius: 10px; background: var(--panel); color: var(--texto);
+  box-shadow: var(--sombra-barra); white-space: normal; overflow-wrap: anywhere;
+}
+.caja-apertura-popover p { margin: 0 0 4px; }
+.caja-apertura-popover p:last-child { margin-bottom: 0; color: var(--suave); }
+.caja-abrir, .caja-aviso-dias { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; }
+.caja-abrir > span, .caja-aviso-dias > span { flex: 1 1 240px; min-width: 0; }
+.caja-sin-apertura { margin: 0 0 8px; }
+.apertura-usar-cierre { align-self: flex-start; margin: 2px 0 6px; }
+/* Cuadre mensual: origen de la apertura (↻ del cierre anterior, ✎ cambiada a mano). */
+.apertura-origen { color: var(--suave); font-weight: 600; }
+.apertura-origen-manual { color: var(--aviso); }
+@media (max-width: 639px) {
+  .caja-apertura { width: 100%; }
+}
 .caja-vista .apertura-caja { padding: 14px 18px; }
 .caja-vista .apertura-caja h2 { margin: 0 0 6px; font-size: 1.05rem; }
 .caja-trabajo { display: flex; flex-direction: column; gap: 12px; }
@@ -1798,16 +1926,18 @@ a.boton { display: inline-flex; align-items: center; justify-content: center; }
 .empleado-total-nomina { font-weight: 400; color: var(--suave); }
 .empleado-nomina { font-size: 0.75rem; padding: 1px 8px; }
 td.empleado-valor-nomina { color: var(--suave); }
-.empleado-selector { border: 0; margin: 0; padding: 0; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
-.empleado-selector input[type="search"] { width: 100%; box-sizing: border-box; }
-.empleado-lista { max-height: 200px; overflow-y: auto; border: 1px solid var(--borde); border-radius: var(--radio); background: var(--panel); }
-.empleado-opcion { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px; cursor: pointer; }
-.empleado-opcion + .empleado-opcion { border-top: 1px solid var(--borde); }
-.empleado-opcion:hover { background: var(--suave-fondo); }
-.empleado-opcion.elegida { background: var(--acento-suave); }
-.empleado-opcion input { margin: 0; flex: none; }
-.empleado-documento { margin-left: 8px; color: var(--suave); }
-.empleado-lista .cargando { margin: 0; padding: 10px 12px; }
+/* S-81: select de empleado (con su saldo) y de cuenta de pago: 44 px, borde, radio y flecha propios. */
+select.empleado-select {
+  width: 100%; min-height: 44px; box-sizing: border-box; padding-right: 34px; cursor: pointer;
+  appearance: none; -webkit-appearance: none; text-overflow: ellipsis;
+  background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='16' height='16' fill='none' stroke='%235C6B86' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 10px center;
+}
+select.empleado-select:disabled { background-color: var(--suave-fondo); cursor: not-allowed; }
+.empleado-saldo { min-height: 1.2em; font-weight: 600; color: var(--texto); }
+/* Valor + "Pagar todo" en una fila. */
+.empleado-valor { display: flex; gap: 8px; align-items: stretch; }
+.empleado-valor input { flex: 1; min-width: 0; min-height: 44px; box-sizing: border-box; }
+button.empleado-pagar-todo { flex: none; min-height: 44px; white-space: nowrap; }
 .caja-por-cuenta { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .caja-por-cuenta .tabla-caja { width: 100%; }
 .caja-por-cuenta-titulo { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-top: 6px; }

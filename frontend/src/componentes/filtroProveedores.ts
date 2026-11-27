@@ -19,17 +19,18 @@ export function normalizarNit(nit: string): string {
 
 const porNombre = (a: ProveedorFiltrable, b: ProveedorFiltrable) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' })
 
-export function filtrarProveedores<T extends ProveedorFiltrable>(lista: readonly T[], consulta: string): T[] {
+/** `soloNombre` (S-83, mostrador): ignora NIT y asesor aunque vinieran en la lista. */
+export function filtrarProveedores<T extends ProveedorFiltrable>(lista: readonly T[], consulta: string, soloNombre = false): T[] {
   const texto = normalizarTexto(consulta)
   if (texto === '') return [...lista].sort(porNombre)
-  const nitBuscado = normalizarNit(consulta)
+  const nitBuscado = soloNombre ? '' : normalizarNit(consulta)
 
   const empiezan: T[] = []
   const contienen: T[] = []
   for (const p of lista) {
     const nombre = normalizarTexto(p.nombre)
     const nit = p.nit ? normalizarNit(p.nit) : ''
-    const asesor = p.asesor ? normalizarTexto(p.asesor) : ''
+    const asesor = !soloNombre && p.asesor ? normalizarTexto(p.asesor) : ''
     const conNit = nitBuscado !== '' && nit !== ''
     if (nombre.startsWith(texto) || (conNit && nit.startsWith(nitBuscado)) || (asesor !== '' && asesor.startsWith(texto))) empiezan.push(p)
     else if (nombre.includes(texto) || (conNit && nit.includes(nitBuscado)) || asesor.includes(texto)) contienen.push(p)

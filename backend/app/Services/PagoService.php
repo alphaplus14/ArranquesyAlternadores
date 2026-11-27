@@ -17,7 +17,9 @@ use Illuminate\Support\Facades\DB;
 /**
  * RF-17: pagos a proveedores, mismo esquema que los abonos (RF-15). Un pago nunca se edita ni se
  * borra: anularlo es un movimiento nuevo con usuario, fecha y motivo. No toca existencias.
- * RF-17 (ajuste): con `ingreso_id` el pago se aplica a ese ingreso a crédito y no supera su pendiente.
+ * S-79: todo pago nuevo va a una factura o remisión a crédito elegida (`ingreso_id` obligatorio) y no
+ * supera su pendiente; un documento recibe varios pagos parciales hasta cancelarse. Sin FIFO al
+ * crear ni saldo a favor nuevo. Los pagos antiguos sin documento se siguen leyendo (CarteraService).
  * RF-24 (S-48): el pago sale de una cuenta activa y `medio` se deriva de su tipo. S-53: entra a la
  * caja de hoy (día de registro), que no debe estar cerrada.
  */
@@ -29,9 +31,9 @@ class PagoService
     ) {}
 
     /**
-     * Sin `ingreso_id` el pago se aplica FIFO (S-29).
+     * S-79: `ingreso_id` obligatorio (antes, sin él se aplicaba FIFO, S-29).
      *
-     * @param  array{fecha?:string, valor:int|string, cuenta_pago_id:int, referencia?:?string, nota?:?string, ingreso_id?:?int}  $datos
+     * @param  array{fecha?:string, valor:int|string, cuenta_pago_id:int, referencia?:?string, nota?:?string, ingreso_id:int}  $datos
      */
     public function registrar(Proveedor $proveedor, array $datos, User $usuario): PagoProveedor
     {
@@ -40,14 +42,16 @@ class PagoService
             throw new ReglaInventarioException('Elija una cuenta activa.', 422, ['campo' => 'cuenta_pago_id']);
         }
 
-        return DB::transaction(function () use ($proveedor, $datos, $cuenta, $usuario) {
-            $ingresoId = $datos['ingreso_id'] ?? null;
+        $ingresoId = $datos['ingreso_id'] ?? null;
+        if ($ingresoId === null) {
+            throw new ReglaInventarioException('Elija la factura que va a pagar.', 422, ['campo' => 'ingreso_id']);
+        }
 
-            if ($ingresoId !== null) {
-                // Bloquea al proveedor: dos pagos simultáneos no pasan los dos el tope del pendiente.
-                Proveedor::query()->lockForUpdate()->findOrFail($proveedor->id);
-                $this->validarPagoAIngreso($proveedor, (int) $ingresoId, (string) $datos['valor']);
-            }
+        return DB::transaction(function () use ($proveedor, $datos, $cuenta, $usuario, $ingresoId) {
+            // Bloqueos en orden fijo (proveedor y luego el documento): dos pagos simultáneos al mismo
+            // documento se serializan y el segundo ve el pendiente que dejó el primero.
+            Proveedor::query()->lockForUpdate()->findOrFail($proveedor->id);
+            $this->validarPagoAIngreso($proveedor, (int) $ingresoId, (string) $datos['valor']);
 
             $this->caja->exigirDiaAbierto('registrar pagos a proveedores');
 
@@ -67,26 +71,27 @@ class PagoService
 
     private function validarPagoAIngreso(Proveedor $proveedor, int $ingresoId, string $valor): void
     {
-        $ingreso = Ingreso::query()->find($ingresoId);
+        $ingreso = Ingreso::query()->lockForUpdate()->find($ingresoId);
 
         if (! $ingreso || $ingreso->proveedor_id !== $proveedor->id) {
-            throw new ReglaInventarioException('La factura elegida no es de este proveedor.', 422);
+            throw new ReglaInventarioException('La factura elegida no es de este proveedor.', 422, ['campo' => 'ingreso_id']);
         }
 
         if ($ingreso->estado !== EstadoIngreso::Confirmado || $ingreso->forma_pago !== FormaPago::Credito) {
-            throw new ReglaInventarioException('Solo se paga una factura o remisión a crédito ya confirmada.', 422);
+            throw new ReglaInventarioException('Solo se paga una factura o remisión a crédito ya confirmada.', 422, ['campo' => 'ingreso_id']);
         }
 
+        // El pendiente se recalcula aquí, dentro de la transacción y con el documento bloqueado.
         $documento = collect($this->cartera->saldoProveedor($proveedor, Carbon::today())->documentos)
             ->firstWhere('id', $ingresoId);
 
         if (! $documento) {
-            throw new ReglaInventarioException('Ese documento no tiene saldo pendiente: ya está cancelado o lo cubre una factura.', 422);
+            throw new ReglaInventarioException('Ese documento no tiene saldo pendiente: ya está cancelado o lo cubre una factura.', 422, ['campo' => 'ingreso_id']);
         }
 
         if (bccomp($valor, $documento['pendiente'], 2) > 0) {
             $pendiente = number_format((float) $documento['pendiente'], 0, ',', '.');
-            throw new ReglaInventarioException("El pago supera lo pendiente de ese documento ({$pendiente}).", 422);
+            throw new ReglaInventarioException("El pago supera lo pendiente de ese documento (\${$pendiente}).", 422, ['campo' => 'valor', 'pendiente' => $documento['pendiente']]);
         }
     }
 

@@ -80,6 +80,10 @@ class CodigoUniversalController extends Controller
 
     public function destroy(CodigoUniversal $codigoUniversal): JsonResponse
     {
+        // S-82: con referencias (activas o no) la llave restrict lo impediría con un error 500.
+        if (Referencia::query()->where('codigo_universal_id', $codigoUniversal->id)->exists()) {
+            throw new ReglaInventarioException('Este código universal tiene referencias: quíteselas antes de eliminarlo.', 422);
+        }
         $codigoUniversal->delete();
 
         return response()->json(null, 204);

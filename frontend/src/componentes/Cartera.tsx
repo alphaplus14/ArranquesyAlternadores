@@ -4,6 +4,7 @@ import { api, erroresCampo, mensajeError } from '../api/cliente'
 import { NOMBRE_MEDIO_DINERO, NOMBRE_RANGO, NOMBRE_TIPO_CUENTA, type MovimientoDinero, type RangoAntiguedad, type ResumenSaldo } from '../api/tipos'
 import { useCuentasPago } from '../hooks/useCatalogos'
 import { useAvisoTexto } from './Avisos'
+import BotonFila from './BotonFila'
 import Dialogo, { DialogoSeccion } from './Dialogo'
 import { fechaCorta, hoy } from './fechas'
 import { formatoNumero, leerNumero, pesos } from './numeros'
@@ -12,17 +13,29 @@ import './cartera.css'
 
 const RANGOS = Object.keys(NOMBRE_RANGO) as RangoAntiguedad[]
 
-/** Saldo por antigüedad (FIFO). Las cifras vienen del backend: aquí no se recalculan. */
+/** S-79: rangos de más de 30 días que, con valor, se marcan en color de advertencia. */
+const RANGOS_ALERTA: RangoAntiguedad[] = ['d31_60', 'd61_90', 'mas_90']
+
+/**
+ * Saldo por antigüedad. Las cifras vienen del backend: aquí no se recalculan. S-79: "Saldo" va
+ * resaltado y los rangos de más de 30 días con valor se marcan en advertencia (con el valor en
+ * negrita y el texto "vencido", no solo con color).
+ */
 export function Antiguedad({ resumen }: { resumen: Pick<ResumenSaldo, 'rangos' | 'saldo'> }) {
   return (
     <div className="antiguedad" aria-label="Saldo por antigüedad">
-      {RANGOS.map((r) => (
-        <div key={r} className={r !== 'al_dia' && Number(resumen.rangos[r]) > 0 ? 'vencida' : ''}>
-          <span>{r === 'al_dia' ? NOMBRE_RANGO[r] : `${NOMBRE_RANGO[r]} días`}</span>
-          <strong>{pesos(resumen.rangos[r])}</strong>
-        </div>
-      ))}
-      <div>
+      {RANGOS.map((r) => {
+        const conValor = Number(resumen.rangos[r]) > 0
+        const alerta = conValor && RANGOS_ALERTA.includes(r)
+        const clase = alerta ? 'vencida antiguedad-alerta' : r !== 'al_dia' && conValor ? 'vencida' : ''
+        return (
+          <div key={r} className={clase}>
+            <span>{r === 'al_dia' ? NOMBRE_RANGO[r] : `${NOMBRE_RANGO[r]} días`}{alerta && <span className="solo-lector"> (vencido)</span>}</span>
+            <strong>{pesos(resumen.rangos[r])}</strong>
+          </div>
+        )
+      })}
+      <div className="antiguedad-saldo">
         <span>Saldo</span>
         <strong>{pesos(resumen.saldo)}</strong>
       </div>
@@ -32,18 +45,23 @@ export function Antiguedad({ resumen }: { resumen: Pick<ResumenSaldo, 'rangos' |
 
 /**
  * RF-15 / RF-17: abonos o pagos recientes. Un anulado sigue visible con su motivo: nada se borra.
- * Solo el admin anula (onAnular); el mostrador ve la lista sin esa acción.
+ * Solo el admin anula (onAnular); el mostrador ve la lista sin esa acción. S-79: vacía, solo el
+ * mensaje (sin encabezados); "Anular" es un BotonFila de peligro.
  */
-export function TablaMovimientos({ movimientos, vacio, onAnular }: {
+export function TablaMovimientos({ movimientos, vacio, titular, onAnular }: {
   movimientos: MovimientoDinero[]
   vacio: string
+  /** Para el aria-label de "Anular" (p. ej. "de Molpartes SAS"). */
+  titular?: string
   onAnular?: (m: MovimientoDinero) => void
 }) {
+  if (movimientos.length === 0) return <p className="vacio">{vacio}</p>
+
   return (
     <div className="tabla-desplazable">
       <table>
         <thead>
-          <tr><th>Fecha</th><th className="cifra">Valor</th><th>Medio</th><th>Referencia</th><th>Registró</th><th>Estado</th>{onAnular && <th><span className="solo-lector">Acciones</span></th>}</tr>
+          <tr><th>Fecha</th><th className="cifra">Valor</th><th>Medio</th><th>Referencia</th><th>Registró</th><th>Estado</th>{onAnular && <th className="boton-fila-columna">Acciones</th>}</tr>
         </thead>
         <tbody>
           {movimientos.map((m) => (
@@ -63,38 +81,52 @@ export function TablaMovimientos({ movimientos, vacio, onAnular }: {
                   : 'Vigente'}
               </td>
               {onAnular && (
-                <td className="col-accion">
-                  {!m.anulacion && <button type="button" className="enlace" onClick={() => onAnular(m)}>Anular</button>}
+                <td className="boton-fila-columna">
+                  {!m.anulacion && (
+                    <BotonFila
+                      variante="anular"
+                      descripcion={`Anular el pago de ${pesos(m.valor)} del ${fechaCorta(m.fecha)}${titular ? ` de ${titular}` : ''}`}
+                      onClick={() => onAnular(m)}
+                    />
+                  )}
                 </td>
               )}
             </tr>
           ))}
-          {movimientos.length === 0 && <tr><td colSpan={onAnular ? 7 : 6} className="vacio">{vacio}</td></tr>}
         </tbody>
       </table>
     </div>
   )
 }
 
+/** S-79: el documento al que va un pago (siempre uno): valor original, lo ya pagado y lo pendiente. */
+export interface DocumentoAPagar {
+  id: number
+  nombre: string
+  valor: string
+  abonado: string
+  pendiente: string
+}
+
 /**
- * RF-15 / RF-17: registrar un abono o un pago. Fecha de hoy por defecto, editable hacia atrás,
- * nunca futura; valor en pesos enteros > 0; cuenta activa (RF-24, S-48: el medio lo deriva el
- * backend del tipo de la cuenta). El backend vuelve a validar.
+ * RF-17 / S-79: registrar un pago a UNA factura o remisión a crédito (obligatoria; sin FIFO ni saldo
+ * a favor). Valor por defecto = pendiente, editable hacia abajo para un pago parcial; máximo = pendiente.
+ * Fecha de hoy por defecto, editable hacia atrás, nunca futura; pesos enteros > 0; cuenta activa
+ * (RF-24, S-48: el medio lo deriva el backend del tipo de la cuenta). El backend vuelve a validar con
+ * el documento bloqueado.
  */
-export function DialogoMovimiento({ titulo, titular, saldo, ruta, documento, onGuardado, onCerrar }: {
+export function DialogoMovimiento({ titulo, titular, ruta, documento, onGuardado, onCerrar }: {
   titulo: string
   titular: string
-  saldo: string
-  /** POST que registra el movimiento (/clientes/{id}/abonos o /proveedores/{id}/pagos). */
+  /** POST que registra el pago (/proveedores/{id}/pagos). */
   ruta: string
-  /** RF-17 (ajuste): pago a una factura elegida; el valor se prellena con su pendiente y no puede superarlo. */
-  documento?: { id: number; nombre: string; pendiente: string }
+  documento: DocumentoAPagar
   onGuardado: (m: MovimientoDinero) => void
   onCerrar: () => void
 }) {
   const [fecha, setFecha] = useState(hoy())
   // S-67: el valor se muestra con separador de miles.
-  const [valor, setValor] = useState(documento ? formatoNumero(Math.round(Number(documento.pendiente))) : '')
+  const [valor, setValor] = useState(formatoNumero(Math.round(Number(documento.pendiente))))
   const [cuenta, setCuenta] = useState<number | ''>('')
   const cuentas = useCuentasPago()
   const cuentaElegida = cuenta !== '' ? cuenta : (cuentas.data?.find((c) => c.tipo === 'efectivo')?.id ?? '')
@@ -104,9 +136,8 @@ export function DialogoMovimiento({ titulo, titular, saldo, ruta, documento, onG
   const numero = leerNumero(valor)
   const errorValor = valor.trim() === '' ? null
     : numero === null || Number.isNaN(numero) || !Number.isInteger(numero) || numero < 1 ? 'Escriba un valor en pesos enteros, mayor que 0.'
-    : documento && numero > Number(documento.pendiente) ? `No puede superar lo pendiente de ${documento.nombre} (${pesos(documento.pendiente)}).` : null
-  const quedaAFavor = !documento && numero !== null && !Number.isNaN(numero) && numero > Number(saldo)
-  const cancela = documento && numero !== null && numero === Math.round(Number(documento.pendiente))
+    : numero > Number(documento.pendiente) ? `No puede superar lo pendiente de ${documento.nombre} (${pesos(documento.pendiente)}).` : null
+  const cancela = numero !== null && numero === Math.round(Number(documento.pendiente))
 
   const guardar = useMutation({
     mutationFn: async () => (await api.post<MovimientoDinero>(ruta, {
@@ -115,7 +146,7 @@ export function DialogoMovimiento({ titulo, titular, saldo, ruta, documento, onG
       cuenta_pago_id: cuentaElegida,
       referencia: referencia.trim() || null,
       nota: nota.trim() || null,
-      ...(documento ? { ingreso_id: documento.id } : {}),
+      ingreso_id: documento.id,
     })).data,
     onSuccess: onGuardado,
   })
@@ -126,9 +157,7 @@ export function DialogoMovimiento({ titulo, titular, saldo, ruta, documento, onG
   return (
     <Dialogo
       titulo={titulo}
-      descripcion={documento
-        ? `${titular} · ${documento.nombre} · pendiente ${pesos(documento.pendiente)}`
-        : `${titular} · saldo actual ${pesos(saldo)}`}
+      descripcion={`${titular} · ${documento.nombre}`}
       onCerrar={onCerrar}
       pendiente={guardar.isPending}
       onEnviar={() => guardar.mutate()}
@@ -142,6 +171,13 @@ export function DialogoMovimiento({ titulo, titular, saldo, ruta, documento, onG
       )}
     >
       <DialogoSeccion>
+        <p className="documento-a-pagar" aria-label={`${documento.nombre}: valor ${pesos(documento.valor)}, abonado ${pesos(documento.abonado)}, pendiente ${pesos(documento.pendiente)}`}>
+          <span>Valor <strong>{pesos(documento.valor)}</strong></span>
+          <span aria-hidden="true">·</span>
+          <span>Abonado <strong>{pesos(documento.abonado)}</strong></span>
+          <span aria-hidden="true">·</span>
+          <span>Pendiente <strong>{pesos(documento.pendiente)}</strong></span>
+        </p>
         <label>Valor
           <CampoMoneda
             autoFocus
@@ -152,9 +188,8 @@ export function DialogoMovimiento({ titulo, titular, saldo, ruta, documento, onG
             onChange={(e) => setValor(e.target.value)}
           />
           <small id="movimiento-valor-ayuda" className={errorValor ?? errores.valor ? 'ayuda error' : 'ayuda'}>
-            {errorValor ?? errores.valor ?? (quedaAFavor ? 'Supera el saldo: la diferencia queda como saldo a favor.'
-              : cancela ? 'Con este valor la factura queda cancelada.'
-              : documento ? 'Pago parcial: la factura sigue con saldo.' : 'Pesos enteros.')}
+            {errorValor ?? errores.valor ?? (numero === null ? `Hasta ${pesos(documento.pendiente)}.`
+              : cancela ? 'Cancela la factura.' : 'Pago parcial: la factura sigue con saldo.')}
           </small>
         </label>
         <div className="campos-dos">

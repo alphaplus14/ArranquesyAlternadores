@@ -106,6 +106,24 @@ class EmpleadoService
         });
     }
 
+    /**
+     * S-81: empleados activos para elegir en la caja (mostrador y admin), con su saldo vigente. Una
+     * consulta: el agregado por empleado (el mismo del resumen) unido a los activos. Sin paginar: son pocos.
+     *
+     * @return \Illuminate\Support\Collection<int, object{id: int, nombre: string, documento: ?string, saldo: string}>
+     */
+    public function activosConSaldo(?string $q = null, int $limite = 200): \Illuminate\Support\Collection
+    {
+        return Empleado::query()->activos()
+            ->leftJoinSub($this->agregadoPorEmpleado(), 'a', 'a.empleado_id', '=', 'empleados.id')
+            ->when($q, fn ($w) => $w->where(fn ($s) => $s->where('empleados.nombre', 'like', "%{$q}%")->orWhere('empleados.documento', 'like', "%{$q}%")))
+            ->orderBy('empleados.nombre')
+            ->limit($limite)
+            ->toBase()
+            ->get(['empleados.id', 'empleados.nombre', 'empleados.documento', DB::raw('COALESCE(a.saldo, 0) as saldo')])
+            ->map(fn ($e) => (object) ['id' => (int) $e->id, 'nombre' => $e->nombre, 'documento' => $e->documento, 'saldo' => CajaService::dinero((string) $e->saldo)]);
+    }
+
     /** Saldo vigente de un empleado: una consulta agrupada. */
     public function saldo(int $empleadoId): string
     {
@@ -147,15 +165,16 @@ class EmpleadoService
 
     /**
      * S-56: por caja (cuenta activa obligatoria; entra a la caja de hoy) o por nómina (sin cuenta, sin
-     * efecto en la caja). S-57: no supera la deuda. El mensaje no dice cuánto debe: el mostrador no ve
-     * saldos.
+     * efecto en la caja); para el saldo es indiferente. S-57: no supera la deuda; el saldo se lee con el
+     * empleado bloqueado (dos abonos a la vez no lo dejan negativo). S-81: el mensaje dice cuánto debe
+     * (el mostrador ya ve los saldos).
      *
      * @param  array{valor: int|string, forma: string, cuenta_pago_id?: ?int, nota?: ?string}  $datos
      */
     public function registrarAbono(Empleado $empleado, array $datos, User $usuario): MovimientoEmpleado
     {
         $fecha = $this->validarFechaYValor($datos);
-        $forma = FormaAbonoEmpleado::from($datos['forma']);
+        $forma = FormaAbonoEmpleado::from($datos['forma'] ?? FormaAbonoEmpleado::Caja->value); // S-81: por defecto, caja
         $cuentaId = $datos['cuenta_pago_id'] ?? null;
 
         if ($forma === FormaAbonoEmpleado::Nomina && $cuentaId !== null) {
@@ -171,11 +190,12 @@ class EmpleadoService
         return DB::transaction(function () use ($empleado, $datos, $fecha, $forma, $cuentaId, $usuario) {
             $empleado = $this->bloquearActivo($empleado, 'registrarle abonos');
 
-            if (bccomp((string) $datos['valor'], $this->saldo($empleado->id), 2) > 0) {
+            $saldo = $this->saldo($empleado->id);
+            if (bccomp((string) $datos['valor'], $saldo, 2) > 0) {
                 throw new ReglaInventarioException(
-                    "El abono supera lo que debe {$empleado->nombre}. Verifique el valor con el administrador.",
+                    'El abono supera lo que debe el empleado ($ '.number_format((float) $saldo, 0, ',', '.').').',
                     422,
-                    ['campo' => 'valor'],
+                    ['campo' => 'valor', 'saldo' => $saldo],
                 );
             }
             if ($forma === FormaAbonoEmpleado::Caja) {

@@ -25,7 +25,7 @@ src/
   paginas/      una carpeta por módulo, igual que los roles del backend
     mostrador/  Venta (RF-06, RF-07, RF-12)
     logistica/  Ingresos, IngresoDetalle (RF-05, RF-09, RF-10), IngresoQr (RF-04), Etiquetas (RF-03)
-    admin/      Referencias (RF-01), Universales y su desglose (RF-02), Catálogos, Usuarios, Auditoría (RF-11)
+    admin/      Referencias (RF-01), Universales y su desglose (RF-02), Proveedores y categorías (`Catalogos.tsx`), Usuarios, Auditoría (RF-11)
     Agotados    común a todos los roles (RF-08)
   App.tsx       rutas protegidas por rol (el backend vuelve a validar cada endpoint)
 ```

@@ -2,7 +2,7 @@ import { Suspense, useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
 import { useVencimientos } from '../hooks/useVencimientos'
-import { RUTA_AJUSTES, RUTA_CAJA, RUTA_CAJA_ADMIN, RUTA_CARTERA, RUTA_CORRECCIONES, RUTA_COSTOS, RUTA_PANEL, RUTA_UNIVERSALES, rutaInicio } from '../rutas'
+import { RUTA_AJUSTES, RUTA_CAJA, RUTA_CAJA_ADMIN, RUTA_CARTERA, RUTA_CORRECCIONES, RUTA_COSTOS, RUTA_PANEL, rutaInicio } from '../rutas'
 import { useVerCostos } from '../hooks/useVerCostos'
 import logo from '../assets/logo-la8va.jpg'
 import Icono, { type IconoNombre } from './Icono'
@@ -18,6 +18,8 @@ interface ItemMenu {
   texto: string
   icono: IconoNombre
   fin?: boolean
+  /** S-79: otras rutas (por prefijo) que también marcan este ítem activo, p. ej. la cuenta de un proveedor. */
+  tambien?: string[]
   /** S-40: punto de aviso con su texto accesible. */
   alerta?: string
   /** RF-30: vencidas y por vencer (contable). */
@@ -78,9 +80,7 @@ export default function Layout() {
             ...(usuario?.rol === 'admin' ? [] : [{ to: '/logistica/etiquetas', texto: 'Etiquetas', icono: 'etiqueta' } as ItemMenu]),
             // RF-21. S-44: el admin solo consulta el historial. S-63: "Ajustes" se llama "Movimientos".
             { to: RUTA_AJUSTES, texto: usuario?.rol === 'admin' ? 'Historial de movimientos' : 'Movimientos', icono: 'inventario' },
-            // S-59: logística crea y edita universales. El admin entra a /universales por URL o enlaces
-            // internos, sin ítem de menú.
-            ...(usuario?.rol === 'logistica' ? [{ to: RUTA_UNIVERSALES, texto: 'Códigos universales', icono: 'universal' } as ItemMenu] : []),
+            // S-82: los códigos universales se ven y gestionan dentro de Inventario (sin ítem propio).
           ],
         }
       : null,
@@ -88,7 +88,7 @@ export default function Layout() {
       ? {
           etiqueta: 'Administración',
           items: [
-            { to: '/admin/catalogos', texto: 'Catálogos', icono: 'catalogo' },
+            { to: '/admin/catalogos', texto: 'Proveedores y categorías', icono: 'catalogo' },
             { to: '/admin/clientes', texto: 'Clientes', icono: 'persona' },
             { to: '/admin/usuarios', texto: 'Usuarios', icono: 'usuarios' },
             { to: '/admin/auditoria', texto: 'Auditoría', icono: 'auditoria' },
@@ -102,8 +102,8 @@ export default function Layout() {
           etiqueta: 'Contable',
           items: [
             { to: '/contable/vencimientos', texto: 'Vencimientos', icono: 'agotados', contador: avisos },
-            { to: '/contable/cuentas-por-pagar', texto: 'Cuentas por pagar', icono: 'ingreso' },
-            { to: '/contable/cartera', texto: 'Cartera de clientes', icono: 'persona' },
+            { to: '/contable/cuentas-por-pagar', texto: 'Cuentas por pagar', icono: 'ingreso', tambien: ['/contable/proveedores'] },
+            { to: '/contable/cartera', texto: 'Cartera de clientes', icono: 'persona', tambien: ['/contable/clientes'] },
             { to: '/contable/informes', texto: 'Informes', icono: 'auditoria' },
             { to: '/contable/recaudos', texto: 'Recaudos de cartera', icono: 'billetera' }, // S-76
           ],
@@ -125,9 +125,9 @@ export default function Layout() {
   // S-70: grupos plegables según la preferencia del usuario (admin: sí por defecto, como antes;
   // logística y contable: no). El mostrador no tiene preferencias.
   const plegable = menuPlegado
-  const esRutaActiva = (item: ItemMenu) => (item.fin
-    ? ubicacion.pathname === item.to
-    : ubicacion.pathname === item.to || ubicacion.pathname.startsWith(`${item.to}/`))
+  const bajo = (ruta: string) => ubicacion.pathname === ruta || ubicacion.pathname.startsWith(`${ruta}/`)
+  const porPrefijo = (item: ItemMenu) => (item.tambien ?? []).some(bajo)
+  const esRutaActiva = (item: ItemMenu) => (item.fin ? ubicacion.pathname === item.to : bajo(item.to)) || porPrefijo(item)
 
   return (
     <div className={abierto ? 'marco menu-abierto' : 'marco'}>
@@ -177,7 +177,7 @@ export default function Layout() {
                 )}
                 <div id={idLista} hidden={!desplegado}>
                 {grupo.items.map((item) => (
-                  <NavLink key={item.to} to={item.to} end={item.fin}>
+                  <NavLink key={item.to} to={item.to} end={item.fin} className={({ isActive }) => (isActive || porPrefijo(item) ? 'active' : '')}>
                     <Icono nombre={item.icono} />
                     <span>{item.texto}</span>
                     {item.alerta && <span className="punto-alerta" title={item.alerta}><span className="solo-lector">{item.alerta}</span></span>}

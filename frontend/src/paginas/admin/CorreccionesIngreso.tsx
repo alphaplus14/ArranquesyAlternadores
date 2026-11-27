@@ -1,8 +1,8 @@
 import { Fragment, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../api/cliente'
 import type { CorreccionIngreso, Pagina, Usuario } from '../../api/tipos'
+import BotonFila from '../../componentes/BotonFila'
 import Paginacion from '../../componentes/Paginacion'
 import SelectorProveedor from '../../componentes/SelectorProveedor'
 import DetalleCorreccion from '../../componentes/ingresos/DetalleCorreccion'
@@ -53,7 +53,7 @@ export default function CorreccionesIngreso() {
         </div>
         <table className="tabla-apilable tabla-correcciones">
           <thead>
-            <tr><th>Fecha</th><th>Usuario</th><th>Ingreso</th><th>Proveedor</th><th>Motivo</th><th className="col-numero">Unidades</th><th className="col-numero">Total</th><th><span className="solo-lector">Detalle</span></th></tr>
+            <tr><th>Fecha</th><th>Usuario</th><th>Ingreso</th><th>Proveedor</th><th>Motivo</th><th className="col-numero">Unidades</th><th className="col-numero">Total</th><th className="boton-fila-columna boton-fila-doble">Acciones</th></tr>
           </thead>
           <tbody>
             {filas.map((c) => (
@@ -62,17 +62,24 @@ export default function CorreccionesIngreso() {
                   <td data-etiqueta="Fecha">{formatearFechaHora(c.created_at)}</td>
                   <td data-etiqueta="Usuario">{c.usuario?.name ?? '—'}</td>
                   <td data-etiqueta="Ingreso">
-                    {c.ingreso ? <Link to={`/logistica/ingresos/${c.ingreso.id}`}>{c.ingreso.tipo === 'factura' ? 'Factura' : 'Remisión'} {c.ingreso.numero_documento}</Link> : '—'}
+                    {c.ingreso ? `${c.ingreso.tipo === 'factura' ? 'Factura' : 'Remisión'} ${c.ingreso.numero_documento}` : '—'}
                   </td>
                   <td data-etiqueta="Proveedor">{c.ingreso?.proveedor?.nombre ?? '—'}</td>
                   <td data-etiqueta="Motivo">{c.motivo}</td>
                   <td data-etiqueta="Unidades" className="col-numero">+{c.unidades_creadas} / −{c.unidades_retiradas}</td>
                   <td data-etiqueta="Total" className="col-numero">{c.total_anterior === null ? '—' : pesos(c.total_anterior)} → <strong>{pesos(c.total_nuevo)}</strong></td>
-                  <td className="celda-accion">
+                  <td className="celda-accion boton-fila-columna boton-fila-doble"><span className="boton-fila-acciones">
                     <button type="button" className="enlace" aria-expanded={abierta === c.id} onClick={() => setAbierta(abierta === c.id ? null : c.id)}>
                       {abierta === c.id ? 'Ocultar' : 'Ver cambios'}
                     </button>
-                  </td>
+                    {c.ingreso && (
+                      <BotonFila
+                        variante="abrir"
+                        to={`/logistica/ingresos/${c.ingreso.id}`}
+                        descripcion={`Abrir ${c.ingreso.tipo === 'factura' ? 'factura' : 'remisión'} ${c.ingreso.numero_documento}${c.ingreso.proveedor ? ` de ${c.ingreso.proveedor.nombre}` : ''}`}
+                      />
+                    )}
+                  </span></td>
                 </tr>
                 {abierta === c.id && (
                   <tr className="fila-detalle"><td colSpan={8}><DetalleCorreccion antes={c.antes} despues={c.despues} /></td></tr>

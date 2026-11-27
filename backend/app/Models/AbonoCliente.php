@@ -11,7 +11,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 /**
  * RF-15 (S-30): abono de un cliente. Nunca se edita ni se borra; anularlo es un movimiento nuevo
  * (AbonoAnulacion). No toca existencias.
- * S-32: venta_id NULL = abono general (FIFO); con venta_id, dirigido a esa venta a crédito. El
+ * S-32 / S-79: con venta_id, dirigido a esa venta a crédito (obligatorio desde S-79); NULL solo en
+ * abonos generales anteriores a S-79, que se siguen leyendo FIFO. El
  * vínculo no se edita: corregirlo es anular el abono y registrar otro.
  */
 class AbonoCliente extends Model

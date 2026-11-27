@@ -48,10 +48,11 @@ class CierreCajaService
             // Mismas reglas de fecha que los movimientos (no antes de un cierre posterior).
             $this->movimientos->exigirFechaEditable($fecha, 'cerrarlo');
 
-            // S-49: sin apertura registrada (puede ser 0) el día no se cierra.
+            // S-84 (ajusta S-49 y S-53): se exige apertura EFECTIVA (el arrastre del último cierre o un
+            // cambio manual), no una registrada. Sin ninguna (primer día sin cierres), no se cierra.
             $apertura = $this->caja->aperturaDelDia($fecha);
             if ($apertura === null) {
-                throw new ReglaInventarioException('Registre primero la apertura de la caja de ese día (el efectivo con que abrió; puede ser 0).', 422, ['campo' => 'apertura']);
+                throw new ReglaInventarioException('Registre la apertura de la caja (primer día sin cierres anteriores).', 422, ['campo' => 'apertura']);
             }
 
             $abiertas = $this->ventasAbiertas($fecha);

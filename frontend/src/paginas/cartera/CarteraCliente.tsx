@@ -5,6 +5,7 @@ import { api, mensajeError } from '../../api/cliente'
 import { NOMBRE_MEDIO, type EstadoCuenta, type DetalleCartera, type EstadoFiltroVenta, type MovimientoCuenta, type VentaCartera } from '../../api/tipos'
 import { useAuth } from '../../auth/AuthProvider'
 import { useDebounce } from '../../hooks/useDebounce'
+import BotonFila from '../../componentes/BotonFila'
 import Icono from '../../componentes/Icono'
 import Medida from '../../componentes/Medida'
 import Resumen from '../../componentes/Resumen'
@@ -162,6 +163,9 @@ export default function CarteraCliente() {
   const c = resumen.cliente
   if (!c) return <div className="aviso error">Cliente no encontrado.</div>
   const saldo = Number(resumen.saldo)
+  // S-79: todo abono va a una venta con pendiente (de todas las del cliente, no solo las filtradas).
+  const conSaldo = detalle.data.ventas.some((v) => Number(v.pendiente) > 0)
+  const motivoSinAbono = !c.activo ? 'Cliente inactivo' : !conSaldo ? 'Este cliente no tiene facturas con saldo.' : undefined
 
   return (
     <div className="pila">
@@ -171,9 +175,20 @@ export default function CarteraCliente() {
           <h1>{c.nombre}{!c.activo && <span className="chip inactiva"> Inactivo</span>}</h1>
           <p>{[c.documento && `Doc. ${c.documento}`, c.telefono && `Tel. ${c.telefono}`, `Plazo ${c.plazo_dias} días`].filter(Boolean).join(' · ')}</p>
         </div>
-        <button ref={botonAbono} type="button" className="primario" disabled={!c.activo} title={c.activo ? undefined : 'Cliente inactivo'} onClick={(e) => { disparadorAbono.current = e.currentTarget; setAviso(null); setAbonando({}) }}>
-          Registrar abono
-        </button>
+        <div className="accion-encabezado">
+          <button
+            ref={botonAbono}
+            type="button"
+            className="primario"
+            disabled={motivoSinAbono !== undefined}
+            title={motivoSinAbono}
+            aria-describedby={motivoSinAbono ? 'abono-no-disponible' : undefined}
+            onClick={(e) => { disparadorAbono.current = e.currentTarget; setAviso(null); setAbonando({}) }}
+          >
+            Registrar abono
+          </button>
+          {motivoSinAbono && <small id="abono-no-disponible" className="ayuda">{motivoSinAbono}</small>}
+        </div>
       </div>
 
       <Resumen
@@ -227,11 +242,11 @@ export default function CarteraCliente() {
             ) : (
             <table className={cargandoVentas ? 'tabla-apilable tabla-cartera-ventas actualizando' : 'tabla-apilable tabla-cartera-ventas'}>
               <caption className="solo-lector">Ventas a crédito, de la más antigua a la más reciente; los abonos se aplican en ese orden</caption>
-              <thead><tr><th>Venta</th><th>Factura</th><th>Cierre</th><th className="col-numero" title="Total neto de reversos, con IVA incluido">Total (IVA incl.)</th><th>Vence</th><th className="col-numero">Aplicado</th><th className="col-numero">Pendiente</th><th>Estado</th><th><span className="solo-lector">Acciones</span></th></tr></thead>
+              <thead><tr><th>Venta</th><th>Factura</th><th>Cierre</th><th className="col-numero" title="Total neto de reversos, con IVA incluido">Total (IVA incl.)</th><th>Vence</th><th className="col-numero">Aplicado</th><th className="col-numero">Pendiente</th><th>Estado</th><th className="boton-fila-columna boton-fila-doble">Acciones</th></tr></thead>
               <tbody>
                 {ventas.map((v) => (
                   <tr key={v.id}>
-                    <td data-etiqueta="Venta"><Link to={`/mostrador/venta?venta=${v.id}`}>#{v.id}</Link></td>
+                    <td data-etiqueta="Venta">#{v.id}</td>
                     <td data-etiqueta="Factura">{v.factura_contapyme || '—'}</td>
                     <td data-etiqueta="Cierre">{fechaHora(v.cerrada_at)}</td>
                     <td data-etiqueta="Total" title="Total neto de reversos, con IVA incluido" className="col-numero">{pesos(v.total)}</td>
@@ -242,15 +257,18 @@ export default function CarteraCliente() {
                     </td>
                     <td data-etiqueta="Pendiente" className="col-numero"><strong>{pesos(v.pendiente)}</strong></td>
                     <td data-etiqueta="Estado"><ChipEstado v={v} /></td>
-                    <td className="celda-accion">
-                      {Number(v.pendiente) > 0 && c.activo && (
-                        <button
-                          type="button"
-                          className="secundario boton-44"
-                          aria-label={`Abonar a la venta ${nombreVenta(v)}`}
-                          onClick={(e) => { disparadorAbono.current = e.currentTarget; setAviso(null); setAbonando({ venta: v }) }}
-                        >Abonar</button>
-                      )}
+                    <td className="celda-accion boton-fila-columna boton-fila-doble">
+                      <span className="boton-fila-acciones">
+                        <BotonFila variante="ver" to={`/mostrador/venta?venta=${v.id}`} etiqueta="Ver venta" descripcion={`Ver la venta ${nombreVenta(v)}`} />
+                        {Number(v.pendiente) > 0 && c.activo && (
+                          <BotonFila
+                            variante="pagar"
+                            etiqueta="Abonar"
+                            descripcion={`Abonar a la venta ${nombreVenta(v)}`}
+                            onClick={(e) => { disparadorAbono.current = e.currentTarget; setAviso(null); setAbonando({ venta: v }) }}
+                          />
+                        )}
+                      </span>
                     </td>
                   </tr>
                 ))}
@@ -267,7 +285,7 @@ export default function CarteraCliente() {
             {errorFechas ? <p className="vacio">Corrija el rango de fechas.</p> : cuenta.isError ? <div className="aviso error">{mensajeError(cuenta.error)}</div> : !cuenta.data ? <p className="vacio">Cargando…</p> : (
               <table className={cuenta.isFetching ? 'tabla-apilable tabla-cuenta actualizando' : 'tabla-apilable tabla-cuenta'}>
                 <caption className="solo-lector">Estado de cuenta en orden de fecha con saldo acumulado</caption>
-                <thead><tr><th>Fecha</th><th>Movimiento</th><th className="col-numero" title="Ventas por su total con IVA incluido">Cargo (IVA incl.)</th><th className="col-numero">Abono</th><th className="col-numero">Saldo</th><th><span className="solo-lector">Acciones</span></th></tr></thead>
+                <thead><tr><th>Fecha</th><th>Movimiento</th><th className="col-numero" title="Ventas por su total con IVA incluido">Cargo (IVA incl.)</th><th className="col-numero">Abono</th><th className="col-numero">Saldo</th><th className="boton-fila-columna boton-fila-doble">Acciones</th></tr></thead>
                 <tbody>
                   {(rango.desde !== null) && (
                     <tr className="fila-saldo-inicial">
@@ -285,7 +303,7 @@ export default function CarteraCliente() {
                       <td data-etiqueta="Movimiento">
                         <span>
                           {m.venta_id && m.tipo === 'venta'
-                            ? <Link to={`/mostrador/venta?venta=${m.venta_id}`}>{m.descripcion}</Link>
+                            ? <span className="texto-movimiento">{m.descripcion}</span>
                             : <span className="texto-movimiento">{m.tipo === 'abono' && m.medio ? `Abono · ${NOMBRE_MEDIO[m.medio]}${m.referencia ? ` · ${m.referencia}` : ''}` : m.descripcion}</span>}
                           {m.anulado && <span className="chip anulado"> Anulado</span>}
                           {m.motivo && <small className="bloque">Motivo: {m.motivo}{m.usuario ? ` · ${m.usuario}` : ''}</small>}
@@ -297,7 +315,10 @@ export default function CarteraCliente() {
                       <td data-etiqueta="Cargo" className="col-numero">{Number(m.cargo) > 0 ? pesos(m.cargo) : ''}</td>
                       <td data-etiqueta="Abono" className="col-numero"><span className={m.anulado ? 'valor-tachado' : undefined}>{Number(m.abono) > 0 ? pesos(m.abono) : ''}</span></td>
                       <td data-etiqueta="Saldo" className="col-numero"><strong>{textoSaldo(m.saldo)}</strong></td>
-                      <td className="celda-accion">
+                      <td className="celda-accion boton-fila-columna boton-fila-doble">
+                        {m.venta_id ? (
+                          <BotonFila variante="ver" to={`/mostrador/venta?venta=${m.venta_id}`} etiqueta="Ver venta" descripcion={`Ver la venta #${m.venta_id}`} />
+                        ) : null}
                         {esAdmin && m.tipo === 'abono' && !m.anulado && (
                           <button type="button" className="secundario boton-44" onClick={() => { setAviso(null); setAnulando(m) }}>Anular</button>
                         )}
@@ -321,8 +342,8 @@ export default function CarteraCliente() {
             // Saldo y antigüedad nuevos al instante; las listas se refrescan en segundo plano.
             qc.setQueryData<DetalleCartera>(['cartera-cliente', id], (d) => (d ? { ...d, resumen: nuevo, abonos: [abono, ...d.abonos] } : d))
             refrescar()
-            const destino = abono.aplicado_a === 'General' ? 'a las ventas más antiguas' : `a la venta ${abono.aplicado_a.replace(/^Venta /, '')}`
-            setAviso(`Abono de ${pesos(abono.valor)} registrado ${destino}. Saldo: ${textoSaldo(nuevo.saldo)}.`)
+            // S-79: todo abono nuevo va a una venta.
+            setAviso(`Abono de ${pesos(abono.valor)} registrado a la venta ${abono.aplicado_a.replace(/^Venta /, '')}. Saldo: ${textoSaldo(nuevo.saldo)}.`)
             cerrarAbono()
           }}
         />

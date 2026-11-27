@@ -30,14 +30,16 @@ class AbonoController extends Controller
         $datos = $request->validate([
             // S-36 (antes S-25 de Frank): hoy por defecto; puede ser anterior, nunca futura.
             'fecha' => ['nullable', 'date_format:Y-m-d'],
-            'valor' => ['required', 'numeric', 'gt:0', 'max:999999999999'],
+            'valor' => ['required', 'numeric', 'decimal:0,2', 'gt:0', 'max:999999999999'],
             // RF-24 (S-48): se elige la cuenta; el medio se deriva de su tipo.
             'cuenta_pago_id' => ['required', 'integer', Rule::exists('cuentas_pago', 'id')->where('activa', true)],
             'referencia' => ['nullable', 'string', 'max:60'],
             'nota' => ['nullable', 'string', 'max:255'],
-            // S-32: null = abono general (FIFO); con número, dirigido a esa venta.
-            'venta_id' => ['nullable', 'integer'],
+            // S-79: todo abono nuevo va a una venta a crédito cerrada elegida (ya no hay abono general).
+            'venta_id' => ['required', 'integer'],
         ], [
+            'venta_id.required' => 'Elija la factura o remisión a la que se aplica el abono.',
+            'valor.decimal' => 'El valor admite hasta 2 decimales.',
             'valor.gt' => 'El valor del abono debe ser mayor que 0.',
             'cuenta_pago_id.required' => 'Elija la cuenta donde entra el abono.',
             'cuenta_pago_id.exists' => 'Elija una cuenta activa de la lista.',
@@ -51,7 +53,7 @@ class AbonoController extends Controller
             $datos['referencia'] ?? null,
             $datos['nota'] ?? null,
             $request->user(),
-            isset($datos['venta_id']) ? (int) $datos['venta_id'] : null,
+            (int) $datos['venta_id'],
         );
 
         // El saldo nuevo va en la misma respuesta: la pantalla no recarga todo.

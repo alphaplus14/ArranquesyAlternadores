@@ -7,7 +7,8 @@ use Illuminate\Support\Carbon;
 /*
  * RF-27 (S-55 a S-57) en la Caja del día del mostrador: los préstamos y abonos de empleados del día
  * salen en GET /caja/dias/{fecha} (lista y totales_movimientos.empleados, sin anulados) y sus totales
- * coinciden con el detalle del efectivo esperado. El mostrador nunca recibe saldos de empleados.
+ * coinciden con el detalle del efectivo esperado. El día de caja no trae saldos de empleados (S-81:
+ * el saldo solo va en la lista para elegir).
  */
 
 beforeEach(function () {
@@ -118,7 +119,7 @@ it('RF-27 (S-57): abono mayor que la deuda, en 0 o negativo se rechaza', functio
     $e = ecmEmpleado('Jhon', 30000);
     actuarComo(Rol::Mostrador);
 
-    ecmAbonar($e, 30001)->assertUnprocessable()->assertJsonPath('campo', 'valor')->assertJsonMissingPath('saldo');
+    ecmAbonar($e, 30001)->assertUnprocessable()->assertJsonPath('campo', 'valor')->assertJsonPath('saldo', '30000.00');
     ecmAbonar($e, 0)->assertUnprocessable()->assertJsonValidationErrors('valor');
     ecmAbonar($e, -5000, 'nomina')->assertUnprocessable()->assertJsonValidationErrors('valor');
     ecmPrestar($e, 0)->assertUnprocessable()->assertJsonValidationErrors('valor');
@@ -135,15 +136,15 @@ it('RF-27 (S-54): admin, logística y contable no registran préstamos ni abonos
     ecmAbonar($e, 1000, 'nomina')->assertForbidden();
 })->with([Rol::Admin, Rol::Logistica, Rol::Contable]);
 
-it('RF-27 (S-57): el mostrador no recibe saldos ni en la lista de empleados ni en el día de caja', function () {
+it('RF-27 (S-81): el mostrador ve el saldo en la lista de empleados, pero no en el día de caja', function () {
     $e = ecmEmpleado('Jhon', 80000);
     actuarComo(Rol::Mostrador);
     ecmPrestar($e, 50000)->assertCreated();
     ecmAbonar($e, 20000)->assertCreated();
 
     $lista = $this->getJson('/api/empleados')->assertOk()->json();
-    expect(array_keys($lista['data'][0]))->toBe(['id', 'nombre', 'documento'])
-        ->and(ecmTieneSaldo($lista))->toBeFalse();
+    expect(array_keys($lista['data'][0]))->toBe(['id', 'nombre', 'documento', 'saldo'])
+        ->and($lista['data'][0]['saldo'])->toBe('110000.00'); // 80.000 + 50.000 − 20.000
 
     $dia = ecmDia();
     expect($dia['movimientos_empleado'])->toHaveCount(2)

@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
 import { api, erroresCampo, mensajeError } from '../../api/cliente'
@@ -16,6 +16,7 @@ import Medida from '../../componentes/Medida'
 import Resumen from '../../componentes/Resumen'
 import Paginacion from '../../componentes/Paginacion'
 import Icono from '../../componentes/Icono'
+import BotonFila from '../../componentes/BotonFila'
 import BotonCancelar from '../../componentes/BotonCancelar'
 
 interface FilaIngreso {
@@ -108,7 +109,7 @@ export default function Ingresos() {
         </div>
         <div className="tabla-desplazable">
         <table>
-          <thead><tr><th>#</th><th>Tipo</th><th>Documento</th><th>Proveedor</th><th>Fecha</th><th>Pago</th><th>Unidades</th><th>Estado</th><th>Usuario</th><th className="col-accion"><span className="solo-lector">Acciones</span></th></tr></thead>
+          <thead><tr><th>#</th><th>Tipo</th><th>Documento</th><th>Proveedor</th><th>Fecha</th><th>Pago</th><th>Unidades</th><th>Estado</th><th>Usuario</th><th className="boton-fila-columna">Acciones</th></tr></thead>
           <tbody>
             {filas.map((i) => (
               <tr key={i.id}>
@@ -125,8 +126,8 @@ export default function Ingresos() {
                 <td><span className={`chip ${i.estado}`}>{i.estado}</span></td>
                 <td>{i.usuario.name}</td>
                 {/* S-69: la compra se abre con un botón, no con el número. */}
-                <td className="col-accion">
-                  <Link className="boton secundario boton-abrir" to={`/logistica/ingresos/${i.id}`} aria-label={`Abrir ${TIPO[i.tipo] ?? 'documento'} ${i.numero_documento}`}>Abrir</Link>
+                <td className="boton-fila-columna">
+                  <BotonFila variante="abrir" to={`/logistica/ingresos/${i.id}`} descripcion={`Abrir ${TIPO[i.tipo] ?? 'documento'} ${i.numero_documento}`} />
                 </td>
               </tr>
             ))}

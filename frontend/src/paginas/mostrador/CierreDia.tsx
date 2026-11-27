@@ -1,17 +1,19 @@
 import { useId, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Navigate, useSearchParams } from 'react-router-dom'
+import { AxiosError } from 'axios'
 import { api, erroresCampo, mensajeError } from '../../api/cliente'
-import { GRUPOS_CAJA, NOMBRE_GRUPO_CAJA, soloEfectivo, type CierreCaja, type DiaCaja, type EmpleadoOpcion, type FormaAbonoEmpleado, type GrupoCaja, type MovimientoCaja, type MovimientoEmpleadoDia, type RecaudoDocumento, type ResumenCaja, type TipoDocumentoVenta } from '../../api/tipos'
+import { GRUPOS_CAJA, NOMBRE_GRUPO_CAJA, soloEfectivo, type AperturaCaja, type CierreCaja, type DiaCaja, type EmpleadoOpcion, type GrupoCaja, type MovimientoCaja, type MovimientoEmpleadoDia, type RecaudoDocumento, type ResumenCaja, type TipoDocumentoVenta } from '../../api/tipos'
 import { useAuth } from '../../auth/AuthProvider'
 import { useAviso } from '../../componentes/Avisos'
+import BotonFila from '../../componentes/BotonFila'
 import Confirmar from '../../componentes/Confirmar'
 import Dialogo, { DialogoSeccion } from '../../componentes/Dialogo'
 import ControlSegmentado from '../../componentes/ControlSegmentado'
 import { DialogoAnular } from '../../componentes/Cartera'
 import Medida from '../../componentes/Medida'
 import CampoMoneda from '../../componentes/CampoMoneda'
-import { formatearDinero, formatoNumero, leerNumero, pesos } from '../../componentes/numeros'
+import { formatoNumero, leerNumero, pesos } from '../../componentes/numeros'
 import { useCategoriasCaja, useCuentasPago } from '../../hooks/useCatalogos'
 import { hoyEnBogota } from '../../utilidades/periodos'
 import { formatearFecha, formatearFechaHora } from '../../utilidades/fechas'
@@ -50,7 +52,10 @@ export function VistaDia({ soloConsulta, titulo, pantalla = false }: { soloConsu
   const [conEmpleados, setConEmpleados] = useState(false)
   const [anulandoRecaudo, setAnulandoRecaudo] = useState<RecaudoDocumento | null>(null)
   const [reabriendo, setReabriendo] = useState<CierreCaja | null>(null)
-  const [corrigiendoApertura, setCorrigiendoApertura] = useState(false)
+  /** S-84: diálogo "Cambiar apertura" / "Abrir caja". */
+  const [cambiandoApertura, setCambiandoApertura] = useState(false)
+  /** S-84: aviso de días sin cerrar descartado (estado local, por día). */
+  const [avisoDescartado, setAvisoDescartado] = useState<string | null>(null)
 
   const dia = useQuery({
     queryKey: ['caja', 'dia', fecha],
@@ -61,14 +66,14 @@ export function VistaDia({ soloConsulta, titulo, pantalla = false }: { soloConsu
   const r = d?.resumen
   const cerrado = !!d?.cierre
   const puedeEscribir = !soloConsulta && !!d && !cerrado
-  // S-49: la apertura se registra o corrige (mostrador) mientras el día no tenga cierre vigente.
+  // S-84: la apertura es automática (lo contado en el último cierre); el mostrador la cambia a mano
+  // mientras el día no tenga cierre vigente. Sin ninguna (primer día), hay que abrir la caja.
   const puedeApertura = !soloConsulta && !!r?.apertura_editable
-  const mostrarFormApertura = !!r && puedeApertura && (!r.apertura || corrigiendoApertura)
   const sinApertura = !!r && !r.apertura && puedeApertura
-  const alGuardarApertura = (valor: number) => {
-    setCorrigiendoApertura(false)
+  const alGuardarApertura = (a: AperturaCaja | null) => {
+    setCambiandoApertura(false)
     refrescar()
-    avisos.mostrar('ok', `Caja del ${formatearFecha(fecha)} abierta con ${pesos(valor)}.`)
+    if (a) avisos.mostrar('ok', `Apertura de la caja del ${formatearFecha(fecha)}: ${pesos(a.valor)}.`)
   }
 
   return (
@@ -82,7 +87,7 @@ export function VistaDia({ soloConsulta, titulo, pantalla = false }: { soloConsu
             max={hoy}
             value={fecha}
             onChange={(e) => {
-              setCorrigiendoApertura(false)
+              setCambiandoApertura(false)
               setParams((p) => {
                 const n = new URLSearchParams(p)
                 if (!e.target.value || e.target.value === hoy) n.delete('fecha'); else n.set('fecha', e.target.value)
@@ -95,11 +100,16 @@ export function VistaDia({ soloConsulta, titulo, pantalla = false }: { soloConsu
           ? <span className="chip cerrada" title={`Por ${d.cierre!.usuario?.name ?? '—'}, ${formatearFechaHora(d.cierre!.cerrado_at)}`}>Cerrado</span>
           : <span className="chip abierta">Sin cerrar</span>)}
         {r?.apertura && (
-          <span className="caja-chip-apertura">
-            <span className="chip" title={r.apertura.fijado_por ? `${r.apertura.fijado_por.name}, ${formatearFechaHora(r.apertura.fijado_at)}` : undefined}>
-              Abierta con {pesos(r.apertura.valor)}
-            </span>
-            {puedeApertura && !corrigiendoApertura && <button type="button" className="enlace" onClick={() => setCorrigiendoApertura(true)}>Corregir</button>}
+          <span className="caja-apertura">
+            <TextoApertura apertura={r.apertura} cerrado={cerrado} />
+            {puedeApertura && (
+              <BotonFila
+                variante="editar"
+                etiqueta="Cambiar apertura"
+                descripcion={`Cambiar la apertura de la caja del ${formatearFecha(fecha)}`}
+                onClick={() => setCambiandoApertura(true)}
+              />
+            )}
           </span>
         )}
         {r && !r.apertura && !puedeApertura && <span className="chip">Sin apertura</span>}
@@ -110,14 +120,19 @@ export function VistaDia({ soloConsulta, titulo, pantalla = false }: { soloConsu
 
       {d && r && (
         <>
-          {mostrarFormApertura && (
-            <FormularioApertura
-              fecha={fecha}
-              actual={r.apertura?.valor ?? null}
-              sugerida={r.apertura_sugerida}
-              onCancelar={r.apertura ? () => setCorrigiendoApertura(false) : undefined}
-              onGuardada={alGuardarApertura}
-            />
+          {sinApertura && (
+            <div className="aviso atencion caja-abrir" role="status">
+              <span>No hay un cierre anterior del que tomar la apertura. Registre el efectivo con que abre la caja (puede ser 0).</span>
+              <button type="button" className="primario boton-44" onClick={() => setCambiandoApertura(true)}>Abrir caja</button>
+            </div>
+          )}
+          {r.apertura?.hay_dias_sin_cerrar && r.apertura.desde_cierre && avisoDescartado !== fecha && (
+            <div className="aviso atencion caja-aviso-dias" role="status">
+              <span>El último cierre fue el {formatearFecha(r.apertura.desde_cierre)}. Revise si faltan cierres de los días intermedios.</span>
+              <button type="button" className="icono-boton" aria-label="Descartar el aviso" title="Descartar" onClick={() => setAvisoDescartado(fecha)}>
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6L6 18" /></svg>
+              </button>
+            </div>
           )}
           {d.ventas_abiertas.length > 0 && (
             <div className="aviso atencion" role="status">
@@ -183,6 +198,9 @@ export function VistaDia({ soloConsulta, titulo, pantalla = false }: { soloConsu
                     </details>
                   )}
                 </div>
+                {!cerrado && !soloConsulta && !r.apertura && (
+                  <p className="ayuda caja-sin-apertura">Registre la apertura para poder cerrar el día.</p>
+                )}
                 {!cerrado && !soloConsulta && (
                   <FormularioCierre
                     key={fecha}
@@ -198,9 +216,12 @@ export function VistaDia({ soloConsulta, titulo, pantalla = false }: { soloConsu
         </>
       )}
 
+      {cambiandoApertura && r && (
+        <DialogoApertura fecha={fecha} apertura={r.apertura} onCerrar={() => setCambiandoApertura(false)} onGuardada={alGuardarApertura} />
+      )}
       {agregando && <DialogoMovimiento fecha={fecha} onCerrar={() => setAgregando(false)} onGuardado={() => { setAgregando(false); refrescar() }} />}
       {recaudando && <DialogoRecaudo fecha={fecha} onCerrar={() => setRecaudando(false)} onGuardado={() => { setRecaudando(false); refrescar() }} />}
-      {conEmpleados && <DialogoEmpleados onCerrar={() => setConEmpleados(false)} onGuardado={() => { setConEmpleados(false); refrescar() }} />}
+      {conEmpleados && <DialogoEmpleados onCerrar={() => setConEmpleados(false)} onGuardado={(aviso) => { setConEmpleados(false); refrescar(); qc.invalidateQueries({ queryKey: ['empleados'] }); avisos.mostrar('ok', aviso, undefined, 5000) }} />}
       {anulandoRecaudo && (
         <DialogoAnular
           titulo="Anular recaudo"
@@ -400,37 +421,84 @@ function DesgloseEfectivo({ resumen: r }: { resumen: ResumenCaja }) {
   )
 }
 
-function FormularioApertura({ fecha, actual, sugerida, onCancelar, onGuardada }: {
+/**
+ * S-84: "Apertura $ 650.000 · del cierre del 25/11" (arrastre) o "· cambiada a mano" (con el motivo
+ * y lo que dejó el cierre anterior en un desplegable accesible por teclado). Cerrado: solo el valor.
+ */
+function TextoApertura({ apertura: a, cerrado }: { apertura: AperturaCaja; cerrado: boolean }) {
+  const manual = cerrado ? a.origen_usado === 'manual' : a.origen === 'manual'
+  return (
+    <span className="caja-apertura-texto">
+      <span>Apertura <strong>{pesos(a.valor)}</strong></span>
+      {!cerrado && a.origen === 'arrastre' && a.desde_cierre && <span className="caja-apertura-origen">· del cierre del {formatearFecha(a.desde_cierre).slice(0, 5)}</span>}
+      {!cerrado && manual && (
+        <details className="caja-apertura-detalle">
+          <summary>· cambiada a mano</summary>
+          <div className="caja-apertura-popover" role="note">
+            {a.motivo && <p>Motivo: {a.motivo}</p>}
+            {a.cierre_anterior_valor !== null && <p>El cierre anterior dejó {pesos(a.cierre_anterior_valor)}.</p>}
+            {a.fijado_por && <p>{a.fijado_por.name}{a.fijado_at ? `, ${formatearFechaHora(a.fijado_at)}` : ''}</p>}
+          </div>
+        </details>
+      )}
+    </span>
+  )
+}
+
+/**
+ * S-84: "Cambiar apertura" (o "Abrir caja" el primer día). El valor se precarga con la apertura
+ * actual; "Usar la del cierre anterior" pone lo que dejó el último cierre. El motivo es obligatorio
+ * si el valor difiere de eso (lo decide y valida el servidor; aquí solo se anticipa).
+ */
+function DialogoApertura({ fecha, apertura, onCerrar, onGuardada }: {
   fecha: string
-  actual: string | null
-  sugerida: string | null
-  onCancelar?: () => void
-  onGuardada: (valor: number) => void
+  apertura: AperturaCaja | null
+  onCerrar: () => void
+  onGuardada: (a: AperturaCaja | null) => void
 }) {
-  const inicial = actual ?? sugerida
-  const [valor, setValor] = useState(inicial !== null ? formatoNumero(inicial) : '')
-  const [confirmando, setConfirmando] = useState(false)
+  const arrastre = apertura?.cierre_anterior_valor ?? null
+  const inicial = apertura ? formatoNumero(apertura.valor) : ''
+  const [valor, setValor] = useState(inicial)
+  const [motivo, setMotivo] = useState(apertura?.origen === 'manual' ? apertura.motivo ?? '' : '')
   const n = leerNumero(valor)
-  const valido = n !== null && !Number.isNaN(n) && n >= 0
-  const corrigiendo = actual !== null
+  const valido = n !== null && !Number.isNaN(n) && n >= 0 && Math.round(n * 100) === n * 100
+  const difiere = arrastre !== null && valido && Math.abs((n ?? 0) - Number(arrastre)) >= 0.005
+  const motivoFalta = difiere && motivo.trim().length < 3
+  const primerDia = !apertura
 
   const guardar = useMutation({
-    mutationFn: async () => (await api.put(`/caja/dias/${fecha}/apertura`, { valor: n })).data,
-    onSuccess: () => { setConfirmando(false); onGuardada(n ?? 0) },
+    mutationFn: async () => (await api.put<{ apertura: AperturaCaja | null }>(`/caja/dias/${fecha}/apertura`, { valor: n, motivo: motivo.trim() || null })).data,
+    onSuccess: (d) => onGuardada(d.apertura),
   })
-  const errores = guardar.isError ? erroresCampo(guardar.error) : {}
+  const errores: Record<string, string> = guardar.isError ? erroresCampo(guardar.error) : {}
+  if (guardar.isError && guardar.error instanceof AxiosError) {
+    const datos = guardar.error.response?.data as { campo?: string; message?: string } | undefined
+    if (datos?.campo && datos.message) errores[datos.campo] = datos.message
+  }
+  const general = guardar.isError && Object.keys(errores).length === 0 ? mensajeError(guardar.error) : null
 
   return (
-    <section className="tarjeta-pagina apertura-caja">
-      <h2>{corrigiendo ? 'Corregir la apertura' : 'Abrir la caja'}</h2>
-      <form className="formulario" onSubmit={(e) => { e.preventDefault(); if (valido) setConfirmando(true) }}>
+    <Dialogo
+      titulo={primerDia ? 'Abrir la caja' : 'Cambiar la apertura'}
+      descripcion={`Caja del ${formatearFecha(fecha)}`}
+      modificado={valor !== inicial || motivo.trim() !== (apertura?.origen === 'manual' ? apertura.motivo ?? '' : '')}
+      pendiente={guardar.isPending}
+      onCerrar={onCerrar}
+      onEnviar={() => { if (valido && !motivoFalta && !guardar.isPending) guardar.mutate() }}
+      pie={(
+        <>
+          <BotonCancelar />
+          <button type="submit" className="primario" disabled={!valido || motivoFalta || guardar.isPending}>{guardar.isPending ? 'Guardando…' : 'Guardar apertura'}</button>
+        </>
+      )}
+    >
+      <DialogoSeccion>
         <label htmlFor="apertura-valor">
           <span className="etiqueta-campo">Efectivo con que abre la caja<span className="obligatorio" aria-hidden="true">*</span></span>
         </label>
         <CampoMoneda
           id="apertura-valor"
-          className="boton-44"
-          autoFocus={!corrigiendo}
+          autoFocus
           placeholder="Ej: 200.000"
           value={valor}
           aria-invalid={(valor.trim() !== '' && !valido) || !!errores.valor}
@@ -439,93 +507,32 @@ function FormularioApertura({ fecha, actual, sugerida, onCancelar, onGuardada }:
         />
         <small id="apertura-ayuda" className={(valor.trim() !== '' && !valido) || errores.valor ? 'ayuda error' : 'ayuda'}>
           {errores.valor ?? (valor.trim() !== '' && !valido
-            ? 'Escriba un valor en pesos, 0 o mayor.'
-            : sugerida !== null ? `Efectivo contado del último cierre: ${pesos(sugerida)}.` : 'Solo el efectivo que ya está en la caja al empezar (puede ser 0). Lo que llegue durante el día desde la Caja General se registra como ingreso externo.')}
+            ? 'Escriba un valor en pesos, 0 o mayor, con máximo 2 decimales.'
+            : 'Solo el efectivo que ya está en la caja al empezar (puede ser 0). Lo que llegue durante el día desde la Caja General se registra como ingreso externo.')}
         </small>
-        {guardar.isError && !confirmando && !errores.valor && <div className="aviso error" role="alert">{mensajeError(guardar.error)}</div>}
-        <div className="acciones acciones-izquierda">
-          <button type="submit" className="primario boton-44" disabled={!valido || guardar.isPending}>{corrigiendo ? 'Guardar apertura' : 'Abrir caja'}</button>
-          {onCancelar && <button type="button" className="secundario boton-44" disabled={guardar.isPending} onClick={onCancelar}>Cancelar</button>}
-        </div>
-      </form>
-      {confirmando && !corrigiendo && (
-        <DialogoConfirmarApertura
-          fecha={fecha}
-          valor={n ?? 0}
-          pendiente={guardar.isPending}
-          error={guardar.isError ? mensajeError(guardar.error) : null}
-          onConfirmar={() => guardar.mutate()}
-          onCancelar={() => { setConfirmando(false); guardar.reset() }}
+        {arrastre !== null && (
+          <button type="button" className="secundario boton-44 apertura-usar-cierre" onClick={() => { setValor(formatoNumero(arrastre)); guardar.reset() }}>
+            Usar la del cierre anterior ({pesos(arrastre)})
+          </button>
+        )}
+        <label htmlFor="apertura-motivo">
+          <span className="etiqueta-campo">Motivo{difiere && <span className="obligatorio" aria-hidden="true">*</span>}</span>
+        </label>
+        <input
+          id="apertura-motivo"
+          maxLength={200}
+          value={motivo}
+          aria-invalid={(motivoFalta && motivo !== '') || !!errores.motivo}
+          aria-describedby="apertura-motivo-ayuda"
+          onChange={(e) => { setMotivo(e.target.value); guardar.reset() }}
         />
-      )}
-      {confirmando && corrigiendo && (
-        <Confirmar
-          titulo={`Corregir la apertura del ${formatearFecha(fecha)}`}
-          texto={`La apertura pasa de ${pesos(actual ?? 0)} a ${pesos(n ?? 0)}. El cambio queda en la auditoría.`}
-          accion="Guardar apertura"
-          pendiente={guardar.isPending}
-          error={guardar.isError ? mensajeError(guardar.error) : null}
-          onConfirmar={() => guardar.mutate()}
-          onCancelar={() => setConfirmando(false)}
-        />
-      )}
-    </section>
-  )
-}
-
-/** "miércoles 25 de noviembre de 2026": aaaa-mm-dd es un día del calendario, sin zona horaria. */
-const formatoDiaLargo = new Intl.DateTimeFormat('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
-function diaLargo(fecha: string): string {
-  const [a, m, d] = fecha.split('-').map(Number)
-  return formatoDiaLargo.format(new Date(a, m - 1, d)).replace(',', '')
-}
-
-/**
- * S-49: confirmación de la apertura de caja. Cuerpo propio (el subtítulo de Dialogo se corta en una
- * línea). La regla de la ayuda es la de CajaService::fijarApertura y la ruta `solo_rol:mostrador`:
- * la apertura se corrige mientras el día no tenga cierre vigente, y el cierre solo lo reabre el
- * administrador. Una apertura de 0 es válida (valor >= 0).
- */
-function DialogoConfirmarApertura({ fecha, valor, pendiente, error, onConfirmar, onCancelar }: {
-  fecha: string
-  valor: number
-  pendiente: boolean
-  error: string | null
-  onConfirmar: () => void
-  onCancelar: () => void
-}) {
-  const monto = `$ ${formatearDinero(formatoNumero(valor))}`
-
-  return (
-    <Dialogo
-      titulo="Confirmar apertura de caja"
-      variante="confirmar"
-      alertdialog
-      confirmarSalida={false}
-      onCerrar={onCancelar}
-      pendiente={pendiente}
-      onEnviar={() => { if (!pendiente) onConfirmar() }}
-      pie={(
-        <>
-          <BotonCancelar className="secundario boton-44" />
-          <button type="submit" className="primario boton-44" autoFocus disabled={pendiente}>{pendiente ? 'Abriendo…' : 'Abrir caja'}</button>
-        </>
-      )}
-    >
-      <section className="modal-seccion apertura-confirmar">
-        <dl className="apertura-confirmar-datos">
-          <div>
-            <dt>Día</dt>
-            <dd>{diaLargo(fecha)}</dd>
-          </div>
-          <div>
-            <dt>Efectivo con que abre</dt>
-            <dd className="apertura-confirmar-monto">{valor === 0 ? `Abre con ${monto}` : monto}</dd>
-          </div>
-        </dl>
-        <p className="apertura-confirmar-ayuda">El mostrador puede corregirla hasta que cierre el día; después, solo si el administrador reabre la caja.</p>
-        {error && <p className="aviso error" role="alert">{error}</p>}
-      </section>
+        <small id="apertura-motivo-ayuda" className={errores.motivo ? 'ayuda error' : 'ayuda'}>
+          {errores.motivo ?? (difiere
+            ? `Obligatorio: difiere de lo que dejó el cierre anterior (${pesos(arrastre ?? 0)}). Por ejemplo: se retiró dinero de la caja.`
+            : primerDia ? 'Opcional el primer día.' : 'Por ejemplo: se retiró dinero de la caja.')}
+        </small>
+        {(general || errores.fecha) && <div className="aviso error" role="alert">{general ?? errores.fecha}</div>}
+      </DialogoSeccion>
     </Dialogo>
   )
 }
@@ -961,21 +968,23 @@ function DialogoMovimiento({ fecha, onCerrar, onGuardado }: { fecha: string; onC
 }
 
 type TipoEmpleado = 'prestamo' | 'abono'
+/** Cuenta de pago del abono: una cuenta activa o el descuento de nómina (no entra a la caja). */
+type CuentaAbono = number | 'nomina' | ''
 
-const sinTildes = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+const textoEmpleado = (e: EmpleadoOpcion) =>
+  `${e.nombre}${e.documento ? ` · ${e.documento}` : ''} · ${Number(e.saldo) > 0 ? `debe ${pesos(e.saldo)}` : 'sin deuda'}`
 
 /**
- * RF-27 (S-55 a S-57): préstamo o abono de un empleado desde la caja de hoy (solo mostrador). Las
- * reglas las decide el backend: el préstamo sale de Efectivo; el abono es por caja (cuenta activa) o
- * por nómina (no mueve la caja); un abono mayor que la deuda lo rechaza el servidor. Sin saldos.
+ * RF-27, S-81 (ajusta S-56 y S-57): préstamo o abono de un empleado desde la caja de hoy (solo
+ * mostrador). El empleado se elige en un select con su saldo; el abono es parcial o total ("Pagar
+ * todo") y sale por una cuenta de pago o por descuento de nómina (forma `nomina`: sin cuenta, no mueve
+ * la caja). Lo de "Quedaría en" es informativo: el servidor valida el saldo con el empleado bloqueado.
  */
-function DialogoEmpleados({ onCerrar, onGuardado }: { onCerrar: () => void; onGuardado: () => void }) {
+function DialogoEmpleados({ onCerrar, onGuardado }: { onCerrar: () => void; onGuardado: (aviso: string) => void }) {
   const [tipo, setTipo] = useState<TipoEmpleado>('prestamo')
-  const [empleado, setEmpleado] = useState<number | null>(null)
-  const [busca, setBusca] = useState('')
+  const [empleadoId, setEmpleadoId] = useState<number | ''>('')
   const [valor, setValor] = useState('')
-  const [forma, setForma] = useState<FormaAbonoEmpleado>('caja')
-  const [cuenta, setCuenta] = useState<number | ''>('')
+  const [cuenta, setCuenta] = useState<CuentaAbono>('')
   const [nota, setNota] = useState('')
   const empleados = useQuery({
     queryKey: ['empleados', 'activos'],
@@ -983,33 +992,51 @@ function DialogoEmpleados({ onCerrar, onGuardado }: { onCerrar: () => void; onGu
   })
   const cuentas = useCuentasPago()
   const activas = cuentas.data ?? []
-  const cuentaElegida = cuenta !== '' && activas.some((c) => c.id === cuenta) ? cuenta : (activas.find((c) => c.tipo === 'efectivo')?.id ?? '')
-  const termino = sinTildes(busca.trim())
-  const lista = (empleados.data ?? []).filter((e) => termino === '' || sinTildes(e.nombre).includes(termino) || (e.documento ?? '').includes(termino))
+  const todos = empleados.data ?? []
+  const lista = tipo === 'abono' ? todos.filter((e) => Number(e.saldo) > 0) : todos
+  // En abono, un empleado sin deuda deja de estar elegido (vuelve si se pasa a préstamo).
+  const elegido = lista.find((e) => e.id === empleadoId)
+  const saldo = elegido ? Number(elegido.saldo) : 0
+  const cuentaElegida: CuentaAbono = cuenta === 'nomina' || (cuenta !== '' && activas.some((c) => c.id === cuenta))
+    ? cuenta
+    : (activas.find((c) => c.tipo === 'efectivo')?.id ?? '')
+  const nomina = tipo === 'abono' && cuentaElegida === 'nomina'
   const n = leerNumero(valor)
   const valorValido = n !== null && !Number.isNaN(n) && n > 0 && Number.isInteger(n)
+  const supera = tipo === 'abono' && !!elegido && valorValido && n > saldo
   const valorMalo = valor.trim() !== '' && !valorValido
-  const porCaja = tipo === 'abono' && forma === 'caja'
-  const listo = empleado !== null && valorValido && (!porCaja || cuentaElegida !== '')
+  const quedaria = elegido && valorValido ? (tipo === 'prestamo' ? saldo + n : saldo - n) : null
+  const listo = !!elegido && valorValido && !supera && (tipo === 'prestamo' || cuentaElegida !== '')
 
   const guardar = useMutation({
-    mutationFn: async () => (await api.post(`/empleados/${empleado}/${tipo === 'prestamo' ? 'prestamos' : 'abonos'}`, {
+    mutationFn: async () => (await api.post(`/empleados/${empleadoId}/${tipo === 'prestamo' ? 'prestamos' : 'abonos'}`, {
       valor: n,
       nota: nota.trim() || null,
-      ...(tipo === 'abono' ? { forma, cuenta_pago_id: porCaja ? cuentaElegida : null } : {}),
+      ...(tipo === 'abono' ? (nomina ? { forma: 'nomina' } : { forma: 'caja', cuenta_pago_id: cuentaElegida }) : {}),
     })).data,
-    onSuccess: onGuardado,
+    onSuccess: () => {
+      const nombre = elegido?.nombre ?? ''
+      const monto = pesos(n ?? 0)
+      const resto = quedaria ?? 0
+      onGuardado(
+        tipo === 'prestamo' ? `Préstamo de ${monto} registrado a ${nombre}. Debe ${pesos(resto)}.`
+          : nomina ? `Descuento de nómina de ${monto} registrado a ${nombre}.`
+            : `Abono de ${monto} registrado a ${nombre}. ${resto > 0 ? `Debe ${pesos(resto)}.` : 'Deuda cancelada.'}`,
+      )
+    },
   })
   const errores = guardar.isError ? erroresCampo(guardar.error) : {}
   const general = guardar.isError && Object.keys(errores).length === 0 ? mensajeError(guardar.error) : null
-  const ayuda = tipo === 'prestamo' ? 'El préstamo sale del efectivo de la caja.' : forma === 'nomina' ? 'Por nómina solo se registra; no mueve la caja.' : undefined
+  const vacio = empleados.isSuccess && (todos.length === 0
+    ? 'No hay empleados activos. El administrador debe crearlos.'
+    : lista.length === 0 ? 'Ningún empleado tiene saldo pendiente.' : null)
 
   return (
     <Dialogo
       titulo="Cuenta de empleados"
-      descripcion={ayuda}
+      descripcion={tipo === 'prestamo' ? 'El préstamo sale del efectivo de la caja.' : undefined}
       variante="ancha"
-      modificado={empleado !== null || valor.trim() !== '' || nota.trim() !== ''}
+      modificado={empleadoId !== '' || valor.trim() !== '' || nota.trim() !== ''}
       onCerrar={onCerrar}
       pendiente={guardar.isPending}
       onEnviar={() => { if (listo && !guardar.isPending) guardar.mutate() }}
@@ -1030,53 +1057,75 @@ function DialogoEmpleados({ onCerrar, onGuardado }: { onCerrar: () => void; onGu
           onCambio={(t) => { setTipo(t); guardar.reset() }}
           opciones={[{ valor: 'prestamo', texto: 'Préstamo' }, { valor: 'abono', texto: 'Abono' }]}
         />
-        <fieldset className="empleado-selector">
-          <legend className="etiqueta-campo">Empleado<span className="obligatorio" aria-hidden="true">*</span></legend>
-          <input
-            type="search"
+        <label>
+          <span className="etiqueta-campo">Empleado<span className="obligatorio" aria-hidden="true">*</span></span>
+          <select
+            className="empleado-select"
             autoFocus
-            autoComplete="off"
-            placeholder="Nombre o documento"
-            aria-label="Buscar empleado"
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-          />
-          <div className="empleado-lista" role="radiogroup" aria-label="Empleado">
-            {empleados.isLoading && <p className="cargando">Cargando…</p>}
-            {lista.map((e) => (
-              <label key={e.id} className={empleado === e.id ? 'empleado-opcion elegida' : 'empleado-opcion'}>
-                <input type="radio" name="empleado" checked={empleado === e.id} onChange={() => { setEmpleado(e.id); guardar.reset() }} />
-                <span>{e.nombre}{e.documento && <small className="empleado-documento">{e.documento}</small>}</span>
-              </label>
-            ))}
-          </div>
-        </fieldset>
+            required
+            value={elegido ? elegido.id : ''}
+            disabled={!!vacio}
+            aria-describedby="empleado-saldo"
+            onChange={(e) => { setEmpleadoId(e.target.value === '' ? '' : Number(e.target.value)); guardar.reset() }}
+          >
+            <option value="" disabled>{empleados.isLoading ? 'Cargando…' : 'Seleccione un empleado'}</option>
+            {lista.map((e) => <option key={e.id} value={e.id}>{textoEmpleado(e)}</option>)}
+          </select>
+          <small id="empleado-saldo" className="ayuda empleado-saldo" role="status">
+            {vacio ?? (elegido ? `Debe ${pesos(saldo)}${quedaria !== null && !supera ? ` · Quedaría en ${pesos(quedaria)}` : ''}` : '')}
+          </small>
+        </label>
         <div className="campos-dos">
           <label>
             <span className="etiqueta-campo">Valor<span className="obligatorio" aria-hidden="true">*</span></span>
-            <CampoMoneda required placeholder="Ej: 50.000" value={valor} aria-invalid={valorMalo || !!errores.valor} onChange={(e) => { setValor(e.target.value); guardar.reset() }} />
-            {(valorMalo || errores.valor) && <small className="ayuda error">{errores.valor ?? 'Debe ser mayor que 0.'}</small>}
+            <span className="empleado-valor">
+              <CampoMoneda
+                required
+                placeholder="Ej: 50.000"
+                value={valor}
+                aria-invalid={valorMalo || supera || !!errores.valor}
+                aria-describedby="empleado-valor-ayuda"
+                onChange={(e) => { setValor(e.target.value); guardar.reset() }}
+              />
+              {tipo === 'abono' && (
+                <button
+                  type="button"
+                  className="secundario empleado-pagar-todo"
+                  disabled={!elegido}
+                  onClick={() => { setValor(formatoNumero(saldo)); guardar.reset() }}
+                >Pagar todo</button>
+              )}
+            </span>
+            <small id="empleado-valor-ayuda" className={valorMalo || supera || errores.valor ? 'ayuda error' : 'ayuda'}>
+              {errores.valor
+                ?? (valorMalo ? 'Debe ser mayor que 0.'
+                  : supera ? `No puede superar lo que debe (${pesos(saldo)})`
+                    : tipo === 'abono' && elegido && valorValido
+                      ? (n < saldo ? `Abono parcial: el empleado seguirá debiendo ${pesos(saldo - n)}.` : 'Cancela la deuda.')
+                      : '')}
+            </small>
           </label>
           {tipo === 'abono' && (
-            <ControlSegmentado<FormaAbonoEmpleado>
-              id="empleado-forma"
-              etiqueta="Forma"
-              valor={forma}
-              onCambio={(f) => { setForma(f); guardar.reset() }}
-              opciones={[{ valor: 'caja', texto: 'Caja' }, { valor: 'nomina', texto: 'Nómina' }]}
-            />
+            <label>
+              <span className="etiqueta-campo">Cuenta de pago<span className="obligatorio" aria-hidden="true">*</span></span>
+              <select
+                className="empleado-select"
+                value={cuentaElegida}
+                aria-invalid={!!errores.cuenta_pago_id}
+                aria-describedby={nomina ? 'empleado-nomina-nota' : undefined}
+                onChange={(e) => { setCuenta(e.target.value === 'nomina' ? 'nomina' : e.target.value === '' ? '' : Number(e.target.value)); guardar.reset() }}
+              >
+                {cuentaElegida === '' && <option value="">{cuentas.isLoading ? 'Cargando…' : 'Seleccione…'}</option>}
+                {activas.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                <option disabled value="separador">──────────</option>
+                <option value="nomina">Descuento de nómina (no entra a la caja)</option>
+              </select>
+              {errores.cuenta_pago_id
+                ? <small className="ayuda error">{errores.cuenta_pago_id}</small>
+                : nomina && <small id="empleado-nomina-nota" className="ayuda">Baja la deuda del empleado; no suma a la caja.</small>}
+            </label>
           )}
         </div>
-        {porCaja && (
-          <label>
-            <span className="etiqueta-campo">Cuenta de pago<span className="obligatorio" aria-hidden="true">*</span></span>
-            <select value={cuentaElegida} aria-invalid={!!errores.cuenta_pago_id} onChange={(e) => { setCuenta(e.target.value === '' ? '' : Number(e.target.value)); guardar.reset() }}>
-              {cuentaElegida === '' && <option value="">{cuentas.isLoading ? 'Cargando…' : 'Seleccione…'}</option>}
-              {activas.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-            </select>
-            {errores.cuenta_pago_id && <small className="ayuda error">{errores.cuenta_pago_id}</small>}
-          </label>
-        )}
         <label>
           <span className="etiqueta-campo">Observación (opcional)</span>
           <input maxLength={255} autoComplete="off" value={nota} aria-invalid={!!errores.nota} onChange={(e) => setNota(e.target.value)} />
