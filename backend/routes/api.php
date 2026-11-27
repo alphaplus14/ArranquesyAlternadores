@@ -19,10 +19,11 @@ use App\Http\Controllers\Api\EmpleadoController;
 use App\Http\Controllers\Api\EtiquetaController;
 use App\Http\Controllers\Api\IngresoController;
 use App\Http\Controllers\Api\MovimientoCajaController;
-use App\Http\Controllers\Api\RecaudoDocumentoController;
+use App\Http\Controllers\Api\MovimientoInventarioController;
 use App\Http\Controllers\Api\PagoController;
 use App\Http\Controllers\Api\PanelController;
 use App\Http\Controllers\Api\ProveedorController;
+use App\Http\Controllers\Api\RecaudoDocumentoController;
 use App\Http\Controllers\Api\ReferenciaController;
 use App\Http\Controllers\Api\ReporteController;
 use App\Http\Controllers\Api\UsuarioController;
@@ -200,6 +201,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // de logística: el admin recibe 403. Para que el admin vuelva a operar, `solo_rol:logistica` → `rol:logistica`.
     Route::middleware('rol:admin,logistica')->group(function () {
         Route::get('/ajustes', [AjusteController::class, 'index']);
+        // S-87: historial de movimientos por producto (solo lectura; el admin solo consulta).
+        Route::get('/movimientos-inventario', [MovimientoInventarioController::class, 'index'])->middleware('medir:500')->name('movimientos-inventario.index');
 
         Route::middleware('solo_rol:logistica')->group(function () {
             Route::get('/ajustes/unidad', [AjusteController::class, 'unidad'])->middleware('medir:500')->name('ajustes.unidad');
