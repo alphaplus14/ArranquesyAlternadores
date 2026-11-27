@@ -296,7 +296,6 @@ export default function IngresoDetalle() {
   if (!i) return <div className="panel">Cargando…</div>
 
   // S-66 (ajuste): el borrador muestra el total visible (nunca negativo); confirmado, el de siempre.
-  const totalMostrado = i.total ? pesos(i.total) : i.totales ? pesos(borrador ? i.totales.total_visible : i.totales.total) : '—'
   const pendiente = i.totales ? Number(i.totales.descuento_pendiente) : 0
   const descuentoDoc = Number(i.descuento_documento)
 
@@ -365,7 +364,7 @@ export default function IngresoDetalle() {
         </div>
 
         {i.totales && (
-          <div className="totales" aria-label="Totales del documento">
+          <div className="totales compacto" aria-label="Totales del documento">
             <div><span>Subtotal</span><strong>{pesos(i.totales.subtotal_bruto)}</strong></div>
             <div><span>Descuento de líneas</span><strong>{pesos(i.totales.descuento_lineas)}</strong></div>
             <div><span>Descuento del documento</span><strong>{pesos(borrador ? i.totales.descuento_aplicado : i.totales.descuento_documento)}</strong></div>
@@ -444,7 +443,7 @@ export default function IngresoDetalle() {
         {borrador ? (
           // Barra fija al pie del área visible: con muchas líneas el botón sigue a la vista.
           <div className="ingreso-barra">
-            <span className="ingreso-barra-resumen">{i.items.length} {i.items.length === 1 ? 'línea' : 'líneas'} · Total {totalMostrado}</span>
+            <span className="ingreso-barra-resumen">{i.items.length} {i.items.length === 1 ? 'línea' : 'líneas'}</span>
             <div className="ingreso-barra-acciones">
               <button type="button" className="primario" disabled={i.items.length === 0 || confirmar.isPending} onClick={() => confirmar.mutate()}>
                 Confirmar ingreso y crear unidades
