@@ -152,7 +152,7 @@ export default function Costos() {
             ? <p className="cargando">Cargando…</p>
             : <p className="vacio">{hay ? 'Este producto aún no tiene compras confirmadas con estos filtros.' : 'No hay compras confirmadas con estos filtros.'}</p>
         ) : (
-          <div className={`tabla-desplazable${cargando ? ' actualizando' : ''}`}>
+          <div className={`tabla-desplazable tabla-viva${cargando ? ' actualizando' : ''}`}>
             <TablaCostos
               key={claveTabla}
               filas={filasVigentes}

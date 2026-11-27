@@ -107,7 +107,7 @@ export default function Ingresos() {
             <input type="checkbox" checked={soloCorregidos} onChange={(e) => setSoloCorregidos(e.target.checked)} /> Solo corregidas
           </label>
         </div>
-        <div className="tabla-desplazable">
+        <div className="tabla-desplazable tabla-viva">
         <table>
           <thead><tr><th>#</th><th>Tipo</th><th>Documento</th><th>Proveedor</th><th>Fecha</th><th>Pago</th><th>Unidades</th><th>Estado</th><th>Usuario</th><th className="boton-fila-columna">Acciones</th></tr></thead>
           <tbody>

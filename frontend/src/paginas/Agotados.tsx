@@ -119,6 +119,7 @@ export default function Agotados() {
           <>
             {agotados.resultado && (
               <>
+                <div className="tabla-viva">
                 <table className="tabla-apilable tabla-agotados">
                   <caption className="solo-lector">Referencias agotadas, por proveedor y código</caption>
                   <thead><tr><th>Código</th><th>Descripción</th><th>Proveedor</th><th>Categoría</th><th>Calidad</th><th className="col-numero">Existencia</th></tr></thead>
@@ -147,6 +148,7 @@ export default function Agotados() {
                     ))}
                   </tbody>
                 </table>
+                </div>
                 {agotados.filas.length === 0 && (
                   <p className="vacio">{proveedor ? 'Este proveedor no tiene agotados' : 'No hay agotados'}{categoria ? ' en esa categoría' : ''}.</p>
                 )}
@@ -157,6 +159,7 @@ export default function Agotados() {
         ) : (
           <>
             {bajo.resultado && (
+              <div className="tabla-viva">
               <table className="tabla-apilable tabla-bajo-minimo">
                 <caption className="solo-lector">Productos bajo mínimo, mayor faltante primero</caption>
                 <thead><tr><th>Código</th><th>Descripción</th><th>Proveedor</th><th>Categoría</th><th className="col-numero">Existencia</th><th className="col-numero">Mínimo</th><th className="col-numero">Faltante</th></tr></thead>
@@ -189,6 +192,7 @@ export default function Agotados() {
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
             {bajo.resultado && bajo.filas.length === 0 && (
               <p className="vacio">Nada bajo mínimo con estos filtros. Si nadie tiene mínimo, el administrador puede fijar uno general en Configuración.</p>

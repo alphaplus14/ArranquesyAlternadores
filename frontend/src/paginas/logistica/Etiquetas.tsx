@@ -101,6 +101,7 @@ export default function Etiquetas() {
             ))}
           </fieldset>
 
+          <div className="tabla-viva">
           <table>
             <thead><tr><th></th><th>Código</th><th>Referencia</th><th>Proveedor</th><th>Estado</th></tr></thead>
             <tbody>
@@ -115,6 +116,7 @@ export default function Etiquetas() {
               ))}
             </tbody>
           </table>
+          </div>
 
           <div className="acciones">
             <button className="primario" disabled={seleccion.size === 0 || imprimir.isPending} onClick={() => imprimir.mutate()}>

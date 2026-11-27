@@ -635,7 +635,7 @@ export default function Productos() {
         {aviso && <div className={`aviso ${aviso.tipo}`} role="status">{aviso.texto}</div>}
 
         <div className="tabla-contenedor">
-        <div className={`tabla-scroll${cargando ? ' actualizando' : ''}`} role="table" aria-label="Productos" aria-rowcount={info?.total} ref={ventana.ref} onScroll={ventana.onScroll}>
+        <div className={`tabla-scroll tabla-viva${cargando ? ' actualizando' : ''}`} role="table" aria-label="Productos" aria-rowcount={info?.total} ref={ventana.ref} onScroll={ventana.onScroll}>
           <div role="row" className="tabla-rejilla tabla-cabeza">
             <div role="columnheader">Referencia</div>
             <div role="columnheader">Descripción</div>

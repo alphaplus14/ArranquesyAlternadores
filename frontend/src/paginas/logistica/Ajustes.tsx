@@ -1062,6 +1062,7 @@ function Historial({ puedeReintegrar }: { puedeReintegrar: boolean }) {
       ) : filas.length === 0 ? (
         <p className="vacio">{cargando ? 'Cargando…' : 'No hay ajustes con esos filtros.'}</p>
       ) : (
+        <div className="tabla-viva">
         <table className={cargando ? 'tabla-apilable actualizando' : 'tabla-apilable'}>
           <caption className="solo-lector">Historial de movimientos de inventario</caption>
           <thead><tr><th>Fecha</th><th>Tipo y motivo</th><th>Usuario</th><th>Unidades</th><th><span className="solo-lector">Acciones</span></th></tr></thead>
@@ -1113,6 +1114,7 @@ function Historial({ puedeReintegrar }: { puedeReintegrar: boolean }) {
             })}
           </tbody>
         </table>
+        </div>
       )}
       {!errorFechas && <Paginacion pagina={resultado} onCambiar={irA} />}
 
