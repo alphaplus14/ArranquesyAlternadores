@@ -29,7 +29,7 @@ it('S-26 (a): logística y admin crean y editan una referencia; mostrador recibe
 
     $id = $this->postJson('/api/referencias', datosNuevaReferencia('S26-'.$rol->value))->assertCreated()->json('id');
     $this->putJson("/api/referencias/{$id}", ['precio_venta' => 15000, 'descripcion' => 'Pieza S-26 editada'])
-        ->assertOk()->assertJsonPath('precio_venta', '15000.00')->assertJsonPath('descripcion', 'Pieza S-26 editada');
+        ->assertOk()->assertJsonPath('precio_venta', '15000.00')->assertJsonPath('descripcion', 'PIEZA S-26 EDITADA'); // S-85
 })->with([Rol::Logistica, Rol::Admin]);
 
 it('S-26 (a): mostrador no crea ni edita referencias', function () {

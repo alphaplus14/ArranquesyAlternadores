@@ -209,20 +209,20 @@ describe('por la API', function () {
     it('S-22 (d): el descuento del documento en % se guarda como % en el borrador y queda en pesos al confirmar', function () {
         actuarComo(Rol::Logistica);
         // Se digita el % al crear, todavía sin líneas.
-        $id = ingresoCon([[1, 100000, 10], [1, 100000]], ['descuento_documento_porcentaje' => 10]);
+        $id = ingresoCon([[1, 100000], [1, 100000]], ['descuento_documento_porcentaje' => 10]);
 
         $this->getJson("/api/ingresos/{$id}")
             ->assertJsonPath('descuento_documento_porcentaje', '10.00')
-            ->assertJsonPath('descuento_documento', '19000.00')
-            ->assertJsonPath('totales.total', '203490.00');
+            ->assertJsonPath('descuento_documento', '20000.00')
+            ->assertJsonPath('totales.total', '214200.00');
 
         $this->postJson("/api/ingresos/{$id}/confirmar")
             ->assertOk()
-            ->assertJsonPath('descuento_documento', '19000.00')
+            ->assertJsonPath('descuento_documento', '20000.00')
             ->assertJsonPath('descuento_documento_porcentaje', null)
-            ->assertJsonPath('total', '203490.00');
+            ->assertJsonPath('total', '214200.00');
 
-        expect(Ingreso::find($id)->descuento_documento)->toBe('19000.00');
+        expect(Ingreso::find($id)->descuento_documento)->toBe('20000.00');
     });
 
     it('S-22 (d): pasar de % a pesos en el borrador borra el %', function () {
@@ -246,10 +246,10 @@ describe('por la API', function () {
 
     it('S-22 (e) / S-66: un descuento mayor que el subtotal neto se acepta en el borrador y responde 422 al confirmar', function () {
         actuarComo(Rol::Logistica);
-        $id = ingresoCon([[1, 100000, 10], [1, 50000]]);
+        $id = ingresoCon([[1, 100000], [1, 50000]]);
 
-        // Subtotal neto 140.000 (el bruto es 150.000). El borrador lo acepta y avisa.
-        $this->patchJson("/api/ingresos/{$id}", ['descuento_documento' => 140000.01])
+        // S-86: sin descuento de línea (excluye al del documento). Subtotal neto 150.000. El borrador lo acepta y avisa.
+        $this->patchJson("/api/ingresos/{$id}", ['descuento_documento' => 150000.01])
             ->assertOk()
             ->assertJsonPath('totales.descuento_excede_subtotal', true);
         $this->patchJson("/api/ingresos/{$id}", ['descuento_documento_porcentaje' => 100.01])->assertJsonValidationErrors('descuento_documento_porcentaje');
@@ -310,7 +310,7 @@ describe('por la API', function () {
 
     it('S-22 (g): una remisión con los mismos descuentos calcula igual que una factura', function () {
         actuarComo(Rol::Logistica);
-        $lineas = [[1, 100000, 10, 19], [2, 30000, 0, 5], [1, 40000, 0, 0]];
+        $lineas = [[1, 100000, 0, 19], [2, 30000, 0, 5], [1, 40000, 0, 0]]; // S-86: sin descuento de línea con descuento de documento
 
         $factura = $this->getJson('/api/ingresos/'.ingresoCon($lineas, ['descuento_documento_porcentaje' => 8], 'factura'))->json('totales');
         $remision = $this->getJson('/api/ingresos/'.ingresoCon($lineas, ['descuento_documento_porcentaje' => 8], 'remision'))->json('totales');

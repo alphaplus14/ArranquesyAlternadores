@@ -530,6 +530,20 @@ tr.reversado td:has(.icono-accion) { text-decoration: none; }
 .totales strong { font-weight: 600; }
 .totales .totales-total { margin-left: auto; }
 .totales .totales-total strong { font-size: 1.15rem; color: var(--texto); }
+/* Compacto (pantalla de compra): una fila sobre el lector; en pantallas angostas vuelve a envolver. */
+.totales.compacto {
+  flex-wrap: nowrap; gap: 4px 14px; align-items: flex-end;
+  margin: 0; padding: 6px 10px; font-size: 0.75rem;
+  overflow-x: auto;
+}
+.totales.compacto > div { min-width: 0; flex: 0 0 auto; white-space: nowrap; gap: 0; }
+.totales.compacto span { font-size: 0.7rem; }
+.totales.compacto strong { font-size: 0.75rem; }
+.totales.compacto .totales-total strong { font-size: 1rem; }
+@media (max-width: 960px) {
+  .totales.compacto { flex-wrap: wrap; overflow-x: visible; }
+  .totales.compacto .totales-total { margin-left: 0; }
+}
 
 /* Registro de una compra: el lector y los totales quedan fijos; solo la tabla se desplaza. */
 .detalle-compra {
@@ -553,13 +567,15 @@ tr.reversado td:has(.icono-accion) { text-decoration: none; }
    documento confirmado en solo lectura siguen con el alto fijo de arriba. */
 .detalle-compra.corrigiendo { height: auto; min-height: 0; overflow: visible; }
 .detalle-compra.corrigiendo > .panel-correccion { overflow: visible; flex: none; }
+/* Todo lo que queda sobre la tabla conserva su alto; solo la tabla absorbe el espacio y se desplaza. */
+.detalle-compra > .panel > * { flex: none; }
 .detalle-compra .tabla-desplazable {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
 }
 .detalle-compra .tabla-lineas { margin-top: 0; border-collapse: separate; border-spacing: 0; }
-.detalle-compra .tabla-lineas thead th { position: sticky; top: 0; z-index: 1; }
+.detalle-compra .tabla-lineas thead th { position: sticky; top: 0; z-index: 1; background: var(--panel); box-shadow: inset 0 -1px 0 var(--borde); }
 .detalle-compra .acciones { margin-top: 12px; flex: none; }
 .detalle-compra .ingreso-barra { flex: none; }
 @media (max-width: 960px) {
@@ -944,6 +960,18 @@ td.col-accion .icono-accion { display: inline-grid; vertical-align: middle; }
   background: #fff;
 }
 .tabla-desplazable table { margin-top: 0; }
+
+/* Tabla larga con un solo scroll vertical (el de la propia tabla) y encabezado fijo. --alto-cromo es
+   lo que ocupan arriba y abajo la barra, el título y los filtros; cada pantalla puede ajustarlo. */
+.tabla-viva {
+  max-height: calc(100dvh - var(--alto-cromo, 16rem));
+  min-height: 12rem;
+  overflow: auto;
+}
+.tabla-viva thead th {
+  position: sticky; top: 0; z-index: 2;
+  box-shadow: inset 0 -1px 0 var(--borde);
+}
 .tabla-desplazable tbody tr:last-child td { border-bottom: 0; }
 
 /* Ingresos: botón "Nuevo ingreso" junto al título; debajo y a todo el ancho en pantallas angostas. */
@@ -2047,14 +2075,15 @@ button.preferencias-switch[aria-checked="true"] span { transform: translateX(18p
    la página (la tabla no se desplaza por dentro en escritorio). */
 .ingreso-con-barra { --ingreso-lector-alto: 0px; }
 .ingreso-lector {
-  position: sticky; top: 4rem; z-index: 4;
   background: var(--panel); padding: 8px 0 4px;
 }
+/* Solo en la corrección (RF-28) la página es la que se desplaza: ahí el lector se pega a la barra superior. */
+.panel-correccion .ingreso-lector { position: sticky; top: 4rem; z-index: 4; }
 .ingreso-lector .escaner { margin-bottom: 4px; }
 .ingreso-lector .aviso { margin: 4px 0; }
 @media (min-width: 721px) {
-  .tabla-desplazable.ingreso-tabla { overflow: visible; }
-  .ingreso-con-barra .ingreso-tabla thead th {
+  .panel-correccion .tabla-desplazable.ingreso-tabla { overflow: visible; }
+  .panel-correccion .ingreso-tabla thead th {
     position: sticky; top: calc(4rem + var(--ingreso-lector-alto)); z-index: 3;
     background: var(--panel); box-shadow: inset 0 -1px 0 var(--borde);
   }
@@ -2067,6 +2096,9 @@ button.preferencias-switch[aria-checked="true"] span { transform: translateX(18p
   box-shadow: 0 -4px 12px rgba(15, 23, 42, 0.08);
   border-radius: 0 0 var(--radio) var(--radio);
 }
+.celda-bloqueada { color: var(--suave); cursor: not-allowed; padding: 2px 4px; }
+.campo-bloqueable { border: 0; margin: 0; padding: 0; min-width: 0; }
+.campo-bloqueable:disabled { opacity: 0.7; }
 .ingreso-barra-resumen { color: var(--suave); font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
 .ingreso-barra-acciones { display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; justify-content: flex-end; margin-left: auto; min-width: 0; }
 .ingreso-barra-motivo { color: var(--aviso); font-weight: 600; }
@@ -2087,3 +2119,12 @@ body:has(.ingreso-barra) .aviso-flotante { bottom: 88px; }
 .credito-detalle { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-top: 12px; }
 .credito-documento { font-size: 0.8rem; color: var(--suave); font-weight: 600; }
 .credito-anulada { text-decoration: line-through; }
+
+/* S-87: tipos de movimiento en "Por producto". */
+.chip.mov-ingreso, .chip.mov-alta, .chip.mov-reintegro { background: var(--ok-fondo); color: var(--ok); font-weight: 600; }
+.chip.mov-baja, .chip.mov-venta { background: var(--error-fondo); color: var(--peligro); font-weight: 600; }
+.chip.mov-reverso { font-weight: 600; }
+
+/* S-87: búsqueda de texto en el listado de compras. */
+.buscar-compras { flex: 1 1 14rem; min-width: 0; max-width: 24rem; }
+.buscar-compras input { width: 100%; min-height: 44px; box-sizing: border-box; }

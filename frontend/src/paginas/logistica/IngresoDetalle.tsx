@@ -27,8 +27,13 @@ const CAMPOS: Campo[] = ['cantidad', 'costo_unitario', 'descuento_porcentaje', '
 /** IVA de una línea de compra (S-22): 0 = sin IVA. Si la línea trae otro valor, se agrega. */
 const IVAS = [19, 5, 0]
 
+const AYUDA_DESCUENTO_LINEA = 'El documento ya tiene descuento: quítelo para dar descuento por línea'
+const AYUDA_DESCUENTO_DOCUMENTO = 'Quite los descuentos de línea para usar uno del documento'
+
 /** Una fila de líneas en edición: todos sus campos a la vez (solo una fila a la vez). */
 interface Fila {
+  /** S-22: el documento tiene descuento; el de la línea queda de solo lectura (borrador). */
+  descuentoBloqueado: boolean
   itemId: number
   codigo: string
   /** Campo donde empieza el foco (el que se tocó). */
@@ -151,6 +156,9 @@ export default function IngresoDetalle() {
   })
   const i = ingreso.data
   const borrador = i?.estado === 'borrador'
+  // S-22 (borrador): descuento del documento y descuentos de línea son excluyentes; un 0 no cuenta.
+  const descuentoBloqueado = !!i && borrador && (Number(i.descuento_documento) > 0 || Number(i.descuento_documento_porcentaje ?? 0) > 0)
+  const lineasConDescuento = !!i && borrador && i.items.some((it) => Number(it.descuento_porcentaje) > 0)
   useAltoLector(panelRef, zonaLector, borrador)
 
   const actualizar = (nuevo: Ingreso) => qc.setQueryData(['ingreso', id], nuevo)
@@ -173,7 +181,7 @@ export default function IngresoDetalle() {
     if (actual && !actual.guardando) guardarAlSalir(actual)
     setQuitando(null)
     const valores = valoresDe(it)
-    ponerFila({ itemId: it.id, codigo: it.referencia?.codigo_referencia ?? '', foco, valores, originales: valores, intentado: false, errorServidor: null, guardando: false })
+    ponerFila({ descuentoBloqueado, itemId: it.id, codigo: it.referencia?.codigo_referencia ?? '', foco, valores, originales: valores, intentado: false, errorServidor: null, guardando: false })
   }
 
   const cambiarValor = (campo: Campo, valor: string) => {
@@ -199,8 +207,10 @@ export default function IngresoDetalle() {
       // El foco va al campo que señala el backend (422), si lo señala.
       const conError = Object.keys(erroresCampo(e))
       const foco = CAMPOS.find((c) => conError.includes(c)) ?? f.foco
-      if (actual?.itemId === f.itemId) ponerFila({ ...actual, foco, guardando: false, intentado: true, errorServidor: mensajeError(e) })
-      else avisos.mostrar('error', `No se guardó la línea ${f.codigo}: ${mensajeError(e)}`)
+      const campos = erroresCampo(e)
+      const mensaje = campos.descuento_porcentaje ?? mensajeError(e)
+      if (actual?.itemId === f.itemId) ponerFila({ ...actual, foco, guardando: false, intentado: true, errorServidor: mensaje })
+      else avisos.mostrar('error', `No se guardó la línea ${f.codigo}: ${mensaje}`)
     }
   }
 
@@ -286,7 +296,6 @@ export default function IngresoDetalle() {
   if (!i) return <div className="panel">Cargando…</div>
 
   // S-66 (ajuste): el borrador muestra el total visible (nunca negativo); confirmado, el de siempre.
-  const totalMostrado = i.total ? pesos(i.total) : i.totales ? pesos(borrador ? i.totales.total_visible : i.totales.total) : '—'
   const pendiente = i.totales ? Number(i.totales.descuento_pendiente) : 0
   const descuentoDoc = Number(i.descuento_documento)
 
@@ -355,7 +364,7 @@ export default function IngresoDetalle() {
         </div>
 
         {i.totales && (
-          <div className="totales" aria-label="Totales del documento">
+          <div className="totales compacto" aria-label="Totales del documento">
             <div><span>Subtotal</span><strong>{pesos(i.totales.subtotal_bruto)}</strong></div>
             <div><span>Descuento de líneas</span><strong>{pesos(i.totales.descuento_lineas)}</strong></div>
             <div><span>Descuento del documento</span><strong>{pesos(borrador ? i.totales.descuento_aplicado : i.totales.descuento_documento)}</strong></div>
@@ -419,6 +428,7 @@ export default function IngresoDetalle() {
                   key={it.id}
                   it={it}
                   borrador={borrador}
+                  descuentoBloqueado={descuentoBloqueado}
                   confirmandoQuitar={quitando === it.id}
                   quitandoPendiente={quitar.isPending}
                   acciones={acciones}
@@ -433,7 +443,7 @@ export default function IngresoDetalle() {
         {borrador ? (
           // Barra fija al pie del área visible: con muchas líneas el botón sigue a la vista.
           <div className="ingreso-barra">
-            <span className="ingreso-barra-resumen">{i.items.length} {i.items.length === 1 ? 'línea' : 'líneas'} · Total {totalMostrado}</span>
+            <span className="ingreso-barra-resumen">{i.items.length} {i.items.length === 1 ? 'línea' : 'líneas'}</span>
             <div className="ingreso-barra-acciones">
               <button type="button" className="primario" disabled={i.items.length === 0 || confirmar.isPending} onClick={() => confirmar.mutate()}>
                 Confirmar ingreso y crear unidades
@@ -454,6 +464,7 @@ export default function IngresoDetalle() {
       {condiciones && (
         <DialogoCondiciones
           ingreso={i}
+          descuentoBloqueado={lineasConDescuento}
           onGuardado={(nuevo) => {
             actualizar(nuevo)
             setCondiciones(false)
@@ -489,9 +500,10 @@ interface AccionesLinea {
  * Una línea del borrador (o del ingreso confirmado, solo lectura). Memoizada: editar otra fila o
  * escanear no vuelve a pintar las demás (mismo `it` y acciones estables).
  */
-const FilaLinea = memo(function FilaLinea({ it, borrador, confirmandoQuitar, quitandoPendiente, acciones }: {
+const FilaLinea = memo(function FilaLinea({ it, borrador, descuentoBloqueado, confirmandoQuitar, quitandoPendiente, acciones }: {
   it: IngresoItem
   borrador: boolean
+  descuentoBloqueado: boolean
   confirmandoQuitar: boolean
   quitandoPendiente: boolean
   acciones: AccionesLinea
@@ -502,6 +514,9 @@ const FilaLinea = memo(function FilaLinea({ it, borrador, confirmandoQuitar, qui
   /** Valor de una línea en borrador: se ve como celda editable; clic abre la fila completa. */
   const valor = (campo: Campo, texto: string) => {
     if (!borrador) return texto
+    if (campo === 'descuento_porcentaje' && descuentoBloqueado) {
+      return <span className="celda-bloqueada" title={AYUDA_DESCUENTO_LINEA}>{texto}</span>
+    }
     if (campo === 'costo_unitario' && Number(it.costo_unitario) <= 0) {
       return (
         <button type="button" className="celda-editable pendiente" title="Clic para editar" aria-label={`Falta el costo de ${codigo}. Editar la línea`} onClick={() => acciones.abrir(it, campo)}>
@@ -652,7 +667,11 @@ function FilaEnEdicion({ it, fila, onCambiar, onGuardar, onCancelar, onSalir }: 
         <td data-label="Referencia">{fila.codigo} <small>{it.referencia?.descripcion}</small></td>
         <td data-label="Cant.">{numero('cantidad', 'numeric')}</td>
         <td data-label="Costo">{numero('costo_unitario', 'decimal')}</td>
-        <td data-label="Desc. %">{numero('descuento_porcentaje', 'decimal')}</td>
+        <td data-label="Desc. %">
+          {fila.descuentoBloqueado
+            ? <span className="celda-bloqueada" title={AYUDA_DESCUENTO_LINEA}>{formatoNumero(fila.originales.descuento_porcentaje)} %</span>
+            : numero('descuento_porcentaje', 'decimal')}
+        </td>
         <td data-label="IVA %">
           <div className="campo-linea">
             <select
@@ -848,8 +867,10 @@ function DialogoReferencia({ codigo, proveedor, onCreada, onCerrar }: {
  * trae el documento. Las reglas (obligatorio, no antes de la fecha, descuento ≤ subtotal) las
  * valida el backend; sus mensajes salen junto a cada campo.
  */
-function DialogoCondiciones({ ingreso, onGuardado, onCerrar }: {
+function DialogoCondiciones({ ingreso, descuentoBloqueado, onGuardado, onCerrar }: {
   ingreso: Ingreso
+  /** Hay líneas con descuento: el del documento queda deshabilitado (S-22). */
+  descuentoBloqueado: boolean
   onGuardado: (ingreso: Ingreso) => void
   onCerrar: () => void
 }) {
@@ -918,14 +939,18 @@ function DialogoCondiciones({ ingreso, onGuardado, onCerrar }: {
         )}
       </DialogoSeccion>
       <DialogoSeccion titulo="Descuento del documento">
-        <CampoDescuento
-          id="descuento-condiciones"
-          modo={modo}
-          valor={descuento}
-          error={errores.descuento_documento ?? errores.descuento_documento_porcentaje}
-          onModo={cambiarModo}
-          onValor={setDescuento}
-        />
+        {/* El fieldset deshabilita el selector de unidad y el valor sin tocar CampoDescuento. */}
+        <fieldset className="campo-bloqueable" disabled={descuentoBloqueado}>
+          <CampoDescuento
+            id="descuento-condiciones"
+            modo={modo}
+            valor={descuento}
+            error={errores.descuento_documento ?? errores.descuento_documento_porcentaje}
+            ayuda={descuentoBloqueado ? AYUDA_DESCUENTO_DOCUMENTO : undefined}
+            onModo={cambiarModo}
+            onValor={setDescuento}
+          />
+        </fieldset>
         <small className="ayuda">Se reparte entre todas las líneas antes del IVA. Si todavía no hay líneas, se guarda y se aplica cuando las agregue.</small>
       </DialogoSeccion>
     </Dialogo>

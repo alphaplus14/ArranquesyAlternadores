@@ -23,8 +23,8 @@ it('RF-11: cambiar precio y descripción de una referencia deja el antes, el des
     expect($historial)->toHaveCount(2)
         ->and($historial['precio_venta']['valor_anterior'])->toBe('85000.00')
         ->and($historial['precio_venta']['valor_nuevo'])->toBe('99000.00')
-        ->and($historial['descripcion']['valor_anterior'])->toBe('Regulador IM204')
-        ->and($historial['descripcion']['valor_nuevo'])->toBe('Regulador IM204 12V')
+        ->and($historial['descripcion']['valor_anterior'])->toBe('REGULADOR IM204')
+        ->and($historial['descripcion']['valor_nuevo'])->toBe('REGULADOR IM204 12V') // S-85: descripción en mayúscula
         ->and($historial['precio_venta']['usuario']['id'])->toBe($admin->id)
         ->and($historial['precio_venta']['created_at'])->not->toBeNull();
 });
@@ -32,6 +32,9 @@ it('RF-11: cambiar precio y descripción de una referencia deja el antes, el des
 it('RF-11: una edición sin cambios reales no genera filas', function () {
     actuarComo(Rol::Admin);
     $referencia = referencia('RN-4410');
+    // S-85: la descripción se guarda en mayúscula; se parte de una ya en mayúscula para que el mismo valor no cambie.
+    DB::table('referencias')->where('id', $referencia->id)->update(['descripcion' => mb_strtoupper($referencia->descripcion)]);
+    $referencia = $referencia->fresh();
 
     $this->patchJson("/api/referencias/{$referencia->id}", ['descripcion' => $referencia->descripcion])->assertOk();
 

@@ -75,6 +75,7 @@ class IngresoService
 
         return $this->enBorrador($ingreso, function (Ingreso $bloqueado) use ($datos) {
             $datos = $this->descuentoDocumento($this->condicionDePago($datos, $bloqueado));
+            $this->exigirSinDescuentoEnLineas($bloqueado, $datos);
             $bloqueado->fill($datos);
 
             // RF-09 / S-66: en el borrador el descuento se fija en cualquier momento, aun sin líneas.
@@ -179,12 +180,17 @@ class IngresoService
         // S-22: sin IVA explícito, la línea toma el de la referencia (como en ventas).
         $datos['iva_porcentaje'] ??= Referencia::whereKey($datos['referencia_id'])->value('iva_venta_porcentaje') ?? 0;
 
-        return $this->enBorrador($ingreso, fn (Ingreso $bloqueado) => $bloqueado->items()->create($datos));
+        return $this->enBorrador($ingreso, function (Ingreso $bloqueado) use ($datos) {
+            $this->exigirSinDescuentoDocumento($bloqueado, $datos);
+
+            return $bloqueado->items()->create($datos);
+        });
     }
 
     public function actualizarItem(Ingreso $ingreso, IngresoItem $item, array $datos): IngresoItem
     {
-        return $this->enBorrador($ingreso, function () use ($item, $datos) {
+        return $this->enBorrador($ingreso, function (Ingreso $bloqueado) use ($item, $datos) {
+            $this->exigirSinDescuentoDocumento($bloqueado, $datos);
             $item->update($datos);
 
             return $item;
@@ -275,7 +281,8 @@ class IngresoService
     /**
      * RF-19: copia a la factura las líneas de sus remisiones ligadas, sumadas por referencia.
      * Si la factura ya tiene esa referencia, solo ajusta la cantidad; si no, crea la línea con
-     * el costo, el descuento y el IVA de la línea más reciente de las remisiones. Repetirlo no
+     * el costo, el descuento y el IVA de la línea más reciente de las remisiones (S-86: sin el descuento de
+     * línea si la factura ya tiene descuento del documento). Repetirlo no
      * duplica nada. Después logística corrige según la factura.
      */
     public function prellenar(Ingreso $factura): Ingreso
@@ -294,6 +301,8 @@ class IngresoService
             }
 
             $existentes = $bloqueada->items()->orderBy('id')->get()->keyBy('referencia_id');
+            // S-86: si la factura ya tiene descuento del documento, las líneas copiadas no traen el de línea.
+            $conDescuentoDocumento = $this->tieneDescuentoDocumento($bloqueada);
 
             foreach ($lineas as $referenciaId => $deRemisiones) {
                 $cantidad = $deRemisiones->sum('cantidad');
@@ -306,7 +315,7 @@ class IngresoService
                         'referencia_id' => $referenciaId,
                         'cantidad' => $cantidad,
                         'costo_unitario' => $modelo->costo_unitario,
-                        'descuento_porcentaje' => $modelo->descuento_porcentaje,
+                        'descuento_porcentaje' => $conDescuentoDocumento ? 0 : $modelo->descuento_porcentaje,
                         'iva_porcentaje' => $modelo->iva_porcentaje,
                     ]);
                 }
@@ -1062,6 +1071,46 @@ class IngresoService
         }
 
         return $datos;
+    }
+
+    /**
+     * S-86 (solo borrador; el confirmado y RF-28 no pasan por aqui): descuento por linea y descuento
+     * del documento se excluyen. Un descuento 0 no cuenta. El ingreso ya viene bloqueado. Un borrador
+     * viejo que ya mezcla ambos sigue calculando igual: la regla solo frena el siguiente descuento.
+     *
+     * @param  array<string, mixed>  $datos  datos de la linea
+     */
+    private function exigirSinDescuentoDocumento(Ingreso $bloqueado, array $datos): void
+    {
+        $linea = $datos['descuento_porcentaje'] ?? 0;
+        if (bccomp((string) $linea, '0', 4) > 0 && $this->tieneDescuentoDocumento($bloqueado)) {
+            throw new ReglaInventarioException(
+                'El documento ya tiene descuento: quítelo para dar descuento por línea.',
+                422,
+                ['campo' => 'descuento_porcentaje', 'errors' => ['descuento_porcentaje' => ['El documento ya tiene descuento: quítelo para dar descuento por línea.']]],
+            );
+        }
+    }
+
+    /** @param  array<string, mixed>  $datos  encabezado ya normalizado por descuentoDocumento() */
+    private function exigirSinDescuentoEnLineas(Ingreso $bloqueado, array $datos): void
+    {
+        $nuevo = bccomp((string) ($datos['descuento_documento'] ?? 0), '0', 2) > 0
+            || bccomp((string) ($datos['descuento_documento_porcentaje'] ?? 0), '0', 4) > 0;
+
+        if ($nuevo && $bloqueado->items()->where('descuento_porcentaje', '>', 0)->exists()) {
+            throw new ReglaInventarioException(
+                'Hay líneas con descuento: quítelos para usar un descuento del documento.',
+                422,
+                ['campo' => 'descuento_documento', 'errors' => ['descuento_documento' => ['Hay líneas con descuento: quítelos para usar un descuento del documento.']]],
+            );
+        }
+    }
+
+    private function tieneDescuentoDocumento(Ingreso $ingreso): bool
+    {
+        return bccomp((string) ($ingreso->descuento_documento ?? 0), '0', 2) > 0
+            || bccomp((string) ($ingreso->descuento_documento_porcentaje ?? 0), '0', 4) > 0;
     }
 
     /**

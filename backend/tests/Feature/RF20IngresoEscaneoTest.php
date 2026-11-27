@@ -130,7 +130,7 @@ it('RF-20 / S-26: logística crea y edita una referencia, pero nadie la borra', 
 
     $nueva = $this->postJson('/api/referencias', referenciaDelProveedor($proveedor, 'NUEVA-002'))->assertCreated()->json('id');
 
-    $this->patchJson("/api/referencias/{$nueva}", ['descripcion' => 'Otra'])->assertOk()->assertJsonPath('descripcion', 'Otra');
+    $this->patchJson("/api/referencias/{$nueva}", ['descripcion' => 'Otra'])->assertOk()->assertJsonPath('descripcion', 'OTRA'); // S-85
     $this->deleteJson("/api/referencias/{$nueva}")->assertMethodNotAllowed();
 });
 

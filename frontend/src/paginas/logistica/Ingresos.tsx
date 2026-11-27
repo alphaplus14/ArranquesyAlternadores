@@ -1,5 +1,5 @@
-import { useCallback, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
 import { api, erroresCampo, mensajeError } from '../../api/cliente'
@@ -10,6 +10,7 @@ import { sumarDias } from '../../componentes/fechas'
 import { hoyEnBogota } from '../../utilidades/periodos'
 import ControlSegmentado, { type OpcionSegmento } from '../../componentes/ControlSegmentado'
 import SelectorProveedor from '../../componentes/SelectorProveedor'
+import { useDebounce } from '../../hooks/useDebounce'
 import { useListaPaginada } from '../../hooks/useListaPaginada'
 import { useProveedores } from '../../hooks/useCatalogos'
 import Medida from '../../componentes/Medida'
@@ -59,13 +60,29 @@ export default function Ingresos() {
     requestAnimationFrame(() => botonNuevo.current?.focus())
   }, [])
 
-  // RF-28: "Solo corregidas" filtra en el servidor.
+  // RF-28: "Solo corregidas" filtra en el servidor. S-87: la búsqueda (factura, proveedor o NIT)
+  // vive en la URL (?q=); con menos de 2 caracteres no se envía y la tabla conserva lo anterior.
   const [soloCorregidos, setSoloCorregidos] = useState(false)
+  const [params, setParams] = useSearchParams()
+  const qUrl = params.get('q') ?? ''
+  const [escrito, setEscrito] = useState(qUrl)
+  const termino = useDebounce(escrito.trim(), 300)
+  const q = termino.length >= 2 ? termino.slice(0, 60) : ''
+  useEffect(() => {
+    setParams((actual) => {
+      if ((actual.get('q') ?? '') === q) return actual
+      const p = new URLSearchParams(actual)
+      if (q) p.set('q', q)
+      else p.delete('q')
+      return p
+    }, { replace: true })
+  }, [q, setParams])
+  const filtros = { soloCorregidos, q }
   const { filas, resultado, info, irA } = useListaPaginada<FilaIngreso>({
-    clave: ['ingresos', soloCorregidos],
-    filtros: soloCorregidos,
+    clave: ['ingresos', soloCorregidos, q],
+    filtros,
     porPagina: { defecto: 25 }, // S-70
-    traer: async (pagina, porPagina) => (await api.get<Pagina<FilaIngreso>>('/ingresos', { params: { page: pagina, por_pagina: porPagina, corregidos: soloCorregidos ? 1 : undefined } })).data,
+    traer: async (pagina, porPagina) => (await api.get<Pagina<FilaIngreso>>('/ingresos', { params: { page: pagina, por_pagina: porPagina, corregidos: soloCorregidos ? 1 : undefined, q: q || undefined } })).data,
   })
 
   const borradores = filas.filter((i) => i.estado === 'borrador').length
@@ -103,11 +120,25 @@ export default function Ingresos() {
             <span className="medida-icono rojo" aria-hidden><Icono nombre="ingreso" /></span>
             <h2>Documentos</h2>
           </div>
+          <label className="buscar-compras">
+            <span className="solo-lector">Buscar compras por factura, proveedor o NIT</span>
+            <input
+              type="search"
+              placeholder="Factura, proveedor o NIT"
+              maxLength={60}
+              autoComplete="off"
+              value={escrito}
+              onChange={(e) => setEscrito(e.target.value)}
+            />
+          </label>
           <label className="casilla">
             <input type="checkbox" checked={soloCorregidos} onChange={(e) => setSoloCorregidos(e.target.checked)} /> Solo corregidas
           </label>
         </div>
-        <div className="tabla-desplazable">
+        {resultado && filas.length === 0 ? (
+          <p className="vacio">{q || soloCorregidos ? 'No hay compras que coincidan' : 'Aún no hay compras.'}</p>
+        ) : (
+        <div className="tabla-desplazable tabla-viva">
         <table>
           <thead><tr><th>#</th><th>Tipo</th><th>Documento</th><th>Proveedor</th><th>Fecha</th><th>Pago</th><th>Unidades</th><th>Estado</th><th>Usuario</th><th className="boton-fila-columna">Acciones</th></tr></thead>
           <tbody>
@@ -134,6 +165,7 @@ export default function Ingresos() {
           </tbody>
         </table>
         </div>
+        )}
         <Paginacion pagina={resultado} onCambiar={irA} />
       </section>
 

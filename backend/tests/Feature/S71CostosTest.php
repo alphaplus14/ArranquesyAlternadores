@@ -67,28 +67,41 @@ it('S-71: último y anterior por fecha del documento, aunque una compra más vie
         ->not->toHaveKey('fecha'); // Inventario muestra solo el valor; la fecha está en el historial.
 });
 
-it('S-71: el costo neto aplica el descuento de línea y el del documento prorrateado, igual que el ingreso', function () {
+it('S-71: el costo neto aplica el descuento de línea o el del documento prorrateado (no ambos, S-86), igual que el ingreso', function () {
     actuarComo(Rol::Logistica);
     $ref = refCostos();
     $otra = refCostos($ref->proveedor_id);
     $usuario = User::factory()->rol(Rol::Logistica)->create();
     $servicio = app(IngresoService::class);
     $ingreso = $servicio->crearBorrador(['proveedor_id' => $ref->proveedor_id, 'numero_documento' => 'DESC-1', 'fecha' => '2026-11-10'], $usuario);
+    // Ingreso A: solo descuento de línea (10 %).
     $linea = $servicio->agregarItem($ingreso, ['referencia_id' => $ref->id, 'cantidad' => 2, 'costo_unitario' => 1000, 'descuento_porcentaje' => 10, 'iva_porcentaje' => 19]);
-    $servicio->agregarItem($ingreso, ['referencia_id' => $otra->id, 'cantidad' => 1, 'costo_unitario' => 3000, 'descuento_porcentaje' => 0, 'iva_porcentaje' => 19]);
-    $servicio->actualizarEncabezado($ingreso, ['descuento_documento' => 480]);
     $servicio->confirmar($ingreso->fresh(), $usuario);
 
-    // neto 1.800 + 3.000 = 4.800; descuento 480 → factor 0,9; base 1.620 ÷ 2 = 810.
+    // neto 1.800; base 1.800 ÷ 2 = 900.
     $base = $ingreso->fresh()->load('items')->totales()->lineas[$linea->id]['base'];
     $r = historialCostos(['referencia_id' => $ref->id])->assertOk();
 
-    expect($base)->toBe('1620.00')
+    expect($base)->toBe('1800.00')
         ->and($r->json('data.0.costo_neto'))->toBe(bcdiv($base, '2', 2))
-        ->and($r->json('data.0.costo_neto'))->toBe('810.00')
+        ->and($r->json('data.0.costo_neto'))->toBe('900.00')
         ->and($r->json('data.0.costo_factura'))->toBe('1000.00')
         ->and($r->json('data.0.descuento_porcentaje'))->toBe('10.00')
-        ->and($r->json('data.0.costo_con_iva'))->toBe('963.90');
+        ->and($r->json('data.0.costo_con_iva'))->toBe('1071.00');
+
+    // Ingreso B: solo descuento del documento (480 sobre 4.800 → factor 0,9), prorrateado.
+    $segundo = $servicio->crearBorrador(['proveedor_id' => $ref->proveedor_id, 'numero_documento' => 'DESC-2', 'fecha' => '2026-11-11'], $usuario);
+    $lineaOtra = $servicio->agregarItem($segundo, ['referencia_id' => $otra->id, 'cantidad' => 1, 'costo_unitario' => 3000, 'descuento_porcentaje' => 0, 'iva_porcentaje' => 19]);
+    $servicio->agregarItem($segundo, ['referencia_id' => $ref->id, 'cantidad' => 2, 'costo_unitario' => 900, 'descuento_porcentaje' => 0, 'iva_porcentaje' => 19]);
+    $servicio->actualizarEncabezado($segundo, ['descuento_documento' => 480]);
+    $servicio->confirmar($segundo->fresh(), $usuario);
+
+    // neto 3.000 + 1.800 = 4.800; descuento 480 → factor 0,9; base de la línea 2.700.
+    $baseOtra = $segundo->fresh()->load('items')->totales()->lineas[$lineaOtra->id]['base'];
+    $o = historialCostos(['referencia_id' => $otra->id])->assertOk();
+
+    expect($baseOtra)->toBe('2700.00')
+        ->and($o->json('data.0.costo_neto'))->toBe('2700.00');
 });
 
 it('S-71: los borradores no cuentan y una línea con costo 0 se lista pero no es el último', function () {

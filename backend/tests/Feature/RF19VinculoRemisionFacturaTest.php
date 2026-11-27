@@ -203,3 +203,22 @@ it('RF-19: una remisión confirmada sigue sin poder editarse en otro campo', fun
     $remision->numero_documento = 'OTRO';
     expect(fn () => $remision->save())->toThrow(RegistroInmutableException::class);
 });
+
+it('RF-19 / S-86: el prellenado copia el descuento de línea de la remisión, salvo que la factura ya tenga descuento del documento', function () {
+    $ref = referencia('RN-4410');
+    $remision = ingresar($ref, 2);
+    $remision->items()->update(['descuento_porcentaje' => 10]);
+    $otraRemision = ingresar($ref, 2);
+    $otraRemision->items()->update(['descuento_porcentaje' => 10]);
+
+    $sinDescuento = facturaLigable($ref);
+    $this->postJson("/api/ingresos/{$sinDescuento->id}/remisiones", ['remision_ids' => [$remision->id]])->assertOk();
+    $this->postJson("/api/ingresos/{$sinDescuento->id}/prellenar")->assertOk();
+    expect((float) $sinDescuento->items()->first()->descuento_porcentaje)->toBe(10.0);
+
+    $conDescuento = facturaLigable($ref);
+    $conDescuento->forceFill(['descuento_documento' => 5000])->save();
+    $this->postJson("/api/ingresos/{$conDescuento->id}/remisiones", ['remision_ids' => [$otraRemision->id]])->assertOk();
+    $this->postJson("/api/ingresos/{$conDescuento->id}/prellenar")->assertOk();
+    expect((float) $conDescuento->items()->first()->descuento_porcentaje)->toBe(0.0);
+});

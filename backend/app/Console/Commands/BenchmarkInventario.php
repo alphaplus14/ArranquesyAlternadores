@@ -50,7 +50,7 @@ class BenchmarkInventario extends Command
             $filas = [];
             for ($i = 1; $i <= (int) $this->option('referencias'); $i++) {
                 $filas[] = ['codigo_referencia' => sprintf('BX%06d', $i), 'proveedor_id' => $proveedor->id,
-                    'categoria_id' => $categoria->id, 'descripcion' => "Pieza de prueba {$i}", 'precio_venta' => 1000,
+                    'categoria_id' => $categoria->id, 'descripcion' => "PIEZA DE PRUEBA {$i}", 'precio_venta' => 1000,
                     'existencia' => 0, 'created_at' => now(), 'updated_at' => now()];
             }
             foreach (array_chunk($filas, 500) as $lote) {

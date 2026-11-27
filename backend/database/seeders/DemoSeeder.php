@@ -45,7 +45,7 @@ class DemoSeeder extends Seeder
             'proveedor_id' => $proveedores[$i]->id,
             'categoria_id' => $reguladores->id,
             'codigo_universal_id' => $im204->id,
-            'descripcion' => 'Regulador IM204',
+            'descripcion' => 'REGULADOR IM204',
             'precio_venta' => 85000,
         ]));
 
@@ -66,7 +66,7 @@ class DemoSeeder extends Seeder
             'proveedor_id' => $proveedores[0]->id,
             'categoria_id' => $reguladores->id,
             'codigo_universal_id' => $im210->id,
-            'descripcion' => 'Regulador IM210',
+            'descripcion' => 'REGULADOR IM210',
             'precio_venta' => $r[2],
         ]));
 
@@ -75,7 +75,7 @@ class DemoSeeder extends Seeder
             'codigo_referencia' => 'ARR-12V-9D',
             'proveedor_id' => $proveedores[1]->id,
             'categoria_id' => Categoria::where('nombre', 'Arranques')->value('id'),
-            'descripcion' => 'Arranque 12V 9 dientes',
+            'descripcion' => 'ARRANQUE 12V 9 DIENTES',
             'precio_venta' => 420000,
         ]);
 
@@ -84,7 +84,7 @@ class DemoSeeder extends Seeder
             'codigo_referencia' => 'SEN-TEMP-01',
             'proveedor_id' => $proveedores[1]->id,
             'categoria_id' => Categoria::where('nombre', 'Sensores')->value('id'),
-            'descripcion' => 'Sensor de temperatura',
+            'descripcion' => 'SENSOR DE TEMPERATURA',
             'precio_venta' => 35000,
         ]);
 
