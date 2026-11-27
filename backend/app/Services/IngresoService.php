@@ -281,7 +281,8 @@ class IngresoService
     /**
      * RF-19: copia a la factura las líneas de sus remisiones ligadas, sumadas por referencia.
      * Si la factura ya tiene esa referencia, solo ajusta la cantidad; si no, crea la línea con
-     * el costo, el descuento y el IVA de la línea más reciente de las remisiones. Repetirlo no
+     * el costo, el descuento y el IVA de la línea más reciente de las remisiones (S-86: sin el descuento de
+     * línea si la factura ya tiene descuento del documento). Repetirlo no
      * duplica nada. Después logística corrige según la factura.
      */
     public function prellenar(Ingreso $factura): Ingreso
@@ -300,6 +301,8 @@ class IngresoService
             }
 
             $existentes = $bloqueada->items()->orderBy('id')->get()->keyBy('referencia_id');
+            // S-86: si la factura ya tiene descuento del documento, las líneas copiadas no traen el de línea.
+            $conDescuentoDocumento = $this->tieneDescuentoDocumento($bloqueada);
 
             foreach ($lineas as $referenciaId => $deRemisiones) {
                 $cantidad = $deRemisiones->sum('cantidad');
@@ -312,7 +315,7 @@ class IngresoService
                         'referencia_id' => $referenciaId,
                         'cantidad' => $cantidad,
                         'costo_unitario' => $modelo->costo_unitario,
-                        'descuento_porcentaje' => $modelo->descuento_porcentaje,
+                        'descuento_porcentaje' => $conDescuentoDocumento ? 0 : $modelo->descuento_porcentaje,
                         'iva_porcentaje' => $modelo->iva_porcentaje,
                     ]);
                 }
