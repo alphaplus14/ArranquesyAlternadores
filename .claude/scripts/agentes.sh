@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # Worktrees aislados para los agentes del orquestador (ver .claude/ORQUESTACION.md).
 #
-#   bash .claude/scripts/agentes.sh crear <nombre> [--sin-front] [--sin-back]
+#   bash .claude/scripts/agentes.sh crear <nombre> [--sin-front] [--sin-back] [--desde <rama o commit>]
 #   bash .claude/scripts/agentes.sh tests [argumentos de php artisan test]
 #   bash .claude/scripts/agentes.sh listar
 #   bash .claude/scripts/agentes.sh borrar <nombre>
 #
 # Cada agente trabaja en <ARRANQUES_WT>/<nombre> (por defecto C:\dev\arranques-wt, fuera de OneDrive),
-# en la rama agente/<nombre> creada desde el HEAD de la carpeta principal, con su propia base MySQL
+# en la rama agente/<nombre> creada desde el HEAD de la carpeta principal (o desde --desde, p. ej. la rama
+# de otro agente para encadenar fases sin tocar la rama de trabajo), con su propia base MySQL
 # inventario_test_<nombre>. Así dos agentes pueden correr Pest a la vez sin pisarse.
 # Variables opcionales: ARRANQUES_WT (carpeta de los worktrees), MYSQL_BIN (carpeta bin de MySQL 8).
 set -euo pipefail
@@ -47,23 +48,26 @@ base_de() { echo "inventario_test_${1//-/_}"; }
 crear() {
     local nombre="${1:-}"; shift || true
     validar_nombre "$nombre"
-    local con_front=1 con_back=1 op
-    for op in "$@"; do
-        case "$op" in
+    local con_front=1 con_back=1 desde=HEAD
+    while [ $# -gt 0 ]; do
+        case "$1" in
             --sin-front) con_front=0 ;;
             --sin-back) con_back=0 ;;
-            *) fallar "opción desconocida: $op" ;;
+            --desde) desde="${2:-}"; [ -n "$desde" ] || fallar "--desde necesita una rama o un commit."; shift ;;
+            *) fallar "opción desconocida: $1" ;;
         esac
+        shift
     done
 
     local raiz dir rama base
     raiz="$(principal)"; dir="$RAIZ_WT/$nombre"; rama="agente/$nombre"; base="$(base_de "$nombre")"
     [ -e "$dir" ] && fallar "ya existe $dir."
     git -C "$raiz" show-ref --verify --quiet "refs/heads/$rama" && fallar "ya existe la rama $rama."
+    git -C "$raiz" rev-parse --verify --quiet "$desde^{commit}" >/dev/null || fallar "no existe '$desde'."
     exigir_mysql
 
     mkdir -p "$RAIZ_WT"
-    git -C "$raiz" worktree add -q -b "$rama" "$dir" HEAD
+    git -C "$raiz" worktree add -q -b "$rama" "$dir" "$desde"
 
     # .env propio: cualquier artisan dentro del worktree usa solo la base del agente.
     sed -E "s/^DB_DATABASE=.*/DB_DATABASE=$base/" "$raiz/backend/.env" > "$dir/backend/.env"
@@ -78,7 +82,7 @@ crear() {
     fi
 
     echo "Worktree:  $dir"
-    echo "Rama:      $rama (desde $(git -C "$raiz" rev-parse --short HEAD) de $(git -C "$raiz" branch --show-current))"
+    echo "Rama:      $rama (desde $(git -C "$dir" rev-parse --short HEAD); origen: $([ "$desde" = HEAD ] && git -C "$raiz" branch --show-current || echo "$desde"))"
     echo "Base:      $base"
     echo "Tests:     cd \"$dir\" && bash .claude/scripts/agentes.sh tests [--filter=...]"
 }
