@@ -4,7 +4,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../api/cliente'
 import { infoPagina, type DocumentoPendiente, type PaginaHistorial, type ResumenSaldo } from '../../api/tipos'
 import { useAuth } from '../../auth/AuthProvider'
-import BarraFiltros, { CampoFiltro, TextoResultados, VacioFiltros, rangoAtajo } from '../../componentes/BarraFiltros'
+import BarraFiltros, {CampoFiltro, TextoResultados, VacioFiltros } from '../../componentes/BarraFiltros'
+import { rangoAtajo } from '../../utilidades/atajosPeriodo'
 import BotonFila from '../../componentes/BotonFila'
 import { Antiguedad, DialogoAnular, DialogoMovimiento } from '../../componentes/Cartera'
 import ControlSegmentado from '../../componentes/ControlSegmentado'
@@ -59,7 +60,7 @@ export interface ConfigCuenta {
   conPagar: boolean
 }
 
-export const nombreDocumento = (d: DocumentoPendiente) => d.documento
+const nombreDocumento = (d: DocumentoPendiente) => d.documento
   ?? (d.tipo === 'factura' ? `Factura ${d.numero_documento ?? `#${d.id}`}` : d.tipo === 'remision' ? `Remisión ${d.numero_documento ?? `#${d.id}`}` : `Venta #${d.id}`)
 
 const PESTANAS: { valor: Pestana; texto: string }[] = [
@@ -109,7 +110,7 @@ export default function CuentaContable({ config: c }: { config: ConfigCuenta }) 
         <Antiguedad resumen={data} />
       </section>
 
-      <div className="pestanas-cuenta" role="tablist" aria-label="Secciones de la cuenta">
+      <div className="pestanas cuenta-pestanas" role="tablist" aria-label="Secciones de la cuenta">
         {PESTANAS.map((p, i) => (
           <button
             key={p.valor}
@@ -120,12 +121,12 @@ export default function CuentaContable({ config: c }: { config: ConfigCuenta }) 
             aria-selected={pestana === p.valor}
             aria-controls={`panel-${p.valor}`}
             tabIndex={pestana === p.valor ? 0 : -1}
-            className={pestana === p.valor ? 'pestana-cuenta activa' : 'pestana-cuenta'}
+            className={pestana === p.valor ? 'pestana activa' : 'pestana'}
             onClick={() => fijarPestana(p.valor)}
             onKeyDown={(e) => alTeclear(e, i)}
           >
             {p.valor === 'historial' ? historial : p.texto}
-            {p.valor === 'facturas' && <span className="pestana-contador">{data.documentos.length}</span>}
+            {p.valor === 'facturas' && <span className="pestana-cuenta">{data.documentos.length}</span>}
           </button>
         ))}
       </div>

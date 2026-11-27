@@ -2128,3 +2128,34 @@ body:has(.ingreso-barra) .aviso-flotante { bottom: 88px; }
 /* S-87: búsqueda de texto en el listado de compras. */
 .buscar-compras { flex: 1 1 14rem; min-width: 0; max-width: 24rem; }
 .buscar-compras input { width: 100%; min-height: 44px; box-sizing: border-box; }
+
+/*
+ * S-88: barra de filtros común del módulo contable (componentes/BarraFiltros.tsx). Se envuelve en
+ * varias líneas; cada campo con su etiqueta visible y 44 px de alto; el buscador crece.
+ */
+.barra-filtros { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 14px; margin: 4px 0 10px; }
+.barra-filtros-campo { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.barra-filtros-campo > input, .barra-filtros-campo > select { min-height: 44px; }
+.barra-filtros-busqueda { flex: 1 1 260px; }
+.barra-filtros-busqueda .campo-unico input { min-height: 44px; margin-bottom: 0; padding-left: 40px; padding-right: 40px; }
+.barra-filtros .control-segmentado, .barra-filtros [role='radiogroup'] { margin: 0; }
+.barra-filtros-check { min-height: 44px; display: inline-flex; align-items: center; gap: 8px; }
+.barra-filtros-limpiar { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; margin-left: auto; }
+.barra-filtros-resultados { margin: 0 0 8px; }
+.vacio-filtros { display: inline-flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; justify-content: center; }
+.cuenta-pestanas { margin: 4px 0 0; }
+@media (max-width: 639px) {
+  .barra-filtros-campo, .barra-filtros-limpiar { flex: 1 1 100%; }
+  .barra-filtros-limpiar { margin-left: 0; }
+}
+/* S-88: cliente del informe de ventas a crédito (buscar desde 2 letras, sin crear). */
+.filtro-cliente { position: relative; min-width: 220px; }
+.filtro-cliente-lista {
+  position: absolute; z-index: 10; top: 100%; left: 0; right: 0; margin: 4px 0 0; padding: 4px; list-style: none;
+  background: var(--panel); border: 1px solid var(--borde); border-radius: 10px; box-shadow: var(--sombra-barra); max-height: 260px; overflow: auto;
+}
+.filtro-cliente-lista button { width: 100%; min-height: 40px; text-align: left; border: 0; background: transparent; color: var(--texto); padding: 6px 10px; border-radius: 6px; cursor: pointer; }
+.filtro-cliente-lista button:hover, .filtro-cliente-lista button:focus-visible { background: var(--suave-fondo); }
+.filtro-cliente-lista .ayuda { padding: 6px 10px; }
+.filtro-elegido { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; }
+

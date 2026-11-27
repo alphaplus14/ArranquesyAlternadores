@@ -1,49 +1,45 @@
-import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../api/cliente'
-import { NOMBRE_TIPO_DOCUMENTO, type PaginaInforme, type RecaudoDocumento, type TipoDocumentoVenta, type TotalesRecaudos } from '../../api/tipos'
+import { NOMBRE_TIPO_DOCUMENTO, infoPagina, type PaginaInforme, type RecaudoDocumento, type TipoDocumentoVenta, type TotalesRecaudos } from '../../api/tipos'
+import BarraFiltros, {CampoFiltro, TextoResultados, VacioFiltros } from '../../componentes/BarraFiltros'
+import { rangoAtajo } from '../../utilidades/atajosPeriodo'
 import ControlSegmentado from '../../componentes/ControlSegmentado'
 import Medida from '../../componentes/Medida'
 import Paginacion from '../../componentes/Paginacion'
-import { fechaCorta, hoy } from '../../componentes/fechas'
+import { fechaCorta } from '../../componentes/fechas'
 import { pesos } from '../../componentes/numeros'
 import { useCuentasPago } from '../../hooks/useCatalogos'
-import { useDebounce } from '../../hooks/useDebounce'
+import { useFiltrosUrl } from '../../hooks/useFiltrosUrl'
 import { formatearFechaHora } from '../../utilidades/fechas'
 import '../../componentes/cartera.css'
 
 type FiltroTipo = 'todos' | TipoDocumentoVenta
 
-const primeroDelMes = () => `${hoy().slice(0, 8)}01`
-
 /**
  * S-76: recaudos de documentos de Contapyme registrados en la caja del mostrador (facturas o
  * remisiones a crédito que no son ventas a crédito del sistema). Solo lectura y solo en pantalla.
- * Los totales cubren todo el rango filtrado, sin los anulados.
+ * Los totales cubren todo el rango filtrado, sin los anulados. S-88: barra común (atajos de período,
+ * filtros en la URL, "Limpiar filtros" y "Mostrando N de M").
  */
 export default function Recaudos() {
-  const [desde, setDesde] = useState(primeroDelMes())
-  const [hasta, setHasta] = useState(hoy())
-  const [tipo, setTipo] = useState<FiltroTipo>('todos')
-  const [cuenta, setCuenta] = useState('')
-  const [q, setQ] = useState('')
-  const [pagina, setPagina] = useState(1)
-  const busqueda = useDebounce(q.trim(), 300)
+  const mes = rangoAtajo('este_mes')
+  const { filtros: f, fijar, pagina, irA, activos, limpiar } = useFiltrosUrl({ desde: mes.desde, hasta: mes.hasta, tipo: 'todos', cuenta: '', q: '' })
   const cuentas = useCuentasPago()
 
   const params = {
-    desde, hasta,
-    tipo: tipo === 'todos' ? undefined : tipo,
-    cuenta_pago_id: cuenta || undefined,
-    q: busqueda || undefined,
+    desde: f.desde,
+    hasta: f.hasta,
+    tipo: f.tipo === 'todos' ? undefined : f.tipo,
+    cuenta_pago_id: f.cuenta || undefined,
+    q: f.q || undefined,
   }
   const { data, isFetching } = useQuery({
     queryKey: ['recaudos-documento', params, pagina],
     queryFn: async () => (await api.get<PaginaInforme<RecaudoDocumento, TotalesRecaudos>>('/recaudos-documento', { params: { ...params, page: pagina, por_pagina: 50 } })).data,
     placeholderData: (previo) => previo,
   })
-  const reiniciar = <T,>(fijar: (v: T) => void) => (v: T) => { fijar(v); setPagina(1) }
   const t = data?.totales
+  const info = data ? infoPagina(data) : null
 
   return (
     <div className="pila">
@@ -52,30 +48,30 @@ export default function Recaudos() {
       </div>
 
       <section className="tarjeta-pagina">
-        <ControlSegmentado<FiltroTipo>
-          id="recaudo-tipo"
-          etiqueta="Tipo de documento"
-          valor={tipo}
-          onCambio={reiniciar(setTipo)}
-          opciones={[
-            { valor: 'todos', texto: 'Todos' },
-            { valor: 'factura', texto: 'Facturas' },
-            { valor: 'remision', texto: 'Remisiones' },
-          ]}
-        />
-        <div className="filtros-informe">
-          <label>Desde<input type="date" max={hasta} value={desde} onChange={(e) => reiniciar(setDesde)(e.target.value)} /></label>
-          <label>Hasta<input type="date" min={desde} max={hoy()} value={hasta} onChange={(e) => reiniciar(setHasta)(e.target.value)} /></label>
-          <label>Cuenta de pago
-            <select value={cuenta} onChange={(e) => reiniciar(setCuenta)(e.target.value)}>
+        <BarraFiltros
+          busqueda={{ valor: f.q, onCambio: (q) => fijar({ q }), placeholder: 'N.º del documento u observación' }}
+          periodo={{ desde: f.desde, hasta: f.hasta, onCambio: (desde, hasta) => fijar({ desde, hasta }) }}
+          activos={activos}
+          onLimpiar={limpiar}
+        >
+          <ControlSegmentado<FiltroTipo>
+            id="recaudo-tipo"
+            etiqueta="Tipo de documento"
+            valor={f.tipo as FiltroTipo}
+            onCambio={(tipo) => fijar({ tipo })}
+            opciones={[
+              { valor: 'todos', texto: 'Todos' },
+              { valor: 'factura', texto: 'Facturas' },
+              { valor: 'remision', texto: 'Remisiones' },
+            ]}
+          />
+          <CampoFiltro etiqueta="Cuenta de pago">
+            <select value={f.cuenta} onChange={(e) => fijar({ cuenta: e.target.value })}>
               <option value="">Todas las cuentas</option>
               {(cuentas.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
             </select>
-          </label>
-          <label className="recaudo-buscar">Buscar
-            <input type="search" placeholder="N.º del documento u observación" value={q} onChange={(e) => reiniciar(setQ)(e.target.value)} />
-          </label>
-        </div>
+          </CampoFiltro>
+        </BarraFiltros>
 
         {t && (
           <div className="medidas recaudo-medidas">
@@ -87,6 +83,7 @@ export default function Recaudos() {
           </div>
         )}
 
+        {info && <TextoResultados mostrando={data!.data.length} total={info.total} de="recaudos" />}
         <div className="tabla-desplazable" aria-busy={isFetching}>
           {!data && <div className="cargando">Cargando…</div>}
           {data && (
@@ -97,7 +94,7 @@ export default function Recaudos() {
                 </tr>
               </thead>
               <tbody>
-                {data.data.length === 0 && <tr><td colSpan={8} className="vacio">No hay recaudos en el período.</td></tr>}
+                {data.data.length === 0 && <tr><td colSpan={8} className="vacio"><VacioFiltros hayFiltros={activos > 0} sinFiltros="No hay recaudos en el período." onLimpiar={limpiar} /></td></tr>}
                 {data.data.map((r) => (
                   <tr key={r.id} className={r.anulacion ? 'reversado' : undefined}>
                     <td>{fechaCorta(r.fecha)}</td>
@@ -125,7 +122,7 @@ export default function Recaudos() {
             </table>
           )}
         </div>
-        <Paginacion pagina={data} onCambiar={setPagina} />
+        <Paginacion pagina={data} onCambiar={irA} />
       </section>
     </div>
   )
