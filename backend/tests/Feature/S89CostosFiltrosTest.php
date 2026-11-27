@@ -73,6 +73,10 @@ it('S-89: un universal lista solo los proveedores de sus compras, ordenados y en
     $a = S89Ref();
     $b = S89Ref();
     $sinCompras = S89Ref();
+    // Nombres fijos: la API ordena por MySQL (utf8mb4_unicode_ci, donde la tilde ordena con la
+    // letra base) y la expectativa ordena en PHP por bytes; con nombres de faker a veces difieren.
+    $a->proveedor->update(['nombre' => 'AAA Proveedor Uno']);
+    $b->proveedor->update(['nombre' => 'ZZZ Proveedor Dos']);
     foreach ([$a, $b, $sinCompras] as $ref) {
         $ref->update(['codigo_universal_id' => $universal->id, 'categoria_id' => $categoria->id]);
     }
