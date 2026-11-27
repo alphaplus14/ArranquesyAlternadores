@@ -22,8 +22,6 @@ import BotonCancelar from '../../componentes/BotonCancelar'
 interface FilaIngreso {
   id: number
   tipo: TipoIngreso
-  forma_pago: FormaPago
-  vence_el: string | null
   numero_documento: string
   fecha: string
   estado: string
@@ -192,8 +190,8 @@ export default function Ingresos() {
           <p className="vacio"><VacioFiltros hayFiltros={activosBarra > 0} sinFiltros="Aún no hay compras." onLimpiar={limpiarTodo} /></p>
         ) : (
         <div className="tabla-desplazable tabla-viva llena" aria-busy={lista.isFetching}>
-        <table>
-          <thead><tr><th>#</th><th>Tipo</th><th>Documento</th><th>Proveedor</th><th>Fecha</th><th>Pago</th><th>Unidades</th><th>Estado</th><th>Usuario</th><th className="boton-fila-columna boton-fila-icono"><span className="solo-lector">Acciones</span></th></tr></thead>
+        <table className="tabla-compras">
+          <thead><tr><th>#</th><th>Tipo</th><th className="col-documento">Documento</th><th className="col-proveedor">Proveedor</th><th>Fecha</th><th>Unidades</th><th>Estado</th><th>Usuario</th><th className="boton-fila-columna boton-fila-icono"><span className="solo-lector">Acciones</span></th></tr></thead>
           <tbody>
             {filas.map((i) => (
               <tr key={i.id}>
@@ -205,7 +203,6 @@ export default function Ingresos() {
                 </td>
                 <td>{i.proveedor.nombre}{i.proveedor.asesor && <small className="asesor">Asesor: {i.proveedor.asesor}</small>}</td>
                 <td>{i.fecha.slice(0, 10)}</td>
-                <td>{i.forma_pago === 'credito' ? <span className="chip credito">Crédito{i.vence_el ? ` · vence ${i.vence_el.slice(0, 10)}` : ''}</span> : 'Contado'}</td>
                 <td>{i.unidades ?? 0}</td>
                 <td><span className={`chip ${i.estado}`}>{i.estado}</span></td>
                 <td>{i.usuario.name}</td>

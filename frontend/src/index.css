@@ -2261,3 +2261,6 @@ body:has(.ingreso-barra) .aviso-flotante { bottom: 88px; }
   .barra-compras > .barra-filtros-busqueda { flex: 1 1 100%; min-width: 0; }
 }
 
+/* S-91 (ajuste): sin la columna Pago, el ancho sobrante va a Documento y Proveedor (nombre y asesor). */
+.tabla-compras .col-documento { width: 22%; }
+.tabla-compras .col-proveedor { width: 30%; }
