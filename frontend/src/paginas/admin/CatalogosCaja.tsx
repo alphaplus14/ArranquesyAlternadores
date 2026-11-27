@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeError } from '../../api/cliente'
-import { GRUPOS_CAJA, NOMBRE_GRUPO_CAJA, NOMBRE_TIPO_CUENTA, type CategoriaCaja, type CuentaPago, type GrupoCaja, type TipoCuentaPago } from '../../api/tipos'
+import { GRUPOS_CAJA, NOMBRE_GRUPO_CAJA, NOMBRE_TIPO_CUENTA, type CategoriaCaja, type GrupoCaja, type TipoCuentaPago } from '../../api/tipos'
 import { useAvisoTexto } from '../../componentes/Avisos'
-import { useCategoriasCaja, useCuentasPago } from '../../hooks/useCatalogos'
+import { useCategoriasCaja, useCuentasPago, usePropietarios } from '../../hooks/useCatalogos'
 
 const TIPOS: TipoCuentaPago[] = ['efectivo', 'banco', 'datafono', 'billetera']
 
@@ -23,35 +23,64 @@ export default function CatalogosCaja() {
 function Cuentas() {
   const qc = useQueryClient()
   const cuentas = useCuentasPago(true)
+  const duenos = usePropietarios(true)
   const [nombre, setNombre] = useState('')
   const [tipo, setTipo] = useState<TipoCuentaPago>('banco')
-  const refrescar = () => qc.invalidateQueries({ queryKey: ['cuentas-pago'] })
+  const [dueno, setDueno] = useState('')
+  const [duenoNuevo, setDuenoNuevo] = useState('')
+  const refrescar = () => {
+    qc.invalidateQueries({ queryKey: ['cuentas-pago'] })
+    qc.invalidateQueries({ queryKey: ['propietarios'] })
+  }
 
   const crear = useMutation({
-    mutationFn: () => api.post('/cuentas-pago', { nombre: nombre.trim(), tipo }),
-    onSuccess: () => { setNombre(''); refrescar() },
+    mutationFn: async () => {
+      let propietarioId: number | null = null
+      if (tipo === 'billetera' && dueno === 'nuevo') {
+        const creado = await api.post<{ id: number }>('/propietarios', { nombre: duenoNuevo.trim() })
+        propietarioId = creado.data.id
+      } else if (tipo === 'billetera' && dueno !== '') {
+        propietarioId = Number(dueno)
+      }
+      await api.post('/cuentas-pago', { nombre: nombre.trim(), tipo, propietario_id: propietarioId })
+    },
+    onSuccess: () => { setNombre(''); setDueno(''); setDuenoNuevo(''); refrescar() },
   })
   const editar = useMutation({
-    mutationFn: ({ id, cambios }: { id: number; cambios: Partial<CuentaPago> }) => api.put(`/cuentas-pago/${id}`, cambios),
+    mutationFn: ({ id, cambios }: { id: number; cambios: { nombre?: string; activa?: boolean; propietario_id?: number | null } }) => api.put(`/cuentas-pago/${id}`, cambios),
     onSuccess: refrescar,
   })
   useAvisoTexto(editar.isError ? mensajeError(editar.error) : null)
+  const faltaDueno = tipo === 'billetera' && dueno === 'nuevo' && duenoNuevo.trim().length < 2
 
   return (
     <section className="tarjeta-pagina">
       <h2>Cuentas de pago</h2>
-      <form className="alta-en-linea" onSubmit={(e) => { e.preventDefault(); if (nombre.trim().length >= 2) crear.mutate() }}>
+      <form className="alta-en-linea" onSubmit={(e) => { e.preventDefault(); if (nombre.trim().length >= 2 && !faltaDueno) crear.mutate() }}>
         <label><span className="solo-lector">Nombre de la cuenta</span><input maxLength={60} placeholder="Nueva cuenta" value={nombre} onChange={(e) => { setNombre(e.target.value); crear.reset() }} /></label>
         <label><span className="solo-lector">Tipo</span>
           <select value={tipo} onChange={(e) => setTipo(e.target.value as TipoCuentaPago)}>
             {TIPOS.map((t) => <option key={t} value={t}>{NOMBRE_TIPO_CUENTA[t]}</option>)}
           </select>
         </label>
-        <button type="submit" className="primario" disabled={nombre.trim().length < 2 || crear.isPending}>Agregar</button>
+        {tipo === 'billetera' && (
+          <label><span className="solo-lector">Dueño</span>
+            <select value={dueno} onChange={(e) => setDueno(e.target.value)}>
+              <option value="">Sin dueño</option>
+              {(duenos.data ?? []).map((p) => <option key={p.id} value={p.id}>{p.nombre}{p.activo ? '' : ' (inactivo)'}</option>)}
+              <option value="nuevo">Nuevo dueño…</option>
+            </select>
+          </label>
+        )}
+        {tipo === 'billetera' && dueno === 'nuevo' && (
+          <label><span className="solo-lector">Nombre del dueño</span><input maxLength={60} placeholder="Dayana" value={duenoNuevo} onChange={(e) => setDuenoNuevo(e.target.value)} /></label>
+        )}
+        <button type="submit" className="primario" disabled={nombre.trim().length < 2 || faltaDueno || crear.isPending}>Agregar</button>
       </form>
+      {tipo === 'billetera' && <p className="ayuda">El nombre distingue la cuenta (Nequi Dayana, Daviplata Dayana). El dueño agrupa los saldos.</p>}
       {crear.isError && <div className="aviso error" role="alert">{mensajeError(crear.error)}</div>}
       <table className="tabla-caja">
-        <thead><tr><th>Cuenta</th><th>Tipo</th><th>Estado</th><th><span className="solo-lector">Acciones</span></th></tr></thead>
+        <thead><tr><th>Cuenta</th><th>Tipo</th><th>Dueño</th><th>Estado</th><th><span className="solo-lector">Acciones</span></th></tr></thead>
         <tbody>
           {(cuentas.data ?? []).map((c) => (
             <FilaEditable
@@ -62,6 +91,17 @@ function Cuentas() {
               pendiente={editar.isPending}
               onRenombrar={(n) => editar.mutate({ id: c.id, cambios: { nombre: n } })}
               onActivar={(a) => editar.mutate({ id: c.id, cambios: { activa: a } })}
+              dueno={c.tipo === 'billetera' ? (
+                <select
+                  aria-label={`Dueño de ${c.nombre}`}
+                  value={c.propietario?.id ?? ''}
+                  disabled={editar.isPending}
+                  onChange={(e) => editar.mutate({ id: c.id, cambios: { propietario_id: e.target.value === '' ? null : Number(e.target.value) } })}
+                >
+                  <option value="">Sin dueño</option>
+                  {(duenos.data ?? []).map((p) => <option key={p.id} value={p.id}>{p.nombre}{p.activo ? '' : ' (inactivo)'}</option>)}
+                </select>
+              ) : '—'}
             />
           ))}
         </tbody>
@@ -126,9 +166,10 @@ function Categorias() {
   )
 }
 
-function FilaEditable({ nombre, detalle, activa, pendiente, onRenombrar, onActivar }: {
+function FilaEditable({ nombre, detalle, dueno, activa, pendiente, onRenombrar, onActivar }: {
   nombre: string
   detalle?: string
+  dueno?: ReactNode
   activa: boolean
   pendiente: boolean
   onRenombrar: (nombre: string) => void
@@ -149,6 +190,7 @@ function FilaEditable({ nombre, detalle, activa, pendiente, onRenombrar, onActiv
         ) : nombre}
       </td>
       {detalle !== undefined && <td>{detalle}</td>}
+      {dueno !== undefined && <td>{dueno}</td>}
       <td><span className={activa ? 'chip cerrada' : 'chip'}>{activa ? 'Activa' : 'Inactiva'}</span></td>
       <td className="acciones-fila">
         {!editando && <button type="button" className="enlace" onClick={() => setEditando(true)}>Renombrar</button>}

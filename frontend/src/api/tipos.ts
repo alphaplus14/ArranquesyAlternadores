@@ -283,11 +283,26 @@ export const NOMBRE_TIPO_DOCUMENTO: Record<TipoDocumentoVenta, string> = { factu
 export type TipoCuentaPago = 'efectivo' | 'banco' | 'datafono' | 'billetera'
 export const NOMBRE_TIPO_CUENTA: Record<TipoCuentaPago, string> = { efectivo: 'Efectivo', banco: 'Banco', datafono: 'Datáfono', billetera: 'Billetera' }
 
+/** S-88: persona dueña de una o varias billeteras. */
+export interface Propietario {
+  id: number
+  nombre: string
+  activo: boolean
+}
+
 export interface CuentaPago {
   id: number
   nombre: string
   tipo: TipoCuentaPago
   activa: boolean
+  /** S-88: solo en billeteras; null si no tiene dueño o no es billetera. */
+  propietario: { id: number; nombre: string } | null
+}
+
+/** "Nequi · Dayana" cuando la billetera tiene dueño; si no, el nombre de la cuenta. */
+export function etiquetaCuenta(c: { nombre: string; tipo?: TipoCuentaPago; propietario?: { nombre: string } | null }, conTipo = false): string {
+  const base = c.propietario ? `${c.nombre} · ${c.propietario.nombre}` : c.nombre
+  return conTipo && c.tipo ? `${base} (${NOMBRE_TIPO_CUENTA[c.tipo]})` : base
 }
 
 export interface VentaPago {
@@ -978,11 +993,36 @@ export interface TotalesRecaudos {
   por_cuenta: { cuenta_pago_id: number; nombre: string; tipo: TipoCuentaPago; total: string; cantidad: number }[]
 }
 
+/** S-88: una billetera dentro del grupo de su dueño. `neto` es el movimiento del período (día o mes). */
+export interface FilaBilleteraCaja {
+  cuenta_pago_id: number
+  nombre: string
+  neto: string
+  saldo_anterior: string
+  saldo: string
+}
+
+/** S-88: billeteras de un mismo dueño. "Sin dueño" agrupa las que todavía no tienen. */
+export interface GrupoBilleteraCaja {
+  propietario_id: number | null
+  propietario: string
+  neto: string
+  saldo_anterior: string
+  saldo: string
+  cuentas: FilaBilleteraCaja[]
+}
+
 export interface FilaCuentaCaja {
   cuenta_pago_id: number | null
   nombre: string
   tipo: TipoCuentaPago | null
   activa: boolean
+  /** S-88. */
+  propietario_id?: number | null
+  propietario?: string | null
+  /** S-88: solo en billeteras. Calculado, no guardado. */
+  saldo_anterior?: string
+  saldo?: string
   ventas: string
   ventas_sin_detalle?: string
   recaudo: string
@@ -1000,6 +1040,8 @@ export interface FilaCuentaCaja {
 export interface ResumenCaja {
   fecha: string
   cuentas: FilaCuentaCaja[]
+  /** S-88: saldos del día agrupados por dueño. */
+  billeteras?: GrupoBilleteraCaja[]
   ventas_contado: string
   ventas_sin_detalle: string
   ventas_credito: string
@@ -1123,6 +1165,8 @@ export interface MesCaja {
   mes: string
   meta_venta_diaria: string
   dias: FilaMesCaja[]
+  /** S-88: movimiento del mes y saldo al cierre del período, por dueño. */
+  billeteras?: GrupoBilleteraCaja[]
   totales: Pick<FilaMesCaja, 'ventas_efectivo' | 'ventas_banco' | 'ventas_datafono' | 'ventas_billetera' | 'ventas_credito' | 'otros_ingresos'
     | 'total_ingreso_dia' | 'egresos' | 'efectivo_neto_dia' | 'neto_acumulado_mes' | 'meta' | 'faltante_meta'> & { diferencia: string; dias_cerrados: number; dias_sin_cerrar: number }
 }

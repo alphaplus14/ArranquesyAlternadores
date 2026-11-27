@@ -22,6 +22,7 @@ use App\Http\Controllers\Api\MovimientoCajaController;
 use App\Http\Controllers\Api\MovimientoInventarioController;
 use App\Http\Controllers\Api\PagoController;
 use App\Http\Controllers\Api\PanelController;
+use App\Http\Controllers\Api\PropietarioController;
 use App\Http\Controllers\Api\ProveedorController;
 use App\Http\Controllers\Api\RecaudoDocumentoController;
 use App\Http\Controllers\Api\ReferenciaController;
@@ -125,6 +126,9 @@ Route::middleware('auth:sanctum')->group(function () {
         // RF-24 (S-48): cuentas de pago; solo el admin las crea, edita y desactiva (sin DELETE).
         Route::post('/cuentas-pago', [CuentaPagoController::class, 'store']);
         Route::match(['put', 'patch'], '/cuentas-pago/{cuenta}', [CuentaPagoController::class, 'update']);
+        // S-88: dueños de billetera. El listado está con GET /cuentas-pago (mostrador y contable).
+        Route::post('/propietarios', [PropietarioController::class, 'store']);
+        Route::match(['put', 'patch'], '/propietarios/{propietario}', [PropietarioController::class, 'update']);
 
         // RF-23 / S-45: panel de gestión, solo admin y solo en pantalla (regla 16). Objetivo p95 < 800 ms.
         Route::middleware('medir:800')->prefix('panel')->group(function () {
@@ -252,6 +256,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // RF-24 (S-48): cuentas de pago activas. Mostrador (ventas, abonos), admin y contable (pagos a
     // proveedores, RF-29). Logística 403.
     Route::get('/cuentas-pago', [CuentaPagoController::class, 'index'])->middleware('rol:mostrador,contable');
+    Route::get('/propietarios', [PropietarioController::class, 'index'])->middleware('rol:mostrador,contable'); // S-88
 
     // RF-24 a RF-26 (S-48 a S-54): cuentas de pago y caja diaria. Mostrador y admin; logística 403.
     // Registrar movimientos, anularlos y cerrar el día: solo mostrador. El admin consulta, reabre un

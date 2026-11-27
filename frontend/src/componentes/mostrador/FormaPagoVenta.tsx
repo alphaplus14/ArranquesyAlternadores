@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { NOMBRE_TIPO_CUENTA, type CuentaPago } from '../../api/tipos'
+import { etiquetaCuenta, type CuentaPago } from '../../api/tipos'
 import { formatoNumero, leerNumero, pesos } from '../numeros'
 import { evaluarPago, nuevaFila, type FilaPago } from '../../utilidades/formaPago'
 
@@ -35,7 +35,7 @@ export default function FormaPagoVenta({ cuentas, total, filas, deshabilitado, o
               <span className="solo-lector">Cuenta del pago {i + 1}</span>
               <select value={f.cuenta_pago_id} aria-invalid={f.cuenta_pago_id === ''} onChange={(e) => cambiar(f.clave, { cuenta_pago_id: e.target.value === '' ? '' : Number(e.target.value) })}>
                 <option value="">Elija la cuenta…</option>
-                {cuentas.map((c) => <option key={c.id} value={c.id}>{c.nombre} ({NOMBRE_TIPO_CUENTA[c.tipo]})</option>)}
+                {cuentas.map((c) => <option key={c.id} value={c.id}>{etiquetaCuenta(c, true)}</option>)}
               </select>
             </label>
             <label>

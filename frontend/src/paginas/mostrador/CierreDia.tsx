@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Navigate, useSearchParams } from 'react-router-dom'
 import { AxiosError } from 'axios'
 import { api, erroresCampo, mensajeError } from '../../api/cliente'
-import { GRUPOS_CAJA, NOMBRE_GRUPO_CAJA, soloEfectivo, type AperturaCaja, type CierreCaja, type DiaCaja, type EmpleadoOpcion, type GrupoCaja, type MovimientoCaja, type MovimientoEmpleadoDia, type RecaudoDocumento, type ResumenCaja, type TipoDocumentoVenta } from '../../api/tipos'
+import { etiquetaCuenta, GRUPOS_CAJA, NOMBRE_GRUPO_CAJA, soloEfectivo, type AperturaCaja, type CierreCaja, type DiaCaja, type EmpleadoOpcion, type GrupoCaja, type MovimientoCaja, type MovimientoEmpleadoDia, type RecaudoDocumento, type ResumenCaja, type TipoDocumentoVenta } from '../../api/tipos'
 import { useAuth } from '../../auth/AuthProvider'
 import { useAviso } from '../../componentes/Avisos'
 import BotonFila from '../../componentes/BotonFila'
@@ -19,6 +19,7 @@ import { hoyEnBogota } from '../../utilidades/periodos'
 import { formatearFecha, formatearFechaHora } from '../../utilidades/fechas'
 import { RUTA_CAJA_ADMIN } from '../../rutas'
 import BotonCancelar from '../../componentes/BotonCancelar'
+import TablaBilleteras from '../../componentes/caja/TablaBilleteras'
 
 /**
  * RF-25 / RF-26 (S-49 a S-54): caja del día del mostrador. Registra movimientos, los anula con motivo
@@ -350,7 +351,7 @@ function ResumenPorCuenta({ resumen: r }: { resumen: ResumenCaja }) {
           <tbody>
             {filas.map((c) => (
               <tr key={c.cuenta_pago_id ?? 'sin'}>
-                <td>{c.nombre}{c.ventas_sin_detalle && Number(c.ventas_sin_detalle) > 0 && <small className="bloque">Incluye {pesos(c.ventas_sin_detalle)} de ventas sin detalle de pago</small>}</td>
+                <td>{c.nombre}{c.propietario && <small className="bloque">{c.propietario}</small>}{c.ventas_sin_detalle && Number(c.ventas_sin_detalle) > 0 && <small className="bloque">Incluye {pesos(c.ventas_sin_detalle)} de ventas sin detalle de pago</small>}</td>
                 <td className="col-numero">{pesos(c.ventas)}</td>
                 <td className="col-numero">{pesos(c.recaudo)}</td>
                 <td className="col-numero">{pesos(c.otros_ingresos)}</td>
@@ -367,6 +368,7 @@ function ResumenPorCuenta({ resumen: r }: { resumen: ResumenCaja }) {
       {conValor.length < r.cuentas.length && (
         <button type="button" className="enlace" onClick={() => setTodas((t) => !t)}>{todas ? 'Ver solo las cuentas con movimiento' : 'Ver todas las cuentas'}</button>
       )}
+      <TablaBilleteras grupos={r.billeteras ?? []} etiquetaNeto="Movimiento del día" />
     </div>
   )
 }
@@ -864,7 +866,7 @@ function DialogoRecaudo({ fecha, onCerrar, onGuardado }: { fecha: string; onCerr
             <span className="etiqueta-campo">Cuenta de pago<span className="obligatorio" aria-hidden="true">*</span></span>
             <select value={cuentaElegida} aria-invalid={!!errores.cuenta_pago_id} onChange={(e) => { setCuenta(e.target.value === '' ? '' : Number(e.target.value)); guardar.reset() }}>
               {cuentaElegida === '' && <option value="">{cuentas.isLoading ? 'Cargando…' : 'Seleccione…'}</option>}
-              {activas.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+              {activas.map((c) => <option key={c.id} value={c.id}>{etiquetaCuenta(c)}</option>)}
             </select>
             {errores.cuenta_pago_id && <small className="ayuda error">{errores.cuenta_pago_id}</small>}
           </label>
@@ -952,7 +954,7 @@ function DialogoMovimiento({ fecha, onCerrar, onGuardado }: { fecha: string; onC
             <span className="etiqueta-campo">Cuenta<span className="obligatorio" aria-hidden="true">*</span></span>
             <select value={cuentaElegida} disabled={soloEfectivo(grupo) && cuentasPermitidas.length <= 1} onChange={(e) => setCuenta(e.target.value === '' ? '' : Number(e.target.value))}>
               {cuentaElegida === '' && <option value="">Elija la cuenta…</option>}
-              {cuentasPermitidas.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+              {cuentasPermitidas.map((c) => <option key={c.id} value={c.id}>{etiquetaCuenta(c)}</option>)}
             </select>
             <small className={errores.cuenta_pago_id ? 'ayuda error' : 'ayuda'}>{errores.cuenta_pago_id ?? (soloEfectivo(grupo) ? 'Este tipo solo se registra en efectivo.' : 'Cualquier cuenta activa.')}</small>
           </label>
@@ -1116,7 +1118,7 @@ function DialogoEmpleados({ onCerrar, onGuardado }: { onCerrar: () => void; onGu
                 onChange={(e) => { setCuenta(e.target.value === 'nomina' ? 'nomina' : e.target.value === '' ? '' : Number(e.target.value)); guardar.reset() }}
               >
                 {cuentaElegida === '' && <option value="">{cuentas.isLoading ? 'Cargando…' : 'Seleccione…'}</option>}
-                {activas.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                {activas.map((c) => <option key={c.id} value={c.id}>{etiquetaCuenta(c)}</option>)}
                 <option disabled value="separador">──────────</option>
                 <option value="nomina">Descuento de nómina (no entra a la caja)</option>
               </select>

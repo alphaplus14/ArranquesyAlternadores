@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../api/cliente'
-import { NOMBRE_TIPO_DOCUMENTO, type PaginaInforme, type RecaudoDocumento, type TipoDocumentoVenta, type TotalesRecaudos } from '../../api/tipos'
+import { etiquetaCuenta, NOMBRE_TIPO_DOCUMENTO, type PaginaInforme, type RecaudoDocumento, type TipoDocumentoVenta, type TotalesRecaudos } from '../../api/tipos'
 import ControlSegmentado from '../../componentes/ControlSegmentado'
 import Medida from '../../componentes/Medida'
 import Paginacion from '../../componentes/Paginacion'
@@ -69,7 +69,7 @@ export default function Recaudos() {
           <label>Cuenta de pago
             <select value={cuenta} onChange={(e) => reiniciar(setCuenta)(e.target.value)}>
               <option value="">Todas las cuentas</option>
-              {(cuentas.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+              {(cuentas.data ?? []).map((c) => <option key={c.id} value={c.id}>{etiquetaCuenta(c)}</option>)}
             </select>
           </label>
           <label className="recaudo-buscar">Buscar
