@@ -107,8 +107,8 @@ it('S-85 (RF-20): crear la referencia que falta desde el ingreso normaliza a may
     $this->postJson('/api/referencias', datosS85($existente->proveedor_id, ['codigo_referencia' => 'nueva-s85', 'descripcion' => 'pieza recibida']))
         ->assertCreated()->assertJsonPath('codigo_referencia', 'NUEVA-S85')->assertJsonPath('descripcion', 'PIEZA RECIBIDA');
 
-    $this->postJson("/api/ingresos/{$ingreso}/escanear", ['codigo' => 'NUEVA-S85'])
-        ->assertCreated()->assertJsonPath('referencia.codigo_referencia', 'NUEVA-S85');
+    $escaneo = $this->postJson("/api/ingresos/{$ingreso}/escanear", ['codigo' => 'NUEVA-S85'])->assertCreated();
+    expect(lineaEscaneada($escaneo)['referencia']['codigo_referencia'])->toBe('NUEVA-S85');
 });
 
 /** Migración de datos de S-85: se busca por nombre porque la crea el agente de backend. */

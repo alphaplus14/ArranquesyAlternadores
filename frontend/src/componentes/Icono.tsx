@@ -31,6 +31,12 @@ export type IconoNombre =
   | 'panel'
   | 'caja-diaria'
   | 'abrir'
+  | 'quitar'
+  | 'salida'
+  | 'entrada'
+  | 'devolucion'
+  | 'historial'
+  | 'producto'
 
 /** Trazos propios. No hay fuente de iconos ni librería de UI. */
 export default function Icono({ nombre }: { nombre: IconoNombre }) {
@@ -71,5 +77,11 @@ const trazos: Record<IconoNombre, ReactNode> = {
   reactivar: <path d="M4 12a8 8 0 0 1 13.7-5.6L20 8.7M20 4v4.7h-4.7M20 12a8 8 0 0 1-13.7 5.6L4 15.3M4 20v-4.7h4.7" />,
   agrandar: <path d="M15 3h6v6M21 3l-7 7M3 21l7-7M9 21H3v-6" />,
   achicar: <path d="M14 10l7-7M20 10h-6V4M4 20l7-7M10 14H4v6" />,
-  abrir: <path d="M5 12h14M13 6l6 6-6 6" />, // S-78: botón "Abrir" de las tablas
+  abrir: <path d="M9 6l6 6-6 6" />, // S-78: abrir el registro
+  quitar: <path d="M6 6l12 12M18 6L6 18" />,
+  salida: <g><path d="M9 6H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h4" /><path d="M13 8l4 4-4 4M8 12h9" /></g>,
+  entrada: <g><path d="M15 6h4a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-4" /><path d="M11 8l-4 4 4 4M16 12H7" /></g>,
+  devolucion: <g><path d="M9 14L4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 1 1 0 11H12" /></g>,
+  historial: <g><circle cx="12" cy="12" r="8" /><path d="M12 8v4.5l2.5 1.5" /></g>,
+  producto: <g><path d="M12 3.5 20 8v8l-8 4.5L4 16V8z" /><path d="M12 12.2 20 8M12 12.2V20.5M12 12.2 4 8" /></g>,
 }

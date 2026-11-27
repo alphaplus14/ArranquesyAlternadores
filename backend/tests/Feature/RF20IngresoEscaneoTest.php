@@ -45,25 +45,29 @@ it('RF-20: escanear un código existente agrega la línea con cantidad 1 y el ú
         ->where('referencia_id', $referencia->id)->latest('id')->value('costo_unitario');
     $id = facturaBorrador($referencia);
 
-    escanearIngreso($id, '  RN-4410 ')
-        ->assertCreated()
-        ->assertJsonPath('referencia_id', $referencia->id)
-        ->assertJsonPath('referencia.codigo_referencia', 'RN-4410')
-        ->assertJsonPath('cantidad', 1)
-        ->assertJsonPath('costo_unitario', $ultimoCosto)
-        ->assertJsonPath('iva_porcentaje', '19.00') // S-22: el de la referencia
-        ->assertJsonPath('descuento_porcentaje', '0.00');
+    $respuesta = escanearIngreso($id, '  RN-4410 ')->assertCreated();
+    $linea = lineaEscaneada($respuesta);
 
-    expect($ultimoCosto)->not->toBeNull();
+    expect($linea['referencia_id'])->toBe($referencia->id)
+        ->and($linea['referencia']['codigo_referencia'])->toBe('RN-4410')
+        ->and($linea['cantidad'])->toBe(1)
+        ->and($linea['costo_unitario'])->toEqual($ultimoCosto)
+        ->and($linea['iva_porcentaje'])->toBe('19.00') // S-22: el de la referencia
+        ->and($linea['descuento_porcentaje'])->toBe('0.00')
+        ->and($respuesta->json('id'))->toBe($id)
+        ->and($respuesta->json('totales.total'))->not->toBeNull()
+        ->and($ultimoCosto)->not->toBeNull();
 });
 
 it('RF-20: escanear el mismo código otra vez suma 1 a la misma línea', function () {
     actuarComo(Rol::Logistica);
     $id = facturaBorrador(referencia('RN-4410'));
 
-    $linea = escanearIngreso($id, 'RN-4410')->assertCreated()->json('id');
-    escanearIngreso($id, 'RN-4410')->assertOk()->assertJsonPath('id', $linea)->assertJsonPath('cantidad', 2);
-    escanearIngreso($id, 'RN-4410')->assertOk()->assertJsonPath('cantidad', 3);
+    $linea = escanearIngreso($id, 'RN-4410')->assertCreated()->json('item_escaneado_id');
+    $segunda = escanearIngreso($id, 'RN-4410')->assertOk();
+    expect($segunda->json('item_escaneado_id'))->toBe($linea)
+        ->and(lineaEscaneada($segunda)['cantidad'])->toBe(2);
+    expect(lineaEscaneada(escanearIngreso($id, 'RN-4410')->assertOk())['cantidad'])->toBe(3);
 
     expect(IngresoItem::where('ingreso_id', $id)->count())->toBe(1);
 });
@@ -121,7 +125,8 @@ it('RF-20: logística crea la referencia que falta y el escaneo siguiente agrega
 
     $this->postJson('/api/referencias', referenciaDelProveedor($referencia->proveedor_id, 'NUEVA-001'))->assertCreated();
 
-    escanearIngreso($id, 'NUEVA-001')->assertCreated()->assertJsonPath('cantidad', 1)->assertJsonPath('costo_unitario', '0.00');
+    $creada = lineaEscaneada(escanearIngreso($id, 'NUEVA-001')->assertCreated());
+    expect($creada['cantidad'])->toBe(1)->and($creada['costo_unitario'])->toBe('0.00');
 });
 
 it('RF-20 / S-26: logística crea y edita una referencia, pero nadie la borra', function () {
@@ -155,7 +160,7 @@ it('RF-20: confirmar un ingreso con una línea sin costo responde 422 y no crea 
     actuarComo(Rol::Logistica);
     $referencia = referencia('RN-4410');
     $id = facturaBorrador($referencia);
-    $linea = escanearIngreso($id, 'RN-4410')->json('id');
+    $linea = escanearIngreso($id, 'RN-4410')->json('item_escaneado_id');
     $this->patchJson("/api/ingresos/{$id}/items/{$linea}", ['costo_unitario' => 0])->assertOk();
     $existencia = $referencia->fresh()->existencia;
 
@@ -172,7 +177,7 @@ it('RF-20: con costo, el ingreso escaneado se confirma y crea las unidades', fun
     $referencia = referencia('RN-4410');
     $id = facturaBorrador($referencia);
     escanearIngreso($id, 'RN-4410');
-    $linea = escanearIngreso($id, 'RN-4410')->json('id');
+    $linea = escanearIngreso($id, 'RN-4410')->json('item_escaneado_id');
     $this->patchJson("/api/ingresos/{$id}/items/{$linea}", ['costo_unitario' => 41000])->assertOk();
     $existencia = $referencia->fresh()->existencia;
 

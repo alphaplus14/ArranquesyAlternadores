@@ -23,6 +23,7 @@ use App\Support\RangoFechas;
 use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 /*
@@ -138,12 +139,13 @@ function unidadDe(string $codigoReferencia): Unidad
 /** RF-05: ingreso por remisión confirmado de una sola línea. */
 function ingresar(Referencia $referencia, int $cantidad, ?User $usuario = null): Ingreso
 {
+    $GLOBALS['__remision_t'] ??= 1000; // contador: random_int chocaba (mismo proveedor y número) y hacía inestable la suite
     $usuario ??= User::factory()->rol(Rol::Logistica)->create();
     $servicio = app(IngresoService::class);
 
     $ingreso = $servicio->crearBorrador([
         'proveedor_id' => $referencia->proveedor_id,
-        'numero_documento' => 'REM-T'.random_int(1000, 9999),
+        'numero_documento' => 'REM-T'.(++$GLOBALS['__remision_t']),
         'fecha' => RangoFechas::hoy(),
     ], $usuario);
     $servicio->agregarItem($ingreso, ['referencia_id' => $referencia->id, 'cantidad' => $cantidad, 'costo_unitario' => 1000]);
@@ -368,6 +370,20 @@ function movimientoCaja(string $categoria, $valor, ?CuentaPago $cuenta = null, a
         'cuenta_pago_id' => ($cuenta ?? cuentaEfectivo())->id,
         ...$extra,
     ]);
+}
+
+/**
+ * RF-20: la línea que acaba de escanearse, dentro del ingreso completo que devuelve el POST.
+ *
+ * @return array<string, mixed>
+ */
+function lineaEscaneada(TestResponse $respuesta): array
+{
+    $id = $respuesta->json('item_escaneado_id');
+    $linea = collect($respuesta->json('items'))->firstWhere('id', $id);
+    expect($linea)->not->toBeNull();
+
+    return $linea;
 }
 
 /** RF-25 (S-49): registra la apertura de caja de ese día (como un mostrador), sin tocar la sesión. */

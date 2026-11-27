@@ -575,6 +575,16 @@ tr.reversado td:has(.icono-accion) { text-decoration: none; }
   overflow: auto;
 }
 .detalle-compra .tabla-lineas { margin-top: 0; border-collapse: separate; border-spacing: 0; }
+/* El borrador tiene 8 columnas. Ancho fijo: al editar, el input no reacomoda la tabla ni estira la fila. */
+.detalle-compra .tabla-lineas:not(.tabla-correccion) { table-layout: fixed; width: 100%; }
+.detalle-compra .tabla-lineas:not(.tabla-correccion) th:nth-child(1) { width: 25%; }
+.detalle-compra .tabla-lineas:not(.tabla-correccion) th:nth-child(2) { width: 8%; }
+.detalle-compra .tabla-lineas:not(.tabla-correccion) th:nth-child(3) { width: 12%; }
+.detalle-compra .tabla-lineas:not(.tabla-correccion) th:nth-child(4) { width: 8%; }
+.detalle-compra .tabla-lineas:not(.tabla-correccion) th:nth-child(5) { width: 9%; }
+.detalle-compra .tabla-lineas:not(.tabla-correccion) th:nth-child(6) { width: 11%; }
+.detalle-compra .tabla-lineas:not(.tabla-correccion) th:nth-child(7) { width: 11%; }
+.detalle-compra .tabla-lineas:not(.tabla-correccion) th:nth-child(8) { width: 16%; }
 .detalle-compra .tabla-lineas thead th { position: sticky; top: 0; z-index: 1; background: var(--panel); box-shadow: inset 0 -1px 0 var(--borde); }
 .detalle-compra .acciones { margin-top: 12px; flex: none; }
 .detalle-compra .ingreso-barra { flex: none; }
@@ -1010,6 +1020,13 @@ button.segmento {
 }
 button.segmento:hover { color: var(--texto); }
 button.segmento.elegido { background: #fff; border-color: var(--primario); color: var(--primario); font-weight: 700; box-shadow: var(--sombra-barra); }
+/* Pestañas de Movimientos: al tamaño del texto, con icono, sin estirarse al ancho del panel. */
+.pestanas-movimiento .segmentado { width: max-content; max-width: 100%; flex-wrap: wrap; }
+.pestanas-movimiento button.segmento {
+  flex: 0 1 auto; min-height: 32px; padding: 3px 9px;
+  font-size: 0.8125rem; line-height: 1.2; white-space: nowrap; gap: 5px;
+}
+.pestanas-movimiento button.segmento svg { width: 15px; height: 15px; flex: none; }
 
 @media (max-width: 639px) {
   .encabezado-con-accion { flex-direction: column; align-items: stretch; }
@@ -1174,26 +1191,34 @@ button.selector-limpiar:hover { background: var(--suave-fondo); color: var(--tex
 .datos-fijos dd { margin: 0; display: flex; align-items: center; gap: 6px; color: var(--texto); font-weight: 600; overflow-wrap: anywhere; cursor: default; }
 .datos-fijos .candado { flex: none; color: var(--suave); }
 
-/* Líneas del ingreso en borrador: valores editables como celdas, no como enlaces. */
+/* Líneas del ingreso en borrador: la celda se ve como un campo, con marco y fondo blanco. */
 button.celda-editable {
   display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px;
-  min-width: 64px; padding: 4px 8px; font: inherit; color: var(--texto); text-align: right; cursor: pointer;
-  background: #F8FAFE; border: 1px dashed #A9B6CF; border-radius: 6px;
+  min-width: 3.2rem; min-height: 28px; padding: 2px 8px; font: inherit; font-variant-numeric: tabular-nums;
+  color: var(--texto); text-align: right; cursor: text;
+  background: #fff; border: 1px solid var(--borde); border-radius: 6px;
 }
-button.celda-editable:hover, button.celda-editable:focus-visible { border-style: solid; border-color: var(--primario); background: var(--suave-fondo); }
-/* Costo pendiente: borde y texto de atención, icono y la palabra "Costo" (no solo color). */
-button.celda-editable.pendiente { min-width: 96px; justify-content: center; border: 1.5px dashed #B08A00; background: var(--aviso-fondo); color: var(--aviso); font-weight: 600; }
-button.celda-editable.pendiente:hover, button.celda-editable.pendiente:focus-visible { border-style: solid; border-color: var(--aviso); }
+button.celda-editable:hover, button.celda-editable:focus-visible { border-color: var(--primario); }
+/* Costo pendiente: marco y texto de atención, icono y la palabra "Costo" (no solo color). */
+button.celda-editable.pendiente { min-width: 5.5rem; justify-content: center; border-color: var(--aviso); color: var(--aviso); font-weight: 600; background: #fff; }
+button.celda-editable.pendiente:hover, button.celda-editable.pendiente:focus-visible { border-color: var(--aviso); }
+.tabla-lineas thead th.encabezado-normal { text-transform: none; letter-spacing: 0; }
 .tabla-lineas td.acciones-linea { white-space: nowrap; text-align: right; }
 .acciones-linea, .confirmar-quitar { display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; }
 .tabla-lineas td.acciones-linea { display: table-cell; }
 .tabla-lineas td.acciones-linea > * + * { margin-left: 6px; }
 .acciones-linea button.primario, .acciones-linea button.secundario, .confirmar-quitar button { padding: 4px 10px; font-size: 0.85rem; }
 .acciones-linea .icono-accion { display: inline-grid; vertical-align: middle; }
-.fila-edicion td { vertical-align: top; background: #FBFCFF; }
-.campo-linea { display: flex; flex-direction: column; gap: 2px; }
-.campo-linea input, .campo-linea select { width: 104px; padding: 4px 6px; }
-.campo-linea .ayuda { max-width: 140px; white-space: normal; }
+.fila-edicion td { vertical-align: middle; background: #FBFCFF; }
+.campo-linea { display: flex; flex-direction: column; gap: 2px; min-width: 0; max-width: 100%; }
+.detalle-compra .tabla-lineas:not(.tabla-correccion) .campo-linea input,
+.detalle-compra .tabla-lineas:not(.tabla-correccion) .campo-linea select {
+  width: 100%; min-width: 0; max-width: 100%; padding: 4px 8px; background: #fff; border: 1px solid #8FA0BE;
+}
+.campo-linea input, .campo-linea select { width: 104px; padding: 4px 8px; background: #fff; border: 1px solid #8FA0BE; }
+.campo-linea .ayuda { max-width: 100%; white-space: normal; }
+.detalle-compra .fila-edicion td.acciones-linea { white-space: normal; }
+.detalle-compra .fila-edicion td.acciones-linea button { padding: 4px 8px; }
 .fila-error td { color: var(--peligro); background: var(--error-fondo); font-size: 0.88rem; }
 
 @media (max-width: 639px) {
@@ -1809,6 +1834,7 @@ a.boton { display: inline-flex; align-items: center; justify-content: center; }
 .boton.boton-fila.boton-fila-compacto { min-height: 28px; padding: 2px 10px; font-size: 0.8rem; gap: 4px; }
 .boton.boton-fila.boton-fila-compacto svg { width: 14px; height: 14px; }
 th.boton-fila-columna, td.boton-fila-columna { width: 140px; text-align: right; white-space: nowrap; }
+th.boton-fila-columna.boton-fila-icono, td.boton-fila-columna.boton-fila-icono { width: 3.25rem; padding-left: 0; padding-right: 10px; }
 th.boton-fila-columna.boton-fila-doble, td.boton-fila-columna.boton-fila-doble { width: 200px; }
 .boton-fila-acciones { display: inline-flex; gap: 8px; justify-content: flex-end; align-items: center; }
 /* En una tarjeta (columna flex), el botón compacto conserva su ancho y va bajo el texto. */
@@ -1966,6 +1992,9 @@ select.empleado-select:disabled { background-color: var(--suave-fondo); cursor: 
 .empleado-valor { display: flex; gap: 8px; align-items: stretch; }
 .empleado-valor input { flex: 1; min-width: 0; min-height: 44px; box-sizing: border-box; }
 button.empleado-pagar-todo { flex: none; min-height: 44px; white-space: nowrap; }
+.billeteras-saldo { width: 100%; margin-top: 14px; }
+.billeteras-saldo h3 { margin: 0 0 4px; font-size: 1rem; }
+.billeteras-saldo .ayuda { margin: 0 0 8px; }
 .caja-por-cuenta { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .caja-por-cuenta .tabla-caja { width: 100%; }
 .caja-por-cuenta-titulo { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-top: 6px; }
@@ -2079,7 +2108,18 @@ button.preferencias-switch[aria-checked="true"] span { transform: translateX(18p
 }
 /* Solo en la corrección (RF-28) la página es la que se desplaza: ahí el lector se pega a la barra superior. */
 .panel-correccion .ingreso-lector { position: sticky; top: 4rem; z-index: 4; }
-.ingreso-lector .escaner { margin-bottom: 4px; }
+.ingreso-lector .escaner { margin-bottom: 4px; height: 3rem; font-size: 1.05rem; }
+.ultima-lectura {
+  min-height: 1.25rem; margin: 0; font-size: 0.85rem; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ayuda-lector { margin: 2px 0 0; }
+.ayuda-lector summary { cursor: pointer; color: var(--suave); font-size: 0.8rem; }
+.ayuda-lector .ayuda { margin: 4px 0 0; }
+.desglose-compra { margin: 8px 0 0; }
+.desglose-compra > summary { cursor: pointer; color: var(--suave); font-size: 0.85rem; font-weight: 600; }
+.desglose-compra .totales { margin-top: 8px; }
+.tabla-etiquetas tbody tr { content-visibility: auto; contain-intrinsic-size: auto 2.5rem; }
 .ingreso-lector .aviso { margin: 4px 0; }
 @media (min-width: 721px) {
   .panel-correccion .tabla-desplazable.ingreso-tabla { overflow: visible; }

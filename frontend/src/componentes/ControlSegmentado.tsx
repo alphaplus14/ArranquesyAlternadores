@@ -1,7 +1,8 @@
 import { useRef, type KeyboardEvent, type ReactNode } from 'react'
+import Icono, { type IconoNombre } from './Icono'
 
 /** `texto` puede ser una muestra (p. ej. "Aa" en otro tamaño); entonces `nombre` da el nombre accesible. */
-export interface OpcionSegmento<T extends string> { valor: T; texto: ReactNode; nombre?: string }
+export interface OpcionSegmento<T extends string> { valor: T; texto: ReactNode; nombre?: string; icono?: IconoNombre }
 
 /**
  * Control segmentado accesible: un radiogroup con botones role="radio" y foco itinerante.
@@ -9,12 +10,14 @@ export interface OpcionSegmento<T extends string> { valor: T; texto: ReactNode; 
  * elegida se distingue también por la marca ✓ y el borde, no solo por el color.
  * Enter envía el formulario que lo contiene, si su botón de envío está habilitado.
  */
-export default function ControlSegmentado<T extends string>({ id, etiqueta, opciones, valor, onCambio }: {
+export default function ControlSegmentado<T extends string>({ id, etiqueta, opciones, valor, onCambio, clase }: {
   id: string
   etiqueta: string
   opciones: OpcionSegmento<T>[]
   valor: T
   onCambio: (valor: T) => void
+  /** Clase extra del contenedor (p. ej. para achicar unas pestañas sin tocar el resto). */
+  clase?: string
 }) {
   const botones = useRef<Array<HTMLButtonElement | null>>([])
 
@@ -42,7 +45,7 @@ export default function ControlSegmentado<T extends string>({ id, etiqueta, opci
   }
 
   return (
-    <div className="campo-segmentado">
+    <div className={clase ? `campo-segmentado ${clase}` : 'campo-segmentado'}>
       <span id={`${id}-etiqueta`} className="etiqueta-campo">{etiqueta}</span>
       <div role="radiogroup" aria-labelledby={`${id}-etiqueta`} className="segmentado">
         {opciones.map((o, i) => {
@@ -67,6 +70,7 @@ export default function ControlSegmentado<T extends string>({ id, etiqueta, opci
                   <path d="M5 12.5l4.5 4.5L19 7.5" />
                 </svg>
               )}
+              {o.icono && <Icono nombre={o.icono} />}
               {o.texto}
             </button>
           )

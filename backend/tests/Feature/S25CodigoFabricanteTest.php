@@ -85,8 +85,11 @@ it('S-25 (f): escanear en un ingreso por código de barras o por referencia encu
     $id = $this->postJson('/api/referencias', nuevaReferencia(['codigo_referencia' => 'AUT-XS-01', 'codigo_fabricante' => '822077515955']))->json('id');
     $ingreso = $this->postJson('/api/ingresos', ['tipo' => 'remision', 'proveedor_id' => $norte->id, 'numero_documento' => 'S25-1', 'fecha' => now()->toDateString()])->json('id');
 
-    $this->postJson("/api/ingresos/{$ingreso}/escanear", ['codigo' => '822077515955'])->assertCreated()->assertJsonPath('referencia_id', $id);
-    $this->postJson("/api/ingresos/{$ingreso}/escanear", ['codigo' => 'AUT-XS-01'])->assertOk()->assertJsonPath('referencia_id', $id)->assertJsonPath('cantidad', 2);
+    $porBarras = $this->postJson("/api/ingresos/{$ingreso}/escanear", ['codigo' => '822077515955'])->assertCreated();
+    expect(lineaEscaneada($porBarras)['referencia_id'])->toBe($id);
+    $porReferencia = $this->postJson("/api/ingresos/{$ingreso}/escanear", ['codigo' => 'AUT-XS-01'])->assertOk();
+    expect(lineaEscaneada($porReferencia)['referencia_id'])->toBe($id)
+        ->and(lineaEscaneada($porReferencia)['cantidad'])->toBe(2);
 
     // Otra referencia del mismo proveedor cuya referencia es el código de barras de la primera.
     $otra = $this->postJson('/api/referencias', nuevaReferencia(['codigo_referencia' => '822077515955', 'descripcion' => 'Otra']))->assertCreated()->json('id');
@@ -97,8 +100,8 @@ it('S-25 (f): escanear en un ingreso por código de barras o por referencia encu
         ->assertJsonCount(2, 'opciones');
 
     // Elegir una de las opciones resuelve el escaneo.
-    $this->postJson("/api/ingresos/{$ingreso}/escanear", ['codigo' => '822077515955', 'referencia_id' => $otra])
-        ->assertCreated()->assertJsonPath('referencia_id', $otra);
+    $elegida = $this->postJson("/api/ingresos/{$ingreso}/escanear", ['codigo' => '822077515955', 'referencia_id' => $otra])->assertCreated();
+    expect(lineaEscaneada($elegida)['referencia_id'])->toBe($otra);
 });
 
 it('S-25 (g): GET /buscar devuelve las referencias de ambos proveedores para un código compartido', function () {
