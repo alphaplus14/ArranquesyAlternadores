@@ -69,18 +69,18 @@ it('RF-09: el ingreso registra y muestra el descuento de la factura', function (
         'proveedor_id' => Proveedor::first()->id, 'numero_documento' => 'R3', 'fecha' => '2026-10-29', 'descuento_documento' => 15000,
     ])->json('id');
     $respuesta = $this->postJson("/api/ingresos/{$id}/items", [
-        'referencia_id' => referencia('SEN-TEMP-01')->id, 'cantidad' => 10, 'costo_unitario' => 10000, 'descuento_porcentaje' => 5, 'iva_porcentaje' => 19,
+        'referencia_id' => referencia('SEN-TEMP-01')->id, 'cantidad' => 10, 'costo_unitario' => 10000, 'descuento_porcentaje' => 0, 'iva_porcentaje' => 19,
     ]);
 
-    // RF-09 (ajuste): subtotal 100000 - 5000 = 95000; el descuento del documento (15000) se
-    // prorratea antes del IVA: base 80000, IVA 19 % = 15200, total 95200.
+    // RF-09 (ajuste; S-86: documento con descuento no admite descuento por línea): subtotal 100000;
+    // el descuento del documento (15000) se prorratea antes del IVA: base 85000, IVA 19 % = 16150, total 101150.
     $respuesta->assertJsonPath('totales.subtotal_bruto', '100000.00')
-        ->assertJsonPath('totales.descuento_lineas', '5000.00')
-        ->assertJsonPath('totales.subtotal_neto', '95000.00')
+        ->assertJsonPath('totales.descuento_lineas', '0.00')
+        ->assertJsonPath('totales.subtotal_neto', '100000.00')
         ->assertJsonPath('totales.descuento_documento', '15000.00')
-        ->assertJsonPath('totales.base_gravada', '80000.00')
-        ->assertJsonPath('totales.iva', '15200.00')
-        ->assertJsonPath('totales.total', '95200.00');
+        ->assertJsonPath('totales.base_gravada', '85000.00')
+        ->assertJsonPath('totales.iva', '16150.00')
+        ->assertJsonPath('totales.total', '101150.00');
 });
 
 it('RF-10: una línea sin IVA no suma impuesto y queda registrada como sin IVA', function () {
