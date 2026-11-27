@@ -36,14 +36,15 @@ const ALTO_FILA = 56
  * Modo del listado según el ancho de la tarjeta (no de la ventana):
  * - completa (≥ 1100 px): todas las columnas;
  * - media (760–1099 px): sin Categoría ni IVA (se ven al editar);
+ * S-93: el mostrador nunca ve la columna IVA (el precio ya lo incluye); admin y logística sí.
  * - tarjetas (< 760 px): cada producto es una tarjeta de alto fijo (la lista sigue virtualizada).
  */
 type Modo = 'completa' | 'media' | 'tarjetas'
 const modoDe = (ancho: number): Modo => (ancho === 0 || ancho >= 1100 ? 'completa' : ancho >= 760 ? 'media' : 'tarjetas')
 /** Alto de cada tarjeta, con su separación: cabecera + 5 pares (6 con el costo, S-71) + acciones (admin). */
 const ALTO_TARJETA = { conAcciones: 252, otro: 192 }
-/** El par "Costo" es de una línea (solo el valor, sin fecha). */
-const ALTO_PAR_COSTO = 28
+/** Alto de un par de una línea ("Costo", S-71, o "IVA", que el mostrador no ve, S-93). */
+const ALTO_PAR = 28
 
 /** Columnas por modo. La Descripción es la única flexible; el resto, ancho fijo. */
 /** Ancho de la columna Acciones según cuántos botones de 36 px muestra (0 = sin columna). */
@@ -51,12 +52,14 @@ function anchoAcciones(botones: number) {
   return botones === 0 ? '' : ` ${botones * 36 + (botones - 1) * 6 + 4}px`
 }
 
-function columnasDe(modo: Modo, botones: number, conCosto: boolean) {
+function columnasDe(modo: Modo, botones: number, conCosto: boolean, conIva: boolean) {
   const acciones = anchoAcciones(botones)
   // S-71: "Costo" (último costo de compra, sin IVA) entre Precio e IVA; la descripción absorbe el ancho.
   const costo = conCosto ? ' 112px' : ''
+  // S-93: sin la columna IVA (mostrador) se quita su ancho; la descripción absorbe la diferencia.
+  const iva = conIva ? ' 72px' : ''
   // RF-22: Existencia a 124 px para el chip "Bajo mínimo"; la descripción absorbe la diferencia.
-  if (modo === 'completa') return `164px minmax(0, 1fr) 140px 112px 104px${costo} 72px 124px${acciones}`
+  if (modo === 'completa') return `164px minmax(0, 1fr) 140px 112px 104px${costo}${iva} 124px${acciones}`
   return `140px minmax(0, 1fr) 124px 100px${costo} 124px${acciones}`
 }
 
@@ -151,6 +154,8 @@ export default function Productos() {
   const esAdmin = tieneRol('admin')
   /** S-28: rol exacto (tieneRol también es verdadero para el admin). */
   const esMostrador = usuario?.rol === 'mostrador'
+  /** S-93: el precio ya incluye IVA y el mostrador no lo calcula; admin y logística lo usan al editar. */
+  const verIva = !esMostrador
   const verCostos = useVerCostos()
   // S-26: admin y logística crean, editan y desactivan referencias; mostrador solo consulta.
   const puedeGestionar = tieneRol('logistica') // el admin pasa siempre
@@ -231,7 +236,10 @@ export default function Productos() {
   const verAlDesplegar = useRef<number | null>(null)
   const tarjeta = useAncho<HTMLElement>()
   const modo = modoDe(tarjeta.ancho)
-  const alto = modo === 'tarjetas' ? (puedeGestionar ? ALTO_TARJETA.conAcciones : ALTO_TARJETA.otro) + (verCostos.ultimo ? ALTO_PAR_COSTO : 0) : ALTO_FILA
+  // Lista virtualizada de alto fijo: cada par que se agrega o se quita cambia el alto de la tarjeta.
+  const alto = modo === 'tarjetas'
+    ? (puedeGestionar ? ALTO_TARJETA.conAcciones : ALTO_TARJETA.otro) + (verCostos.ultimo ? ALTO_PAR : 0) - (verIva ? 0 : ALTO_PAR)
+    : ALTO_FILA
   const ventana = useVentana(filas, alto)
 
   const scroller = ventana.ref
@@ -382,7 +390,7 @@ export default function Productos() {
 
   // Acciones visibles: Editar + Desactivar/Reactivar (gestión) y Historial (solo admin: Auditoría es del admin).
   const botonesAcciones = puedeGestionar ? (esAdmin ? 3 : 2) : 0
-  const columnas = columnasDe(modo, botonesAcciones, verCostos.ultimo)
+  const columnas = columnasDe(modo, botonesAcciones, verCostos.ultimo, verIva)
 
   const enfocarCampo = () => setTimeout(() => lectorRef.current?.focus(), 0)
   const refrescarLista = () => {
@@ -448,7 +456,7 @@ export default function Productos() {
           <CeldaUltimoCosto r={r} conEnlace={verCostos.historial} />
         </div>
       )}
-      {(completa || modo === 'tarjetas') && <div role="cell" data-etiqueta="IVA" className="col-numero">{Number(r.iva_venta_porcentaje) === 0 ? <span className="chip">Sin IVA</span> : `${Number(r.iva_venta_porcentaje)} %`}</div>}
+      {verIva && (completa || modo === 'tarjetas') && <div role="cell" data-etiqueta="IVA" className="col-numero">{Number(r.iva_venta_porcentaje) === 0 ? <span className="chip">Sin IVA</span> : `${Number(r.iva_venta_porcentaje)} %`}</div>}
       <div role="cell" data-etiqueta="Existencia" className={r.existencia === 0 ? 'agotado col-numero celda-existencia' : 'col-numero celda-existencia'}>
         {/* S-28: el backend no lo envía a mostrador; tampoco se pinta. */}
         {r.bajo_minimo && !esMostrador && (
@@ -502,7 +510,7 @@ export default function Productos() {
         {/* S-82 (ajuste): precio, costo e IVA son de cada referencia: en el universal quedan vacíos. */}
         <div role="cell" className="col-numero celda-vacia" />
         {verCostos.ultimo && <div role="cell" className="col-numero celda-vacia" />}
-        {(completa || modo === 'tarjetas') && <div role="cell" className="col-numero celda-vacia" />}
+        {verIva && (completa || modo === 'tarjetas') && <div role="cell" className="col-numero celda-vacia" />}
         <div role="cell" data-etiqueta="Existencia" className={u.existencia_total === 0 ? 'agotado col-numero celda-existencia' : 'col-numero celda-existencia'} title="Suma de sus referencias">
           {u.bajo_minimo && !esMostrador && (
             <span className="chip bajo-minimo" title={`Mínimo ${u.minimo_efectivo ?? ''} sobre la suma${u.minimo_origen === 'general' ? ' (general)' : ''}`}>Bajo mínimo</span>
@@ -643,7 +651,7 @@ export default function Productos() {
             {completa && <div role="columnheader">Categoría</div>}
             <div role="columnheader" className="col-numero" title="Precio de venta con IVA incluido">Precio (IVA incl.)</div>
             {verCostos.ultimo && <div role="columnheader" className="col-numero" title="Último costo de compra, sin IVA">Costo</div>}
-            {completa && <div role="columnheader" className="col-numero">IVA</div>}
+            {verIva && completa && <div role="columnheader" className="col-numero">IVA</div>}
             <div role="columnheader" className="col-numero">Existencia</div>
             {puedeGestionar && <div role="columnheader" className="col-acciones">Acciones</div>}
           </div>
