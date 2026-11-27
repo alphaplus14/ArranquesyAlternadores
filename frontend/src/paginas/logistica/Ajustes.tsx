@@ -41,6 +41,7 @@ import { PERIODO_POR_DEFECTO, errorRango, esPeriodo, hoyEnBogota, rangoDe } from
 import { formatearFechaHora } from '../../utilidades/fechas'
 import { textoSaldo } from '../../utilidades/cartera'
 import BotonCancelar from '../../componentes/BotonCancelar'
+import MovimientosPorProducto from './MovimientosPorProducto'
 
 /*
  * RF-21 (S-27): logística y admin sacan unidades del inventario (salidas), registran devoluciones
@@ -48,14 +49,18 @@ import BotonCancelar from '../../componentes/BotonCancelar'
  * unidad puede entrar; esta pantalla solo muestra su mensaje. Nada se borra y nada se exporta.
  */
 
-type Pestana = 'salidas' | 'entradas' | 'devoluciones' | 'historial'
+type Pestana = 'salidas' | 'entradas' | 'devoluciones' | 'historial' | 'producto'
 
 const PESTANAS: { valor: Pestana; texto: string }[] = [
   { valor: 'salidas', texto: 'Salidas' },
   { valor: 'entradas', texto: 'Entradas' }, // S-39
   { valor: 'devoluciones', texto: 'Devoluciones de clientes' },
   { valor: 'historial', texto: 'Historial' },
+  { valor: 'producto', texto: 'Por producto' }, // S-87
 ]
+
+/** S-44: el admin solo consulta: historial de ajustes y movimientos por producto. */
+const PESTANAS_CONSULTA = PESTANAS.filter((p) => p.valor === 'historial' || p.valor === 'producto')
 
 const MOTIVOS_BAJA: MotivoBaja[] = ['garantia', 'devolucion_proveedor', 'dano', 'perdida', 'faltante_inventario', 'otro']
 const MOTIVOS_REINTEGRO: MotivoReintegro[] = ['error_de_registro', 'otro']
@@ -113,7 +118,8 @@ export default function Ajustes() {
           <p>Solo consulta: las salidas, entradas y devoluciones las registra logística.</p>
         </div>
         <section className="panel">
-          <Historial puedeReintegrar={false} />
+          <ControlSegmentado id="ajustes-seccion" etiqueta="Sección" opciones={PESTANAS_CONSULTA} valor={pestana === 'producto' ? 'producto' : 'historial'} onCambio={cambiar} />
+          {pestana === 'producto' ? <MovimientosPorProducto /> : <Historial puedeReintegrar={false} />}
         </section>
       </div>
     )
@@ -131,6 +137,7 @@ export default function Ajustes() {
         {pestana === 'entradas' && <Entradas />}
         {pestana === 'devoluciones' && <Devoluciones onRetirar={retirarDevuelta} />}
         {pestana === 'historial' && <Historial puedeReintegrar />}
+        {pestana === 'producto' && <MovimientosPorProducto />}
       </section>
     </div>
   )

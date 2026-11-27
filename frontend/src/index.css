@@ -2119,3 +2119,12 @@ body:has(.ingreso-barra) .aviso-flotante { bottom: 88px; }
 .credito-detalle { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-top: 12px; }
 .credito-documento { font-size: 0.8rem; color: var(--suave); font-weight: 600; }
 .credito-anulada { text-decoration: line-through; }
+
+/* S-87: tipos de movimiento en "Por producto". */
+.chip.mov-ingreso, .chip.mov-alta, .chip.mov-reintegro { background: var(--ok-fondo); color: var(--ok); font-weight: 600; }
+.chip.mov-baja, .chip.mov-venta { background: var(--error-fondo); color: var(--peligro); font-weight: 600; }
+.chip.mov-reverso { font-weight: 600; }
+
+/* S-87: búsqueda de texto en el listado de compras. */
+.buscar-compras { flex: 1 1 14rem; min-width: 0; max-width: 24rem; }
+.buscar-compras input { width: 100%; min-height: 44px; box-sizing: border-box; }

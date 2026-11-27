@@ -1362,3 +1362,18 @@ export interface HistorialCostos extends Pagina<FilaCosto> {
   producto: ProductoCostos | null
   resumen: { ultimo: CompraResumen | null; anterior: CompraResumen | null; variacion: string | null; compras: number } | null
 }
+
+/** RF-21 (S-87): tipos de movimiento de GET /movimientos-inventario (ingreso = entrada por compra). */
+export type TipoMovimientoInventario = 'ingreso' | 'venta' | 'reverso' | 'baja' | 'reintegro' | 'alta'
+
+/** RF-21 (S-87): una fila del kardex por unidad; solo admin y logística. */
+export interface MovimientoInventario {
+  id: number
+  tipo: TipoMovimientoInventario
+  created_at: string
+  metodo_captura: MetodoCaptura | null
+  usuario: { id: number; name: string } | null
+  referencia: { id: number; codigo_referencia: string; descripcion: string; calidad: Calidad | null; proveedor: { id: number; nombre: string } }
+  unidad: { id: number; codigo_barras: string } | null
+  origen: { tipo: string; id: number; etiqueta: string } | null
+}
