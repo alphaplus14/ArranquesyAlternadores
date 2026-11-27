@@ -38,6 +38,18 @@ class ReferenciaRequest extends FormRequest
         if ($refVacia && is_string($fabricante) && $fabricante !== '') {
             $this->merge(['codigo_referencia' => $fabricante]);
         }
+
+        // S-85: descripcion y codigo_referencia siempre en mayuscula (tambien cuando la referencia
+        // sale del codigo de barras), para que la unicidad por proveedor compare ya normalizado.
+        // codigo_fabricante no se toca.
+        $mayus = [];
+        foreach (['codigo_referencia', 'descripcion'] as $campo) {
+            $valor = $this->input($campo);
+            if (is_string($valor)) {
+                $mayus[$campo] = mb_strtoupper(trim($valor));
+            }
+        }
+        $this->merge($mayus);
     }
 
     public function rules(): array
