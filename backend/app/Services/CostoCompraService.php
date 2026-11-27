@@ -254,6 +254,28 @@ class CostoCompraService
                 // Compras distintas: sin la remisión cubierta (es la misma compra que su factura).
                 'compras' => $this->sinRemisionCubierta($base())->count(),
             ],
+            'opciones_filtro' => $general ? null : $this->opcionesFiltro($referenciaIds),
+        ];
+    }
+
+    /**
+     * S-89: lo que hay para filtrar en el historial de un producto, SIN aplicar los filtros: compras
+     * confirmadas (sin la remisión cubierta) y los proveedores distintos de esas compras. Dos consultas
+     * agregadas, sin recorrer filas. La pantalla oculta los filtros que no tienen nada que acotar.
+     *
+     * @param  list<int>  $referenciaIds
+     * @return array{compras: int, proveedores: list<array{id: int, nombre: string}>}
+     */
+    private function opcionesFiltro(array $referenciaIds): array
+    {
+        $todas = fn () => $this->lineas()->whereIn('ii.referencia_id', $referenciaIds === [] ? [0] : $referenciaIds);
+
+        return [
+            'compras' => $this->sinRemisionCubierta($todas())->count(),
+            'proveedores' => $todas()
+                ->join('proveedores as p', 'p.id', '=', 'i.proveedor_id')
+                ->distinct()->orderBy('p.nombre')->get(['p.id', 'p.nombre'])
+                ->map(fn ($p) => ['id' => (int) $p->id, 'nombre' => $p->nombre])->values()->all(),
         ];
     }
 

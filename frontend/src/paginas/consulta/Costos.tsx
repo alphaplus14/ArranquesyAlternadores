@@ -86,6 +86,15 @@ export default function Costos() {
   const pagina = historial?.meta?.current_page ?? historial?.current_page ?? 1
   // S-80: los detalles abiertos se cierran al cambiar filtros o página (la tabla se monta de nuevo).
   const claveTabla = [referenciaId, universalId, proveedorId, categoriaId, desde, hasta, q, pagina].join('|')
+  // S-89: con un producto, cada filtro se muestra solo si tiene algo que acotar (sobre todas sus
+  // compras, no la página) o si está activo: un filtro activo nunca se oculta.
+  const opciones = vigente?.opciones_filtro
+  const proveedoresProducto = opciones?.proveedores ?? []
+  const verProveedor = !hay || proveedorId !== '' || proveedoresProducto.length >= 2
+  const verFechas = !hay || desde !== '' || hasta !== '' || (opciones?.compras ?? 0) > 1
+  const verCategoria = !hay
+  const filtrosActivos = proveedorId !== '' || desde !== '' || hasta !== '' || (!hay && categoriaId !== '')
+  const limpiarFiltros = () => elegir({ proveedor: null, categoria: null, desde: null, hasta: null, page: null })
 
   return (
     <div className="pila costos-pantalla">
@@ -118,18 +127,34 @@ export default function Costos() {
           <h2>{hay ? 'Compras' : 'Todas las compras'}</h2>
           {hay && <button type="button" className="enlace" onClick={() => elegir({ referencia: null, universal: null, page: null })}>Ver todas las compras</button>}
         </div>
+        {(verProveedor || verFechas || verCategoria) && (
         <div className="costos-filtros">
-          <div className="costos-campo costos-campo-proveedor">
-            <span className="costos-campo-etiqueta" aria-hidden>Proveedor</span>
-            <SelectorProveedor
-              className="filtro costos-filtro"
-              aria-label="Proveedor"
-              value={proveedorId}
-              onChange={(v) => elegir({ proveedor: v || null })}
-              opcionTodos="Todos los proveedores"
-            />
-          </div>
-          {!hay && (
+          {verProveedor && !hay && (
+            <div className="costos-campo costos-campo-proveedor">
+              <span className="costos-campo-etiqueta" aria-hidden>Proveedor</span>
+              <SelectorProveedor
+                className="filtro costos-filtro"
+                aria-label="Proveedor"
+                value={proveedorId}
+                onChange={(v) => elegir({ proveedor: v || null })}
+                opcionTodos="Todos los proveedores"
+              />
+            </div>
+          )}
+          {verProveedor && hay && (
+            // S-89: con un producto, solo los proveedores de sus compras (no todo el catálogo).
+            <label className="costos-campo">
+              <span className="costos-campo-etiqueta">Proveedor</span>
+              <select className="costos-select" value={proveedorId} onChange={(e) => elegir({ proveedor: e.target.value || null, page: null })}>
+                <option value="">Todos los proveedores</option>
+                {proveedoresProducto.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                {proveedorId !== '' && !proveedoresProducto.some((p) => String(p.id) === proveedorId) && (
+                  <option value={proveedorId}>{opciones ? 'Proveedor sin compras de este producto' : 'Cargando…'}</option>
+                )}
+              </select>
+            </label>
+          )}
+          {verCategoria && (
             <label className="costos-campo">
               <span className="costos-campo-etiqueta">Categoría</span>
               <select className="costos-select" value={categoriaId} onChange={(e) => elegir({ categoria: e.target.value || null })}>
@@ -138,19 +163,31 @@ export default function Costos() {
               </select>
             </label>
           )}
-          <label className="costos-campo">
-            <span className="costos-campo-etiqueta">Desde</span>
-            <input type="date" max={hasta || undefined} value={desde} onChange={(e) => elegir({ desde: e.target.value || null })} />
-          </label>
-          <label className="costos-campo">
-            <span className="costos-campo-etiqueta">Hasta</span>
-            <input type="date" min={desde || undefined} value={hasta} onChange={(e) => elegir({ hasta: e.target.value || null })} />
-          </label>
+          {verFechas && (
+            <>
+              <label className="costos-campo">
+                <span className="costos-campo-etiqueta">Desde</span>
+                <input type="date" max={hasta || undefined} value={desde} onChange={(e) => elegir({ desde: e.target.value || null })} />
+              </label>
+              <label className="costos-campo">
+                <span className="costos-campo-etiqueta">Hasta</span>
+                <input type="date" min={desde || undefined} value={hasta} onChange={(e) => elegir({ hasta: e.target.value || null })} />
+              </label>
+            </>
+          )}
         </div>
+        )}
         {filasVigentes.length === 0 ? (
           cargando || filas.length > 0 || resultado === undefined
             ? <p className="cargando">Cargando…</p>
-            : <p className="vacio">{hay ? 'Este producto aún no tiene compras confirmadas con estos filtros.' : 'No hay compras confirmadas con estos filtros.'}</p>
+            : filtrosActivos
+              ? (
+                <div className="vacio costos-vacio">
+                  <p>Nada coincide con estos filtros.</p>
+                  <button type="button" className="secundario" onClick={limpiarFiltros}>Limpiar filtros</button>
+                </div>
+              )
+              : <p className="vacio">{hay ? 'Este producto aún no tiene compras confirmadas.' : 'No hay compras confirmadas.'}</p>
         ) : (
           <div className={`tabla-desplazable${cargando ? ' actualizando' : ''}`}>
             <TablaCostos
