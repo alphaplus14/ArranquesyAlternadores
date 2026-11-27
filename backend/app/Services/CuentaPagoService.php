@@ -15,14 +15,14 @@ class CuentaPagoService
 {
     public function crear(array $datos): CuentaPago
     {
-        return CuentaPago::create($datos);
+        return CuentaPago::create($this->aplicarDueno($datos, null))->load('propietario:id,nombre');
     }
 
     public function actualizar(CuentaPago $cuenta, array $datos): CuentaPago
     {
         return DB::transaction(function () use ($cuenta, $datos) {
             $cuenta = CuentaPago::query()->lockForUpdate()->findOrFail($cuenta->id);
-            $cuenta->fill($datos);
+            $cuenta->fill($this->aplicarDueno($datos, $cuenta));
 
             $dejaEfectivo = $cuenta->getOriginal('tipo') === TipoCuentaPago::Efectivo && $cuenta->getOriginal('activa')
                 && (! $cuenta->activa || $cuenta->tipo !== TipoCuentaPago::Efectivo);
@@ -32,7 +32,32 @@ class CuentaPagoService
 
             $cuenta->save();
 
-            return $cuenta;
+            return $cuenta->load('propietario:id,nombre');
         });
+    }
+
+    /**
+     * S-88: el dueño solo cabe en una billetera. Pedirlo en otro tipo es 422. Al dejar de ser
+     * billetera se quita el dueño, sin borrar la cuenta ni su historia.
+     *
+     * @param  array<string, mixed>  $datos
+     * @return array<string, mixed>
+     */
+    private function aplicarDueno(array $datos, ?CuentaPago $cuenta): array
+    {
+        $tipo = isset($datos['tipo'])
+            ? ($datos['tipo'] instanceof TipoCuentaPago ? $datos['tipo'] : TipoCuentaPago::from($datos['tipo']))
+            : ($cuenta?->tipo ?? TipoCuentaPago::Banco);
+        $pideDueno = array_key_exists('propietario_id', $datos) && $datos['propietario_id'] !== null;
+
+        if ($pideDueno && $tipo !== TipoCuentaPago::Billetera) {
+            throw new ReglaInventarioException('El dueño solo aplica a una billetera.', 422, ['campo' => 'propietario_id']);
+        }
+
+        if ($tipo !== TipoCuentaPago::Billetera && $cuenta?->propietario_id !== null) {
+            $datos['propietario_id'] = null;
+        }
+
+        return $datos;
     }
 }

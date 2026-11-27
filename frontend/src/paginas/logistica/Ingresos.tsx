@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
 import { api, erroresCampo, mensajeError } from '../../api/cliente'
 import { useAvisoTexto } from '../../componentes/Avisos'
@@ -13,8 +13,6 @@ import SelectorProveedor from '../../componentes/SelectorProveedor'
 import { useDebounce } from '../../hooks/useDebounce'
 import { useListaPaginada } from '../../hooks/useListaPaginada'
 import { useProveedores } from '../../hooks/useCatalogos'
-import Medida from '../../componentes/Medida'
-import Resumen from '../../componentes/Resumen'
 import Paginacion from '../../componentes/Paginacion'
 import Icono from '../../componentes/Icono'
 import BotonFila from '../../componentes/BotonFila'
@@ -52,6 +50,7 @@ function ingresoExistente(error: unknown): number | null {
  * corrige con el que trae el documento. El backend valida.
  */
 export default function Ingresos() {
+  const qc = useQueryClient()
   const [creando, setCreando] = useState(false)
   const botonNuevo = useRef<HTMLButtonElement>(null)
   const cerrar = useCallback(() => {
@@ -63,6 +62,7 @@ export default function Ingresos() {
   // RF-28: "Solo corregidas" filtra en el servidor. S-87: la búsqueda (factura, proveedor o NIT)
   // vive en la URL (?q=); con menos de 2 caracteres no se envía y la tabla conserva lo anterior.
   const [soloCorregidos, setSoloCorregidos] = useState(false)
+  const [soloBorradores, setSoloBorradores] = useState(false)
   const [params, setParams] = useSearchParams()
   const qUrl = params.get('q') ?? ''
   const [escrito, setEscrito] = useState(qUrl)
@@ -77,15 +77,20 @@ export default function Ingresos() {
       return p
     }, { replace: true })
   }, [q, setParams])
-  const filtros = { soloCorregidos, q }
-  const { filas, resultado, info, irA } = useListaPaginada<FilaIngreso>({
-    clave: ['ingresos', soloCorregidos, q],
+  const filtros = { soloCorregidos, soloBorradores, q }
+  const { filas, resultado, irA } = useListaPaginada<FilaIngreso>({
+    clave: ['ingresos', soloCorregidos, soloBorradores, q],
     filtros,
     porPagina: { defecto: 25 }, // S-70
-    traer: async (pagina, porPagina) => (await api.get<Pagina<FilaIngreso>>('/ingresos', { params: { page: pagina, por_pagina: porPagina, corregidos: soloCorregidos ? 1 : undefined, q: q || undefined } })).data,
+    traer: async (pagina, porPagina) => (await api.get<Pagina<FilaIngreso>>('/ingresos', { params: { page: pagina, por_pagina: porPagina, corregidos: soloCorregidos ? 1 : undefined, estado: soloBorradores ? 'borrador' : undefined, q: q || undefined } })).data,
   })
-
-  const borradores = filas.filter((i) => i.estado === 'borrador').length
+  const precargar = (id: number) => {
+    const clave = String(id)
+    void qc.prefetchQuery({
+      queryKey: ['ingreso', clave],
+      queryFn: async () => (await api.get<Ingreso>(`/ingresos/${clave}`)).data,
+    })
+  }
 
   return (
     <div className="pila">
@@ -96,24 +101,6 @@ export default function Ingresos() {
         </div>
         <button ref={botonNuevo} type="button" className="primario" onClick={() => setCreando(true)}>Nuevo ingreso</button>
       </div>
-      <Resumen
-        clave="ingresos-resumen"
-        compacto={(
-          <>
-            <span><strong>{info ? info.total.toLocaleString('es-CO') : '—'}</strong> documentos</span>
-            <span>Pág. <strong>{info ? `${info.actual}/${info.ultima}` : '—'}</strong></span>
-            <span>En página <strong>{resultado ? filas.length : '—'}</strong></span>
-            <span className={resultado && borradores > 0 ? 'resumen-agotados' : ''}>
-              <strong>{resultado ? borradores : '—'}</strong> borradores
-            </span>
-          </>
-        )}
-      >
-        <Medida etiqueta="Documentos" valor={info ? info.total.toLocaleString('es-CO') : '—'} tono="rojo" icono="ingreso" />
-        <Medida etiqueta="Página" valor={info ? `${info.actual} / ${info.ultima}` : '—'} tono="amarillo" icono="catalogo" />
-        <Medida etiqueta="En esta página" valor={resultado ? filas.length : '—'} tono="verde" icono="caja" />
-        <Medida etiqueta="Borradores aquí" valor={resultado ? borradores : '—'} tono="rojo" icono="auditoria" />
-      </Resumen>
       <section className="tarjeta-pagina">
         <div className="fila-titulo">
           <div className="fila-titulo-inicio titulo-con-medida rojo">
@@ -132,15 +119,18 @@ export default function Ingresos() {
             />
           </label>
           <label className="casilla">
+            <input type="checkbox" checked={soloBorradores} onChange={(e) => setSoloBorradores(e.target.checked)} /> Borradores
+          </label>
+          <label className="casilla">
             <input type="checkbox" checked={soloCorregidos} onChange={(e) => setSoloCorregidos(e.target.checked)} /> Solo corregidas
           </label>
         </div>
         {resultado && filas.length === 0 ? (
-          <p className="vacio">{q || soloCorregidos ? 'No hay compras que coincidan' : 'Aún no hay compras.'}</p>
+          <p className="vacio">{q || soloCorregidos || soloBorradores ? 'No hay compras que coincidan' : 'Aún no hay compras.'}</p>
         ) : (
         <div className="tabla-desplazable tabla-viva">
         <table>
-          <thead><tr><th>#</th><th>Tipo</th><th>Documento</th><th>Proveedor</th><th>Fecha</th><th>Pago</th><th>Unidades</th><th>Estado</th><th>Usuario</th><th className="boton-fila-columna">Acciones</th></tr></thead>
+          <thead><tr><th>#</th><th>Tipo</th><th>Documento</th><th>Proveedor</th><th>Fecha</th><th>Pago</th><th>Unidades</th><th>Estado</th><th>Usuario</th><th className="boton-fila-columna boton-fila-icono"><span className="solo-lector">Acciones</span></th></tr></thead>
           <tbody>
             {filas.map((i) => (
               <tr key={i.id}>
@@ -157,8 +147,8 @@ export default function Ingresos() {
                 <td><span className={`chip ${i.estado}`}>{i.estado}</span></td>
                 <td>{i.usuario.name}</td>
                 {/* S-69: la compra se abre con un botón, no con el número. */}
-                <td className="boton-fila-columna">
-                  <BotonFila variante="abrir" to={`/logistica/ingresos/${i.id}`} descripcion={`Abrir ${TIPO[i.tipo] ?? 'documento'} ${i.numero_documento}`} />
+                <td className="boton-fila-columna boton-fila-icono">
+                  <BotonFila soloIcono variante="abrir" to={`/logistica/ingresos/${i.id}`} descripcion={`Abrir ${TIPO[i.tipo] ?? 'documento'} ${i.numero_documento}`} onMouseEnter={() => precargar(i.id)} onFocus={() => precargar(i.id)} />
                 </td>
               </tr>
             ))}

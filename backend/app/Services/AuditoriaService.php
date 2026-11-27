@@ -10,6 +10,7 @@ use App\Models\CodigoUniversal;
 use App\Models\CuentaPago;
 use App\Models\Empleado;
 use App\Models\Ingreso;
+use App\Models\Propietario;
 use App\Models\Proveedor;
 use App\Models\Referencia;
 use App\Models\User;
@@ -36,6 +37,7 @@ class AuditoriaService
         'usuario_id' => User::class,
         'confirmado_por' => User::class,
         'cuenta_pago_id' => CuentaPago::class,
+        'propietario_id' => Propietario::class,
         'categoria_caja_id' => CategoriaCaja::class,
         'empleado_id' => Empleado::class,
     ];

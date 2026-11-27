@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { api, erroresCampo, mensajeError } from '../api/cliente'
-import { NOMBRE_MEDIO_DINERO, NOMBRE_RANGO, NOMBRE_TIPO_CUENTA, type MovimientoDinero, type RangoAntiguedad, type ResumenSaldo } from '../api/tipos'
+import { etiquetaCuenta, NOMBRE_MEDIO_DINERO, NOMBRE_RANGO, type MovimientoDinero, type RangoAntiguedad, type ResumenSaldo } from '../api/tipos'
 import { useCuentasPago } from '../hooks/useCatalogos'
 import { useAvisoTexto } from './Avisos'
 import BotonFila from './BotonFila'
@@ -200,7 +200,7 @@ export function DialogoMovimiento({ titulo, titular, ruta, documento, onGuardado
           <label>Cuenta
             <select value={cuentaElegida} aria-invalid={!!errores.cuenta_pago_id} onChange={(e) => setCuenta(e.target.value === '' ? '' : Number(e.target.value))}>
               {cuentaElegida === '' && <option value="">{cuentas.isLoading ? 'Cargando cuentas…' : 'Elija la cuenta…'}</option>}
-              {(cuentas.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.nombre} ({NOMBRE_TIPO_CUENTA[c.tipo]})</option>)}
+              {(cuentas.data ?? []).map((c) => <option key={c.id} value={c.id}>{etiquetaCuenta(c, true)}</option>)}
             </select>
             {errores.cuenta_pago_id && <small className="ayuda error">{errores.cuenta_pago_id}</small>}
           </label>

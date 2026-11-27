@@ -335,8 +335,8 @@ describe('por la API', function () {
 
         $this->postJson("/api/ingresos/{$id}/items", ['referencia_id' => referenciaDePrueba('EXENTA', $proveedor, 0)->id, 'cantidad' => 1, 'costo_unitario' => 1000])
             ->assertJsonPath('items.0.iva_porcentaje', '0.00');
-        $this->postJson("/api/ingresos/{$id}/escanear", ['codigo' => referenciaDePrueba('GRAVADA', $proveedor, 19)->codigo_referencia])
-            ->assertJsonPath('iva_porcentaje', '19.00');
+        $escaneo = $this->postJson("/api/ingresos/{$id}/escanear", ['codigo' => referenciaDePrueba('GRAVADA', $proveedor, 19)->codigo_referencia]);
+        expect(lineaEscaneada($escaneo)['iva_porcentaje'])->toBe('19.00');
     });
 
     it('RF-11 / S-22: corregir el descuento y el IVA de una línea queda en la auditoría', function () {

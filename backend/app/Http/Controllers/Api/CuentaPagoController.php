@@ -26,10 +26,12 @@ class CuentaPagoController extends Controller
 
         return response()->json([
             'data' => CuentaPago::query()
+                ->with('propietario:id,nombre')
                 ->when(! $todas, fn ($q) => $q->where('activa', true))
                 ->orderByRaw("FIELD(tipo, 'efectivo', 'banco', 'datafono', 'billetera')")
                 ->orderBy('nombre')
-                ->get(['id', 'nombre', 'tipo', 'activa']),
+                ->get(['id', 'nombre', 'tipo', 'activa', 'propietario_id'])
+                ->map->aCatalogo(),
         ]);
     }
 
@@ -37,14 +39,14 @@ class CuentaPagoController extends Controller
     {
         $datos = $this->validar($request);
 
-        return response()->json($this->cuentas->crear($datos)->only('id', 'nombre', 'tipo', 'activa'), 201);
+        return response()->json($this->cuentas->crear($datos)->aCatalogo(), 201);
     }
 
     public function update(Request $request, CuentaPago $cuenta): JsonResponse
     {
         $datos = $this->validar($request, $cuenta);
 
-        return response()->json($this->cuentas->actualizar($cuenta, $datos)->only('id', 'nombre', 'tipo', 'activa'));
+        return response()->json($this->cuentas->actualizar($cuenta, $datos)->aCatalogo());
     }
 
     private function validar(Request $request, ?CuentaPago $cuenta = null): array
@@ -54,6 +56,8 @@ class CuentaPagoController extends Controller
             'nombre' => [$parcial, 'string', 'min:2', 'max:60', Rule::unique('cuentas_pago', 'nombre')->ignore($cuenta?->id)],
             'tipo' => [$parcial, Rule::in(TipoCuentaPago::valores())],
             'activa' => ['sometimes', 'boolean'],
+            // S-88: opcional. Solo una billetera lo conserva; otro tipo responde 422 en el servicio.
+            'propietario_id' => ['sometimes', 'nullable', 'integer', Rule::exists('propietarios', 'id')->where('activo', true)],
         ], [
             'nombre.required' => 'Escriba el nombre de la cuenta.',
             'nombre.unique' => 'Ya existe una cuenta con ese nombre.',

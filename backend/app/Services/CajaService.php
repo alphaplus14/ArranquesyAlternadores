@@ -257,7 +257,11 @@ class CajaService
         $cuentas = $this->cuentas();
         $agregados = $this->agregados($fecha, $fecha, $cuentas);
         $apertura = $this->aperturaDelDia($fecha);
-        $r = $this->componer($fecha, $agregados[$fecha] ?? $this->vacio(), $cuentas, $this->metaVentaDiaria());
+        $r = $this->conSaldosBilletera(
+            $this->componer($fecha, $agregados[$fecha] ?? $this->vacio(), $cuentas, $this->metaVentaDiaria()),
+            $cuentas,
+            $this->saldosBilleteraAntesDe($fecha, $cuentas),
+        );
 
         // S-75: totales de la pestaña Movimientos, de los mismos agregados que el efectivo esperado
         // (sin anulados). Gastos = vario + fijo + financiero (= egresos.total); ingresos = otros
@@ -319,9 +323,13 @@ class CajaService
         $meta = $this->metaVentaDiaria();
         $filas = [];
         $acumulado = '0.00';
+        $billeteras = [];
 
         if ($desde <= $hasta) {
             $agregados = $this->agregados($desde, $hasta, $cuentas);
+            // S-88: el saldo al empezar el mes es el neto acumulado de las billeteras hasta el día anterior.
+            $saldoBilletera = $this->saldosBilleteraAntesDe($desde, $cuentas);
+            $netoMes = array_fill_keys(array_keys($saldoBilletera), '0.00');
             $cierres = CierreCaja::vigentes()->whereBetween('fecha', [$desde, $hasta])->get()->keyBy(fn (CierreCaja $c) => $c->fecha->toDateString());
             $filasApertura = AperturaCaja::query()->whereBetween('fecha', [$desde, $hasta])->get(['fecha', 'valor', 'motivo'])
                 ->keyBy(fn (AperturaCaja $a) => $a->fecha->toDateString());
@@ -359,6 +367,15 @@ class CajaService
                     $porTipo[$tipo] = bcadd($porTipo[$tipo], $c['ventas'], 2);
                 }
 
+                foreach ($r['cuentas'] as $c) {
+                    if (($c['tipo'] ?? null) !== TipoCuentaPago::Billetera->value || $c['cuenta_pago_id'] === null) {
+                        continue;
+                    }
+                    $id = $c['cuenta_pago_id'];
+                    $netoMes[$id] = bcadd($netoMes[$id] ?? '0.00', $c['neto'], 2);
+                    $saldoBilletera[$id] = bcadd($saldoBilletera[$id] ?? '0.00', $c['neto'], 2);
+                }
+
                 $filas[] = [
                     'fecha' => $dia,
                     'apertura' => $apertura,
@@ -382,6 +399,11 @@ class CajaService
                     'cerrado' => $cierre !== null,
                 ];
             }
+            $anteriorMes = [];
+            foreach ($saldoBilletera as $id => $fin) {
+                $anteriorMes[$id] = bcsub($fin, $netoMes[$id] ?? '0.00', 2);
+            }
+            $billeteras = $this->agruparBilleteras($cuentas, $netoMes, $saldoBilletera, $anteriorMes);
         }
 
         $sumar = fn (string $col) => array_reduce($filas, fn ($t, $f) => $f[$col] === null ? $t : bcadd($t, $f[$col], 2), '0.00');
@@ -392,6 +414,7 @@ class CajaService
             'mes' => $mes,
             'meta_venta_diaria' => $meta,
             'dias' => $filas,
+            'billeteras' => $billeteras,
             'totales' => array_combine($columnas, array_map($sumar, $columnas)) + [
                 'neto_acumulado_mes' => $acumulado,
                 'dias_cerrados' => count(array_filter($filas, fn ($f) => $f['cerrado'])),
@@ -405,7 +428,7 @@ class CajaService
     /** Todas las cuentas (también inactivas: tienen historia), por id. */
     public function cuentas(): Collection
     {
-        return CuentaPago::query()->orderBy('id')->get(['id', 'nombre', 'tipo', 'activa'])->keyBy('id');
+        return CuentaPago::query()->with('propietario:id,nombre')->orderBy('id')->get(['id', 'nombre', 'tipo', 'activa', 'propietario_id'])->keyBy('id');
     }
 
     /**
@@ -556,6 +579,145 @@ class CajaService
         return $out;
     }
 
+    /**
+     * S-88: saldo de cada billetera al empezar $fecha (neto acumulado de los días anteriores).
+     * Se calcula; no se guarda. El efectivo del cajón no entra aquí (S-49).
+     *
+     * @return array<int, string> cuenta_pago_id => saldo
+     */
+    private function saldosBilleteraAntesDe(string $fecha, Collection $cuentas): array
+    {
+        $ids = $cuentas->filter(fn (CuentaPago $c) => $c->tipo === TipoCuentaPago::Billetera)->keys()->all();
+        $saldos = array_fill_keys($ids, '0.00');
+        $hasta = Carbon::parse($fecha)->subDay()->toDateString();
+        if ($ids === [] || $hasta < '2000-01-01') {
+            return $saldos;
+        }
+
+        foreach ($this->agregados('2000-01-01', $hasta, $cuentas) as $a) {
+            foreach ($ids as $id) {
+                $saldos[$id] = bcadd($saldos[$id], $this->netoBilletera((int) $id, $a), 2);
+            }
+        }
+
+        return $saldos;
+    }
+
+    /**
+     * Neto del día de una billetera. Es el mismo cálculo de `componer` para una cuenta que no es
+     * efectivo: las devoluciones y las ventas sin detalle de pago solo tocan el efectivo.
+     *
+     * @param  array<string, mixed>  $a
+     */
+    private function netoBilletera(int $id, array $a): string
+    {
+        $mov = $a['movimientos'];
+        $entra = '0.00';
+        foreach ([
+            $a['ventas'][$id] ?? '0',
+            $a['recaudo'][$id] ?? '0',
+            $mov['otro_ingreso'][$id] ?? '0',
+            $mov['ingreso_externo'][$id] ?? '0',
+            $a['abonos_empleados'][$id] ?? '0',
+        ] as $valor) {
+            $entra = bcadd($entra, (string) $valor, 2);
+        }
+        $sale = '0.00';
+        foreach (['vario', 'fijo', 'financiero'] as $grupo) {
+            $sale = bcadd($sale, (string) ($mov[$grupo][$id] ?? '0'), 2);
+        }
+        foreach ([$a['pagos_proveedores'][$id] ?? '0', $a['prestamos_empleados'][$id] ?? '0'] as $valor) {
+            $sale = bcadd($sale, (string) $valor, 2);
+        }
+
+        return bcsub($entra, $sale, 2);
+    }
+
+    /**
+     * @param  array<string, mixed>  $resumen
+     * @param  array<int, string>  $anteriores
+     * @return array<string, mixed>
+     */
+    private function conSaldosBilletera(array $resumen, Collection $cuentas, array $anteriores): array
+    {
+        $neto = [];
+        $saldo = $anteriores;
+        foreach ($resumen['cuentas'] as $i => $fila) {
+            if (($fila['tipo'] ?? null) !== TipoCuentaPago::Billetera->value || $fila['cuenta_pago_id'] === null) {
+                continue;
+            }
+            $id = $fila['cuenta_pago_id'];
+            $ant = $anteriores[$id] ?? '0.00';
+            $fin = bcadd($ant, $fila['neto'], 2);
+            $resumen['cuentas'][$i]['saldo_anterior'] = $ant;
+            $resumen['cuentas'][$i]['saldo'] = $fin;
+            $neto[$id] = $fila['neto'];
+            $saldo[$id] = $fin;
+        }
+        $resumen['billeteras'] = $this->agruparBilleteras($cuentas, $neto, $saldo, $anteriores);
+
+        return $resumen;
+    }
+
+    /**
+     * @param  array<int, string>  $neto
+     * @param  array<int, string>  $saldo
+     * @param  array<int, string>  $anterior
+     * @return list<array<string, mixed>>
+     */
+    private function agruparBilleteras(Collection $cuentas, array $neto, array $saldo, array $anterior): array
+    {
+        $grupos = [];
+        foreach ($cuentas as $c) {
+            if ($c->tipo !== TipoCuentaPago::Billetera) {
+                continue;
+            }
+            $id = (int) $c->id;
+            $n = $neto[$id] ?? '0.00';
+            $s = $saldo[$id] ?? ($anterior[$id] ?? '0.00');
+            $a = $anterior[$id] ?? '0.00';
+            if (! $c->activa && bccomp($n, '0', 2) === 0 && bccomp($s, '0', 2) === 0) {
+                continue;
+            }
+            $clave = $c->propietario_id ?? 0;
+            $grupos[$clave] ??= [
+                'propietario_id' => $c->propietario_id,
+                'propietario' => $c->propietario?->nombre ?? 'Sin dueño',
+                'neto' => '0.00',
+                'saldo_anterior' => '0.00',
+                'saldo' => '0.00',
+                'cuentas' => [],
+            ];
+            $grupos[$clave]['neto'] = bcadd($grupos[$clave]['neto'], $n, 2);
+            $grupos[$clave]['saldo_anterior'] = bcadd($grupos[$clave]['saldo_anterior'], $a, 2);
+            $grupos[$clave]['saldo'] = bcadd($grupos[$clave]['saldo'], $s, 2);
+            $grupos[$clave]['cuentas'][] = [
+                'cuenta_pago_id' => $id,
+                'nombre' => $c->nombre,
+                'neto' => $n,
+                'saldo_anterior' => $a,
+                'saldo' => $s,
+            ];
+        }
+        foreach ($grupos as &$grupo) {
+            usort($grupo['cuentas'], fn ($x, $y) => $x['nombre'] <=> $y['nombre']);
+        }
+        unset($grupo);
+        $lista = array_values($grupos);
+        usort($lista, function ($x, $y) {
+            if ($x['propietario_id'] === null) {
+                return 1;
+            }
+            if ($y['propietario_id'] === null) {
+                return -1;
+            }
+
+            return strcasecmp($x['propietario'], $y['propietario']);
+        });
+
+        return $lista;
+    }
+
     /** @return array<string, mixed> */
     private function vacio(): array
     {
@@ -647,6 +809,8 @@ class CajaService
                 'nombre' => $c?->nombre ?? 'Sin cuenta (registros anteriores)',
                 'tipo' => $c?->tipo->value,
                 'activa' => $c?->activa ?? false,
+                'propietario_id' => $c?->propietario_id,
+                'propietario' => $c?->propietario?->nombre,
                 'ventas' => self::dinero($a['ventas'][$id] ?? '0'),
                 'recaudo' => self::dinero($a['recaudo'][$id] ?? '0'),
                 'pagos_proveedores' => self::dinero($a['pagos_proveedores'][$id] ?? '0'),

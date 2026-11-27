@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/cliente'
-import type { Categoria, CategoriaCaja, CuentaPago, Proveedor } from '../api/tipos'
+import type { Categoria, CategoriaCaja, CuentaPago, Propietario, Proveedor } from '../api/tipos'
 
 // Catálogos pequeños y estables: se cachean 5 minutos.
 const cincoMinutos = 5 * 60 * 1000
@@ -16,6 +16,14 @@ export const useCuentasPago = (incluirInactivas = false) =>
   useQuery({
     queryKey: ['cuentas-pago', incluirInactivas],
     queryFn: async () => (await api.get<{ data: CuentaPago[] }>('/cuentas-pago', { params: incluirInactivas ? { incluir_inactivas: 1 } : {} })).data.data,
+    staleTime: cincoMinutos,
+  })
+
+/** S-88: dueños de billetera (activos; el admin, con inactivos para asignarlos). */
+export const usePropietarios = (incluirInactivas = false) =>
+  useQuery({
+    queryKey: ['propietarios', incluirInactivas],
+    queryFn: async () => (await api.get<{ data: Propietario[] }>('/propietarios', { params: incluirInactivas ? { incluir_inactivas: 1 } : {} })).data.data,
     staleTime: cincoMinutos,
   })
 

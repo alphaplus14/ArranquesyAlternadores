@@ -190,6 +190,11 @@ class IngresoService
     public function actualizarItem(Ingreso $ingreso, IngresoItem $item, array $datos): IngresoItem
     {
         return $this->enBorrador($ingreso, function (Ingreso $bloqueado) use ($item, $datos) {
+            // S-86: solo frena un descuento de línea NUEVO; reenviar el que ya tiene (borrador viejo mezclado) no cuenta.
+            if (array_key_exists('descuento_porcentaje', $datos)
+                && bccomp((string) $datos['descuento_porcentaje'], (string) $item->descuento_porcentaje, 4) === 0) {
+                unset($datos['descuento_porcentaje']);
+            }
             $this->exigirSinDescuentoDocumento($bloqueado, $datos);
             $item->update($datos);
 
@@ -1095,8 +1100,12 @@ class IngresoService
     /** @param  array<string, mixed>  $datos  encabezado ya normalizado por descuentoDocumento() */
     private function exigirSinDescuentoEnLineas(Ingreso $bloqueado, array $datos): void
     {
-        $nuevo = bccomp((string) ($datos['descuento_documento'] ?? 0), '0', 2) > 0
-            || bccomp((string) ($datos['descuento_documento_porcentaje'] ?? 0), '0', 4) > 0;
+        // Solo cuenta un descuento de documento que CAMBIA: reenviar el guardado (borrador viejo mezclado) no frena.
+        $monto = (string) ($datos['descuento_documento'] ?? 0);
+        $porcentaje = (string) ($datos['descuento_documento_porcentaje'] ?? 0);
+        $cambia = bccomp($monto, (string) ($bloqueado->descuento_documento ?? 0), 2) !== 0
+            || bccomp($porcentaje, (string) ($bloqueado->descuento_documento_porcentaje ?? 0), 4) !== 0;
+        $nuevo = $cambia && (bccomp($monto, '0', 2) > 0 || bccomp($porcentaje, '0', 4) > 0);
 
         if ($nuevo && $bloqueado->items()->where('descuento_porcentaje', '>', 0)->exists()) {
             throw new ReglaInventarioException(

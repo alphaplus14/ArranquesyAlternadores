@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../api/cliente'
-import { NOMBRE_TIPO_DOCUMENTO, infoPagina, type PaginaInforme, type RecaudoDocumento, type TipoDocumentoVenta, type TotalesRecaudos } from '../../api/tipos'
-import BarraFiltros, {CampoFiltro, TextoResultados, VacioFiltros } from '../../componentes/BarraFiltros'
+import { etiquetaCuenta, NOMBRE_TIPO_DOCUMENTO, infoPagina, type PaginaInforme, type RecaudoDocumento, type TipoDocumentoVenta, type TotalesRecaudos } from '../../api/tipos'
+import BarraFiltros, { CampoFiltro, TextoResultados, VacioFiltros } from '../../componentes/BarraFiltros'
 import { rangoAtajo } from '../../utilidades/atajosPeriodo'
 import ControlSegmentado from '../../componentes/ControlSegmentado'
 import Medida from '../../componentes/Medida'
@@ -68,7 +68,7 @@ export default function Recaudos() {
           <CampoFiltro etiqueta="Cuenta de pago">
             <select value={f.cuenta} onChange={(e) => fijar({ cuenta: e.target.value })}>
               <option value="">Todas las cuentas</option>
-              {(cuentas.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+              {(cuentas.data ?? []).map((c) => <option key={c.id} value={c.id}>{etiquetaCuenta(c)}</option>)}
             </select>
           </CampoFiltro>
         </BarraFiltros>

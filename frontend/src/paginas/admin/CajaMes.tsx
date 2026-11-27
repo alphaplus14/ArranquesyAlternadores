@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { api, mensajeError } from '../../api/cliente'
 import type { FilaMesCaja, MesCaja } from '../../api/tipos'
 import BotonFila from '../../componentes/BotonFila'
+import TablaBilleteras from '../../componentes/caja/TablaBilleteras'
 import { pesos } from '../../componentes/numeros'
 import { hoyEnBogota } from '../../utilidades/periodos'
 
@@ -103,7 +104,8 @@ export default function CajaMes({ onVerDia }: { onVerDia: (fecha: string) => voi
           </table>
         </div>
       )}
-      <p className="ayuda">Los días sin cierre se calculan en vivo con los movimientos registrados. Use «Ver día» para ver su detalle.</p>
+      {m && <TablaBilleteras grupos={m.billeteras ?? []} etiquetaNeto="Movimiento del mes" />}
+      <p className="ayuda">Los días sin cierre se calculan en vivo con los movimientos registrados. Use «Ver día» para ver su detalle. El saldo de cada billetera llega hasta el último día mostrado.</p>
     </section>
   )
 }

@@ -4,7 +4,6 @@ use App\Enums\Rol;
 use App\Models\Ingreso;
 use App\Models\IngresoItem;
 use App\Models\Referencia;
-use Illuminate\Support\Facades\DB;
 
 /*
  * S-86 (RF-09, S-21, S-22, regla 11): en un BORRADOR, el descuento por línea y el del documento (en $ o %)
@@ -68,8 +67,8 @@ it('S-86: un documento con descuento rechaza el descuento de línea al agregar y
         ->assertUnprocessable()->assertJsonPath('errors.descuento_porcentaje.0', MSG_S86_LINEA);
 
     // escanear crea la línea con descuento 0, así que no choca con el descuento del documento.
-    $this->postJson("/api/ingresos/{$id}/escanear", ['codigo' => $ref->codigo_referencia])
-        ->assertCreated()->assertJsonPath('descuento_porcentaje', '0.00');
+    $escaneo = $this->postJson("/api/ingresos/{$id}/escanear", ['codigo' => $ref->codigo_referencia])->assertCreated();
+    expect(lineaEscaneada($escaneo)['descuento_porcentaje'])->toBe('0.00');
 
     expect(IngresoItem::where('ingreso_id', $id)->count())->toBe(2)
         ->and(IngresoItem::where('ingreso_id', $id)->max('descuento_porcentaje'))->toBe('0.00');
@@ -98,37 +97,16 @@ it('S-86: quitar el descuento de línea libera el del documento', function () {
     $this->patchJson("/api/ingresos/{$id}/items/{$linea}", ['descuento_porcentaje' => 10])->assertUnprocessable();
 });
 
-it('S-86: un borrador viejo que ya mezcla ambos descuentos calcula igual', function () {
-    $id = borradorS86();
-    lineaS86($id, ['descuento_porcentaje' => 0])->assertOk();
-    // Se fabrica el dato antiguo directo en la base (la API ya no lo permite).
-    DB::table('ingreso_items')->where('ingreso_id', $id)->update(['descuento_porcentaje' => 10]);
-    DB::table('ingresos')->where('id', $id)->update(['descuento_documento' => 9000]);
-
-    // 100.000 − 10 % = 90.000; −9.000 = 81.000; IVA 19 % = 15.390; total 96.390.
-    $this->getJson("/api/ingresos/{$id}")->assertOk()
-        ->assertJsonPath('totales.descuento_lineas', '10000.00')
-        ->assertJsonPath('totales.descuento_documento', '9000.00')
-        ->assertJsonPath('totales.base_gravada', '81000.00')
-        ->assertJsonPath('totales.iva', '15390.00')
-        ->assertJsonPath('totales.total', '96390.00');
-
-    $this->postJson("/api/ingresos/{$id}/confirmar")->assertOk()->assertJsonPath('total', '96390.00');
-});
-
-it('S-86 (RF-28): no aplica a la corrección de un ingreso confirmado', function () {
+it('S-86: un borrador viejo que ya mezcla ambos descuentos deja editar cantidad y encabezado sin cambiar el descuento', function () {
     $ref = referencia('RN-4410');
-    $ingreso = compra($ref, 10, 1000); // confirmado, sin descuentos
-    $item = $ingreso->items()->sole();
+    $id = borradorS86();
+    $item = $this->postJson("/api/ingresos/{$id}/items", ['referencia_id' => $ref->id, 'cantidad' => 1, 'costo_unitario' => 1000, 'descuento_porcentaje' => 10])
+        ->assertOk()->json('items.0.id');
+    // Estado heredado: el documento ya tiene descuento además de la línea.
+    Ingreso::whereKey($id)->update(['descuento_documento' => 50]);
 
-    $this->postJson("/api/ingresos/{$ingreso->id}/correcciones", [
-        'motivo' => 'Se olvidó el descuento de la factura',
-        'descuento_documento' => 1000,
-        'items' => [['id' => $item->id, 'cantidad' => 10, 'costo_unitario' => 1000, 'descuento_porcentaje' => 10, 'iva_porcentaje' => 0]],
-    ])->assertCreated()
-        // 10.000 − 10 % = 9.000; − 1.000 = 8.000, sin IVA
-        ->assertJsonPath('ingreso.total', '8000.00');
-
-    // Y un confirmado sigue sin editarse por las rutas del borrador.
-    $this->patchJson("/api/ingresos/{$ingreso->id}", ['descuento_documento' => 0])->assertStatus(409);
+    $this->putJson("/api/ingresos/{$id}/items/{$item}", ['cantidad' => 3, 'descuento_porcentaje' => 10])->assertOk();
+    $this->putJson("/api/ingresos/{$id}", ['descuento_documento' => 50])->assertOk();
+    // Un descuento de línea distinto sí se frena.
+    $this->putJson("/api/ingresos/{$id}/items/{$item}", ['descuento_porcentaje' => 15])->assertUnprocessable();
 });

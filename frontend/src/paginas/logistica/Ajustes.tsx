@@ -31,7 +31,7 @@ import { useAuth } from '../../auth/AuthProvider'
 import ChipCalidad from '../../componentes/ChipCalidad'
 import CampoCantidad from '../../componentes/CampoCantidad'
 import ImprimirEtiquetas from '../../componentes/ImprimirEtiquetas'
-import Icono from '../../componentes/Icono'
+import Icono, { type IconoNombre } from '../../componentes/Icono'
 import DialogoElegirReferencia from '../../componentes/mostrador/DialogoElegirReferencia'
 import Paginacion from '../../componentes/Paginacion'
 import Dialogo, { DialogoSeccion } from '../../componentes/Dialogo'
@@ -51,12 +51,12 @@ import MovimientosPorProducto from './MovimientosPorProducto'
 
 type Pestana = 'salidas' | 'entradas' | 'devoluciones' | 'historial' | 'producto'
 
-const PESTANAS: { valor: Pestana; texto: string }[] = [
-  { valor: 'salidas', texto: 'Salidas' },
-  { valor: 'entradas', texto: 'Entradas' }, // S-39
-  { valor: 'devoluciones', texto: 'Devoluciones de clientes' },
-  { valor: 'historial', texto: 'Historial' },
-  { valor: 'producto', texto: 'Por producto' }, // S-87
+const PESTANAS: { valor: Pestana; texto: string; icono: IconoNombre }[] = [
+  { valor: 'salidas', texto: 'Salidas', icono: 'salida' },
+  { valor: 'entradas', texto: 'Entradas', icono: 'entrada' }, // S-39
+  { valor: 'devoluciones', texto: 'Devoluciones de clientes', icono: 'devolucion' },
+  { valor: 'historial', texto: 'Historial', icono: 'historial' },
+  { valor: 'producto', texto: 'Por producto', icono: 'producto' }, // S-87
 ]
 
 /** S-44: el admin solo consulta: historial de ajustes y movimientos por producto. */
@@ -118,7 +118,7 @@ export default function Ajustes() {
           <p>Solo consulta: las salidas, entradas y devoluciones las registra logística.</p>
         </div>
         <section className="panel">
-          <ControlSegmentado id="ajustes-seccion" etiqueta="Sección" opciones={PESTANAS_CONSULTA} valor={pestana === 'producto' ? 'producto' : 'historial'} onCambio={cambiar} />
+          <ControlSegmentado id="ajustes-seccion" clase="pestanas-movimiento" etiqueta="Sección" opciones={PESTANAS_CONSULTA} valor={pestana === 'producto' ? 'producto' : 'historial'} onCambio={cambiar} />
           {pestana === 'producto' ? <MovimientosPorProducto /> : <Historial puedeReintegrar={false} />}
         </section>
       </div>
@@ -132,7 +132,7 @@ export default function Ajustes() {
         <p>Salidas por garantía, devolución a proveedor, daño, pérdida o faltante; entradas por inventario físico; devoluciones de clientes y reintegros. Nada se borra.</p>
       </div>
       <section className="panel">
-        <ControlSegmentado id="ajustes-seccion" etiqueta="Sección" opciones={PESTANAS} valor={pestana} onCambio={cambiar} />
+        <ControlSegmentado id="ajustes-seccion" clase="pestanas-movimiento" etiqueta="Sección" opciones={PESTANAS} valor={pestana} onCambio={cambiar} />
         {pestana === 'salidas' && <Salidas lote={lote} setLote={setLote} />}
         {pestana === 'entradas' && <Entradas />}
         {pestana === 'devoluciones' && <Devoluciones onRetirar={retirarDevuelta} />}

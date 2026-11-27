@@ -14,7 +14,7 @@ const TEXTO: Record<VarianteBotonFila, string> = { ver: 'Ver', abrir: 'Abrir', p
  * Alto: 36 px (32 px con densidad compacta), 44 px en táctil o pantalla angosta; `compacto`, 28 px.
  * S-79: `anular` es secundario con texto y borde en el color de peligro y fondo suave.
  */
-export default function BotonFila({ variante, to, onClick, etiqueta, descripcion, disabled = false, title, compacto = false }: {
+export default function BotonFila({ variante, to, onClick, etiqueta, descripcion, disabled = false, title, compacto = false, soloIcono = false, onMouseEnter, onFocus }: {
   variante: VarianteBotonFila
   to?: string
   onClick?: (e: MouseEvent<HTMLButtonElement>) => void
@@ -23,21 +23,31 @@ export default function BotonFila({ variante, to, onClick, etiqueta, descripcion
   disabled?: boolean
   title?: string
   compacto?: boolean
+  /** Solo el icono. El nombre queda en aria-label y en el título. */
+  soloIcono?: boolean
+  /** Al pasar el puntero o enfocar: para precargar el destino. */
+  onMouseEnter?: () => void
+  onFocus?: () => void
 }) {
-  const clase = `boton ${variante === 'pagar' ? 'primario' : 'secundario'} boton-fila${variante === 'anular' ? ' boton-fila-anular' : ''}${compacto ? ' boton-fila-compacto' : ''}`
-  const contenido = (
-    <>
-      <Icono nombre={ICONO[variante]} />
-      <span>{etiqueta ?? TEXTO[variante]}</span>
-    </>
-  )
+  const clase = soloIcono
+    ? 'icono-accion'
+    : `boton ${variante === 'pagar' ? 'primario' : 'secundario'} boton-fila${variante === 'anular' ? ' boton-fila-anular' : ''}${compacto ? ' boton-fila-compacto' : ''}`
+  const contenido = soloIcono
+    ? <Icono nombre={ICONO[variante]} />
+    : (
+      <>
+        <Icono nombre={ICONO[variante]} />
+        <span>{etiqueta ?? TEXTO[variante]}</span>
+      </>
+    )
+  const titulo = title ?? (soloIcono ? (etiqueta ?? TEXTO[variante]) : undefined)
 
   if (to && !disabled) {
-    return <Link className={clase} to={to} aria-label={descripcion} title={title}>{contenido}</Link>
+    return <Link className={clase} to={to} aria-label={descripcion} title={titulo} onMouseEnter={onMouseEnter} onFocus={onFocus}>{contenido}</Link>
   }
 
   return (
-    <button type="button" className={clase} aria-label={descripcion} title={title} disabled={disabled} onClick={onClick}>
+    <button type="button" className={clase} aria-label={descripcion} title={titulo} disabled={disabled} onClick={onClick} onMouseEnter={onMouseEnter} onFocus={onFocus}>
       {contenido}
     </button>
   )

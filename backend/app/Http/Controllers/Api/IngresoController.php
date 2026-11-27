@@ -7,7 +7,6 @@ use App\Http\Requests\CorreccionIngresoRequest;
 use App\Http\Requests\IngresoEncabezadoRequest;
 use App\Http\Requests\IngresoItemRequest;
 use App\Http\Resources\IngresoCorreccionResource;
-use App\Http\Resources\IngresoItemResource;
 use App\Http\Resources\IngresoResource;
 use App\Http\Resources\UnidadResource;
 use App\Models\Ingreso;
@@ -99,7 +98,11 @@ class IngresoController extends Controller
         return new IngresoResource($this->cargar($ingreso));
     }
 
-    /** RF-20: 201 si crea la línea, 200 si sumó 1 a la existente; 404 con motivo si el código no existe. */
+    /**
+     * RF-20: 201 si crea la línea, 200 si sumó 1 a la existente; 404 con motivo si el código no existe.
+     * El cuerpo es el ingreso completo (líneas y totales) para que la pantalla no lo vuelva a pedir.
+     * `item_escaneado_id` señala la línea que acaba de leerse.
+     */
     public function escanear(Request $request, Ingreso $ingreso): JsonResponse
     {
         $datos = $request->validate([
@@ -108,8 +111,11 @@ class IngresoController extends Controller
             'referencia_id' => ['sometimes', 'nullable', 'integer'],
         ]);
         $item = $this->servicio->escanear($ingreso, $datos['codigo'], $datos['referencia_id'] ?? null);
+        $creado = $item->wasRecentlyCreated;
+        $cuerpo = (new IngresoResource($this->cargar($ingreso)))->resolve($request);
+        $cuerpo['item_escaneado_id'] = $item->id;
 
-        return (new IngresoItemResource($item))->response()->setStatusCode($item->wasRecentlyCreated ? 201 : 200);
+        return response()->json($cuerpo, $creado ? 201 : 200);
     }
 
     public function agregarItem(IngresoItemRequest $request, Ingreso $ingreso): IngresoResource

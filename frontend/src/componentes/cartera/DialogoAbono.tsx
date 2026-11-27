@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
 import { api, erroresCampo, mensajeError } from '../../api/cliente'
-import { NOMBRE_TIPO_CUENTA, type Abono, type DetalleCartera, type ResumenCartera, type VentaCartera } from '../../api/tipos'
+import { etiquetaCuenta, type Abono, type DetalleCartera, type ResumenCartera, type VentaCartera } from '../../api/tipos'
 import { useCuentasPago } from '../../hooks/useCatalogos'
 import DialogoApilado from '../DialogoApilado'
 import Icono from '../Icono'
@@ -210,7 +210,7 @@ export default function DialogoAbono({ cliente, saldo, ventaInicial, onGuardado,
         <span className="etiqueta-campo">Cuenta<span className="obligatorio" aria-hidden="true">*</span></span>
         <select value={cuentaElegida} aria-invalid={!!errores.cuenta_pago_id} onChange={(e) => cambiar({ cuenta: e.target.value === '' ? '' : Number(e.target.value) })}>
           {cuentaElegida === '' && <option value="">{cuentas.isLoading ? 'Cargando cuentas…' : 'Elija la cuenta…'}</option>}
-          {(cuentas.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.nombre} ({NOMBRE_TIPO_CUENTA[c.tipo]})</option>)}
+          {(cuentas.data ?? []).map((c) => <option key={c.id} value={c.id}>{etiquetaCuenta(c, true)}</option>)}
         </select>
         {errores.cuenta_pago_id && <small className="ayuda error" role="alert">{errores.cuenta_pago_id}</small>}
       </label>
