@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\CategoriaController;
 use App\Http\Controllers\Api\ClienteController;
 use App\Http\Controllers\Api\CodigoUniversalController;
 use App\Http\Controllers\Api\ConfiguracionController;
+use App\Http\Controllers\Api\ConsultaContableController;
 use App\Http\Controllers\Api\CostoController;
 use App\Http\Controllers\Api\CuentaController;
 use App\Http\Controllers\Api\CuentaPagoController;
@@ -159,8 +160,17 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/reportes/cuentas-por-pagar', [ReporteController::class, 'cuentasPorPagar']);
             Route::get('/reportes/remisiones-pendientes', [ReporteController::class, 'remisionesPendientes']);
             Route::get('/reportes/diferencias-remision', [ReporteController::class, 'diferenciasRemision']);
-            Route::get('/clientes/{cliente}/estado-cuenta', [ReporteController::class, 'estadoCuentaCliente']);
+            // S-88: el del cliente tenía la misma URI que el de Cartera (admin y mostrador), que la tapaba
+            // y dejaba al contable en 403; va bajo /reportes con el formato del de proveedores.
+            Route::get('/reportes/clientes/{cliente}/estado-cuenta', [ReporteController::class, 'estadoCuentaCliente']);
             Route::get('/proveedores/{proveedor}/estado-cuenta', [ReporteController::class, 'estadoCuentaProveedor']);
+        });
+
+        // S-88: consultas de solo lectura (historial de pagos y abonos; saldo del cliente).
+        Route::middleware('medir:800')->group(function () {
+            Route::get('/proveedores/{proveedor}/pagos', [ConsultaContableController::class, 'pagosProveedor']);
+            Route::get('/clientes/{cliente}/abonos', [ConsultaContableController::class, 'abonosCliente']);
+            Route::get('/clientes/{cliente}/saldo', [ConsultaContableController::class, 'saldoCliente']);
         });
     });
 

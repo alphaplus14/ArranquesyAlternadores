@@ -127,8 +127,8 @@ function TablaVentas({ datos }: { datos: PaginaInforme<FilaVentaCredito> }) {
           <td>{fechaCorta(f.fecha)}</td>
           <td>{f.vence_el ? fechaCorta(f.vence_el) : '—'}</td>
           <td>{f.cliente.nombre}</td>
-          <td className="cifra">{pesos(f.base)}</td>
-          <td className="cifra">{pesos(f.iva)}</td>
+          <td className="cifra">{f.base === null ? '—' : pesos(f.base)}</td>
+          <td className="cifra">{f.iva === null ? '—' : pesos(f.iva)}</td>
           <td className="cifra"><strong>{pesos(f.total)}</strong></td>
         </tr>
       ))}

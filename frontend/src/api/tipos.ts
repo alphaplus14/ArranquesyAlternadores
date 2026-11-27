@@ -679,16 +679,29 @@ export interface DocumentoPendiente {
   dias_vencido: number
   dias_para_vencer: number
   rango: RangoAntiguedad
-  /** Solo en documentos de proveedor. */
-  tipo?: TipoIngreso
-  numero_documento?: string
+  /** Proveedor: factura o remisión. Cliente (S-88): de solo valor su tipo; con ítems, factura si lleva número de Contapyme. */
+  tipo?: TipoIngreso | null
+  numero_documento?: string | null
+  /** S-88 (cliente): "Factura N.º X" en las ventas de solo valor. */
+  documento?: string | null
 }
 
+/** S-88: GET /clientes/{id}/saldo (contable), mismo contrato que el del proveedor. */
 export interface SaldoCliente extends ResumenSaldo {
-  cliente: Cliente
+  cliente: { id: number; nombre: string; documento: string | null; telefono: string | null; plazo_dias: number; activo: boolean }
   corte: string
   documentos: DocumentoPendiente[]
-  abonos_recientes: MovimientoDinero[]
+}
+
+/** S-88: historial de pagos (proveedor) o abonos (cliente) con sus totales del filtro. */
+export interface TotalesHistorial {
+  vigente: string
+  cantidad: number
+  anulado: string
+  cantidad_anulados: number
+}
+export interface PaginaHistorial<T> extends Pagina<T> {
+  totales: TotalesHistorial
 }
 
 export interface SaldoProveedor extends ResumenSaldo {
@@ -727,10 +740,15 @@ export interface FilaVentaCredito {
   fecha: string
   vence_el: string | null
   factura_contapyme: string | null
+  /** S-73: tipo y nombre del documento de una venta de solo valor (null en las de ítems). */
+  tipo_documento?: TipoDocumentoVenta | null
+  documento?: string | null
   items: number
-  base: string
-  iva: string
+  base: string | null
+  iva: string | null
   total: string
+  /** S-88: anulada (todos sus ítems reversados o, en solo valor, con reverso). */
+  anulada?: boolean
 }
 
 export interface FilaCartera extends ResumenSaldo {
@@ -738,7 +756,12 @@ export interface FilaCartera extends ResumenSaldo {
   proveedor?: { id: number; nombre: string; nit: string | null; plazo_dias: number | null }
 }
 
-export type TotalesCartera = Omit<ResumenSaldo, 'rangos'> & { rangos: Record<RangoAntiguedad, string> }
+export type TotalesCartera = Omit<ResumenSaldo, 'rangos'> & {
+  rangos: Record<RangoAntiguedad, string>
+  /** S-88: titulares de lo filtrado y cuántos tienen saldo > 0. */
+  titulares?: number
+  con_saldo?: number
+}
 
 export type TipoMovimientoCuenta =
   | 'venta' | 'reverso' | 'abono' | 'anulacion_abono'
@@ -762,6 +785,10 @@ export interface EstadoCuentaInforme extends PaginaInforme<FilaEstadoCuenta, { c
   saldo_anterior: string
   desde: string
   hasta: string
+  /** S-88: movimientos del período sin el filtro de tipo ni la búsqueda (M en "N de M"). */
+  movimientos_periodo?: number
+  /** S-88: hay filtro de tipo o búsqueda (el saldo mostrado incluye todos los movimientos). */
+  filtrado?: boolean
 }
 
 export interface FilaRemisionPendiente {
@@ -1361,4 +1388,9 @@ export interface CompraResumen { valor: string; fecha: string; ingreso_id: numbe
 export interface HistorialCostos extends Pagina<FilaCosto> {
   producto: ProductoCostos | null
   resumen: { ultimo: CompraResumen | null; anterior: CompraResumen | null; variacion: string | null; compras: number } | null
+  /**
+   * S-89: lo que hay para filtrar en el historial del producto, sin aplicar los filtros (compras
+   * confirmadas sin la remisión cubierta y proveedores distintos de esas compras). Null en la lista general.
+   */
+  opciones_filtro?: { compras: number; proveedores: Opcion[] } | null
 }

@@ -797,7 +797,7 @@ class CarteraService
             ->when($clienteIds !== null, fn ($q) => $q->whereIn('ventas.cliente_id', $clienteIds))
             ->whereNotNull('venta_items.precio_unitario')
             ->where(fn ($q) => $q->whereNull('reverso_items.id')->orWhere('reversos.created_at', '>', $hasta))
-            ->groupBy('ventas.id', 'ventas.cliente_id', 'ventas.cerrada_at', 'ventas.vence_el')
+            ->groupBy('ventas.id', 'ventas.cliente_id', 'ventas.cerrada_at', 'ventas.vence_el', 'ventas.factura_contapyme')
             ->select(
                 'ventas.id',
                 'ventas.cliente_id',
@@ -805,7 +805,7 @@ class CarteraService
                 'ventas.vence_el',
                 DB::raw('SUM(venta_items.precio_unitario) as valor'),
                 DB::raw('NULL as tipo_documento'),
-                DB::raw('NULL as factura_contapyme'),
+                'ventas.factura_contapyme',
             )
             ->get()
             // S-73: ventas a crédito de solo valor, por valor_total, si no estaban anuladas al corte.
@@ -828,6 +828,9 @@ class CarteraService
                 'aplicado' => $aplicado[(int) $v->id] ?? '0',
                 // S-73: "Factura N.º X" en una venta de solo valor; null en las de ítems.
                 'documento' => $v->tipo_documento ? TipoDocumentoVenta::from($v->tipo_documento)->descripcion($v->factura_contapyme) : null,
+                // S-88: tipo (solo valor) y número de factura de Contapyme, para la cuenta del cliente.
+                'tipo_documento' => $v->tipo_documento,
+                'factura_contapyme' => $v->factura_contapyme,
             ])->values());
     }
 
