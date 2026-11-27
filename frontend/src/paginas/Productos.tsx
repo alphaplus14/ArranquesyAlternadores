@@ -526,7 +526,7 @@ export default function Productos() {
   }
 
   return (
-    <div>
+    <div className="pagina-tabla-fija">
       <div className="pagina-encabezado">
         <h1>Inventario</h1>
         <p>El catálogo llega por páginas. Los códigos universales agrupan sus referencias: la existencia es la suma. El escáner localiza la unidad en el momento.</p>
@@ -579,7 +579,7 @@ export default function Productos() {
             </article>
       </Resumen>
 
-      <section ref={tarjeta.ref} className={`tarjeta-pagina listado-${modo}`} style={{ ['--cols' as string]: columnas }}>
+      <section ref={tarjeta.ref} className={`tarjeta-pagina tarjeta-tabla listado-${modo}`} style={{ ['--cols' as string]: columnas }}>
         <div className="fila-titulo">
           <h2>Listado</h2>
           {universalesPagina.length > 0 && (
@@ -635,7 +635,7 @@ export default function Productos() {
         {aviso && <div className={`aviso ${aviso.tipo}`} role="status">{aviso.texto}</div>}
 
         <div className="tabla-contenedor">
-        <div className={`tabla-scroll tabla-viva${cargando ? ' actualizando' : ''}`} role="table" aria-label="Productos" aria-rowcount={info?.total} ref={ventana.ref} onScroll={ventana.onScroll}>
+        <div className={`tabla-scroll tabla-viva llena${cargando ? ' actualizando' : ''}`} role="table" aria-label="Productos" aria-rowcount={info?.total} ref={ventana.ref} onScroll={ventana.onScroll}>
           <div role="row" className="tabla-rejilla tabla-cabeza">
             <div role="columnheader">Referencia</div>
             <div role="columnheader">Descripción</div>

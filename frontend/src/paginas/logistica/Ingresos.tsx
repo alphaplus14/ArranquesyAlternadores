@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
 import { api, erroresCampo, mensajeError } from '../../api/cliente'
 import { useAvisoTexto } from '../../componentes/Avisos'
 import Dialogo, { DialogoSeccion } from '../../componentes/Dialogo'
-import type { FormaPago, Ingreso, Pagina, TipoIngreso } from '../../api/tipos'
+import { infoPagina, type FormaPago, type Ingreso, type Pagina, type TipoIngreso } from '../../api/tipos'
 import { sumarDias } from '../../componentes/fechas'
 import { hoyEnBogota } from '../../utilidades/periodos'
 import ControlSegmentado, { type OpcionSegmento } from '../../componentes/ControlSegmentado'
 import SelectorProveedor from '../../componentes/SelectorProveedor'
-import { useDebounce } from '../../hooks/useDebounce'
-import { useListaPaginada } from '../../hooks/useListaPaginada'
+import { useFiltrosUrl } from '../../hooks/useFiltrosUrl'
+import { useFilasPorPagina } from '../../preferencias/preferencias'
+import BarraFiltros, { CampoFiltro, TextoResultados, VacioFiltros } from '../../componentes/BarraFiltros'
 import { useProveedores } from '../../hooks/useCatalogos'
 import Paginacion from '../../componentes/Paginacion'
 import Icono from '../../componentes/Icono'
@@ -59,31 +60,60 @@ export default function Ingresos() {
     requestAnimationFrame(() => botonNuevo.current?.focus())
   }, [])
 
-  // RF-28: "Solo corregidas" filtra en el servidor. S-87: la búsqueda (factura, proveedor o NIT)
-  // vive en la URL (?q=); con menos de 2 caracteres no se envía y la tabla conserva lo anterior.
-  const [soloCorregidos, setSoloCorregidos] = useState(false)
-  const [soloBorradores, setSoloBorradores] = useState(false)
-  const [params, setParams] = useSearchParams()
-  const qUrl = params.get('q') ?? ''
-  const [escrito, setEscrito] = useState(qUrl)
-  const termino = useDebounce(escrito.trim(), 300)
-  const q = termino.length >= 2 ? termino.slice(0, 60) : ''
-  useEffect(() => {
-    setParams((actual) => {
-      if ((actual.get('q') ?? '') === q) return actual
-      const p = new URLSearchParams(actual)
-      if (q) p.set('q', q)
-      else p.delete('q')
-      return p
-    }, { replace: true })
-  }, [q, setParams])
-  const filtros = { soloCorregidos, soloBorradores, q }
-  const { filas, resultado, irA } = useListaPaginada<FilaIngreso>({
-    clave: ['ingresos', soloCorregidos, soloBorradores, q],
-    filtros,
-    porPagina: { defecto: 25 }, // S-70
-    traer: async (pagina, porPagina) => (await api.get<Pagina<FilaIngreso>>('/ingresos', { params: { page: pagina, por_pagina: porPagina, corregidos: soloCorregidos ? 1 : undefined, estado: soloBorradores ? 'borrador' : undefined, q: q || undefined } })).data,
+  // S-91: filtros y página en la URL (?q=&mes=&borradores=1&corregidos=1&desde=&hasta=&page=), con
+  // los valores por defecto omitidos, para volver de un documento sin perder el estado. Todo filtra
+  // en el servidor; cambiar un filtro vuelve a la página 1.
+  const { filtros: f, fijar, pagina, irA, activos, limpiar } = useFiltrosUrl(
+    { q: '', mes: '', borradores: '', corregidos: '', desde: '', hasta: '' }, '', 'page',
+  )
+  // S-91: período "Por mes" (select Mes) o "Personalizada" (Desde/Hasta). Con fechas en la URL abre
+  // solo en Personalizada; mes y fechas no conviven: elegir uno limpia el otro.
+  const [personalAbierta, setPersonalAbierta] = useState(() => f.desde !== '' || f.hasta !== '')
+  const personalizada = personalAbierta || f.desde !== '' || f.hasta !== ''
+  const rangoMalo = f.desde !== '' && f.hasta !== '' && f.hasta < f.desde
+  const cambiarModo = (modo: ModoPeriodo) => {
+    if (modo === 'personalizada') { setPersonalAbierta(true); fijar({ mes: '' }) } else { setPersonalAbierta(false); fijar({ desde: '', hasta: '' }) }
+  }
+  // El período cuenta una sola vez (Desde y Hasta son un filtro).
+  const activosBarra = activos - (f.desde !== '' && f.hasta !== '' ? 1 : 0)
+  const porPagina = useFilasPorPagina(25) // S-70
+  const filtrosServidor = {
+    q: f.q || undefined,
+    borradores: f.borradores ? 1 : undefined,
+    corregidos: f.corregidos ? 1 : undefined,
+  }
+  const paramsEscritos = {
+    ...filtrosServidor,
+    mes: f.mes || undefined,
+    desde: f.mes ? undefined : f.desde || undefined,
+    hasta: f.mes ? undefined : f.hasta || undefined,
+  }
+  // Con Hasta anterior a Desde no se consulta: la tabla se queda con la última consulta válida.
+  // Si se entra con el rango ya invertido, la última válida es la misma consulta sin fechas.
+  const ultimosValidos = useRef(rangoMalo ? { ...paramsEscritos, desde: undefined, hasta: undefined } : paramsEscritos)
+  if (!rangoMalo) ultimosValidos.current = paramsEscritos
+  const params = rangoMalo ? ultimosValidos.current : paramsEscritos
+  const forma = JSON.stringify(['ingresos', params, porPagina])
+  const lista = useQuery({
+    queryKey: ['ingresos', params, porPagina, pagina],
+    queryFn: async () => (await api.get<Pagina<FilaIngreso>>('/ingresos', { params: { ...params, page: pagina, por_pagina: porPagina } })).data,
+    // Solo entre páginas de la misma consulta: con otros filtros se muestra "Cargando…", no filas ajenas.
+    placeholderData: (previo, anterior) => (JSON.stringify(anterior?.queryKey.slice(0, 3)) === forma ? previo : undefined),
   })
+  const meses = useQuery({
+    queryKey: ['ingresos-meses', filtrosServidor],
+    queryFn: async () => (await api.get<{ data: MesConCompras[] }>('/ingresos/meses', { params: filtrosServidor })).data.data,
+    placeholderData: (previo) => previo,
+  })
+  // Si el mes elegido deja de tener documentos (p. ej. con otro filtro), vuelve a "Todos los meses".
+  useEffect(() => {
+    if (f.mes && meses.data && !meses.isPlaceholderData && !meses.data.some((m) => m.mes === f.mes)) fijar({ mes: '' })
+  }, [f.mes, meses.data, meses.isPlaceholderData, fijar])
+
+  const resultado = lista.data
+  const filas = resultado?.data ?? []
+  const info = resultado ? infoPagina(resultado) : null
+  const limpiarTodo = () => { setPersonalAbierta(false); limpiar() }
   const precargar = (id: number) => {
     const clave = String(id)
     void qc.prefetchQuery({
@@ -93,7 +123,7 @@ export default function Ingresos() {
   }
 
   return (
-    <div className="pila">
+    <div className="pila pagina-tabla-fija">
       <div className="pagina-encabezado encabezado-con-accion">
         <div>
           <h1>Compras</h1>
@@ -101,34 +131,67 @@ export default function Ingresos() {
         </div>
         <button ref={botonNuevo} type="button" className="primario" onClick={() => setCreando(true)}>Nuevo ingreso</button>
       </div>
-      <section className="tarjeta-pagina">
+      <section className="tarjeta-pagina tarjeta-tabla">
         <div className="fila-titulo">
           <div className="fila-titulo-inicio titulo-con-medida rojo">
             <span className="medida-icono rojo" aria-hidden><Icono nombre="ingreso" /></span>
             <h2>Documentos</h2>
           </div>
-          <label className="buscar-compras">
-            <span className="solo-lector">Buscar compras por factura, proveedor o NIT</span>
-            <input
-              type="search"
-              placeholder="Factura, proveedor o NIT"
-              maxLength={60}
-              autoComplete="off"
-              value={escrito}
-              onChange={(e) => setEscrito(e.target.value)}
-            />
-          </label>
-          <label className="casilla">
-            <input type="checkbox" checked={soloBorradores} onChange={(e) => setSoloBorradores(e.target.checked)} /> Borradores
-          </label>
-          <label className="casilla">
-            <input type="checkbox" checked={soloCorregidos} onChange={(e) => setSoloCorregidos(e.target.checked)} /> Solo corregidas
-          </label>
         </div>
-        {resultado && filas.length === 0 ? (
-          <p className="vacio">{q || soloCorregidos || soloBorradores ? 'No hay compras que coincidan' : 'Aún no hay compras.'}</p>
+        <BarraFiltros
+          // S-87: factura, proveedor o NIT; con menos de 2 caracteres no se envía y la tabla conserva lo anterior.
+          busqueda={{ valor: f.q, onCambio: (v) => { if (v === '' || v.length >= 2) fijar({ q: v.slice(0, 60) }) }, placeholder: 'Factura, proveedor o NIT', etiqueta: 'Buscar compras' }}
+          activos={activosBarra}
+          onLimpiar={limpiarTodo}
+          clase="barra-compras"
+        >
+          <CampoFiltro etiqueta="Mes">
+            <select className="filtro-mes" disabled={personalizada} value={personalizada ? '' : f.mes} onChange={(e) => fijar({ mes: e.target.value, desde: '', hasta: '' })}>
+              <option value="">Todos los meses</option>
+              {f.mes && !meses.data?.some((m) => m.mes === f.mes) && <option value={f.mes}>{nombreMes(f.mes)}</option>}
+              {(meses.data ?? []).map((m) => <option key={m.mes} value={m.mes}>{nombreMes(m.mes)} · {m.total.toLocaleString('es-CO')}</option>)}
+            </select>
+          </CampoFiltro>
+          <ControlSegmentado<ModoPeriodo>
+            id="compras-periodo"
+            etiqueta="Período"
+            clase="filtro-periodo"
+            valor={personalizada ? 'personalizada' : 'mes'}
+            onCambio={cambiarModo}
+            opciones={[{ valor: 'mes', texto: 'Por mes' }, { valor: 'personalizada', texto: 'Personalizada' }]}
+          />
+          {personalizada && (
+            <>
+              <CampoFiltro etiqueta="Desde">
+                <input type="date" value={f.desde} onChange={(e) => fijar({ desde: e.target.value, mes: '' })} />
+              </CampoFiltro>
+              <label className="barra-filtros-campo">
+                <span className="etiqueta-campo">Hasta</span>
+                <input
+                  type="date"
+                  value={f.hasta}
+                  aria-invalid={rangoMalo}
+                  aria-describedby={rangoMalo ? 'compras-hasta-error' : undefined}
+                  onChange={(e) => fijar({ hasta: e.target.value, mes: '' })}
+                />
+                {rangoMalo && <small id="compras-hasta-error" className="ayuda error" role="alert">No puede ser antes de Desde.</small>}
+              </label>
+            </>
+          )}
+          <label className="casilla barra-filtros-check">
+            <input type="checkbox" checked={f.borradores === '1'} onChange={(e) => fijar({ borradores: e.target.checked ? '1' : '' })} /> Borradores
+          </label>
+          <label className="casilla barra-filtros-check">
+            <input type="checkbox" checked={f.corregidos === '1'} onChange={(e) => fijar({ corregidos: e.target.checked ? '1' : '' })} /> Solo corregidas
+          </label>
+        </BarraFiltros>
+        {info && <TextoResultados mostrando={filas.length} total={info.total} de="documentos" />}
+        {!resultado ? (
+          <div className="cargando">Cargando…</div>
+        ) : filas.length === 0 ? (
+          <p className="vacio"><VacioFiltros hayFiltros={activosBarra > 0} sinFiltros="Aún no hay compras." onLimpiar={limpiarTodo} /></p>
         ) : (
-        <div className="tabla-desplazable tabla-viva">
+        <div className="tabla-desplazable tabla-viva llena" aria-busy={lista.isFetching}>
         <table>
           <thead><tr><th>#</th><th>Tipo</th><th>Documento</th><th>Proveedor</th><th>Fecha</th><th>Pago</th><th>Unidades</th><th>Estado</th><th>Usuario</th><th className="boton-fila-columna boton-fila-icono"><span className="solo-lector">Acciones</span></th></tr></thead>
           <tbody>
@@ -162,6 +225,16 @@ export default function Ingresos() {
       {creando && <DialogoNuevoIngreso onCerrar={cerrar} />}
     </div>
   )
+}
+
+interface MesConCompras { mes: string; total: number }
+type ModoPeriodo = 'mes' | 'personalizada'
+
+/** '2026-11' → 'Noviembre 2026'. */
+function nombreMes(mes: string): string {
+  const [a, m] = mes.split('-').map(Number)
+  const texto = new Date(a, m - 1, 1).toLocaleDateString('es-CO', { month: 'long', year: 'numeric' }).replace(' de ', ' ')
+  return texto.charAt(0).toUpperCase() + texto.slice(1)
 }
 
 const TIPOS: OpcionSegmento<TipoIngreso>[] = [{ valor: 'factura', texto: 'Factura' }, { valor: 'remision', texto: 'Remisión' }]

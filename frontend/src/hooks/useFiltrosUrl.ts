@@ -5,10 +5,11 @@ import { useSearchParams } from 'react-router-dom'
  * S-89: filtros de una pantalla en la URL (`?q=&estado=…`), con los valores por defecto omitidos,
  * para que al entrar a una cuenta y volver (miga o atrás) se conserven. Cambiar un filtro reinicia
  * la página a 1. Con `prefijo` varias secciones de la misma pantalla no chocan (p. ej. `ec_desde`).
+ * `nombrePagina` cambia el parámetro de la página (Compras usa `page`, S-91).
  */
-export function useFiltrosUrl<T extends Record<string, string>>(porDefecto: T, prefijo = '') {
+export function useFiltrosUrl<T extends Record<string, string>>(porDefecto: T, prefijo = '', nombrePagina = 'pagina') {
   const [params, setParams] = useSearchParams()
-  const clavePagina = `${prefijo}pagina`
+  const clavePagina = `${prefijo}${nombrePagina}`
 
   const filtros = useMemo(() => {
     const f = { ...porDefecto }

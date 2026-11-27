@@ -10,16 +10,18 @@ import Icono from './Icono'
  * (`children`), el contador de filtros activos y "Limpiar filtros" (solo si hay alguno). Se envuelve
  * en varias líneas; campos de 44 px; etiquetas visibles.
  */
-export default function BarraFiltros({ busqueda, periodo, activos, onLimpiar, children }: {
+export default function BarraFiltros({ busqueda, periodo, activos, onLimpiar, children, clase }: {
   busqueda?: { valor: string; onCambio: (v: string) => void; placeholder: string; etiqueta?: string }
   periodo?: { desde: string; hasta: string; onCambio: (desde: string, hasta: string) => void }
   activos: number
   onLimpiar: () => void
   children?: ReactNode
+  /** Clase extra de la barra (p. ej. `barra-compras`, S-91). */
+  clase?: string
 }) {
   const id = useId()
   return (
-    <div className="barra-filtros" role="search">
+    <div className={clase ? `barra-filtros ${clase}` : 'barra-filtros'} role="search">
       {busqueda && <Buscador id={`${id}-q`} {...busqueda} />}
       {periodo && <Periodo id={`${id}-periodo`} {...periodo} />}
       {children}

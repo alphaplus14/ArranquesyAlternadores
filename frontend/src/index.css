@@ -159,7 +159,7 @@ input:not([type='checkbox']):not([type='radio']):focus-visible, select:focus-vis
 }
 .ayuda { margin: 0; color: var(--suave); font-size: 0.85rem; }
 
-.cuerpo { display: flex; align-items: flex-start; gap: 20px; padding: 20px; }
+.cuerpo { --relleno-cuerpo: 20px; display: flex; align-items: flex-start; gap: 20px; padding: var(--relleno-cuerpo); }
 .menu {
   width: 17rem; flex: none; min-width: 0;
   background: var(--panel);
@@ -930,7 +930,7 @@ td.col-accion .icono-accion { display: inline-grid; vertical-align: middle; }
   }
   .menu-abierto .menu { transform: none; }
   .menu-abierto .velo { display: block; position: fixed; inset: 4rem 0 0 0; border: 0; background: rgba(14, 26, 51, 0.25); z-index: 20; }
-  .cuerpo { padding: 12px; }
+  .cuerpo { --relleno-cuerpo: 12px; }
   .medida, .columnas > * { grid-column: span 12; }
 }
 @media (max-width: 800px) {
@@ -972,7 +972,8 @@ td.col-accion .icono-accion { display: inline-grid; vertical-align: middle; }
 .tabla-desplazable table { margin-top: 0; }
 
 /* Tabla larga con un solo scroll vertical (el de la propia tabla) y encabezado fijo. --alto-cromo es
-   lo que ocupan arriba y abajo la barra, el título y los filtros; cada pantalla puede ajustarlo. */
+   lo que ocupan arriba y abajo la barra, el título y los filtros (estimado). En una pantalla de una
+   sola lista, mejor `.pagina-tabla-fija` + `.tabla-viva.llena` (S-91), que no estima nada. */
 .tabla-viva {
   max-height: calc(100dvh - var(--alto-cromo, 16rem));
   min-height: 12rem;
@@ -2179,7 +2180,7 @@ body:has(.ingreso-barra) .aviso-flotante { bottom: 88px; }
 .barra-filtros-busqueda { flex: 1 1 260px; }
 .barra-filtros-busqueda .campo-unico input { min-height: 44px; margin-bottom: 0; padding-left: 40px; padding-right: 40px; }
 .barra-filtros .control-segmentado, .barra-filtros [role='radiogroup'] { margin: 0; }
-.barra-filtros-check { min-height: 44px; display: inline-flex; align-items: center; gap: 8px; }
+.barra-filtros-check { min-height: 44px; display: inline-flex; flex-direction: row; align-items: center; align-self: flex-end; gap: 8px; color: var(--texto); font-size: 0.95rem; }
 .barra-filtros-limpiar { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; margin-left: auto; }
 .barra-filtros-resultados { margin: 0 0 8px; }
 .vacio-filtros { display: inline-flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; justify-content: center; }
@@ -2198,4 +2199,54 @@ body:has(.ingreso-barra) .aviso-flotante { bottom: 88px; }
 .filtro-cliente-lista button:hover, .filtro-cliente-lista button:focus-visible { background: var(--suave-fondo); }
 .filtro-cliente-lista .ayuda { padding: 6px 10px; }
 .filtro-elegido { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; }
+
+/*
+ * S-91: pantalla de una sola lista con un solo scroll, el de la tabla (Compras). La página ocupa
+ * exactamente el alto libre (ventana − barra superior − relleno del cuerpo), así que la ventana no
+ * hace scroll. El encabezado y los filtros toman su alto natural; la tarjeta y la tabla se encogen
+ * hasta ese alto y solo entonces la tabla hace scroll; la paginación queda debajo, siempre visible.
+ * Con pocas filas la tarjeta mide lo que su contenido: sin hueco.
+ */
+.pagina-tabla-fija {
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - 4rem - 2 * var(--relleno-cuerpo, 20px));
+  min-height: 0;
+}
+.pagina-tabla-fija > * { flex: 0 0 auto; }
+/* Solo la tarjeta de la lista (`.tarjeta-tabla`) se encoge; las demás conservan su alto. */
+.pagina-tabla-fija > .tarjeta-tabla { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.pagina-tabla-fija > .tarjeta-tabla > * { flex: 0 0 auto; }
+.pagina-tabla-fija > .tarjeta-tabla > .tabla-viva.llena { flex: 0 1 auto; min-height: 0; }
+/* Inventario: la tabla virtualizada va dentro de .tabla-contenedor, que también se encoge. */
+.pagina-tabla-fija > .tarjeta-tabla > .tabla-contenedor { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.pagina-tabla-fija > .tarjeta-tabla > .tabla-contenedor > .tabla-viva.llena { flex: 0 1 auto; min-height: 0; }
+.tabla-viva.llena { max-height: none; overflow: auto; }
+/* El foco con teclado no queda tapado por el encabezado fijo de la tabla. */
+.tabla-viva.llena { scroll-padding-top: 3rem; }
+/* "Rango de fechas" dentro de la barra de filtros, a la altura de los campos. */
+.filtro-mes { min-width: 14rem; }
+/* Móvil o ventana baja: el alto fijo dejaría la tabla con menos de 12 rem; la página hace scroll normal. */
+@media (max-width: 768px), (max-height: 600px) {
+  .pagina-tabla-fija { height: auto; }
+  .pagina-tabla-fija > .tarjeta-tabla > .tabla-viva.llena { max-height: none; overflow: visible; overflow-x: auto; }
+}
+
+/*
+ * S-91 (ajuste): barra de Compras. El buscador toma el espacio libre de la fila (su texto de ejemplo
+ * se ve completo); Mes, Período, Desde/Hasta y las casillas conservan su ancho natural y quedan a la
+ * derecha. Por debajo de 900 px el buscador va en su propia fila, a todo el ancho.
+ */
+.barra-compras > * { flex: 0 0 auto; }
+.barra-compras > .barra-filtros-busqueda { flex: 1 1 22rem; min-width: 16rem; }
+.barra-compras .barra-filtros-busqueda .campo-unico, .barra-compras .barra-filtros-busqueda input { width: 100%; box-sizing: border-box; }
+/* Los campos se alinean por arriba: el mensaje bajo Hasta crece hacia abajo y no mueve el campo. */
+.barra-compras { align-items: flex-start; }
+.barra-compras > .barra-filtros-check, .barra-compras > .barra-filtros-limpiar { align-self: flex-end; }
+.barra-compras .filtro-periodo { margin: 0; }
+.barra-compras .filtro-mes:disabled { opacity: 0.6; cursor: not-allowed; }
+.barra-compras .barra-filtros-campo > .ayuda.error { margin: 0; }
+@media (max-width: 899px) {
+  .barra-compras > .barra-filtros-busqueda { flex: 1 1 100%; min-width: 0; }
+}
 

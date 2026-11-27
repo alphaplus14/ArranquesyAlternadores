@@ -97,7 +97,7 @@ export default function Costos() {
   const limpiarFiltros = () => elegir({ proveedor: null, categoria: null, desde: null, hasta: null, page: null })
 
   return (
-    <div className="pila costos-pantalla">
+    <div className={`pila costos-pantalla${vigente?.producto ? '' : ' pagina-tabla-fija'}`}>
       <div className="pagina-encabezado">
         <h1>Costos por producto</h1>
         <p>Compras confirmadas con su costo neto sin IVA. Elija una referencia o un código universal para ver su último costo, el anterior y la variación.</p>
@@ -122,7 +122,7 @@ export default function Costos() {
         </>
       )}
 
-      <section className="tarjeta-pagina">
+      <section className="tarjeta-pagina tarjeta-tabla">
         <div className="fila-titulo">
           <h2>{hay ? 'Compras' : 'Todas las compras'}</h2>
           {hay && <button type="button" className="enlace" onClick={() => elegir({ referencia: null, universal: null, page: null })}>Ver todas las compras</button>}
@@ -189,7 +189,7 @@ export default function Costos() {
               )
               : <p className="vacio">{hay ? 'Este producto aún no tiene compras confirmadas.' : 'No hay compras confirmadas.'}</p>
         ) : (
-          <div className={`tabla-desplazable tabla-viva${cargando ? ' actualizando' : ''}`}>
+          <div className={`tabla-desplazable tabla-viva${vigente?.producto ? '' : ' llena'}${cargando ? ' actualizando' : ''}`}>
             <TablaCostos
               key={claveTabla}
               filas={filasVigentes}
