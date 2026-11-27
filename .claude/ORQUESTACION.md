@@ -52,5 +52,5 @@ Entrega: commits pequeños en tu rama, sin push, y el reporte con el formato de 
 
 - Worktrees en `C:\dev\arranques-wt` (variable `ARRANQUES_WT`), fuera de OneDrive. Cada uno tiene su `.env` y su base `inventario_test_<nombre>`. `agentes.sh tests` nunca toca `inventario` ni `inventario_test`. En la carpeta principal usa `inventario_test`.
 - `.claude/settings.local.json` (no se versiona) da permiso de edición en esa carpeta. En otro equipo hay que crear el suyo con su ruta.
-- Datos al 25-nov-2026 (verificar antes de usarlos): la suite tiene 630 tests en verde y tarda unos 195 s. El último RF es RF-30 (RF-31 está retirado) y el último supuesto, S-69. S-68 «Saldo» espera la decisión de César.
+- Datos al 26-nov-2026 (verificar antes de usarlos): la última corrida de la suite fue de 783 tests, 782 en verde y 1 saltado. El último RF es RF-30 (RF-31 está retirado) y el último supuesto, S-87. S-68 «Saldo» espera la decisión de César.
 - Archivos calientes, que no se reparten a dos agentes a la vez: `routes/api.php`, `api/tipos.ts`, `App.tsx`, `Layout.tsx`, `tests/Pest.php`, `IngresoService.php`, `VentaService.php`, `CajaService.php`, `Venta.tsx`, `IngresoDetalle.tsx`.
