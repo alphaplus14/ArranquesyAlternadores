@@ -181,7 +181,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Módulo de logística: ingreso de remisiones y facturas a mano (RF-05, RF-04, RF-09, RF-10) y etiquetas (RF-03).
     Route::middleware('rol:logistica')->group(function () {
-        Route::get('/ingresos', [IngresoController::class, 'index']);
+        Route::get('/ingresos', [IngresoController::class, 'index'])->middleware('medir:800'); // S-91
+        Route::get('/ingresos/meses', [IngresoController::class, 'meses'])->middleware('medir:800'); // S-91, antes de /ingresos/{ingreso}
         Route::post('/ingresos', [IngresoController::class, 'store']);
         Route::get('/ingresos/{ingreso}', [IngresoController::class, 'show']);
         Route::match(['put', 'patch'], '/ingresos/{ingreso}', [IngresoController::class, 'update']);
