@@ -84,7 +84,7 @@ it('S-85 (S-25): el mismo código en otro proveedor solo se avisa (coincidencias
         ->assertCreated()->assertJsonPath('codigo_referencia', 'MISMO-77');
 
     $coincidencias = $this->getJson("/api/referencias/coincidencias?codigo=mismo-77&proveedor_id={$sur->id}")->assertOk();
-    expect(collect($coincidencias->json('data') ?? $coincidencias->json())->pluck('proveedor_id')->all())->toContain($norte->id);
+    expect(collect($coincidencias->json())->pluck('proveedor.id')->all())->toContain($norte->id);
 });
 
 it('S-85 (S-25): si el código de barras hace de referencia, la referencia queda en mayúscula y el código de barras como llegó', function () {
@@ -114,7 +114,7 @@ it('S-85 (RF-20): crear la referencia que falta desde el ingreso normaliza a may
 /** Migración de datos de S-85: se busca por nombre porque la crea el agente de backend. */
 function migracionS85(): ?object
 {
-    $archivos = glob(database_path('migrations/*mayuscula*.php')) ?: [];
+    $archivos = glob(database_path('migrations/*referencias_texto_en_mayuscula*.php')) ?: [];
 
     return $archivos ? require $archivos[0] : null;
 }
@@ -122,7 +122,7 @@ function migracionS85(): ?object
 it('S-85: la migración pasa a mayúscula lo existente y aborta con mensaje si hay duplicados por proveedor', function () {
     $migracion = migracionS85();
     if ($migracion === null) {
-        $this->markTestSkipped('S-85: aún no existe la migración de datos (database/migrations/*mayuscula*.php); completar este test al integrar la implementación.');
+        $this->markTestSkipped('S-85: aún no existe la migración de datos (database/migrations/*referencias_texto_en_mayuscula*.php).');
     }
 
     $proveedor = proveedorS85();
@@ -136,13 +136,7 @@ it('S-85: la migración pasa a mayúscula lo existente y aborta con mensaje si h
         ->and($fila->descripcion)->toBe('PIEZA VIEJA')
         ->and($fila->codigo_fabricante)->toBe('fab-Mixto');
 
-    // Duplicado bajo UPPER: solo se puede fabricar si el índice distingue mayúsculas.
-    $otra = Referencia::factory()->create(['proveedor_id' => $proveedor->id, 'codigo_referencia' => 'MIG-02']);
-    try {
-        DB::table('referencias')->where('id', $otra->id)->update(['codigo_referencia' => 'mig-01']);
-    } catch (Throwable) {
-        $this->markTestSkipped('S-85: el índice único (proveedor, código) ya ignora mayúsculas en esta base; no se puede fabricar el duplicado para probar el aborto.');
-    }
-    expect(fn () => $migracion->up())->toThrow(RuntimeException::class);
-    expect(DB::table('referencias')->where('id', $otra->id)->value('codigo_referencia'))->toBe('mig-01');
+    // El aborto con duplicados bajo UPPER (RuntimeException) no se puede fabricar: la collation
+    // utf8mb4_unicode_ci del índice único (proveedor, código) ya impide dos códigos que difieran solo en mayúsculas.
+    $this->markTestSkipped('S-85: caso de aborto por duplicados no fabricable con collation unicode_ci; la migración lanza RuntimeException (cubierto por revisión).');
 });

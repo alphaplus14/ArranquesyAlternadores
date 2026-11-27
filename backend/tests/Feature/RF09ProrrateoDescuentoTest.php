@@ -246,10 +246,10 @@ describe('por la API', function () {
 
     it('S-22 (e) / S-66: un descuento mayor que el subtotal neto se acepta en el borrador y responde 422 al confirmar', function () {
         actuarComo(Rol::Logistica);
-        $id = ingresoCon([[1, 100000, 10], [1, 50000]]);
+        $id = ingresoCon([[1, 100000], [1, 50000]]);
 
-        // Subtotal neto 140.000 (el bruto es 150.000). El borrador lo acepta y avisa.
-        $this->patchJson("/api/ingresos/{$id}", ['descuento_documento' => 140000.01])
+        // S-86: sin descuento de línea (excluye al del documento). Subtotal neto 150.000. El borrador lo acepta y avisa.
+        $this->patchJson("/api/ingresos/{$id}", ['descuento_documento' => 150000.01])
             ->assertOk()
             ->assertJsonPath('totales.descuento_excede_subtotal', true);
         $this->patchJson("/api/ingresos/{$id}", ['descuento_documento_porcentaje' => 100.01])->assertJsonValidationErrors('descuento_documento_porcentaje');

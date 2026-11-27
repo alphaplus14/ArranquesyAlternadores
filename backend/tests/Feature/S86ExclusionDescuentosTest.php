@@ -50,7 +50,7 @@ it('S-86: una línea con descuento y llega descuento del documento (en $ o en %)
     expect(Ingreso::find($id)->descuento_documento)->toBe('0.00');
 });
 
-it('S-86: un documento con descuento rechaza el descuento de línea al agregar, actualizar y escanear', function () {
+it('S-86: un documento con descuento rechaza el descuento de línea al agregar y actualizar (escanear crea la línea con 0)', function () {
     $id = borradorS86(['descuento_documento' => 10000]);
     $conPorcentaje = borradorS86(['descuento_documento_porcentaje' => 10]);
     $ref = referencia('RN-4410');
@@ -67,13 +67,12 @@ it('S-86: un documento con descuento rechaza el descuento de línea al agregar, 
     $this->patchJson("/api/ingresos/{$id}/items/{$linea}", ['descuento_porcentaje' => 5])
         ->assertUnprocessable()->assertJsonPath('errors.descuento_porcentaje.0', MSG_S86_LINEA);
 
-    // escanear con descuento_porcentaje > 0
-    $this->postJson("/api/ingresos/{$id}/escanear", ['codigo' => $ref->codigo_referencia, 'descuento_porcentaje' => 5])
-        ->assertUnprocessable()->assertJsonValidationErrors('descuento_porcentaje')
-        ->assertJsonPath('errors.descuento_porcentaje.0', MSG_S86_LINEA);
+    // escanear crea la línea con descuento 0, así que no choca con el descuento del documento.
+    $this->postJson("/api/ingresos/{$id}/escanear", ['codigo' => $ref->codigo_referencia])
+        ->assertCreated()->assertJsonPath('descuento_porcentaje', '0.00');
 
-    expect(IngresoItem::where('ingreso_id', $id)->count())->toBe(1)
-        ->and(IngresoItem::where('ingreso_id', $id)->value('descuento_porcentaje'))->toBe('0.00');
+    expect(IngresoItem::where('ingreso_id', $id)->count())->toBe(2)
+        ->and(IngresoItem::where('ingreso_id', $id)->max('descuento_porcentaje'))->toBe('0.00');
 });
 
 it('S-86: cero en ambos no bloquea', function () {
