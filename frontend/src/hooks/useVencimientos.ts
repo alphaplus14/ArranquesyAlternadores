@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/cliente'
 import type { TipoVencimiento, Vencimientos } from '../api/tipos'
 
-/** S-88: filtros opcionales de la bandeja (el contador del menú no los usa). */
+/** S-89: filtros opcionales de la bandeja (el contador del menú no los usa). */
 export interface FiltrosVencimientos {
   estado?: 'vencidas' | 'por_vencer'
   q?: string

@@ -2,7 +2,7 @@ import { useParams } from 'react-router-dom'
 import CuentaContable from './CuentaContable'
 
 /**
- * RF-18 / RF-29 (S-88): cuenta de un cliente para el contable, con la misma estructura que la del
+ * RF-18 / RF-29 (S-89): cuenta de un cliente para el contable, con la misma estructura que la del
  * proveedor y solo lectura: resumen, antigüedad, facturas con saldo (incluidas las ventas de solo
  * valor, S-73/S-74), historial de abonos y estado de cuenta. Los abonos los registra el mostrador o
  * el administrador desde Cartera; anular uno es solo del admin.

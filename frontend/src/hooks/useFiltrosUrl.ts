@@ -2,7 +2,7 @@ import { useCallback, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
 /**
- * S-88: filtros de una pantalla en la URL (`?q=&estado=…`), con los valores por defecto omitidos,
+ * S-89: filtros de una pantalla en la URL (`?q=&estado=…`), con los valores por defecto omitidos,
  * para que al entrar a una cuenta y volver (miga o atrás) se conserven. Cambiar un filtro reinicia
  * la página a 1. Con `prefijo` varias secciones de la misma pantalla no chocan (p. ej. `ec_desde`).
  */

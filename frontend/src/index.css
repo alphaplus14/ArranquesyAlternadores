@@ -2170,7 +2170,7 @@ body:has(.ingreso-barra) .aviso-flotante { bottom: 88px; }
 .buscar-compras input { width: 100%; min-height: 44px; box-sizing: border-box; }
 
 /*
- * S-88: barra de filtros común del módulo contable (componentes/BarraFiltros.tsx). Se envuelve en
+ * S-89: barra de filtros común del módulo contable (componentes/BarraFiltros.tsx). Se envuelve en
  * varias líneas; cada campo con su etiqueta visible y 44 px de alto; el buscador crece.
  */
 .barra-filtros { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 14px; margin: 4px 0 10px; }
@@ -2188,7 +2188,7 @@ body:has(.ingreso-barra) .aviso-flotante { bottom: 88px; }
   .barra-filtros-campo, .barra-filtros-limpiar { flex: 1 1 100%; }
   .barra-filtros-limpiar { margin-left: 0; }
 }
-/* S-88: cliente del informe de ventas a crédito (buscar desde 2 letras, sin crear). */
+/* S-89: cliente del informe de ventas a crédito (buscar desde 2 letras, sin crear). */
 .filtro-cliente { position: relative; min-width: 220px; }
 .filtro-cliente-lista {
   position: absolute; z-index: 10; top: 100%; left: 0; right: 0; margin: 4px 0 0; padding: 4px; list-style: none;

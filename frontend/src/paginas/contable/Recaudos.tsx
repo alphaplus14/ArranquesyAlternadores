@@ -18,7 +18,7 @@ type FiltroTipo = 'todos' | TipoDocumentoVenta
 /**
  * S-76: recaudos de documentos de Contapyme registrados en la caja del mostrador (facturas o
  * remisiones a crédito que no son ventas a crédito del sistema). Solo lectura y solo en pantalla.
- * Los totales cubren todo el rango filtrado, sin los anulados. S-88: barra común (atajos de período,
+ * Los totales cubren todo el rango filtrado, sin los anulados. S-89: barra común (atajos de período,
  * filtros en la URL, "Limpiar filtros" y "Mostrando N de M").
  */
 export default function Recaudos() {

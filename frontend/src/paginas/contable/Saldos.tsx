@@ -41,7 +41,7 @@ const TEXTOS = {
 type Estado = 'todos' | 'con_vencido' | 'al_dia'
 
 /**
- * RF-18 (3 y 4) y S-88: cartera de clientes o cuentas por pagar, con antigüedad, solo en pantalla.
+ * RF-18 (3 y 4) y S-89: cartera de clientes o cuentas por pagar, con antigüedad, solo en pantalla.
  * Filtros en el servidor (en la URL): texto, corte, estado, antigüedad, orden y (clientes) saldo a
  * favor. Tarjetas y totales son de lo filtrado.
  */

@@ -2,7 +2,7 @@ import { useParams } from 'react-router-dom'
 import CuentaContable from './CuentaContable'
 
 /**
- * RF-17 / RF-29 (S-79, S-88): cuenta de un proveedor. Facturas con saldo (cada una se paga, con
+ * RF-17 / RF-29 (S-79, S-89): cuenta de un proveedor. Facturas con saldo (cada una se paga, con
  * pagos parciales), historial de pagos y estado de cuenta, en pestañas. Anular un pago es solo del
  * admin (S-27).
  */

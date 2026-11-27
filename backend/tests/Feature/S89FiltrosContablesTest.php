@@ -8,7 +8,7 @@ use App\Models\User;
 use Illuminate\Support\Carbon;
 
 /*
- * S-88 (RF-17, RF-18, RF-29, RF-30): filtros e historial del módulo contable. Solo consulta: los
+ * S-89 (RF-17, RF-18, RF-29, RF-30): filtros e historial del módulo contable. Solo consulta: los
  * filtros se resuelven en la consulta o sobre la colección ya calculada; los totales son los de TODO
  * lo filtrado (no la página). Sin cambios de cálculo ni de permisos de escritura.
  */
@@ -16,7 +16,7 @@ use Illuminate\Support\Carbon;
 beforeEach(fn () => sembrarDemo());
 
 /** Proveedor nuevo con NIT y una referencia suya. */
-function S88Proveedor(string $nombre, ?string $nit = null): Referencia
+function S89Proveedor(string $nombre, ?string $nit = null): Referencia
 {
     $p = Proveedor::factory()->create(['nombre' => $nombre, 'nit' => $nit]);
 
@@ -24,7 +24,7 @@ function S88Proveedor(string $nombre, ?string $nit = null): Referencia
 }
 
 /** Venta a crédito de solo valor (S-73) registrada por el mostrador; devuelve el id. */
-function S88SoloValor(Cliente $cliente, int $valor, string $tipo = 'factura', ?string $numero = null): int
+function S89SoloValor(Cliente $cliente, int $valor, string $tipo = 'factura', ?string $numero = null): int
 {
     $anterior = auth()->user();
     actuarComo(Rol::Mostrador);
@@ -37,12 +37,12 @@ function S88SoloValor(Cliente $cliente, int $valor, string $tipo = 'factura', ?s
 
 /* ───────────── Cuentas por pagar y cartera ───────────── */
 
-it('S-88: cuentas por pagar filtra por nombre sin tildes ni mayúsculas y por NIT normalizado; los totales son de lo filtrado', function () {
+it('S-89: cuentas por pagar filtra por nombre sin tildes ni mayúsculas y por NIT normalizado; los totales son de lo filtrado', function () {
     Carbon::setTestNow('2026-09-01 10:00:00');
-    $ajover = S88Proveedor('Ajover Repuestos Ñandú', '900.123.456-7');
+    $ajover = S89Proveedor('Ajover Repuestos Ñandú', '900.123.456-7');
     compra($ajover, 1, 1000, aCredito('2026-09-20')); // vencerá
     Carbon::setTestNow('2026-11-20 10:00:00');
-    $otro = S88Proveedor('Baterías del Sur', '800111222');
+    $otro = S89Proveedor('Baterías del Sur', '800111222');
     compra($otro, 1, 3000, aCredito('2026-12-31'));
     actuarComo(Rol::Contable);
 
@@ -66,7 +66,7 @@ it('S-88: cuentas por pagar filtra por nombre sin tildes ni mayúsculas y por NI
         ->and((float) $r->json('data.0.saldo'))->toBe($todas->max(fn ($f) => (float) $f['saldo']));
 });
 
-it('S-88: cartera de clientes filtra por documento y por saldo a favor', function () {
+it('S-89: cartera de clientes filtra por documento y por saldo a favor', function () {
     $ana = Cliente::factory()->create(['nombre' => 'Ana Taller', 'documento' => '1.020.304']);
     $beto = Cliente::factory()->create(['nombre' => 'Beto Motos']);
     ventaCredito($ana, [100]);
@@ -82,7 +82,7 @@ it('S-88: cartera de clientes filtra por documento y por saldo a favor', functio
 
 /* ───────────── Historial de pagos y abonos ───────────── */
 
-it('S-88: historial de pagos: vigentes por defecto, anulados aparte, búsqueda por factura, fechas y totales', function () {
+it('S-89: historial de pagos: vigentes por defecto, anulados aparte, búsqueda por factura, fechas y totales', function () {
     $ref = referencia('RN-4410');
     $a = compra($ref, 1, 500, ['numero_documento' => 'FA-777', ...aCredito()]);
     $b = compra($ref, 1, 500, ['numero_documento' => 'FB-888', ...aCredito()]);
@@ -109,7 +109,7 @@ it('S-88: historial de pagos: vigentes por defecto, anulados aparte, búsqueda p
     $this->getJson("{$url}?desde=2026-11-20&hasta=2026-11-01")->assertUnprocessable()->assertJsonValidationErrors('hasta');
 });
 
-it('S-88: historial de abonos del cliente con venta aplicada o "General" y anulados aparte', function () {
+it('S-89: historial de abonos del cliente con venta aplicada o "General" y anulados aparte', function () {
     $cliente = Cliente::factory()->create();
     [$venta] = ventaCredito($cliente, [100]);
     actuarComo(Rol::Mostrador);
@@ -129,10 +129,10 @@ it('S-88: historial de abonos del cliente con venta aplicada o "General" y anula
 
 /* ───────────── Saldo del cliente para el contable ───────────── */
 
-it('S-88: el saldo del cliente coincide con la cartera del mostrador, incluidas las ventas de solo valor', function () {
+it('S-89: el saldo del cliente coincide con la cartera del mostrador, incluidas las ventas de solo valor', function () {
     $cliente = Cliente::factory()->create(['documento' => '777']);
     [$conItems] = ventaCredito($cliente, [100]);
-    $soloValor = S88SoloValor($cliente, 300000, 'remision');
+    $soloValor = S89SoloValor($cliente, 300000, 'remision');
     actuarComo(Rol::Mostrador);
     abonar($cliente, 40, ['venta_id' => $conItems])->assertCreated();
     abonar($cliente, 100000, ['venta_id' => $soloValor])->assertCreated();
@@ -152,7 +152,7 @@ it('S-88: el saldo del cliente coincide con la cartera del mostrador, incluidas 
 
 /* ───────────── Estado de cuenta ───────────── */
 
-it('S-88: el estado de cuenta con tipo y búsqueda oculta filas sin cambiar el saldo corrido ni los totales del período', function () {
+it('S-89: el estado de cuenta con tipo y búsqueda oculta filas sin cambiar el saldo corrido ni los totales del período', function () {
     $ref = referencia('RN-4410');
     $f = compra($ref, 1, 500, ['numero_documento' => 'EC-1', ...aCredito()]);
     actuarComo(Rol::Admin);
@@ -173,7 +173,7 @@ it('S-88: el estado de cuenta con tipo y búsqueda oculta filas sin cambiar el s
         ->and(collect($cargos->json('data'))->pluck('tipo')->unique()->all())->toBe(['remision']);
 });
 
-it('S-88: el contable ve el estado de cuenta de un cliente (antes 403) con el formato del de proveedores', function () {
+it('S-89: el contable ve el estado de cuenta de un cliente (antes 403) con el formato del de proveedores', function () {
     $cliente = Cliente::factory()->create();
     [$venta] = ventaCredito($cliente, [100]);
     actuarComo(Rol::Mostrador);
@@ -190,10 +190,10 @@ it('S-88: el contable ve el estado de cuenta de un cliente (antes 403) con el fo
 
 /* ───────────── Vencimientos ───────────── */
 
-it('S-88: vencimientos filtra por estado, texto y rango; los totales son de lo filtrado', function () {
+it('S-89: vencimientos filtra por estado, texto y rango; los totales son de lo filtrado', function () {
     config(['cartera.aviso_dias' => 30]);
     Carbon::setTestNow('2026-10-01 10:00:00');
-    $ref = S88Proveedor('Vencidos SAS');
+    $ref = S89Proveedor('Vencidos SAS');
     compra($ref, 1, 300, ['numero_documento' => 'V-1', ...aCredito('2026-11-01')]);
     compra($ref, 1, 200, ['numero_documento' => 'V-2', ...aCredito('2026-11-30')]);
     Carbon::setTestNow('2026-11-20 10:00:00');
@@ -211,14 +211,14 @@ it('S-88: vencimientos filtra por estado, texto y rango; los totales son de lo f
 
 /* ───────────── Informes ───────────── */
 
-it('S-88: compras por forma de pago, tipo y número; ventas a crédito por tipo, estado y número; remisiones por antigüedad', function () {
+it('S-89: compras por forma de pago, tipo y número; ventas a crédito por tipo, estado y número; remisiones por antigüedad', function () {
     Carbon::setTestNow('2026-11-20 10:00:00');
     $ref = referencia('RN-4410');
     compra($ref, 1, 100, ['numero_documento' => 'CR-1', ...aCredito()]);
     compra($ref, 1, 100, ['numero_documento' => 'CO-1']);
     $cliente = Cliente::factory()->create();
-    $factura = S88SoloValor($cliente, 1000, 'factura', 'FE-55');
-    $remision = S88SoloValor($cliente, 2000, 'remision');
+    $factura = S89SoloValor($cliente, 1000, 'factura', 'FE-55');
+    $remision = S89SoloValor($cliente, 2000, 'remision');
     actuarComo(Rol::Admin);
     $this->postJson("/api/ventas/{$remision}/reversos", ['tipo' => 'anulacion', 'motivo' => 'Se registró por error'])->assertOk();
 
@@ -242,7 +242,7 @@ it('S-88: compras por forma de pago, tipo y número; ventas a crédito por tipo,
 
 /* ───────────── Permisos ───────────── */
 
-it('S-88: contable y admin consultan; mostrador y logística reciben 403', function (Rol $rol, int $codigo) {
+it('S-89: contable y admin consultan; mostrador y logística reciben 403', function (Rol $rol, int $codigo) {
     $cliente = Cliente::factory()->create();
     $proveedor = referencia('RN-4410')->proveedor_id;
     actuarComo($rol);

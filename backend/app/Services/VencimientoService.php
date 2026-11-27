@@ -32,7 +32,7 @@ class VencimientoService
      * @return array{filas: Collection<int, array<string, mixed>>, totales: array<string, mixed>}
      */
     /**
-     * S-88: filtros opcionales sobre la bandeja ya calculada (sin recalcular por fila): estado
+     * S-89: filtros opcionales sobre la bandeja ya calculada (sin recalcular por fila): estado
      * (vencidas | por_vencer), texto (titular o documento, sin tildes ni mayúsculas), rango de
      * vencimiento y orden (vence_asc = lo más vencido primero, pendiente_desc, titular). Los totales
      * son los de lo filtrado.

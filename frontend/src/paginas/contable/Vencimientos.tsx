@@ -20,7 +20,7 @@ type Estado = 'todos' | 'vencidas' | 'por_vencer'
 /**
  * RF-30: lo vencido y lo que vence dentro del aviso, por pagar (proveedores) y por cobrar
  * (clientes). Desde una factura por pagar se registra su pago (RF-17, ajuste). Solo en el programa.
- * S-88: filtros en el servidor (en la URL): tipo, estado, texto, rango de vencimiento y orden; las
+ * S-89: filtros en el servidor (en la URL): tipo, estado, texto, rango de vencimiento y orden; las
  * tarjetas son de lo filtrado.
  */
 export default function Vencimientos() {

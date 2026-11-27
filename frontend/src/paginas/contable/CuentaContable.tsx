@@ -70,7 +70,7 @@ const PESTANAS: { valor: Pestana; texto: string }[] = [
 ]
 
 /**
- * RF-17 / RF-18 / RF-29 y S-88: cuenta de un proveedor o de un cliente para el contable (y el
+ * RF-17 / RF-18 / RF-29 y S-89: cuenta de un proveedor o de un cliente para el contable (y el
  * admin). Encabezado con miga, saldo y antigüedad; pestañas (en la URL) Facturas con saldo |
  * Historial de pagos o abonos | Estado de cuenta. Solo el proveedor tiene "Pagar" (S-79); en el
  * cliente es solo lectura. "Anular" en el historial, solo el admin (S-27).
@@ -232,7 +232,7 @@ function FacturasConSaldo({ config: c, titular, documentos, onVerHistorial }: {
 
 type EstadoHistorial = 'vigentes' | 'anulados' | 'todos'
 
-/** S-88: historial de pagos o abonos, paginado en el servidor, con filtros en la URL (prefijo h_). */
+/** S-89: historial de pagos o abonos, paginado en el servidor, con filtros en la URL (prefijo h_). */
 function HistorialDinero({ config: c, titular }: { config: ConfigCuenta; titular: string }) {
   const qc = useQueryClient()
   const esAdmin = useAuth().usuario?.rol === 'admin'

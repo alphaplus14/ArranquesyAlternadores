@@ -59,7 +59,7 @@ class ReporteController extends Controller
         [$desde, $hasta] = $this->periodo($request, Carbon::today()->startOfMonth());
         $d = $request->validate([
             'proveedor_id' => ['nullable', 'integer', 'exists:proveedores,id'],
-            // S-88: forma de pago, tipo de documento y número.
+            // S-89: forma de pago, tipo de documento y número.
             'forma_pago' => ['nullable', 'in:credito,contado'],
             'tipo' => ['nullable', 'in:factura,remision'],
             'q' => ['nullable', 'string', 'max:80'],
@@ -75,7 +75,7 @@ class ReporteController extends Controller
         [$desde, $hasta] = $this->periodo($request, Carbon::today()->startOfMonth());
         $d = $request->validate([
             'cliente_id' => ['nullable', 'integer', 'exists:clientes,id'],
-            // S-88: tipo de documento, estado (vigentes por defecto) y número.
+            // S-89: tipo de documento, estado (vigentes por defecto) y número.
             'tipo' => ['nullable', 'in:factura,remision'],
             'estado' => ['nullable', 'in:vigentes,anuladas,todas'],
             'q' => ['nullable', 'string', 'max:80'],
@@ -137,7 +137,7 @@ class ReporteController extends Controller
     {
         $d = $request->validate([
             'proveedor_id' => ['nullable', 'integer', 'exists:proveedores,id'],
-            'antiguedad' => ['nullable', 'in:mas_de_30,mas_de_60,mas_de_90'], // S-88
+            'antiguedad' => ['nullable', 'in:mas_de_30,mas_de_60,mas_de_90'], // S-89
         ]);
         $dias = isset($d['antiguedad']) ? (int) substr($d['antiguedad'], 7) : null;
         $informe = $this->reportes->remisionesPendientes($d['proveedor_id'] ?? null, $dias);
@@ -158,7 +158,7 @@ class ReporteController extends Controller
     {
         $d = $request->validate([
             'tipo' => ['nullable', Rule::in([VencimientoService::POR_PAGAR, VencimientoService::POR_COBRAR])],
-            // S-88: estado, texto, rango de vencimiento y orden.
+            // S-89: estado, texto, rango de vencimiento y orden.
             'estado' => ['nullable', 'in:todos,vencidas,por_vencer'],
             'q' => ['nullable', 'string', 'max:80'],
             'vence_desde' => ['nullable', 'date_format:Y-m-d'],
@@ -176,7 +176,7 @@ class ReporteController extends Controller
         ]);
     }
 
-    /** S-88: filtros de Cuentas por pagar y Cartera de clientes. */
+    /** S-89: filtros de Cuentas por pagar y Cartera de clientes. */
     private function filtrosTitulares(Request $request, bool $conAFavor): array
     {
         $d = $request->validate([
@@ -190,7 +190,7 @@ class ReporteController extends Controller
         return [...$d, 'a_favor' => $conAFavor && $request->boolean('a_favor')];
     }
 
-    /** S-88: tipo de movimiento y texto del estado de cuenta (solo ocultan filas). */
+    /** S-89: tipo de movimiento y texto del estado de cuenta (solo ocultan filas). */
     private function filtrosEstadoCuenta(Request $request): array
     {
         return $request->validate([

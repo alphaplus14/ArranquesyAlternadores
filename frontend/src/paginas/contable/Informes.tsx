@@ -22,7 +22,7 @@ const RUTA: Record<Informe, string> = {
 }
 
 /**
- * RF-18 (1, 2 y 6) y S-88: compras, ventas a crédito y remisiones pendientes de facturar, para el
+ * RF-18 (1, 2 y 6) y S-89: compras, ventas a crédito y remisiones pendientes de facturar, para el
  * análisis mensual. Solo en pantalla. Filtros en el servidor y en la URL: período (atajos), proveedor,
  * forma de pago, tipo y número en compras; cliente, tipo, estado y número en ventas a crédito;
  * proveedor y antigüedad en remisiones. Los totales cubren todas las filas filtradas.
@@ -138,7 +138,7 @@ export default function Informes() {
   )
 }
 
-/** S-88: cliente del informe de ventas, buscado desde 2 caracteres (como S-72), sin crear. */
+/** S-89: cliente del informe de ventas, buscado desde 2 caracteres (como S-72), sin crear. */
 function FiltroCliente({ id, nombre, onElegir }: { id: string; nombre: string; onElegir: (c: Opcion | null) => void }) {
   const [texto, setTexto] = useState('')
   const termino = useDebounce(texto.trim(), 250)

@@ -90,7 +90,7 @@ button.costos-detalle-boton.abierto svg { transform: rotate(180deg); }
 .costos-campo-etiqueta { color: var(--suave); font-size: 0.82rem; }
 .costos-filtros input, .costos-filtros select { min-height: 44px; box-sizing: border-box; font-size: 0.95rem; }
 .costos-filtros .selector.filtro { width: 15rem; }
-/* S-89: sin resultados con filtros activos: el aviso y "Limpiar filtros". */
+/* S-90: sin resultados con filtros activos: el aviso y "Limpiar filtros". */
 .costos-vacio { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .costos-vacio p { margin: 0; }
 select.costos-select {

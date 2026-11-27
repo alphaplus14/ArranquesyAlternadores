@@ -13,7 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
 /**
- * S-88 (RF-17, RF-18, RF-29): consultas de solo lectura del módulo contable. Historial de pagos de
+ * S-89 (RF-17, RF-18, RF-29): consultas de solo lectura del módulo contable. Historial de pagos de
  * un proveedor y de abonos de un cliente (vigentes, anulados o todos) y saldo del cliente con el
  * mismo contrato que el del proveedor. No escribe ni cambia cálculos: los saldos salen de
  * CarteraService / Antiguedad (S-30, S-32, S-73/S-74, S-79).

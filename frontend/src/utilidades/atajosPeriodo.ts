@@ -1,6 +1,6 @@
 import { hoyEnBogota } from './periodos'
 
-/** S-88: atajos de período de las pantallas contables. */
+/** S-89: atajos de período de las pantallas contables. */
 export type AtajoPeriodo = 'hoy' | 'este_mes' | 'mes_anterior' | 'ultimos_90' | 'este_anio' | 'personalizado'
 
 export const ATAJOS: { valor: Exclude<AtajoPeriodo, 'personalizado'>; texto: string }[] = [

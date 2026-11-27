@@ -10,7 +10,7 @@ import { useFiltrosUrl } from '../../hooks/useFiltrosUrl'
 import '../../componentes/cartera.css'
 
 /**
- * RF-18 (5) y S-88: estado de cuenta de un cliente o proveedor por período, con saldo anterior y
+ * RF-18 (5) y S-89: estado de cuenta de un cliente o proveedor por período, con saldo anterior y
  * corrido. El tipo de movimiento y la búsqueda solo ocultan filas: el saldo corrido y los totales del
  * período incluyen todos los movimientos. Filtros en la URL con prefijo `ec_` (convive con los de la
  * cuenta). Por defecto, los últimos 90 días.

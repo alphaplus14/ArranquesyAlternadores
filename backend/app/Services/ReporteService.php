@@ -81,7 +81,7 @@ class ReporteService
      */
     public function compras(CarbonInterface $desde, CarbonInterface $hasta, ?int $proveedorId, array $filtros = []): array
     {
-        // S-88: forma de pago, tipo de documento y número (en la consulta, por índices de ingresos).
+        // S-89: forma de pago, tipo de documento y número (en la consulta, por índices de ingresos).
         $q = self::normalizar($filtros['q'] ?? '');
         $ingresos = $this->cartera->ingresosQueCuentan($proveedorId ? [$proveedorId] : null, Carbon::now())
             ->join('proveedores', 'proveedores.id', '=', 'ingresos.proveedor_id')
@@ -130,7 +130,7 @@ class ReporteService
     public function ventasCredito(CarbonInterface $desde, CarbonInterface $hasta, ?int $clienteId, array $filtros = []): array
     {
         $rango = [Carbon::instance($desde)->startOfDay(), Carbon::instance($hasta)->endOfDay()];
-        // S-88: vigentes (por defecto, como antes), anuladas o todas. Una venta con ítems está anulada
+        // S-89: vigentes (por defecto, como antes), anuladas o todas. Una venta con ítems está anulada
         // si todos sus ítems tienen reverso; una de solo valor, si tiene reverso (S-73).
         $estado = $filtros['estado'] ?? 'vigentes';
 
@@ -212,7 +212,7 @@ class ReporteService
             ];
         });
 
-        // S-88: tipo de documento. Factura = de solo valor "factura" o con ítems y número de factura de
+        // S-89: tipo de documento. Factura = de solo valor "factura" o con ítems y número de factura de
         // Contapyme; remisión = de solo valor "remisión" (las ventas con ítems no llevan ese tipo).
         $tipo = $filtros['tipo'] ?? null;
         if ($tipo !== null) {
@@ -247,7 +247,7 @@ class ReporteService
     }
 
     /**
-     * S-88: filtros de Cuentas por pagar y Cartera de clientes sobre la colección ya agrupada por
+     * S-89: filtros de Cuentas por pagar y Cartera de clientes sobre la colección ya agrupada por
      * titular (sin recalcular por fila): texto (nombre sin tildes ni mayúsculas; NIT o documento sin
      * puntos, guiones ni espacios), estado del vencido, antigüedad mínima, saldo a favor y orden.
      *
@@ -310,7 +310,7 @@ class ReporteService
         return $totales;
     }
 
-    /** S-88: todas las palabras de la búsqueda aparecen en el texto (en cualquier orden). */
+    /** S-89: todas las palabras de la búsqueda aparecen en el texto (en cualquier orden). */
     public static function contieneTodas(string $texto, string $busqueda): bool
     {
         foreach (preg_split('/\s+/', $busqueda) ?: [] as $palabra) {
@@ -322,7 +322,7 @@ class ReporteService
         return true;
     }
 
-    /** S-88: minúsculas y sin tildes, para buscar sin distinguir. */
+    /** S-89: minúsculas y sin tildes, para buscar sin distinguir. */
     public static function normalizar(?string $texto): string
     {
         return mb_strtolower(trim(Str::ascii((string) $texto)));
@@ -386,7 +386,7 @@ class ReporteService
     }
 
     /**
-     * S-88: estado de cuenta de un cliente para el contable, con el formato del de proveedores. El
+     * S-89: estado de cuenta de un cliente para el contable, con el formato del de proveedores. El
      * cálculo es el de la cartera (CarteraService::estadoCuenta, S-30 a S-32 y S-73/S-74): aquí solo se
      * adapta la forma (detalle, cargo, abono, saldo corrido, saldo anterior y totales del período).
      */
@@ -413,7 +413,7 @@ class ReporteService
     }
 
     /**
-     * S-88: el filtro de tipo (cargos o abonos/pagos) y la búsqueda solo OCULTAN filas: el saldo
+     * S-89: el filtro de tipo (cargos o abonos/pagos) y la búsqueda solo OCULTAN filas: el saldo
      * anterior, el saldo corrido de cada fila y los totales del período se calculan con todos los
      * movimientos. `movimientos_periodo` es M en "Mostrando N de M".
      */
@@ -464,7 +464,7 @@ class ReporteService
                 'dias' => (int) Carbon::parse($r->fecha)->diffInDays($hoy, false),
                 'factura_borrador' => $r->factura_id ? ['id' => (int) $r->factura_id, 'numero_documento' => $r->factura] : null,
             ]);
-        // S-88: antigüedad (más de 30, 60 o 90 días desde la fecha de la remisión).
+        // S-89: antigüedad (más de 30, 60 o 90 días desde la fecha de la remisión).
         if ($masDeDias !== null) {
             $filas = $filas->filter(fn ($f) => $f['dias'] > $masDeDias)->values();
         }

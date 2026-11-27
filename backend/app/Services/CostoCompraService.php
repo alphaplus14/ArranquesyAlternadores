@@ -259,7 +259,7 @@ class CostoCompraService
     }
 
     /**
-     * S-89: lo que hay para filtrar en el historial de un producto, SIN aplicar los filtros: compras
+     * S-90: lo que hay para filtrar en el historial de un producto, SIN aplicar los filtros: compras
      * confirmadas (sin la remisión cubierta) y los proveedores distintos de esas compras. Dos consultas
      * agregadas, sin recorrer filas. La pantalla oculta los filtros que no tienen nada que acotar.
      *

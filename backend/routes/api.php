@@ -165,13 +165,13 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/reportes/cuentas-por-pagar', [ReporteController::class, 'cuentasPorPagar']);
             Route::get('/reportes/remisiones-pendientes', [ReporteController::class, 'remisionesPendientes']);
             Route::get('/reportes/diferencias-remision', [ReporteController::class, 'diferenciasRemision']);
-            // S-88: el del cliente tenía la misma URI que el de Cartera (admin y mostrador), que la tapaba
+            // S-89: el del cliente tenía la misma URI que el de Cartera (admin y mostrador), que la tapaba
             // y dejaba al contable en 403; va bajo /reportes con el formato del de proveedores.
             Route::get('/reportes/clientes/{cliente}/estado-cuenta', [ReporteController::class, 'estadoCuentaCliente']);
             Route::get('/proveedores/{proveedor}/estado-cuenta', [ReporteController::class, 'estadoCuentaProveedor']);
         });
 
-        // S-88: consultas de solo lectura (historial de pagos y abonos; saldo del cliente).
+        // S-89: consultas de solo lectura (historial de pagos y abonos; saldo del cliente).
         Route::middleware('medir:800')->group(function () {
             Route::get('/proveedores/{proveedor}/pagos', [ConsultaContableController::class, 'pagosProveedor']);
             Route::get('/clientes/{cliente}/abonos', [ConsultaContableController::class, 'abonosCliente']);

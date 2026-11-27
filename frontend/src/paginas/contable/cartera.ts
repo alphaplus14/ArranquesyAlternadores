@@ -7,7 +7,7 @@ export function invalidarCartera(qc: QueryClient) {
   }
 }
 
-/** S-88: la lista (con sus filtros) a la que vuelve la miga de una cuenta. */
+/** S-89: la lista (con sus filtros) a la que vuelve la miga de una cuenta. */
 export function guardarVolver(detalle: string, url: string) {
   try { sessionStorage.setItem(`volver:${detalle}`, url) } catch { /* sin almacenamiento: la miga va a la lista sin filtros */ }
 }

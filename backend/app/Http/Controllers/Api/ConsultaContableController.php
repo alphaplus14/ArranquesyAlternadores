@@ -10,7 +10,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
- * S-88 (RF-17, RF-18, RF-29): consultas del módulo contable, solo lectura y solo en pantalla.
+ * S-89 (RF-17, RF-18, RF-29): consultas del módulo contable, solo lectura y solo en pantalla.
  * Grupo `rol:contable` (el admin pasa); mostrador y logística, 403. Sin rutas de escritura.
  */
 class ConsultaContableController extends Controller

@@ -86,7 +86,7 @@ export default function Costos() {
   const pagina = historial?.meta?.current_page ?? historial?.current_page ?? 1
   // S-80: los detalles abiertos se cierran al cambiar filtros o página (la tabla se monta de nuevo).
   const claveTabla = [referenciaId, universalId, proveedorId, categoriaId, desde, hasta, q, pagina].join('|')
-  // S-89: con un producto, cada filtro se muestra solo si tiene algo que acotar (sobre todas sus
+  // S-90: con un producto, cada filtro se muestra solo si tiene algo que acotar (sobre todas sus
   // compras, no la página) o si está activo: un filtro activo nunca se oculta.
   const opciones = vigente?.opciones_filtro
   const proveedoresProducto = opciones?.proveedores ?? []
@@ -142,7 +142,7 @@ export default function Costos() {
             </div>
           )}
           {verProveedor && hay && (
-            // S-89: con un producto, solo los proveedores de sus compras (no todo el catálogo).
+            // S-90: con un producto, solo los proveedores de sus compras (no todo el catálogo).
             <label className="costos-campo">
               <span className="costos-campo-etiqueta">Proveedor</span>
               <select className="costos-select" value={proveedorId} onChange={(e) => elegir({ proveedor: e.target.value || null, page: null })}>

@@ -828,7 +828,7 @@ class CarteraService
                 'aplicado' => $aplicado[(int) $v->id] ?? '0',
                 // S-73: "Factura N.º X" en una venta de solo valor; null en las de ítems.
                 'documento' => $v->tipo_documento ? TipoDocumentoVenta::from($v->tipo_documento)->descripcion($v->factura_contapyme) : null,
-                // S-88: tipo (solo valor) y número de factura de Contapyme, para la cuenta del cliente.
+                // S-89: tipo (solo valor) y número de factura de Contapyme, para la cuenta del cliente.
                 'tipo_documento' => $v->tipo_documento,
                 'factura_contapyme' => $v->factura_contapyme,
             ])->values());

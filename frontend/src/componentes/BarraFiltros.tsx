@@ -5,7 +5,7 @@ import { ATAJOS, atajoDe, rangoAtajo, type AtajoPeriodo } from '../utilidades/at
 import Icono from './Icono'
 
 /**
- * S-88: barra de filtros común del módulo contable. Buscador con lupa y limpiar (retardo de 300 ms),
+ * S-89: barra de filtros común del módulo contable. Buscador con lupa y limpiar (retardo de 300 ms),
  * atajos de período (con Desde/Hasta en "Personalizado"), los controles propios de la pantalla
  * (`children`), el contador de filtros activos y "Limpiar filtros" (solo si hay alguno). Se envuelve
  * en varias líneas; campos de 44 px; etiquetas visibles.
