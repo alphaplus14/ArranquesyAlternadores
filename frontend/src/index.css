@@ -1021,13 +1021,24 @@ button.segmento {
 }
 button.segmento:hover { color: var(--texto); }
 button.segmento.elegido { background: #fff; border-color: var(--primario); color: var(--primario); font-weight: 700; box-shadow: var(--sombra-barra); }
-/* Pestañas de Movimientos: al tamaño del texto, con icono, sin estirarse al ancho del panel. */
-.pestanas-movimiento .segmentado { width: max-content; max-width: 100%; flex-wrap: wrap; }
-.pestanas-movimiento button.segmento {
-  flex: 0 1 auto; min-height: 32px; padding: 3px 9px;
-  font-size: 0.8125rem; line-height: 1.2; white-space: nowrap; gap: 5px;
+/* S-92: variante a todo el ancho (ControlSegmentado ancho="completo"), p. ej. las secciones de Movimientos.
+   Opciones iguales; el texto se parte entre palabras (nunca dentro de una) y el icono no se separa. */
+.campo-segmentado.completo { container-type: inline-size; }
+.campo-segmentado.completo .segmentado { width: 100%; box-sizing: border-box; }
+.campo-segmentado.completo button.segmento {
+  flex: 1 1 0; min-width: 0; min-height: 44px; gap: 8px;
+  justify-content: center; text-align: center; line-height: 1.2;
+  white-space: normal; overflow-wrap: normal; word-break: normal;
 }
-.pestanas-movimiento button.segmento svg { width: 15px; height: 15px; flex: none; }
+.campo-segmentado.completo button.segmento svg { flex: none; }
+/* Angosto (móvil, o 768 px con letra muy grande): las opciones bajan a otra fila, al ancho de su
+   texto y sin partirlo, en vez de cortarse. En em: el umbral crece con el tamaño de letra (S-70).
+   Cada opción necesita ~6,2em de texto (la palabra más larga, en negrita) + ~66px fijos (✓, icono,
+   espacios y relleno): con 5 opciones, 31em + 346px. */
+@container (max-width: calc(31em + 346px)) {
+  .campo-segmentado.completo .segmentado { flex-wrap: wrap; }
+  .campo-segmentado.completo button.segmento { flex: 1 1 auto; white-space: nowrap; }
+}
 
 @media (max-width: 639px) {
   .encabezado-con-accion { flex-direction: column; align-items: stretch; }

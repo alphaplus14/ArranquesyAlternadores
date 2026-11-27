@@ -9,8 +9,9 @@ export interface OpcionSegmento<T extends string> { valor: T; texto: ReactNode; 
  * Las flechas (y Inicio / Fin) cambian la opción y el foco se queda en el control. La opción
  * elegida se distingue también por la marca ✓ y el borde, no solo por el color.
  * Enter envía el formulario que lo contiene, si su botón de envío está habilitado.
+ * S-92: `ancho="completo"` ocupa todo el ancho con opciones iguales (pestañas largas de una tarjeta).
  */
-export default function ControlSegmentado<T extends string>({ id, etiqueta, opciones, valor, onCambio, clase }: {
+export default function ControlSegmentado<T extends string>({ id, etiqueta, opciones, valor, onCambio, clase, ancho }: {
   id: string
   etiqueta: string
   opciones: OpcionSegmento<T>[]
@@ -18,6 +19,8 @@ export default function ControlSegmentado<T extends string>({ id, etiqueta, opci
   onCambio: (valor: T) => void
   /** Clase extra del contenedor (p. ej. para achicar unas pestañas sin tocar el resto). */
   clase?: string
+  /** S-92: 'completo' = todo el ancho del contenedor, opciones del mismo ancho y textos que se parten sin cortarse. */
+  ancho?: 'completo'
 }) {
   const botones = useRef<Array<HTMLButtonElement | null>>([])
 
@@ -45,7 +48,7 @@ export default function ControlSegmentado<T extends string>({ id, etiqueta, opci
   }
 
   return (
-    <div className={clase ? `campo-segmentado ${clase}` : 'campo-segmentado'}>
+    <div className={['campo-segmentado', ancho === 'completo' && 'completo', clase].filter(Boolean).join(' ')}>
       <span id={`${id}-etiqueta`} className="etiqueta-campo">{etiqueta}</span>
       <div role="radiogroup" aria-labelledby={`${id}-etiqueta`} className="segmentado">
         {opciones.map((o, i) => {
