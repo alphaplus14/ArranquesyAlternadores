@@ -23,7 +23,7 @@ it('RF-11: cambiar precio y descripción de una referencia deja el antes, el des
     expect($historial)->toHaveCount(2)
         ->and($historial['precio_venta']['valor_anterior'])->toBe('85000.00')
         ->and($historial['precio_venta']['valor_nuevo'])->toBe('99000.00')
-        ->and($historial['descripcion']['valor_anterior'])->toBe('Regulador IM204')
+        ->and($historial['descripcion']['valor_anterior'])->toBe('REGULADOR IM204')
         ->and($historial['descripcion']['valor_nuevo'])->toBe('REGULADOR IM204 12V') // S-85: descripción en mayúscula
         ->and($historial['precio_venta']['usuario']['id'])->toBe($admin->id)
         ->and($historial['precio_venta']['created_at'])->not->toBeNull();

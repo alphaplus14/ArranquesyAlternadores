@@ -52,8 +52,8 @@ class MovimientoInventarioService
         return $pagina;
     }
 
-    /** @return list<int>|null null = sin búsqueda por texto */
-    private function referenciasDeBusqueda(?string $q): ?array
+    /** Subconsulta de ids (no se traen a PHP); null = sin búsqueda por texto. */
+    private function referenciasDeBusqueda(?string $q): ?\Illuminate\Database\Eloquent\Builder
     {
         if ($q === null || $q === '') {
             return null;
@@ -62,8 +62,7 @@ class MovimientoInventarioService
 
         return Referencia::query()
             ->where(fn ($w) => $w->where('codigo_referencia', 'like', $like)->orWhere('codigo_fabricante', 'like', $like))
-            ->pluck('id')
-            ->all();
+            ->select('id');
     }
 
     /** Deja en `etiqueta_origen` el texto legible de cada movimiento. */

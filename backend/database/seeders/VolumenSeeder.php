@@ -130,7 +130,7 @@ class VolumenSeeder extends Seeder
                 'proveedor_id' => $proveedor->id,
                 'categoria_id' => $cat->id,
                 'codigo_universal_id' => $universalId,
-                'descripcion' => $desc,
+                'descripcion' => mb_strtoupper($desc), // S-85
                 'precio_venta' => round($base * $f->randomFloat(2, 0.8, 1.4), -2),
                 'iva_venta_porcentaje' => $f->boolean(90) ? 19 : 0,
             ]));

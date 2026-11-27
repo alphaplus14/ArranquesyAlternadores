@@ -296,7 +296,7 @@ export default function Productos() {
     onSuccess: ({ data, codigo, metodo }) => {
       const lista = comoLista(data.referencias)
       // Primero la que coincide exacto (referencia o código de barras, S-25); si no, la primera.
-      const referencia = data.unidad?.referencia ?? lista.find((r) => r.codigo_fabricante === codigo || r.codigo_referencia === codigo) ?? lista[0]
+      const referencia = data.unidad?.referencia ?? lista.find((r) => r.codigo_fabricante === codigo || r.codigo_referencia.toUpperCase() === codigo.toUpperCase()) ?? lista[0]
       if (!referencia) {
         setResaltadas([])
         lectorRef.current?.select()
@@ -307,7 +307,7 @@ export default function Productos() {
       // S-25: si el código es un código de barras, puede estar en referencias de varios proveedores:
       // se filtra por el código leído (la búsqueda lo encuentra en todos) y se resaltan todas.
       // S-82: si la referencia es de un universal, el listado trae su grupo y lo despliega solo.
-      const porBarras = data.unidad ? [] : lista.filter((r) => r.codigo_fabricante === codigo || r.codigo_referencia === codigo)
+      const porBarras = data.unidad ? [] : lista.filter((r) => r.codigo_fabricante === codigo || r.codigo_referencia.toUpperCase() === codigo.toUpperCase())
       const ids = porBarras.length > 1 ? porBarras.map((r) => r.id) : [referencia.id]
       const filtro = porBarras.length > 1 || referencia.codigo_fabricante === codigo ? codigo : referencia.codigo_referencia
       setResaltadas(ids)
@@ -332,7 +332,7 @@ export default function Productos() {
         detalle: fuera ?? `${origen ? `${origen} · ` : ''}existencia ${referencia.existencia}`,
       })
       // El código leído no se repite si es el mismo de la referencia (p. ej. el de la caja).
-      const que = leido === referencia.codigo_referencia ? leido : `${leido} → ${referencia.codigo_referencia}`
+      const que = leido.toUpperCase() === referencia.codigo_referencia.toUpperCase() ? leido : `${leido} → ${referencia.codigo_referencia}`
       const universal = referencia.codigo_universal ? `universal ${referencia.codigo_universal.codigo}` : null
       const partes = [que, referencia.descripcion, referencia.proveedor?.nombre, calidad, universal, `existencia ${referencia.existencia}`]
       setAviso({
@@ -435,7 +435,7 @@ export default function Productos() {
         <strong>{r.codigo_referencia}</strong>
         {r.activo === false && <span className="chip inactiva">Inactiva</span>}
         {r.calidad && <> <ChipCalidad calidad={r.calidad} /></>}
-        {r.codigo_fabricante && r.codigo_fabricante !== r.codigo_referencia && (
+        {r.codigo_fabricante && r.codigo_fabricante.toUpperCase() !== r.codigo_referencia.toUpperCase() && (
           <small className="codigo-barras" aria-label={`Código de barras ${r.codigo_fabricante}`}>▮ {r.codigo_fabricante}</small>
         )}
       </div>

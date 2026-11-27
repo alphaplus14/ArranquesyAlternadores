@@ -56,7 +56,7 @@ class IngresoController extends Controller
     }
 
     /**
-     * S-85: q = numero de documento (empieza por), nombre del proveedor (contiene) o NIT (comparado sin
+     * S-87: q = numero de documento (empieza por), nombre del proveedor (contiene) o NIT (comparado sin
      * puntos, guiones ni espacios; proveedores.nit se guarda tal como se digita). Sin N+1: una subconsulta.
      */
     private function buscar(Builder $q, string $texto): Builder
