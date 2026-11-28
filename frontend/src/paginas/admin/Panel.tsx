@@ -493,7 +493,7 @@ function BloqueControl({ c }: { c: PanelControl }) {
           <ul className="lista">
             {otros.map((a) => (
               <li key={a.tipo + a.motivo}>
-                {a.tipo === 'alta' ? 'Alta' : 'Reintegro'} por {NOMBRE_MOTIVO[a.motivo as MotivoAjuste] ?? a.motivo}: {unidades(a.unidades)}
+                {a.tipo === 'alta' ? 'Entrada por ajuste' : 'Reintegro'} por {NOMBRE_MOTIVO[a.motivo as MotivoAjuste] ?? a.motivo}: {unidades(a.unidades)}
                 {a.unidades_sin_costo > 0 ? ` (${a.unidades_sin_costo} sin costo)` : ` · ${pesos(a.valor_costo)}`}
               </li>
             ))}

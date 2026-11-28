@@ -1,10 +1,10 @@
 /* RF-21 (S-39, S-44): historial de ajustes de inventario. Solo presentación. */
-.historial-resumen { margin: 0; color: var(--texto-suave, #5f6368); font-size: 0.9rem; }
+.historial-resumen { margin: 0; color: var(--suave); font-size: 0.9rem; }
 .historial-ajustes tbody tr { border-left: 4px solid transparent; }
 .historial-ajustes tbody tr.fila-salida { border-left-color: var(--peligro); }
 .historial-ajustes tbody tr.fila-entrada { border-left-color: var(--ok); }
-.historial-ajustes tbody tr.fila-reintegro { border-left-color: var(--ok); }
+.historial-ajustes tbody tr.fila-reintegro { border-left-color: var(--aviso); }
 .historial-ajustes .motivo-ajuste { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
-.historial-ajustes .cantidad-ajuste { display: inline-block; min-width: 2.2em; padding: 2px 8px; border-radius: 999px; background: var(--fondo-suave, rgba(0, 0, 0, 0.06)); font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; }
+.historial-ajustes .cantidad-ajuste { display: inline-block; min-width: 2.2em; padding: 2px 8px; border-radius: 999px; background: var(--suave-fondo); font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; }
 .historial-ajustes details.unidades-desplegable > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; gap: 8px; }
 .historial-ajustes .fecha-ajuste { white-space: nowrap; }
