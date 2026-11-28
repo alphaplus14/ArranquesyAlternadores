@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeError } from '../../api/cliente'
 import { NOMBRE_MEDIO, type EstadoCuenta, type DetalleCartera, type EstadoFiltroVenta, type MovimientoCuenta, type VentaCartera } from '../../api/tipos'
@@ -76,6 +76,9 @@ export default function CarteraCliente() {
   // Filtros de "Ventas a crédito" en la URL (?q=&estado=&periodo=; desde/hasta si es personalizado)
   // para que recargar o compartir el enlace conserve la vista.
   const [params, setParams] = useSearchParams()
+  // Filtros de la lista de Cartera de la que se vino (q, saldo, vencidos, corte, desde, hasta).
+  const estado = useLocation().state as { lista?: string } | null
+  const listaOrigen = typeof estado?.lista === 'string' ? estado.lista : ''
   const [q, setQ] = useState(() => params.get('q') ?? '')
   const termino = useDebounce(q.trim())
   const crudoEstado = params.get('estado')
@@ -171,7 +174,7 @@ export default function CarteraCliente() {
     <div className="pila">
       <div className="pagina-encabezado encabezado-con-accion">
         <div>
-          <p className="migas"><Link to="/cartera">Cartera</Link> ›</p>
+          <p className="migas"><Link to={{ pathname: '/cartera', search: listaOrigen }}>Cartera</Link> ›</p>
           <h1>{c.nombre}{!c.activo && <span className="chip inactiva"> Inactivo</span>}</h1>
           <p>{[c.documento && `Doc. ${c.documento}`, c.telefono && `Tel. ${c.telefono}`, `Plazo ${c.plazo_dias} días`].filter(Boolean).join(' · ')}</p>
         </div>

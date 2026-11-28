@@ -474,6 +474,8 @@ export const RANGOS: { clave: RangoAntiguedad; texto: string }[] = [
 export interface ResumenCartera {
   cliente: { id: number; nombre: string; documento: string | null; telefono: string | null; plazo_dias: number; activo: boolean } | null
   ventas: string
+  /** RF-15: ventas a crédito cerradas dentro de desde/hasta (0.00 si no se pidió período). */
+  ventas_periodo?: string
   abonado: string
   saldo: string
   saldo_a_favor: boolean
@@ -494,8 +496,12 @@ export interface ListaCartera extends Pagina<ResumenCartera> {
     clientes_con_saldo: number
     clientes_vencidos: number
     antiguedad: Record<RangoAntiguedad, string>
+    /** RF-15: solo con desde/hasta: suma de las ventas a crédito cerradas en el período. */
+    ventas_periodo_total?: string
   }
   corte: string
+  desde?: string | null
+  hasta?: string | null
 }
 
 export interface Abono {

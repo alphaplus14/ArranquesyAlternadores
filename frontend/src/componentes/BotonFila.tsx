@@ -14,9 +14,11 @@ const TEXTO: Record<VarianteBotonFila, string> = { ver: 'Ver', abrir: 'Abrir', p
  * Alto: 36 px (32 px con densidad compacta), 44 px en táctil o pantalla angosta; `compacto`, 28 px.
  * S-79: `anular` es secundario con texto y borde en el color de peligro y fondo suave.
  */
-export default function BotonFila({ variante, to, onClick, etiqueta, descripcion, disabled = false, title, compacto = false, soloIcono = false, onMouseEnter, onFocus }: {
+export default function BotonFila({ variante, to, state, onClick, etiqueta, descripcion, disabled = false, title, compacto = false, soloIcono = false, onMouseEnter, onFocus }: {
   variante: VarianteBotonFila
   to?: string
+  /** Estado de navegación del <Link> (p. ej. los filtros de la lista de origen, para la miga de vuelta). */
+  state?: unknown
   onClick?: (e: MouseEvent<HTMLButtonElement>) => void
   etiqueta?: string
   descripcion: string
@@ -43,7 +45,7 @@ export default function BotonFila({ variante, to, onClick, etiqueta, descripcion
   const titulo = title ?? (soloIcono ? (etiqueta ?? TEXTO[variante]) : undefined)
 
   if (to && !disabled) {
-    return <Link className={clase} to={to} aria-label={descripcion} title={titulo} onMouseEnter={onMouseEnter} onFocus={onFocus}>{contenido}</Link>
+    return <Link className={clase} to={to} state={state} aria-label={descripcion} title={titulo} onMouseEnter={onMouseEnter} onFocus={onFocus}>{contenido}</Link>
   }
 
   return (

@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import BotonFila from '../../componentes/BotonFila'
 import { useQueryClient } from '@tanstack/react-query'
 import { api } from '../../api/cliente'
@@ -24,21 +25,24 @@ const CERO = { al_dia: '0.00', d1_30: '0.00', d31_60: '0.00', d61_90: '0.00', ma
  */
 export default function Cartera() {
   const qc = useQueryClient()
+  const { search: filtrosLista } = useLocation() // la miga de la ficha vuelve con estos filtros
   // S-89: filtros en la URL (se conservan al entrar a un cliente y volver).
-  const { filtros: f, fijar, activos, limpiar } = useFiltrosUrl({ q: '', saldo: '1', vencidos: '0', corte: '' })
+  const { filtros: f, fijar, activos, limpiar } = useFiltrosUrl({ q: '', saldo: '1', vencidos: '0', corte: '', desde: '', hasta: '' })
   const q = f.q
   const soloConSaldo = f.saldo === '1'
   const soloVencidos = f.vencidos === '1'
   const corte = f.corte
+  const { desde, hasta } = f // RF-15: ventas a crédito cerradas dentro del período
   const [abonando, setAbonando] = useState<ResumenCartera | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
   const disparador = useRef<HTMLButtonElement | null>(null)
+  const enPeriodo = Boolean(desde || hasta)
   const termino = q.trim() // el buscador de BarraFiltros ya espera 300 ms
 
-  const filtros = { termino, soloConSaldo, soloVencidos, corte }
+  const filtros = { termino, soloConSaldo, soloVencidos, corte, desde, hasta }
   const { filas, resultado, info, irA, cargando } = useListaPaginada<ResumenCartera>({
     clave: ['cartera', filtros],
-    filtros: { q, soloConSaldo, soloVencidos, corte },
+    filtros: { q, soloConSaldo, soloVencidos, corte, desde, hasta },
     porPagina: { defecto: 25 }, // S-70
     traer: async (page, porPagina) => (await api.get<ListaCartera>('/cartera', {
       params: {
@@ -46,6 +50,8 @@ export default function Cartera() {
         solo_con_saldo: soloConSaldo ? 1 : 0,
         solo_vencidos: soloVencidos ? 1 : 0,
         corte: corte || undefined,
+        desde: desde || undefined,
+        hasta: hasta || undefined,
         page,
         por_pagina: porPagina,
       },
@@ -78,12 +84,14 @@ export default function Cartera() {
         <Medida etiqueta="Cartera total" valor={t ? pesos(t.cartera_total) : '—'} pie={t && Number(t.saldo_a_favor) > 0 ? `${pesos(t.saldo_a_favor)} a favor de clientes` : undefined} tono="azul" icono="billetera" />
         <Medida etiqueta="Vencido" valor={t ? pesos(t.vencido_total) : '—'} pie={t ? `${t.clientes_vencidos} cliente(s)` : undefined} tono="rojo" icono="agotados" />
         <Medida etiqueta="Clientes con saldo" valor={t ? t.clientes_con_saldo : '—'} tono="amarillo" icono="persona" />
+        {enPeriodo && <Medida etiqueta="Ventas del período" valor={t?.ventas_periodo_total ? pesos(t.ventas_periodo_total) : '—'} pie="a crédito, cerradas en el rango" tono="azul" icono="billetera" />}
         <Medida etiqueta="Corte" valor={fechaCorta(lista?.corte ?? hoyEnBogota())} pie={corte ? 'fecha elegida' : 'hoy'} tono="verde" icono="auditoria" />
       </Resumen>
 
       <section className="tarjeta-pagina">
         <BarraFiltros
           busqueda={{ valor: q, onCambio: (v) => fijar({ q: v }), placeholder: 'Cliente, documento, venta o factura', etiqueta: 'Buscar por cliente, documento, número de venta o factura de Contapyme' }}
+          periodo={{ desde, hasta, onCambio: (d, h) => fijar({ desde: d, hasta: h }) }}
           activos={activos}
           onLimpiar={limpiar}
         >
@@ -102,7 +110,7 @@ export default function Cartera() {
         ) : (
           <table className={cargando ? 'tabla-apilable tabla-cartera actualizando' : 'tabla-apilable tabla-cartera'}>
             <caption className="solo-lector">Clientes con su saldo, mayor saldo primero</caption>
-            <thead><tr><th>Cliente</th><th className="col-numero">Saldo</th><th className="col-numero">Vencido</th><th>Próximo vencimiento</th><th className="boton-fila-columna boton-fila-doble">Acciones</th></tr></thead>
+            <thead><tr><th>Cliente</th>{enPeriodo && <th className="col-numero">Ventas del período</th>}<th className="col-numero">Saldo</th><th className="col-numero">Vencido</th><th>Próximo vencimiento</th><th className="boton-fila-columna boton-fila-doble">Acciones</th></tr></thead>
             <tbody>
               {filas.map((f) => f.cliente && (
                 <tr key={f.cliente.id}>
@@ -116,6 +124,7 @@ export default function Cartera() {
                       )}
                     </span>
                   </td>
+                  {enPeriodo && <td data-etiqueta="Ventas del período" className="col-numero">{pesos(f.ventas_periodo ?? '0')}</td>}
                   <td data-etiqueta="Saldo" className="col-numero">
                     {f.saldo_a_favor ? <span className="chip saldo-favor">{textoSaldo(f.saldo)}</span> : <strong>{pesos(f.saldo)}</strong>}
                   </td>
@@ -125,6 +134,7 @@ export default function Cartera() {
                     <div className="acciones-fila boton-fila-acciones">
                       <BotonFila
                         variante="ver"
+                        state={{ lista: filtrosLista }}
                         to={f.coincidencia ? `/cartera/${f.cliente.id}?q=${encodeURIComponent(`#${f.coincidencia.venta_id}`)}` : `/cartera/${f.cliente.id}`}
                         descripcion={f.coincidencia ? `Ver la venta #${f.coincidencia.venta_id} de ${f.cliente.nombre}` : `Ver la cartera de ${f.cliente.nombre}`}
                       />

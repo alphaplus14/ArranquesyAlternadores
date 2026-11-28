@@ -112,3 +112,24 @@ it('S-88: el dueño solo aplica a una billetera, y quien no es admin no lo crea'
     $this->getJson('/api/propietarios')->assertForbidden();
     $this->getJson('/api/cuentas-pago')->assertForbidden();
 });
+
+it('S-88: el cierre del día del mostrador no trae dueños ni saldos de billeteras; el admin sí', function () {
+    actuarComo(Rol::Admin);
+    $dayana = $this->postJson('/api/propietarios', ['nombre' => 'Dayana'])->assertCreated()->json('id');
+    $nequi = $this->postJson('/api/cuentas-pago', ['nombre' => 'Nequi Dayana', 'tipo' => 'billetera', 'propietario_id' => $dayana])->assertCreated()->json('id');
+    venderEnCuenta(CuentaPago::findOrFail($nequi));
+
+    actuarComo(Rol::Mostrador);
+    $r = $this->getJson('/api/caja/dias/2026-11-20')->assertOk();
+    expect($r->json('resumen'))->not->toHaveKey('billeteras');
+    $fila = collect($r->json('resumen.cuentas'))->firstWhere('nombre', 'Nequi Dayana');
+    expect($fila['neto'])->toBe('50000.00')
+        ->and($fila)->not->toHaveKeys(['propietario', 'propietario_id', 'saldo', 'saldo_anterior']);
+
+    actuarComo(Rol::Admin);
+    $r = $this->getJson('/api/caja/dias/2026-11-20')->assertOk();
+    $fila = collect($r->json('resumen.cuentas'))->firstWhere('nombre', 'Nequi Dayana');
+    expect($r->json('resumen.billeteras'))->not->toBeEmpty()
+        ->and($fila['propietario'])->toBe('Dayana')
+        ->and($fila['saldo'])->toBe('50000.00');
+});

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\Rol;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\CierreCajaResource;
 use App\Http\Resources\MovimientoCajaResource;
@@ -59,11 +60,15 @@ class CajaController extends Controller
             ->orderByDesc('id')
             ->get();
         $vigente = $cierres->first(fn (CierreCaja $c) => $c->reapertura === null);
+        $resumen = $this->caja->resumenDia($fecha);
+        if (request()->user()?->rol === Rol::Mostrador) { // S-88: sin dueños ni saldos de billeteras
+            $resumen = $this->caja->sinDuenosNiSaldos($resumen);
+        }
 
         return response()->json([
             'fecha' => $fecha,
             'hoy' => RangoFechas::hoy(),
-            'resumen' => $this->caja->resumenDia($fecha),
+            'resumen' => $resumen,
             'movimientos' => MovimientoCajaResource::collection($movimientos),
             'recaudos' => RecaudoDocumentoResource::collection($recaudos),
             'movimientos_empleado' => MovimientoEmpleadoResource::collection($empleados),

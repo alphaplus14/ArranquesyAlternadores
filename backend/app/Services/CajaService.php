@@ -660,6 +660,24 @@ class CajaService
     }
 
     /**
+     * S-88: el mostrador no ve de quién es cada billetera ni su saldo: se quitan `billeteras` y, en cada
+     * cuenta, `propietario_id`, `propietario`, `saldo_anterior` y `saldo`. Admin y contable los reciben.
+     *
+     * @param  array<string, mixed>  $resumen
+     * @return array<string, mixed>
+     */
+    public function sinDuenosNiSaldos(array $resumen): array
+    {
+        unset($resumen['billeteras']);
+        $resumen['cuentas'] = array_map(
+            fn (array $fila) => array_diff_key($fila, array_flip(['propietario_id', 'propietario', 'saldo_anterior', 'saldo'])),
+            $resumen['cuentas'] ?? [],
+        );
+
+        return $resumen;
+    }
+
+    /**
      * @param  array<int, string>  $neto
      * @param  array<int, string>  $saldo
      * @param  array<int, string>  $anterior
