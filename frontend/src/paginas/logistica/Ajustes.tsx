@@ -118,7 +118,7 @@ export default function Ajustes() {
           <p>Solo consulta: las salidas, entradas y devoluciones las registra logística.</p>
         </div>
         <section className="panel">
-          <ControlSegmentado id="ajustes-seccion" clase="pestanas-movimiento" etiqueta="Sección" opciones={PESTANAS_CONSULTA} valor={pestana === 'producto' ? 'producto' : 'historial'} onCambio={cambiar} />
+          <ControlSegmentado id="ajustes-seccion" ancho="completo" etiqueta="Sección" opciones={PESTANAS_CONSULTA} valor={pestana === 'producto' ? 'producto' : 'historial'} onCambio={cambiar} />
           {pestana === 'producto' ? <MovimientosPorProducto /> : <Historial puedeReintegrar={false} />}
         </section>
       </div>
@@ -132,7 +132,7 @@ export default function Ajustes() {
         <p>Salidas por garantía, devolución a proveedor, daño, pérdida o faltante; entradas por inventario físico; devoluciones de clientes y reintegros. Nada se borra.</p>
       </div>
       <section className="panel">
-        <ControlSegmentado id="ajustes-seccion" clase="pestanas-movimiento" etiqueta="Sección" opciones={PESTANAS} valor={pestana} onCambio={cambiar} />
+        <ControlSegmentado id="ajustes-seccion" ancho="completo" etiqueta="Sección" opciones={PESTANAS} valor={pestana} onCambio={cambiar} />
         {pestana === 'salidas' && <Salidas lote={lote} setLote={setLote} />}
         {pestana === 'entradas' && <Entradas />}
         {pestana === 'devoluciones' && <Devoluciones onRetirar={retirarDevuelta} />}

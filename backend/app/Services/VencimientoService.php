@@ -31,7 +31,15 @@ class VencimientoService
     /**
      * @return array{filas: Collection<int, array<string, mixed>>, totales: array<string, mixed>}
      */
-    public function bandeja(CarbonInterface $hoy, int $dias, ?string $tipo = null): array
+    /**
+     * S-89: filtros opcionales sobre la bandeja ya calculada (sin recalcular por fila): estado
+     * (vencidas | por_vencer), texto (titular o documento, sin tildes ni mayúsculas), rango de
+     * vencimiento y orden (vence_asc = lo más vencido primero, pendiente_desc, titular). Los totales
+     * son los de lo filtrado.
+     *
+     * @param  array{estado?: ?string, q?: ?string, vence_desde?: ?string, vence_hasta?: ?string, orden?: ?string}  $filtros
+     */
+    public function bandeja(CarbonInterface $hoy, int $dias, ?string $tipo = null, array $filtros = []): array
     {
         $limite = Carbon::instance($hoy)->startOfDay()->addDays($dias)->toDateString();
         $filas = collect();
@@ -55,9 +63,20 @@ class VencimientoService
             ));
         }
 
-        // Vencidas primero (la de más mora arriba), luego las que vencen antes.
-        $filas = $filas->sortBy(fn ($f) => [$f['estado'] === 'vencida' ? 0 : 1, $f['estado'] === 'vencida' ? -$f['dias_vencido'] : $f['dias_para_vencer'], $f['titular']['nombre']])
-            ->values();
+        $estado = $filtros['estado'] ?? null;
+        $q = ReporteService::normalizar($filtros['q'] ?? '');
+        $filas = $filas->filter(fn ($f) => (! in_array($estado, ['vencidas', 'por_vencer'], true) || $f['estado'] === ($estado === 'vencidas' ? 'vencida' : 'por_vencer'))
+            && ($q === '' || str_contains(ReporteService::normalizar($f['titular']['nombre']), $q) || str_contains(ReporteService::normalizar($f['documento']), $q))
+            && (empty($filtros['vence_desde']) || $f['vence_el'] >= $filtros['vence_desde'])
+            && (empty($filtros['vence_hasta']) || $f['vence_el'] <= $filtros['vence_hasta']));
+
+        $filas = match ($filtros['orden'] ?? null) {
+            'pendiente_desc' => $filas->sortByDesc(fn ($f) => (float) $f['pendiente']),
+            'titular' => $filas->sortBy(fn ($f) => [ReporteService::normalizar($f['titular']['nombre']), $f['vence_el']]),
+            // Vencidas primero (la de más mora arriba), luego las que vencen antes.
+            default => $filas->sortBy(fn ($f) => [$f['estado'] === 'vencida' ? 0 : 1, $f['estado'] === 'vencida' ? -$f['dias_vencido'] : $f['dias_para_vencer'], $f['titular']['nombre']]),
+        };
+        $filas = $filas->values();
 
         return ['filas' => $filas, 'totales' => $this->totales($filas)];
     }

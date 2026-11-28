@@ -15,6 +15,7 @@ use App\Models\IngresoItem;
 use App\Models\Proveedor;
 use App\Models\Unidad;
 use App\Services\IngresoService;
+use App\Services\ListadoIngresosService;
 use App\Support\RangoFechas;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -32,48 +33,39 @@ class IngresoController extends Controller
 {
     public function __construct(private readonly IngresoService $servicio) {}
 
-    public function index(Request $request): JsonResponse
+    /** RF-04 / RF-05 (S-91): Compras paginadas en el servidor, más recientes primero. */
+    public function index(Request $request, ListadoIngresosService $listado): JsonResponse
     {
-        $request->validate(['q' => ['sometimes', 'nullable', 'string', 'min:2', 'max:60']]);
-        $busqueda = trim((string) $request->query('q', ''));
-        $busqueda = $busqueda === '' ? null : $busqueda;
+        $filtros = $this->filtrosListado($request);
 
-        $pagina = Ingreso::query()
-            ->with(['proveedor:id,nombre,asesor', 'usuario:id,name', 'confirmadoPor:id,name']) // S-29: asesor bajo el nombre
-            ->withSum('items as unidades', 'cantidad')
-            ->withCount('correcciones') // RF-28
-            ->when($request->query('proveedor_id'), fn ($q, $v) => $q->where('proveedor_id', $v))
-            ->when($request->query('estado'), fn ($q, $v) => $q->where('estado', $v))
-            ->when($request->boolean('corregidos'), fn ($q) => $q->has('correcciones'))
-            ->when($busqueda, fn ($q, $texto) => $this->buscar($q, $texto))
-            ->orderByDesc('id')
-            // S-70: filas por página del usuario (25 por defecto, tope 100).
-            ->paginate(min(max((int) $request->query('por_pagina', 25), 1), 100));
-        $pagina->getCollection()->each(fn (Ingreso $i) => $i->setAttribute('corregido', $i->correcciones_count > 0));
-
-        return response()->json($pagina);
+        // S-70: filas por página del usuario (25 por defecto); más de 100 se recorta a 100, no es 422.
+        return response()->json($listado->pagina($filtros, min(max((int) $request->query('por_pagina', 25), 1), 100)));
     }
 
-    /**
-     * S-87: q = numero de documento (empieza por), nombre del proveedor (contiene) o NIT (comparado sin
-     * puntos, guiones ni espacios; proveedores.nit se guarda tal como se digita). Sin N+1: una subconsulta.
-     */
-    private function buscar(Builder $q, string $texto): Builder
+    /** S-91: meses con documentos y su conteo, con los demás filtros (no el mes ni el rango). */
+    public function meses(Request $request, ListadoIngresosService $listado): JsonResponse
     {
-        $nit = Proveedor::normalizarNit($texto);
-        $like = fn (string $v) => addcslashes($v, '\%_');
+        return response()->json(['data' => $listado->meses($this->filtrosListado($request))]);
+    }
 
-        return $q->where(function (Builder $w) use ($texto, $nit, $like) {
-            $w->where('numero_documento', 'like', $like($texto).'%')
-                ->orWhereIn('proveedor_id', function ($sub) use ($texto, $nit, $like) {
-                    $sub->select('id')->from('proveedores')->where(function ($p) use ($texto, $nit, $like) {
-                        $p->where('nombre', 'like', '%'.$like($texto).'%');
-                        if ($nit !== '') {
-                            $p->orWhereRaw("LOWER(REPLACE(REPLACE(REPLACE(nit, '.', ''), '-', ''), ' ', '')) like ?", ['%'.$like($nit).'%']);
-                        }
-                    });
-                });
-        });
+    private function filtrosListado(Request $request): array
+    {
+        $datos = $request->validate([
+            'q' => ['sometimes', 'nullable', 'string', 'min:2', 'max:60'],
+            'por_pagina' => ['sometimes', 'integer'],
+            'page' => ['sometimes', 'integer', 'min:1'],
+            'borradores' => ['sometimes', 'boolean'],
+            'corregidos' => ['sometimes', 'boolean'],
+            'proveedor_id' => ['sometimes', 'nullable', 'integer'],
+            'estado' => ['sometimes', 'nullable', 'in:borrador,confirmado'],
+            'mes' => ['sometimes', 'nullable', 'date_format:Y-m'],
+            'desde' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
+            'hasta' => ['sometimes', 'nullable', 'date_format:Y-m-d', 'after_or_equal:desde'],
+        ]);
+        $datos['borradores'] = $request->boolean('borradores');
+        $datos['corregidos'] = $request->boolean('corregidos');
+
+        return $datos;
     }
 
     /** RF-04 / RF-05: 201 si crea el borrador; 200 si el documento ya estaba en borrador y se reabre. */

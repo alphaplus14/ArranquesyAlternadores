@@ -19,6 +19,7 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * RF-18: informes en pantalla (no se exportan). Cada informe devuelve sus filas y los totales
@@ -78,11 +79,16 @@ class ReporteService
      *
      * @return array{filas: Collection<int, array<string, mixed>>, totales: array<string, string>}
      */
-    public function compras(CarbonInterface $desde, CarbonInterface $hasta, ?int $proveedorId): array
+    public function compras(CarbonInterface $desde, CarbonInterface $hasta, ?int $proveedorId, array $filtros = []): array
     {
+        // S-89: forma de pago, tipo de documento y número (en la consulta, por índices de ingresos).
+        $q = self::normalizar($filtros['q'] ?? '');
         $ingresos = $this->cartera->ingresosQueCuentan($proveedorId ? [$proveedorId] : null, Carbon::now())
             ->join('proveedores', 'proveedores.id', '=', 'ingresos.proveedor_id')
             ->whereBetween('ingresos.fecha', [$desde->toDateString(), $hasta->toDateString()])
+            ->when($filtros['forma_pago'] ?? null, fn ($w, $v) => $w->where('ingresos.forma_pago', $v))
+            ->when($filtros['tipo'] ?? null, fn ($w, $v) => $w->where('ingresos.tipo', $v))
+            ->when($q !== '', fn ($w) => $w->where('ingresos.numero_documento', 'like', '%'.addcslashes($q, '%_\\').'%'))
             ->orderBy('ingresos.fecha')->orderBy('ingresos.id')
             ->get([
                 'ingresos.id', 'ingresos.tipo', 'ingresos.numero_documento', 'ingresos.fecha', 'ingresos.forma_pago',
@@ -121,71 +127,104 @@ class ReporteService
      *
      * @return array{filas: Collection<int, array<string, mixed>>, totales: array<string, string>}
      */
-    public function ventasCredito(CarbonInterface $desde, CarbonInterface $hasta, ?int $clienteId): array
+    public function ventasCredito(CarbonInterface $desde, CarbonInterface $hasta, ?int $clienteId, array $filtros = []): array
     {
+        $rango = [Carbon::instance($desde)->startOfDay(), Carbon::instance($hasta)->endOfDay()];
+        // S-89: vigentes (por defecto, como antes), anuladas o todas. Una venta con ítems está anulada
+        // si todos sus ítems tienen reverso; una de solo valor, si tiene reverso (S-73).
+        $estado = $filtros['estado'] ?? 'vigentes';
+
+        // Ítems de las ventas del período; en "vigentes" solo los no reversados (como antes).
         $items = DB::table('venta_items')
             ->join('ventas', 'ventas.id', '=', 'venta_items.venta_id')
             ->leftJoin('reverso_items', 'reverso_items.venta_item_id', '=', 'venta_items.id')
             ->where('ventas.forma_pago', FormaPago::Credito->value)
             ->where('ventas.estado', EstadoVenta::Cerrada->value)
-            ->whereBetween('ventas.cerrada_at', [Carbon::instance($desde)->startOfDay(), Carbon::instance($hasta)->endOfDay()])
+            ->whereBetween('ventas.cerrada_at', $rango)
             ->when($clienteId, fn ($q) => $q->where('ventas.cliente_id', $clienteId))
             ->whereNotNull('venta_items.precio_unitario')
-            ->whereNull('reverso_items.id')
-            ->get(['venta_items.venta_id', 'venta_items.precio_unitario', 'venta_items.iva_porcentaje'])
+            ->get(['venta_items.venta_id', 'venta_items.precio_unitario', 'venta_items.iva_porcentaje', 'reverso_items.id as reverso'])
             ->groupBy('venta_id');
+        $vigentesConItems = $items->map(fn (Collection $v) => $v->whereNull('reverso')->values())->filter(fn (Collection $v) => $v->isNotEmpty());
+        $anuladasConItems = $items->filter(fn (Collection $v) => $v->whereNull('reverso')->isEmpty());
 
-        // S-73: ventas a crédito de solo valor del período, si no están anuladas.
+        // S-73: ventas a crédito de solo valor del período, con o sin reverso.
         $soloValor = DB::table('ventas')
             ->where('ventas.forma_pago', FormaPago::Credito->value)
             ->where('ventas.estado', EstadoVenta::Cerrada->value)
             ->whereNotNull('ventas.valor_total')
-            ->whereBetween('ventas.cerrada_at', [Carbon::instance($desde)->startOfDay(), Carbon::instance($hasta)->endOfDay()])
+            ->whereBetween('ventas.cerrada_at', $rango)
             ->when($clienteId, fn ($q) => $q->where('ventas.cliente_id', $clienteId))
-            ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('reversos')->whereColumn('reversos.venta_id', 'ventas.id'))
-            ->pluck('ventas.id');
+            ->selectRaw('ventas.id, EXISTS (SELECT 1 FROM reversos WHERE reversos.venta_id = ventas.id) as anulada')
+            ->get();
+
+        $ids = collect();
+        if ($estado !== 'anuladas') {
+            $ids = $ids->merge($vigentesConItems->keys())->merge($soloValor->where('anulada', 0)->pluck('id'));
+        }
+        if ($estado !== 'vigentes') {
+            $ids = $ids->merge($anuladasConItems->keys())->merge($soloValor->where('anulada', 1)->pluck('id'));
+        }
 
         $ventas = DB::table('ventas')
             ->join('clientes', 'clientes.id', '=', 'ventas.cliente_id')
-            ->whereIn('ventas.id', $items->keys()->merge($soloValor))
+            ->whereIn('ventas.id', $ids->unique()->values())
             ->orderBy('ventas.cerrada_at')->orderBy('ventas.id')
             ->get(['ventas.id', 'ventas.cerrada_at', 'ventas.vence_el', 'ventas.factura_contapyme', 'ventas.tipo_documento', 'ventas.valor_total', 'ventas.cliente_id', 'clientes.nombre as cliente']);
 
-        $filas = $ventas->map(function ($v) use ($items) {
+        $filas = $ventas->map(function ($v) use ($vigentesConItems, $anuladasConItems, $soloValor) {
+            $base = [
+                'id' => (int) $v->id,
+                'cliente' => ['id' => (int) $v->cliente_id, 'nombre' => $v->cliente],
+                'fecha' => Carbon::parse($v->cerrada_at)->toDateString(),
+                'vence_el' => $v->vence_el,
+                'factura_contapyme' => $v->factura_contapyme,
+            ];
             if ($v->valor_total !== null && $v->tipo_documento !== null) {
                 return [
-                    'id' => (int) $v->id,
-                    'cliente' => ['id' => (int) $v->cliente_id, 'nombre' => $v->cliente],
-                    'fecha' => Carbon::parse($v->cerrada_at)->toDateString(),
-                    'vence_el' => $v->vence_el,
-                    'factura_contapyme' => $v->factura_contapyme,
+                    ...$base,
                     'tipo_documento' => $v->tipo_documento,
                     'documento' => TipoDocumentoVenta::from($v->tipo_documento)->descripcion($v->factura_contapyme),
                     'items' => 0,
                     'base' => null,
                     'iva' => null,
                     'total' => (string) $v->valor_total,
+                    'anulada' => (bool) ($soloValor->firstWhere('id', $v->id)->anulada ?? false),
                 ];
             }
 
-            $valor = TotalesVenta::desglosar($items[$v->id]->map(fn ($i) => [
+            $anulada = ! $vigentesConItems->has($v->id);
+            $lineas = $anulada ? $anuladasConItems[$v->id] : $vigentesConItems[$v->id];
+            $valor = TotalesVenta::desglosar($lineas->map(fn ($i) => [
                 'precio' => $i->precio_unitario, 'iva' => $i->iva_porcentaje, 'vigente' => true,
             ]));
 
             return [
-                'id' => (int) $v->id,
-                'cliente' => ['id' => (int) $v->cliente_id, 'nombre' => $v->cliente],
-                'fecha' => Carbon::parse($v->cerrada_at)->toDateString(),
-                'vence_el' => $v->vence_el,
-                'factura_contapyme' => $v->factura_contapyme,
+                ...$base,
                 'tipo_documento' => null,
                 'documento' => null,
-                'items' => $items[$v->id]->count(),
+                'items' => $lineas->count(),
                 'base' => $valor->base,
                 'iva' => $valor->ivaIncluido,
                 'total' => $valor->total,
+                // Anulada: su valor original (todos sus ítems quedaron reversados).
+                'anulada' => $anulada,
             ];
         });
+
+        // S-89: tipo de documento. Factura = de solo valor "factura" o con ítems y número de factura de
+        // Contapyme; remisión = de solo valor "remisión" (las ventas con ítems no llevan ese tipo).
+        $tipo = $filtros['tipo'] ?? null;
+        if ($tipo !== null) {
+            $filas = $filas->filter(fn ($f) => $tipo === 'factura'
+                ? ($f['tipo_documento'] === 'factura' || ($f['tipo_documento'] === null && $f['factura_contapyme'] !== null))
+                : $f['tipo_documento'] === 'remision')->values();
+        }
+        $q = self::normalizar($filtros['q'] ?? '');
+        if ($q !== '') {
+            $filas = $filas->filter(fn ($f) => str_contains(self::normalizar((string) $f['factura_contapyme']), $q)
+                || ltrim($q, '#') === (string) $f['id'])->values();
+        }
 
         return ['filas' => $filas, 'totales' => $this->sumar($filas, ['base', 'iva', 'total'])];
     }
@@ -195,20 +234,98 @@ class ReporteService
      *
      * @return array{filas: Collection<int, array<string, mixed>>, totales: array<string, mixed>}
      */
-    public function carteraClientes(CarbonInterface $corte): array
+    public function carteraClientes(CarbonInterface $corte, array $filtros = []): array
     {
         // Mismo cálculo que la pantalla de Cartera (CarteraService, S-30 / S-32).
         $filas = $this->cartera->resumenClientes($corte->toDateString())
             ->filter(fn ($f) => bccomp($f['saldo'], '0', self::ESCALA) !== 0)
             ->sortBy(fn ($f) => mb_strtolower($f['cliente']['nombre']))
             ->values();
+        $filas = $this->filtrarTitulares($filas, 'cliente', $filtros);
 
+        return ['filas' => $filas, 'totales' => $this->totalesTitulares($filas)];
+    }
+
+    /**
+     * S-89: filtros de Cuentas por pagar y Cartera de clientes sobre la colección ya agrupada por
+     * titular (sin recalcular por fila): texto (nombre sin tildes ni mayúsculas; NIT o documento sin
+     * puntos, guiones ni espacios), estado del vencido, antigüedad mínima, saldo a favor y orden.
+     *
+     * @param  Collection<int, array<string, mixed>>  $filas
+     * @param  array{q?: ?string, estado?: ?string, antiguedad?: ?string, a_favor?: bool, orden?: ?string}  $filtros
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function filtrarTitulares(Collection $filas, string $clave, array $filtros): Collection
+    {
+        $q = self::normalizar($filtros['q'] ?? '');
+        $digitos = preg_replace('/\D+/', '', $q);
+        $campoDoc = $clave === 'proveedor' ? 'nit' : 'documento';
+        $rangosDesde = match ($filtros['antiguedad'] ?? null) {
+            'mas_de_30' => ['d31_60', 'd61_90', 'mas_90'],
+            'mas_de_60' => ['d61_90', 'mas_90'],
+            'mas_de_90' => ['mas_90'],
+            default => null,
+        };
+        $positivo = fn ($v) => bccomp((string) $v, '0', self::ESCALA) > 0;
+
+        $filas = $filas->filter(function (array $f) use ($q, $digitos, $clave, $campoDoc, $rangosDesde, $filtros, $positivo) {
+            if ($q !== '') {
+                $nombre = self::normalizar($f[$clave]['nombre'] ?? '');
+                $doc = preg_replace('/\D+/', '', (string) ($f[$clave][$campoDoc] ?? ''));
+                if (! self::contieneTodas($nombre, $q) && ($digitos === '' || ! str_contains($doc, $digitos))) {
+                    return false;
+                }
+            }
+            $estado = $filtros['estado'] ?? null;
+            if ($estado === 'con_vencido' && ! $positivo($f['vencido'])) {
+                return false;
+            }
+            if ($estado === 'al_dia' && $positivo($f['vencido'])) {
+                return false;
+            }
+            if ($rangosDesde !== null && ! collect($rangosDesde)->contains(fn ($r) => $positivo($f['rangos'][$r] ?? 0))) {
+                return false;
+            }
+
+            return ! (($filtros['a_favor'] ?? false) && ! $positivo($f['a_favor']));
+        });
+
+        return match ($filtros['orden'] ?? null) {
+            'saldo_desc' => $filas->sortByDesc(fn ($f) => (float) $f['saldo'])->values(),
+            'vencido_desc' => $filas->sortByDesc(fn ($f) => (float) $f['vencido'])->values(),
+            default => $filas->values(),
+        };
+    }
+
+    /** Totales de lo filtrado (todas las filas, no la página) y titulares con saldo. */
+    private function totalesTitulares(Collection $filas): array
+    {
         $totales = $this->sumar($filas, ['cargos', 'abonos', 'saldo', 'a_favor', 'vencido']);
         $totales['rangos'] = collect(array_keys(config('cartera.rangos')))->mapWithKeys(fn ($r) => [
             $r => $filas->reduce(fn ($s, $f) => bcadd($s, $f['rangos'][$r], self::ESCALA), '0.00'),
         ])->all();
+        $totales['titulares'] = $filas->count();
+        $totales['con_saldo'] = $filas->filter(fn ($f) => bccomp($f['saldo'], '0', self::ESCALA) > 0)->count();
 
-        return ['filas' => $filas, 'totales' => $totales];
+        return $totales;
+    }
+
+    /** S-89: todas las palabras de la búsqueda aparecen en el texto (en cualquier orden). */
+    public static function contieneTodas(string $texto, string $busqueda): bool
+    {
+        foreach (preg_split('/\s+/', $busqueda) ?: [] as $palabra) {
+            if ($palabra !== '' && ! str_contains($texto, $palabra)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /** S-89: minúsculas y sin tildes, para buscar sin distinguir. */
+    public static function normalizar(?string $texto): string
+    {
+        return mb_strtolower(trim(Str::ascii((string) $texto)));
     }
 
     /**
@@ -216,7 +333,7 @@ class ReporteService
      *
      * @return array{filas: Collection<int, array<string, mixed>>, totales: array<string, mixed>}
      */
-    public function cuentasPorPagar(CarbonInterface $corte): array
+    public function cuentasPorPagar(CarbonInterface $corte, array $filtros = []): array
     {
         $documentos = $this->cartera->comprasCredito(null, $corte);
         $pagado = $this->cartera->pagado(null, $corte);
@@ -224,7 +341,10 @@ class ReporteService
             ->whereKey($documentos->keys()->merge(array_keys($pagado))->unique())
             ->get(['id', 'nombre', 'nit', 'plazo_dias'])->keyBy('id');
 
-        return $this->porTitular($nombres, $documentos, $pagado, $corte, 'proveedor');
+        $informe = $this->porTitular($nombres, $documentos, $pagado, $corte, 'proveedor');
+        $filas = $this->filtrarTitulares($informe['filas'], 'proveedor', $filtros);
+
+        return ['filas' => $filas, 'totales' => $this->totalesTitulares($filas)];
     }
 
     /**
@@ -233,7 +353,7 @@ class ReporteService
      *
      * @return array{saldo_anterior: string, filas: Collection<int, array<string, mixed>>, totales: array<string, string>}
      */
-    public function estadoCuentaProveedor(Proveedor $proveedor, CarbonInterface $desde, CarbonInterface $hasta): array
+    public function estadoCuentaProveedor(Proveedor $proveedor, CarbonInterface $desde, CarbonInterface $hasta, array $filtros = []): array
     {
         $fin = Carbon::instance($hasta)->endOfDay();
         $credito = fn () => DB::table('ingresos')
@@ -262,7 +382,55 @@ class ReporteService
             $this->movimientosDinero('pagos_proveedores', 'pago_anulaciones', 'pago_id', 'proveedor_id', $proveedor->id, $fin, 'pago')
         );
 
-        return $this->estadoCuenta($movimientos, $desde);
+        return $this->filtrarEstadoCuenta($this->estadoCuenta($movimientos, $desde), $filtros);
+    }
+
+    /**
+     * S-89: estado de cuenta de un cliente para el contable, con el formato del de proveedores. El
+     * cálculo es el de la cartera (CarteraService::estadoCuenta, S-30 a S-32 y S-73/S-74): aquí solo se
+     * adapta la forma (detalle, cargo, abono, saldo corrido, saldo anterior y totales del período).
+     */
+    public function estadoCuentaCliente(Cliente $cliente, CarbonInterface $desde, CarbonInterface $hasta, array $filtros = []): array
+    {
+        $ec = $this->cartera->estadoCuenta($cliente, $desde->toDateString(), $hasta->toDateString());
+        $filas = collect($ec['movimientos'])->map(fn (array $m) => [
+            'fecha' => $m['dia'],
+            'tipo' => $m['tipo'],
+            'detalle' => $m['descripcion'].(! empty($m['aplicado_a']) && $m['tipo'] === 'abono' ? " → {$m['aplicado_a']}" : ''),
+            'cargo' => $m['cargo'],
+            'abono' => $m['abono'],
+            'saldo' => $m['saldo'],
+            'venta_id' => $m['venta_id'] ?? null,
+            'abono_id' => $m['abono_id'] ?? null,
+            'vence_el' => $m['vence_el'] ?? null,
+        ]);
+
+        return $this->filtrarEstadoCuenta([
+            'saldo_anterior' => $ec['saldo_inicial'],
+            'filas' => $filas,
+            'totales' => [...$this->sumar($filas, ['cargo', 'abono']), 'saldo_final' => $ec['saldo_final']],
+        ], $filtros);
+    }
+
+    /**
+     * S-89: el filtro de tipo (cargos o abonos/pagos) y la búsqueda solo OCULTAN filas: el saldo
+     * anterior, el saldo corrido de cada fila y los totales del período se calculan con todos los
+     * movimientos. `movimientos_periodo` es M en "Mostrando N de M".
+     */
+    private function filtrarEstadoCuenta(array $informe, array $filtros): array
+    {
+        $periodo = $informe['filas']->count();
+        $tipo = $filtros['tipo'] ?? 'todos';
+        $q = self::normalizar($filtros['q'] ?? '');
+        $positivo = fn ($v) => bccomp((string) $v, '0', self::ESCALA) > 0;
+
+        $informe['filas'] = $informe['filas']->filter(fn (array $m) => ($tipo !== 'cargos' || $positivo($m['cargo']))
+            && ($tipo !== 'abonos' || $positivo($m['abono']))
+            && ($q === '' || str_contains(self::normalizar($m['detalle']), $q)))->values();
+        $informe['movimientos_periodo'] = $periodo;
+        $informe['filtrado'] = $tipo !== 'todos' || $q !== '';
+
+        return $informe;
     }
 
     /**
@@ -271,7 +439,7 @@ class ReporteService
      *
      * @return array{filas: Collection<int, array<string, mixed>>, totales: array<string, string>}
      */
-    public function remisionesPendientes(?int $proveedorId): array
+    public function remisionesPendientes(?int $proveedorId, ?int $masDeDias = null): array
     {
         $hoy = Carbon::today();
         $filas = DB::table('ingresos')
@@ -296,6 +464,10 @@ class ReporteService
                 'dias' => (int) Carbon::parse($r->fecha)->diffInDays($hoy, false),
                 'factura_borrador' => $r->factura_id ? ['id' => (int) $r->factura_id, 'numero_documento' => $r->factura] : null,
             ]);
+        // S-89: antigüedad (más de 30, 60 o 90 días desde la fecha de la remisión).
+        if ($masDeDias !== null) {
+            $filas = $filas->filter(fn ($f) => $f['dias'] > $masDeDias)->values();
+        }
 
         return ['filas' => $filas, 'totales' => $this->sumar($filas, ['total'])];
     }

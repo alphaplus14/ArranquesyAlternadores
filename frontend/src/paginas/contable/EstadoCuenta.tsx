@@ -1,31 +1,51 @@
-import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../api/cliente'
-import type { EstadoCuentaInforme as Estado } from '../../api/tipos'
+import { infoPagina, type EstadoCuentaInforme as Estado } from '../../api/tipos'
+import BarraFiltros, {CampoFiltro, TextoResultados, VacioFiltros } from '../../componentes/BarraFiltros'
+import { rangoAtajo } from '../../utilidades/atajosPeriodo'
 import Paginacion from '../../componentes/Paginacion'
-import { fechaCorta, hoy, sumarDias } from '../../componentes/fechas'
+import { fechaCorta } from '../../componentes/fechas'
 import { pesos } from '../../componentes/numeros'
+import { useFiltrosUrl } from '../../hooks/useFiltrosUrl'
 import '../../componentes/cartera.css'
 
-/** RF-18 (5): estado de cuenta de un cliente o proveedor por período, con saldo anterior y corrido. */
+/**
+ * RF-18 (5) y S-89: estado de cuenta de un cliente o proveedor por período, con saldo anterior y
+ * corrido. El tipo de movimiento y la búsqueda solo ocultan filas: el saldo corrido y los totales del
+ * período incluyen todos los movimientos. Filtros en la URL con prefijo `ec_` (convive con los de la
+ * cuenta). Por defecto, los últimos 90 días.
+ */
 export default function EstadoCuenta({ ruta }: { ruta: string }) {
-  const [desde, setDesde] = useState(sumarDias(hoy(), -90))
-  const [hasta, setHasta] = useState(hoy())
-  const [pagina, setPagina] = useState(1)
+  const porDefecto = rangoAtajo('ultimos_90')
+  const { filtros: f, fijar, pagina, irA, activos, limpiar } = useFiltrosUrl({ desde: porDefecto.desde, hasta: porDefecto.hasta, tipo: 'todos', q: '' }, 'ec_')
+  const params = { desde: f.desde, hasta: f.hasta, tipo: f.tipo === 'todos' ? undefined : f.tipo, q: f.q || undefined }
 
   const { data, isFetching } = useQuery({
-    queryKey: ['estado-cuenta', ruta, desde, hasta, pagina],
-    queryFn: async () => (await api.get<Estado>(ruta, { params: { desde, hasta, page: pagina, por_pagina: 50 } })).data,
-    placeholderData: (previo) => previo,
+    queryKey: ['estado-cuenta', ruta, params, pagina],
+    queryFn: async () => (await api.get<Estado>(ruta, { params: { ...params, page: pagina, por_pagina: 50 } })).data,
+    // Solo los datos previos de la misma cuenta.
+    placeholderData: (previo, consultaPrevia) => (consultaPrevia?.queryKey[1] === ruta ? previo : undefined),
   })
+  const info = data ? infoPagina(data) : null
 
   return (
     <section className="tarjeta-pagina">
-      <div className="fila-titulo"><h2>Estado de cuenta</h2></div>
-      <div className="filtros-informe">
-        <label>Desde<input type="date" max={hasta} value={desde} onChange={(e) => { setDesde(e.target.value); setPagina(1) }} /></label>
-        <label>Hasta<input type="date" min={desde} max={hoy()} value={hasta} onChange={(e) => { setHasta(e.target.value); setPagina(1) }} /></label>
-      </div>
+      <BarraFiltros
+        busqueda={{ valor: f.q, onCambio: (q) => fijar({ q }), placeholder: 'Detalle o número de documento' }}
+        periodo={{ desde: f.desde, hasta: f.hasta, onCambio: (desde, hasta) => fijar({ desde, hasta }) }}
+        activos={activos}
+        onLimpiar={limpiar}
+      >
+        <CampoFiltro etiqueta="Tipo de movimiento">
+          <select value={f.tipo} onChange={(e) => fijar({ tipo: e.target.value })}>
+            <option value="todos">Todos</option>
+            <option value="cargos">Solo cargos</option>
+            <option value="abonos">Solo abonos o pagos</option>
+          </select>
+        </CampoFiltro>
+      </BarraFiltros>
+      {data?.filtrado && <p className="aviso info" role="note">Filtro activo: el saldo mostrado incluye todos los movimientos.</p>}
+      {info && <TextoResultados mostrando={info.total} total={data?.movimientos_periodo ?? info.total} de="movimientos del período" />}
       <div className="tabla-desplazable">
         <table aria-busy={isFetching}>
           <thead>
@@ -45,9 +65,12 @@ export default function EstadoCuenta({ ruta }: { ruta: string }) {
                 <td className="cifra">{pesos(m.saldo)}</td>
               </tr>
             ))}
+            {data && data.data.length === 0 && (
+              <tr><td colSpan={6} className="vacio"><VacioFiltros hayFiltros={!!data.filtrado} sinFiltros="Sin movimientos en el período." onLimpiar={limpiar} /></td></tr>
+            )}
             {data && (
               <tr className="fila-total">
-                <td colSpan={3}>Totales del período</td>
+                <td colSpan={3}>Totales del período (todos los movimientos)</td>
                 <td className="cifra">{pesos(data.totales.cargo)}</td>
                 <td className="cifra">{pesos(data.totales.abono)}</td>
                 <td className="cifra">{pesos(data.totales.saldo_final)}</td>
@@ -56,7 +79,7 @@ export default function EstadoCuenta({ ruta }: { ruta: string }) {
           </tbody>
         </table>
       </div>
-      <Paginacion pagina={data} onCambiar={setPagina} />
+      <Paginacion pagina={data} onCambiar={irA} />
     </section>
   )
 }
