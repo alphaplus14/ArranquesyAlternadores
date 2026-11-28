@@ -31,6 +31,7 @@ export function useVentana<T>(filas: T[], altoFila: number) {
     ref,
     onScroll: sincronizar,
     sincronizar,
+    scrollTop,
     inicio,
     visibles: filas.slice(inicio, inicio + cantidad),
     desplazamiento: inicio * altoFila,

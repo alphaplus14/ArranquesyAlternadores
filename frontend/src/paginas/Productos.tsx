@@ -243,6 +243,10 @@ export default function Productos() {
     : ALTO_FILA
   const ventana = useVentana(filas, alto)
 
+  // RF-02, S-82: la fila que está justo bajo la cabecera; si es una referencia de un universal desplegado, ese
+  // universal se fija arriba (solo en tabla: en tarjetas cada una mide demasiado).
+  const filaTope = filas[Math.floor(ventana.scrollTop / alto)]
+  const universalFijo = modo !== 'tarjetas' && filaTope?.clase === 'hija' ? filaTope.u : null
   const scroller = ventana.ref
   const sincronizar = ventana.sincronizar
   useEffect(() => {
@@ -483,24 +487,28 @@ export default function Productos() {
   )
 
   /** Fila agrupadora del universal: flecha, código, chip, total y (gestión) editar e historial. */
-  const filaUniversal = (u: UniversalInventario) => {
+  const filaUniversal = (u: UniversalInventario, fijo = false) => {
     const abierto = desplegados.has(u.id)
     const refs = `${u.cantidad_referencias} ${u.cantidad_referencias === 1 ? 'ref.' : 'refs.'}`
     const resumen = `Universal ${u.codigo}, ${u.cantidad_referencias} ${u.cantidad_referencias === 1 ? 'referencia' : 'referencias'}`
     return (
       <>
         <div role="cell" className="corta celda-referencia celda-universal" title={resumen}>
-          <button
-            type="button"
-            id={`flecha-${u.id}`}
-            className={`flecha-universal${abierto ? ' abierta' : ''}`}
-            aria-expanded={abierto}
-            aria-controls={abierto && u.referencias.length > 0 ? u.referencias.map((r) => idHija(u.id, r.id)).join(' ') : undefined}
-            aria-label={`${abierto ? 'Ocultar' : 'Mostrar'} referencias de ${resumen}`}
-            onClick={(e) => { e.stopPropagation(); alternar(u) }}
-          >
-            <Chevron />
-          </button>
+          {fijo ? (
+            <span className="flecha-universal abierta" aria-hidden><Chevron /></span>
+          ) : (
+            <button
+              type="button"
+              id={`flecha-${u.id}`}
+              className={`flecha-universal${abierto ? ' abierta' : ''}`}
+              aria-expanded={abierto}
+              aria-controls={abierto && u.referencias.length > 0 ? u.referencias.map((r) => idHija(u.id, r.id)).join(' ') : undefined}
+              aria-label={`${abierto ? 'Ocultar' : 'Mostrar'} referencias de ${resumen}`}
+              onClick={(e) => { e.stopPropagation(); alternar(u) }}
+            >
+              <Chevron />
+            </button>
+          )}
           <span className="solo-lector">Universal </span>
           <strong>{u.codigo}</strong>
           <span className="chip chip-universal">{refs}</span>
@@ -518,7 +526,8 @@ export default function Productos() {
           )}
           <strong>{u.existencia_total}</strong>
         </div>
-        {puedeGestionar && (
+        {puedeGestionar && fijo && <div role="cell" />}
+        {puedeGestionar && !fijo && (
           <div role="cell" className="acciones-fila">
             <button type="button" className="icono-accion" aria-label={`Editar universal ${u.codigo}`} title="Editar universal" onClick={(e) => { e.stopPropagation(); setUniversalEditando(u) }}>
               <Icono nombre="editar" />
@@ -656,6 +665,15 @@ export default function Productos() {
             <div role="columnheader" className="col-numero">Existencia</div>
             {puedeGestionar && <div role="columnheader" className="col-acciones">Acciones</div>}
           </div>
+          {universalFijo && (
+            // RF-02, S-82: el universal desplegado queda fijo arriba (bajo la cabecera) mientras se recorren sus
+            // referencias. Es una copia visual de su fila: sin botones ni ids, fuera del lector de pantalla.
+            <div className="universal-fijo" style={{ height: alto, marginBottom: -alto }} aria-hidden onClick={() => alternar(universalFijo)}>
+              <div className="tabla-rejilla tabla-fila fila-universal desplegada" style={{ height: alto }}>
+                {filaUniversal(universalFijo, true)}
+              </div>
+            </div>
+          )}
           <div>
             {filas.length === 0 && !cargando && <div className="vacio">Sin productos para esta búsqueda.</div>}
             {filas.length > 0 && (

@@ -1288,6 +1288,9 @@ button.celda-editable.pendiente:hover, button.celda-editable.pendiente:focus-vis
  * izquierda (::after de cada fila, que también cubre el borde inferior) y una línea al final. Todas las
  * filas conservan el mismo alto (la lista sigue virtualizada).
  */
+/* RF-02: copia fija del universal desplegado, justo bajo la cabecera de la tabla (alto y margen en línea). */
+.universal-fijo { position: sticky; top: 44px; z-index: 1; cursor: pointer; background: var(--panel); box-shadow: 0 2px 6px rgb(0 0 0 / 0.12); }
+.tabla-contenedor.filas-compactas .universal-fijo { top: 36px; }
 .tabla-fila.fila-universal { cursor: pointer; background: var(--suave-fondo); }
 .tabla-fila.fila-universal:hover { background: var(--acento-suave); }
 .tabla-fila.fila-universal.resaltada { background: #FFF8DC; box-shadow: inset 3px 0 0 var(--resalte); }
