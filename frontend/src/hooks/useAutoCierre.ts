@@ -3,14 +3,15 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 export type TonoAlerta = 'ok' | 'error' | 'atencion' | 'info'
 
 /** Tiempo base por tono (ms). Ningún aviso queda fijo: el error es el que más dura. */
-const BASE: Record<TonoAlerta, number> = { ok: 4000, info: 6000, atencion: 8000, error: 10000 }
+const BASE: Record<TonoAlerta, number> = { ok: 4000, info: 6000, atencion: 8000, error: 20000 }
 const TOPE = 20000
+const TOPE_ERROR = 30000
 /** Tiempo extra de lectura por carácter, para que un mensaje largo no se vaya sin poder leerlo. */
 const POR_CARACTER = 55
 
-/** ms que debe verse un aviso: el del tono, o más si el texto es largo. Nunca más de 20 s. */
+/** ms que debe verse un aviso: el del tono, o más si el texto es largo. Nunca más de 20 s (30 s un error). */
 export function duracionAviso(tono: TonoAlerta, texto: string): number {
-  return Math.min(TOPE, Math.max(BASE[tono], 2500 + texto.length * POR_CARACTER))
+  return Math.min(tono === 'error' ? TOPE_ERROR : TOPE, Math.max(BASE[tono], 2500 + texto.length * POR_CARACTER))
 }
 
 /**

@@ -35,7 +35,7 @@ export function AvisoPagina({ tono, children, className = '', espera, extra }: P
       <button type="button" className="aviso-cerrar" aria-label="Cerrar aviso" onClick={() => setCerrado(children)}>
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6L6 18" /></svg>
       </button>
-      <span className="aviso-progreso" aria-hidden style={{ animationDuration: `${ms}ms`, animationPlayState: pausado ? 'paused' : 'running' }} />
+      <span key={children} className="aviso-progreso" aria-hidden style={{ animationDuration: `${ms}ms`, animationPlayState: pausado ? 'paused' : 'running' }} />
     </div>
   )
 }
