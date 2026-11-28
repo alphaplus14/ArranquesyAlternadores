@@ -23,15 +23,17 @@ class CuentaPagoController extends Controller
     public function index(Request $request): JsonResponse
     {
         $todas = $request->boolean('incluir_inactivas') && $request->user()->rol === Rol::Admin;
+        // S-88: el mostrador elige cuenta pero no ve de quién es cada billetera.
+        $conDueno = $request->user()->rol !== Rol::Mostrador;
 
         return response()->json([
             'data' => CuentaPago::query()
-                ->with('propietario:id,nombre')
+                ->when($conDueno, fn ($q) => $q->with('propietario:id,nombre'))
                 ->when(! $todas, fn ($q) => $q->where('activa', true))
                 ->orderByRaw("FIELD(tipo, 'efectivo', 'banco', 'datafono', 'billetera')")
                 ->orderBy('nombre')
                 ->get(['id', 'nombre', 'tipo', 'activa', 'propietario_id'])
-                ->map->aCatalogo(),
+                ->map(fn (CuentaPago $c) => $c->aCatalogo($conDueno)),
         ]);
     }
 

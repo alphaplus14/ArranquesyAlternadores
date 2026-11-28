@@ -41,18 +41,17 @@ class CuentaPago extends Model
     }
 
     /** Catálogo de cuentas (S-48, S-88): el dueño solo viene cargado en las billeteras que lo tienen. */
-    public function aCatalogo(): array
+    public function aCatalogo(bool $conDueno = true): array
     {
         return [
             'id' => $this->id,
             'nombre' => $this->nombre,
             'tipo' => $this->tipo,
             'activa' => $this->activa,
-            'propietario' => $this->propietario === null ? null : [
-                'id' => $this->propietario->id,
-                'nombre' => $this->propietario->nombre,
-            ],
-        ];
+        ] + ($conDueno ? ['propietario' => $this->propietario === null ? null : [
+            'id' => $this->propietario->id,
+            'nombre' => $this->propietario->nombre,
+        ]] : []);
     }
 
     public function scopeActivas(Builder $q): Builder

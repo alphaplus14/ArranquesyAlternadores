@@ -54,7 +54,7 @@ export default function Configuracion() {
             valor={valor}
             onCambio={(v) => { setValor(v); setGuardado(false) }}
           />
-          {general.isError && <AvisoPagina tono="error">{mensajeError(general.error)}</AvisoPagina>}
+          {general.isError && <div className="aviso error">{mensajeError(general.error)}</div>}
           {guardar.isError && <AvisoPagina tono="error">{mensajeError(guardar.error)}</AvisoPagina>}
           {guardado && <AvisoPagina tono="ok">{"Guardado. El informe Bajo mínimo ya usa el nuevo valor."}</AvisoPagina>}
           <div className="acciones acciones-izquierda">

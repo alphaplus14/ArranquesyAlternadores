@@ -295,8 +295,8 @@ export interface CuentaPago {
   nombre: string
   tipo: TipoCuentaPago
   activa: boolean
-  /** S-88: solo en billeteras; null si no tiene dueño o no es billetera. */
-  propietario: { id: number; nombre: string } | null
+  /** S-88: solo en billeteras; null si no tiene dueño o no es billetera. Ausente para el mostrador (no ve dueños). */
+  propietario?: { id: number; nombre: string } | null
 }
 
 /** "Nequi · Dayana" cuando la billetera tiene dueño; si no, el nombre de la cuenta. */

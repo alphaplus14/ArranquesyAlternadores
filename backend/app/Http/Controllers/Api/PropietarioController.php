@@ -20,6 +20,10 @@ class PropietarioController extends Controller
 
     public function index(Request $request): JsonResponse
     {
+        // S-88: el mostrador no ve los dueños (lista vacía; el select de cuentas no los necesita).
+        if ($request->user()->rol === Rol::Mostrador) {
+            return response()->json(['data' => []]);
+        }
         $todas = $request->boolean('incluir_inactivas') && $request->user()->rol === Rol::Admin;
 
         return response()->json([

@@ -105,7 +105,7 @@ it('S-88: el dueño solo aplica a una billetera, y quien no es admin no lo crea'
     $this->assertDatabaseHas('auditoria', ['tabla' => 'cuentas_pago', 'registro_id' => $cuenta, 'campo' => 'propietario_id']);
 
     actuarComo(Rol::Mostrador);
-    $this->getJson('/api/propietarios')->assertOk();
+    $this->getJson('/api/propietarios')->assertOk()->assertJsonCount(0, 'data');
     $this->postJson('/api/propietarios', ['nombre' => 'Evelyn'])->assertForbidden();
 
     actuarComo(Rol::Logistica);
@@ -132,4 +132,23 @@ it('S-88: el cierre del día del mostrador no trae dueños ni saldos de billeter
     expect($r->json('resumen.billeteras'))->not->toBeEmpty()
         ->and($fila['propietario'])->toBe('Dayana')
         ->and($fila['saldo'])->toBe('50000.00');
+});
+
+it('S-88: /cuentas-pago y /propietarios no revelan el dueño al mostrador; admin y contable sí', function () {
+    actuarComo(Rol::Admin);
+    $dayana = $this->postJson('/api/propietarios', ['nombre' => 'Dayana'])->assertCreated()->json('id');
+    $this->postJson('/api/cuentas-pago', ['nombre' => 'Nequi Dayana', 'tipo' => 'billetera', 'propietario_id' => $dayana])->assertCreated();
+
+    actuarComo(Rol::Mostrador);
+    $cuentas = collect($this->getJson('/api/cuentas-pago')->assertOk()->json('data'));
+    expect($cuentas->firstWhere('nombre', 'Nequi Dayana'))->not->toBeNull()
+        ->and($cuentas->every(fn ($c) => ! array_key_exists('propietario', $c)))->toBeTrue();
+    $this->getJson('/api/propietarios')->assertOk()->assertExactJson(['data' => []]);
+
+    foreach ([Rol::Admin, Rol::Contable] as $rol) {
+        actuarComo($rol);
+        $fila = collect($this->getJson('/api/cuentas-pago')->assertOk()->json('data'))->firstWhere('nombre', 'Nequi Dayana');
+        expect($fila['propietario']['nombre'])->toBe('Dayana');
+        expect(collect($this->getJson('/api/propietarios')->assertOk()->json('data'))->pluck('nombre')->all())->toContain('Dayana');
+    }
 });
