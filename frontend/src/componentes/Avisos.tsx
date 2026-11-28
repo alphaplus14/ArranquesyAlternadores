@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
+import { duracionAviso, useAutoCierre } from '../hooks/useAutoCierre'
 
 export type TonoAviso = 'ok' | 'error' | 'atencion'
 
@@ -11,7 +12,7 @@ interface Mensaje {
   tono: TonoAviso
   texto: string
   enlace?: EnlaceAviso
-  /** ms hasta cerrarse solo; sin valor manda el tono (SE_VA_SOLO). */
+  /** ms hasta cerrarse solo; sin valor lo da el tono y el largo del texto (duracionAviso). Un error crítico puede pedir más. */
   espera?: number
 }
 
@@ -25,9 +26,6 @@ interface Avisos {
 }
 
 const Contexto = createContext<Avisos | null>(null)
-
-/** El acierto se va solo. El error y la atención se quedan hasta que otro aviso los reemplace o se cierren. */
-const SE_VA_SOLO: Partial<Record<TonoAviso, number>> = { ok: 5000 } // S-65: 5 s
 
 let secuencia = 0
 
@@ -52,31 +50,12 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     setMensaje((actual) => (actual?.tono === tono ? null : actual))
   }, [])
 
-  useEffect(() => {
-    const espera = mensaje ? (mensaje.espera ?? SE_VA_SOLO[mensaje.tono]) : undefined
-    if (!mensaje || espera === undefined) return
-    const id = mensaje.id
-    const t = window.setTimeout(() => limpiar(id), espera)
-    return () => window.clearTimeout(t)
-  }, [mensaje, limpiar])
-
   const api = useMemo<Avisos>(() => ({ mostrar, limpiar, limpiarSi }), [mostrar, limpiar, limpiarSi])
 
   return (
     <Contexto.Provider value={api}>
       {children}
-      {mensaje && createPortal(
-        <div className={`aviso-flotante ${mensaje.tono}`} role={mensaje.tono === 'error' ? 'alert' : 'status'}>
-          <div className="aviso-flotante-texto">
-            <p>{mensaje.texto}</p>
-            {mensaje.enlace && <Link to={mensaje.enlace.to} onClick={() => limpiar(mensaje.id)}>{mensaje.enlace.texto}</Link>}
-          </div>
-          <button type="button" className="aviso-cerrar" aria-label="Cerrar aviso" onClick={() => limpiar(mensaje.id)}>
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6L6 18" /></svg>
-          </button>
-        </div>,
-        document.body,
-      )}
+      {mensaje && createPortal(<AvisoFlotante key={mensaje.id} mensaje={mensaje} limpiar={limpiar} />, document.body)}
     </Contexto.Provider>
   )
 }
@@ -109,4 +88,36 @@ export function useAvisoTexto(texto: string | null, tono: TonoAviso = 'error', e
       id.current = null
     }
   }, [texto, tono, destino, etiqueta, mostrar, limpiar])
+}
+
+const ROTULO: Record<TonoAviso, string> = { ok: 'Listo', error: 'No se pudo', atencion: 'Atención' }
+
+function AvisoFlotante({ mensaje, limpiar }: { mensaje: Mensaje; limpiar: (id?: number) => void }) {
+  const espera = mensaje.espera ?? duracionAviso(mensaje.tono, mensaje.texto)
+  const { pausado, pausar, reanudar } = useAutoCierre(espera, () => limpiar(mensaje.id), mensaje.id)
+  return (
+    <div
+      className={`aviso-flotante ${mensaje.tono}`}
+      role={mensaje.tono === 'error' ? 'alert' : 'status'}
+      onMouseEnter={pausar}
+      onMouseLeave={reanudar}
+      onFocus={pausar}
+      onBlur={reanudar}
+    >
+      <span className="aviso-icono" aria-hidden>{mensaje.tono === 'ok' ? '✓' : '!'}</span>
+      <div className="aviso-flotante-texto">
+        <strong className="aviso-rotulo">{ROTULO[mensaje.tono]}</strong>
+        <p>{mensaje.texto}</p>
+        {mensaje.enlace && <Link to={mensaje.enlace.to} onClick={() => limpiar(mensaje.id)}>{mensaje.enlace.texto}</Link>}
+      </div>
+      <button type="button" className="aviso-cerrar" aria-label="Cerrar aviso" onClick={() => limpiar(mensaje.id)}>
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6L6 18" /></svg>
+      </button>
+      <span
+        className="aviso-progreso"
+        aria-hidden
+        style={{ animationDuration: `${espera}ms`, animationPlayState: pausado ? 'paused' : 'running' }}
+      />
+    </div>
+  )
 }
