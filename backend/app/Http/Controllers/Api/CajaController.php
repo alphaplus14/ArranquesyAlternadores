@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Enums\Rol;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\CierreCajaResource;
 use App\Http\Resources\MovimientoCajaResource;

@@ -81,9 +81,18 @@ it('RF-15 (período): hasta solo trae lo cerrado hasta ese día, inclusive', fun
     [$a, $b, $c] = carteraTresPeriodos();
     actuarComo(Rol::Admin);
 
-    expect(idsCartera('hasta=2026-11-10'))->toBe([$a->id, $b->id])
-        ->and(idsCartera('hasta=2026-11-09'))->toBe([$a->id])
-        ->and(idsCartera('hasta=2026-11-25'))->toBe([$a->id, $b->id, $c->id]);
+    expect(idsCartera('corte=2026-11-30&hasta=2026-11-10'))->toBe([$a->id, $b->id])
+        ->and(idsCartera('corte=2026-11-30&hasta=2026-11-09'))->toBe([$a->id])
+        ->and(idsCartera('corte=2026-11-30&hasta=2026-11-25'))->toBe([$a->id, $b->id, $c->id]);
+});
+
+it('RF-15 (período): desde solo trae lo cerrado desde ese día, inclusive', function () {
+    [$a, $b, $c] = carteraTresPeriodos();
+    actuarComo(Rol::Admin);
+
+    expect(idsCartera('corte=2026-11-30&desde=2026-11-10'))->toBe([$b->id, $c->id])
+        ->and(idsCartera('corte=2026-11-30&desde=2026-11-11'))->toBe([$c->id])
+        ->and(idsCartera('corte=2026-11-30&desde=2026-10-05'))->toBe([$a->id, $b->id, $c->id]);
 });
 
 it('RF-15 (período): desde y hasta se combinan con corte sin perder el saldo del corte', function () {

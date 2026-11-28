@@ -486,7 +486,9 @@ class CarteraService
                 $partes[] = 'f.cerrada_at < ?';
                 $bindings[] = RangoFechas::finExclusivo($rango['hasta'])->format('Y-m-d H:i:s');
             }
-            $enRango = implode(' AND ', $partes).' AND f.neto > 0';
+            if ($partes) {
+                $enRango = implode(' AND ', $partes).' AND f.neto > 0';
+            }
         }
 
         // La condición del período se evalúa una sola vez por venta (columna `en_periodo`).
