@@ -220,7 +220,7 @@ it('S-74: caja del día: cuenta como venta a crédito (meta) y no entra a ningun
 it('S-73: con la caja de hoy cerrada no se registran ventas a crédito', function () {
     $cliente = Cliente::factory()->create();
     actuarComo(Rol::Mostrador);
-    $this->putJson('/api/caja/dias/2026-11-20/apertura', ['valor' => 0])->assertSuccessful();
+    $this->putJson('/api/caja/dias/2026-11-20/apertura', ['valor' => 0, 'motivo' => 'Apertura de prueba'])->assertSuccessful();
     $this->postJson('/api/caja/cierres', ['fecha' => '2026-11-20', 'efectivo_contado' => 0])->assertCreated();
 
     svRegistrar($cliente)->assertUnprocessable()->assertJsonPath('caja_cerrada', '2026-11-20');

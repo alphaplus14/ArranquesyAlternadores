@@ -49,9 +49,9 @@ function pago(CuentaPago $cuenta, $valor): array
 }
 
 /** PUT de la apertura del día como el usuario en sesión. */
-function apertura(string $fecha, $valor, ?string $motivo = null)
+function apertura(string $fecha, $valor, ?string $motivo = 'Apertura de prueba')
 {
-    // S-84: el motivo es obligatorio cuando el valor difiere de lo que dejó el cierre anterior.
+    // S-84: el motivo es siempre obligatorio (sin él, 422).
     return test()->putJson("/api/caja/dias/{$fecha}/apertura", ['valor' => $valor, ...($motivo !== null ? ['motivo' => $motivo] : [])]);
 }
 
@@ -237,7 +237,7 @@ it('RF-25 / S-49 / S-84: un cambio manual de apertura da un cierre independiente
     cerrarDia('2026-11-19', 40000)->assertCreated()->assertJsonPath('efectivo_esperado', '40000.00')->assertJsonPath('diferencia', '0.00');
 
     // El 20 se cambia a mano a otro valor (con motivo): manda el cambio, no lo que dejó el 19.
-    apertura('2026-11-20', 70000)->assertUnprocessable()->assertJsonPath('campo', 'motivo');
+    apertura('2026-11-20', 70000, null)->assertUnprocessable()->assertJsonPath('campo', 'motivo');
     apertura('2026-11-20', 70000, 'Llegó efectivo de la Caja General antes de abrir')->assertOk()->assertJsonPath('apertura.origen', 'manual');
     cerrarDia('2026-11-20', 70500)->assertCreated()
         ->assertJsonPath('apertura', '70000.00')

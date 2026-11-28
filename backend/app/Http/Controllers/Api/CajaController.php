@@ -100,8 +100,8 @@ class CajaController extends Controller
 
     /**
      * S-84 ("Cambiar apertura"; antes S-49): el mostrador cambia a mano el efectivo con que abre la
-     * caja de ese día (solo mientras no esté cerrado). Motivo obligatorio si difiere de la apertura del
-     * cierre anterior (lo valida CajaService). Responde la apertura efectiva.
+     * caja de ese día (solo mientras no esté cerrado). Motivo siempre obligatorio (lo valida
+     * CajaService). Responde la apertura efectiva.
      */
     public function fijarApertura(Request $request, string $fecha): JsonResponse
     {

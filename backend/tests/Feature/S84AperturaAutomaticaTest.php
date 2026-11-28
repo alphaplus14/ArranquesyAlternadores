@@ -38,8 +38,9 @@ it('S-84: sin cierre previo ni apertura, la apertura es null y el día no se cie
     s84Cerrar('2026-11-26', 0)->assertUnprocessable()
         ->assertJsonPath('message', 'Registre la apertura de la caja (primer día sin cierres anteriores).');
 
-    // Primer día: se abre a mano sin motivo obligatorio.
-    s84Apertura('2026-11-26', 50000)->assertOk()->assertJsonPath('apertura.origen', 'manual');
+    // Primer día: también exige motivo.
+    s84Apertura('2026-11-26', 50000)->assertUnprocessable()->assertJsonPath('campo', 'motivo');
+    s84Apertura('2026-11-26', 50000, 'Primer día')->assertOk()->assertJsonPath('apertura.origen', 'manual');
     s84Cerrar('2026-11-26', 50000)->assertCreated()->assertJsonPath('apertura', '50000.00');
 });
 
@@ -61,16 +62,22 @@ it('S-84: con un cierre de $ 650.000, el día siguiente abre solo con esa apertu
     expect(s84Dia('2026-11-26')['apertura'])->toMatchArray(['valor' => '650000.00', 'origen' => 'cierre']);
 });
 
-it('S-84: cambiar la apertura: distinta sin motivo 422; con motivo queda manual con auditoría; igual al arrastre no crea fila', function () {
+it('S-84: cambiar la apertura exige siempre motivo (también con el valor automático); con motivo queda manual con auditoría', function () {
     $mostrador = actuarComo(Rol::Mostrador);
     abrirCaja('2026-11-25', 650000);
     s84Cerrar('2026-11-25', 650000)->assertCreated();
 
-    // Igual al arrastre y sin cambio previo: OK sin motivo y sin fila nueva.
-    s84Apertura('2026-11-26', 650000)->assertOk()->assertJsonPath('apertura.origen', 'arrastre');
+    // Sin motivo, vacío o en blanco: 422 en `motivo`, incluso con el valor igual al automático.
+    s84Apertura('2026-11-26', 650000)->assertUnprocessable()->assertJsonPath('campo', 'motivo');
+    s84Apertura('2026-11-26', 650000, '   ')->assertUnprocessable()->assertJsonPath('campo', 'motivo');
+    s84Apertura('2026-11-26', 650000, '')->assertUnprocessable()->assertJsonPath('campo', 'motivo');
+    s84Apertura('2026-11-26', 600000)->assertUnprocessable()->assertJsonPath('campo', 'motivo');
     expect(AperturaCaja::where('fecha', '2026-11-26')->exists())->toBeFalse();
 
-    s84Apertura('2026-11-26', 600000)->assertUnprocessable()->assertJsonPath('campo', 'motivo');
+    // Con motivo y valor igual al automático: se registra el cambio manual.
+    s84Apertura('2026-11-26', 650000, 'Confirmada al contar')->assertOk()->assertJsonPath('apertura.origen', 'manual');
+    expect(AperturaCaja::where('fecha', '2026-11-26')->exists())->toBeTrue();
+
     s84Apertura('2026-11-26', 600000, 'Se retiró dinero de la caja')->assertOk()
         ->assertJsonPath('apertura.valor', '600000.00')
         ->assertJsonPath('apertura.origen', 'manual')

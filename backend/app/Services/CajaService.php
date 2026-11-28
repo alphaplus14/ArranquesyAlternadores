@@ -150,9 +150,8 @@ class CajaService
     /**
      * S-84 ("Cambiar apertura"; antes S-49): el mostrador cambia a mano el efectivo con que abre la
      * caja de un día (hoy o antes), solo mientras ese día no tenga cierre vigente. Valor >= 0 con
-     * máximo 2 decimales. Motivo obligatorio (3 a 200) cuando difiere de la apertura del cierre
-     * anterior; en el primer día sin cierres, opcional. Igual al arrastre y sin cambio manual previo:
-     * no crea fila (la apertura ya es esa). Auditable deja la creación y cada cambio (valor y motivo).
+     * máximo 2 decimales. Motivo SIEMPRE obligatorio (3 a 200, tras trim): cualquier envío cuenta
+     * como cambio, incluso con un valor igual al automático. Auditable deja la creación y cada cambio.
      *
      * @return array<string, mixed>|null la apertura efectiva resultante
      */
@@ -174,18 +173,12 @@ class CajaService
                 throw new ReglaInventarioException('El día ya está cerrado: no se puede cambiar la apertura.', 422, ['campo' => 'fecha']);
             }
 
-            $anterior = $this->ultimoCierreVigente($fecha);
-            $arrastre = $anterior ? self::dinero($anterior->efectivo_contado) : null;
             $valor = self::dinero($valor);
             $manual = AperturaCaja::query()->where('fecha', $fecha)->lockForUpdate()->first();
-            $igualAlArrastre = $arrastre !== null && bccomp($valor, $arrastre, 2) === 0;
 
-            // Igual a la del cierre anterior y sin cambio manual: la apertura ya es esa; nada que guardar.
-            if ($igualAlArrastre && ! $manual) {
-                return;
-            }
-            if ($arrastre !== null && ! $igualAlArrastre && mb_strlen($motivo) < 3) {
-                throw new ReglaInventarioException('Escriba el motivo del cambio (difiere de lo que dejó el cierre anterior).', 422, ['campo' => 'motivo']);
+            // S-84: todo envío es un cambio manual y exige motivo, aunque el valor coincida con el automático.
+            if ($motivo === '' || mb_strlen($motivo) < 3) {
+                throw new ReglaInventarioException('Escriba el motivo del cambio de la apertura (mínimo 3 caracteres).', 422, ['campo' => 'motivo']);
             }
             if (mb_strlen($motivo) > 200) {
                 throw new ReglaInventarioException('El motivo admite máximo 200 caracteres.', 422, ['campo' => 'motivo']);
@@ -193,7 +186,7 @@ class CajaService
 
             $manual ??= new AperturaCaja(['fecha' => $fecha]);
             $manual->valor = $valor;
-            $manual->motivo = $motivo !== '' ? $motivo : ($igualAlArrastre ? 'Vuelve a la apertura del cierre anterior' : null);
+            $manual->motivo = $motivo;
             $manual->usuario_id = $usuario->id;
             if (! $manual->exists || $manual->isDirty(['valor', 'motivo'])) {
                 $manual->save();
