@@ -191,18 +191,18 @@ export default function Ingresos() {
         ) : (
         <div className="tabla-desplazable tabla-viva llena" aria-busy={lista.isFetching}>
         <table className="tabla-compras">
-          <thead><tr><th>#</th><th>Tipo</th><th className="col-documento">Documento</th><th className="col-proveedor">Proveedor</th><th>Fecha</th><th>Unidades</th><th>Estado</th><th>Usuario</th><th className="boton-fila-columna boton-fila-icono"><span className="solo-lector">Acciones</span></th></tr></thead>
+          <thead><tr><th>#</th><th className="col-fecha">Fecha</th><th>Tipo</th><th className="col-documento">Documento</th><th className="col-proveedor">Proveedor</th><th>Unidades</th><th>Estado</th><th>Usuario</th><th className="boton-fila-columna boton-fila-icono"><span className="solo-lector">Acciones</span></th></tr></thead>
           <tbody>
             {filas.map((i) => (
               <tr key={i.id}>
                 <td>{i.id}</td>
+                <td className="col-fecha">{i.fecha.slice(0, 10)}</td>
                 <td>{TIPO[i.tipo] ?? i.tipo}</td>
                 <td>
                   {i.numero_documento}
                   {i.corregido && <span className="chip corregida" title={`${i.correcciones_count ?? 1} corrección(es) auditada(s)`}>Corregida</span>}
                 </td>
                 <td>{i.proveedor.nombre}{i.proveedor.asesor && <small className="asesor">Asesor: {i.proveedor.asesor}</small>}</td>
-                <td>{i.fecha.slice(0, 10)}</td>
                 <td>{i.unidades ?? 0}</td>
                 <td><span className={`chip ${i.estado}`}>{i.estado}</span></td>
                 <td>{i.usuario.name}</td>

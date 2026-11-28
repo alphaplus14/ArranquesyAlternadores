@@ -20,7 +20,6 @@ import { hoyEnBogota } from '../../utilidades/periodos'
 import { formatearFecha, formatearFechaHora } from '../../utilidades/fechas'
 import { RUTA_CAJA_ADMIN } from '../../rutas'
 import BotonCancelar from '../../componentes/BotonCancelar'
-import TablaBilleteras from '../../componentes/caja/TablaBilleteras'
 
 /**
  * RF-25 / RF-26 (S-49 a S-54): caja del día del mostrador. Registra movimientos, los anula con motivo
@@ -352,7 +351,7 @@ function ResumenPorCuenta({ resumen: r }: { resumen: ResumenCaja }) {
           <tbody>
             {filas.map((c) => (
               <tr key={c.cuenta_pago_id ?? 'sin'}>
-                <td>{c.nombre}{c.propietario && <small className="bloque">{c.propietario}</small>}{c.ventas_sin_detalle && Number(c.ventas_sin_detalle) > 0 && <small className="bloque">Incluye {pesos(c.ventas_sin_detalle)} de ventas sin detalle de pago</small>}</td>
+                <td>{c.nombre}{c.ventas_sin_detalle && Number(c.ventas_sin_detalle) > 0 && <small className="bloque">Incluye {pesos(c.ventas_sin_detalle)} de ventas sin detalle de pago</small>}</td>
                 <td className="col-numero">{pesos(c.ventas)}</td>
                 <td className="col-numero">{pesos(c.recaudo)}</td>
                 <td className="col-numero">{pesos(c.otros_ingresos)}</td>
@@ -369,7 +368,6 @@ function ResumenPorCuenta({ resumen: r }: { resumen: ResumenCaja }) {
       {conValor.length < r.cuentas.length && (
         <button type="button" className="enlace" onClick={() => setTodas((t) => !t)}>{todas ? 'Ver solo las cuentas con movimiento' : 'Ver todas las cuentas'}</button>
       )}
-      <TablaBilleteras grupos={r.billeteras ?? []} etiquetaNeto="Movimiento del día" />
     </div>
   )
 }

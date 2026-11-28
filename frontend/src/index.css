@@ -2292,3 +2292,5 @@ body:has(.ingreso-barra) .aviso-flotante { bottom: 88px; }
 /* S-91 (ajuste): sin la columna Pago, el ancho sobrante va a Documento y Proveedor (nombre y asesor). */
 .tabla-compras .col-documento { width: 22%; }
 .tabla-compras .col-proveedor { width: 30%; }
+/* La fecha va junto al número y nunca se parte ni se corta (aaaa-mm-dd). */
+.tabla-compras .col-fecha { white-space: nowrap; width: 7.5rem; }
