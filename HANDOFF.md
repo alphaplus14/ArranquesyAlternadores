@@ -1,19 +1,15 @@
-# HANDOFF — Arranques (27-nov-2026)
+# HANDOFF — Arranques (28-nov-2026)
 
-**Objetivo:** integrar los pedidos de César en `rf-21-modulo-contable`, sin push.
+**Objetivo:** reflejar en la documentación el motivo siempre obligatorio al cambiar la apertura de caja (S-84, RF-25).
 
-**Hecho:** S-65 (avisos: acierto 5 s, error 20-30 s; errores de carga fijos), S-70 (menú del admin desplegado), S-88 completo (el mostrador no recibe dueños ni saldos de billeteras), S-94 (Cartera con rango «ventas del período» y miga con filtros), S-95 (desglose fijo del universal en Inventario). Docs al día.
+**Hecho:** el backend (commit 0a046fe) exige motivo de 3 a 200 caracteres en cualquier `PUT /api/caja/dias/{fecha}/apertura`, aunque el valor sea igual al automático o sea el primer día. Se quitaron la excepción «sin motivo si es igual», el motivo opcional del primer día y el motivo automático. Docs actualizadas.
 
-**Pendiente:**
-- Probar en navegador: sticky del desglose (top 44/36 px fijos; densidad compacta y táctil), miga con filtros, Cartera con rango, Configuración.
-- `php artisan migrate` en `inventario`.
-- Tests de frontend: no existen.
-- Confirmar S-86 con el contador.
-- Ramas viejas sin integrar: `panel-*`, `diseno-logi`, `legal-datos`.
-- Push cuando Franklin decida; avisar a César (renumera S/RF).
+**Pendiente:** revisar que el frontend de la apertura pida siempre el motivo (no verificado aquí).
 
-**Archivos:** `docs/supuestos.md`, `CLAUDE.md`, `HANDOFF.md`.
+**Decisiones:** sigue siendo S-84; sin numeración nueva. Filas viejas pueden mostrarse como `arrastre`.
 
-**Verificar:** `bash .claude/scripts/agentes.sh tests`; `cd frontend && npm run build`.
+**Archivos:** `docs/supuestos.md` (S-84, S-49 nota), `CLAUDE.md` (regla 17 y supuestos), `HANDOFF.md`.
 
-**Siguiente paso:** migrar y probar en el navegador.
+**Verificar:** `cd backend && vendor/bin/pest --filter=apertura`.
+
+**Siguiente paso:** probar el cambio de apertura en el navegador.
