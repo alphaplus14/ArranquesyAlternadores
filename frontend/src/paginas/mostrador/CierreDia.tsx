@@ -20,6 +20,7 @@ import { hoyEnBogota } from '../../utilidades/periodos'
 import { formatearFecha, formatearFechaHora } from '../../utilidades/fechas'
 import { RUTA_CAJA_ADMIN } from '../../rutas'
 import BotonCancelar from '../../componentes/BotonCancelar'
+import TablaBilleteras from '../../componentes/caja/TablaBilleteras'
 
 /**
  * RF-25 / RF-26 (S-49 a S-54): caja del día del mostrador. Registra movimientos, los anula con motivo
@@ -324,6 +325,9 @@ const CAMPOS_CUENTA = ['ventas', 'recaudo', 'otros_ingresos', 'ingresos_externos
  * qué cuenta para la meta va en un botón de información (popover accesible con teclado).
  */
 function ResumenPorCuenta({ resumen: r }: { resumen: ResumenCaja }) {
+  // S-88: el dueño de las billeteras es del admin y del contable; el mostrador no lo ve.
+  const { usuario } = useAuth()
+  const verDueno = usuario?.rol === 'admin' || usuario?.rol === 'contable'
   const [todas, setTodas] = useState(false)
   const conValor = r.cuentas.filter((c) => CAMPOS_CUENTA.some((k) => Number(c[k]) !== 0)
     || Number(c.abonos_empleados ?? 0) !== 0 || Number(c.prestamos_empleados ?? 0) !== 0)
@@ -351,7 +355,7 @@ function ResumenPorCuenta({ resumen: r }: { resumen: ResumenCaja }) {
           <tbody>
             {filas.map((c) => (
               <tr key={c.cuenta_pago_id ?? 'sin'}>
-                <td>{c.nombre}{c.ventas_sin_detalle && Number(c.ventas_sin_detalle) > 0 && <small className="bloque">Incluye {pesos(c.ventas_sin_detalle)} de ventas sin detalle de pago</small>}</td>
+                <td>{c.nombre}{verDueno && c.propietario && <small className="bloque">{c.propietario}</small>}{c.ventas_sin_detalle && Number(c.ventas_sin_detalle) > 0 && <small className="bloque">Incluye {pesos(c.ventas_sin_detalle)} de ventas sin detalle de pago</small>}</td>
                 <td className="col-numero">{pesos(c.ventas)}</td>
                 <td className="col-numero">{pesos(c.recaudo)}</td>
                 <td className="col-numero">{pesos(c.otros_ingresos)}</td>
@@ -368,6 +372,7 @@ function ResumenPorCuenta({ resumen: r }: { resumen: ResumenCaja }) {
       {conValor.length < r.cuentas.length && (
         <button type="button" className="enlace" onClick={() => setTodas((t) => !t)}>{todas ? 'Ver solo las cuentas con movimiento' : 'Ver todas las cuentas'}</button>
       )}
+      {verDueno && <TablaBilleteras grupos={r.billeteras ?? []} etiquetaNeto="Movimiento del día" />}
     </div>
   )
 }
