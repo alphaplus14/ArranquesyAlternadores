@@ -453,8 +453,8 @@ function TextoApertura({ apertura: a, cerrado }: { apertura: AperturaCaja; cerra
 
 /**
  * S-84: "Cambiar apertura" (o "Abrir caja" el primer día). El valor se precarga con la apertura
- * actual; "Usar la del cierre anterior" pone lo que dejó el último cierre. El motivo es obligatorio
- * si el valor difiere de eso (lo decide y valida el servidor; aquí solo se anticipa).
+ * actual; "Usar la del cierre anterior" pone lo que dejó el último cierre. El motivo es siempre
+ * obligatorio, de 3 a 200 caracteres (lo valida el servidor; aquí solo se anticipa).
  */
 function DialogoApertura({ fecha, apertura, onCerrar, onGuardada }: {
   fecha: string
@@ -468,12 +468,11 @@ function DialogoApertura({ fecha, apertura, onCerrar, onGuardada }: {
   const [motivo, setMotivo] = useState(apertura?.origen === 'manual' ? apertura.motivo ?? '' : '')
   const n = leerNumero(valor)
   const valido = n !== null && !Number.isNaN(n) && n >= 0 && Math.round(n * 100) === n * 100
-  const difiere = arrastre !== null && valido && Math.abs((n ?? 0) - Number(arrastre)) >= 0.005
-  const motivoFalta = difiere && motivo.trim().length < 3
+  const motivoFalta = motivo.trim().length < 3
   const primerDia = !apertura
 
   const guardar = useMutation({
-    mutationFn: async () => (await api.put<{ apertura: AperturaCaja | null }>(`/caja/dias/${fecha}/apertura`, { valor: n, motivo: motivo.trim() || null })).data,
+    mutationFn: async () => (await api.put<{ apertura: AperturaCaja | null }>(`/caja/dias/${fecha}/apertura`, { valor: n, motivo: motivo.trim() })).data,
     onSuccess: (d) => onGuardada(d.apertura),
   })
   const errores: Record<string, string> = guardar.isError ? erroresCampo(guardar.error) : {}
@@ -522,7 +521,7 @@ function DialogoApertura({ fecha, apertura, onCerrar, onGuardada }: {
           </button>
         )}
         <label htmlFor="apertura-motivo">
-          <span className="etiqueta-campo">Motivo{difiere && <span className="obligatorio" aria-hidden="true">*</span>}</span>
+          <span className="etiqueta-campo">Motivo<span className="obligatorio" aria-hidden="true">*</span></span>
         </label>
         <input
           id="apertura-motivo"
@@ -533,9 +532,7 @@ function DialogoApertura({ fecha, apertura, onCerrar, onGuardada }: {
           onChange={(e) => { setMotivo(e.target.value); guardar.reset() }}
         />
         <small id="apertura-motivo-ayuda" className={errores.motivo ? 'ayuda error' : 'ayuda'}>
-          {errores.motivo ?? (difiere
-            ? `Obligatorio: difiere de lo que dejó el cierre anterior (${pesos(arrastre ?? 0)}). Por ejemplo: se retiró dinero de la caja.`
-            : primerDia ? 'Opcional el primer día.' : 'Por ejemplo: se retiró dinero de la caja.')}
+          {errores.motivo ?? `Obligatorio, de 3 a 200 caracteres (${motivo.trim().length}/200). Por ejemplo: se retiró dinero de la caja.`}
         </small>
         {(general || errores.fecha) && <AvisoPagina tono="error">{general ?? errores.fecha}</AvisoPagina>}
       </DialogoSeccion>
