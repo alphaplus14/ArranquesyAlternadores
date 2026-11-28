@@ -152,7 +152,7 @@ Al empezar el día el mostrador registra la **apertura de la caja**: el efectivo
 
 **Aceptación.**
 1. Con una venta de contado (efectivo y dividida), una a crédito, una devolución, un abono, un pago a proveedor, un gasto, otros ingresos y un ingreso externo, el resumen da el total del día, el efectivo neto y el efectivo esperado (apertura + neto), y el cierre guarda el arqueo.
-5. El mostrador registra la apertura de hoy y la corrige antes de cerrar (queda auditada); con el día cerrado ya no cambia; sin apertura el día no se cierra; una apertura de 0 es válida; la sugerencia es lo contado en el último cierre vigente anterior.
+5. La apertura de cada día es automática: el efectivo contado del último cierre vigente anterior (S-84). El mostrador puede cambiarla a mano, siempre con un motivo (3 a 200 caracteres, también si el valor es igual al automático y el primer día); el cambio queda auditado; con el día cerrado ya no cambia; sin apertura (el primer día) el día no se cierra; una apertura de 0 es válida.
 2. Un segundo cierre del mismo día, un día futuro o un cierre con ventas abiertas con ítems se rechazan.
 3. El admin reabre con motivo y el mostrador vuelve a cerrar; los cierres se reabren del más reciente hacia atrás.
 4. El cuadre mensual trae los días cerrados con sus valores guardados y los demás marcados "sin cerrar", con totales.
