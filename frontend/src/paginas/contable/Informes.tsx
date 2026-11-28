@@ -50,7 +50,9 @@ export default function Informes() {
   })
   const info = data ? infoPagina(data) : null
   // El informe no cuenta como filtro activo.
-  const filtrosActivos = activos - (informe === 'compras' ? 0 : 1)
+  const fueraDeFiltro = (informe === 'compras' ? 0 : 1)
+    + (informe === 'remisiones-pendientes' ? Number(f.desde !== mes.desde) + Number(f.hasta !== mes.hasta) : 0)
+  const filtrosActivos = activos - fueraDeFiltro
   // Conserva el informe elegido (un solo cambio de la URL).
   const limpiarFiltros = () => fijar({ desde: mes.desde, hasta: mes.hasta, ...FILTROS_VACIOS })
   const periodo = informe !== 'remisiones-pendientes'
