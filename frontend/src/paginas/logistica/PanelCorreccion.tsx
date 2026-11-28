@@ -4,9 +4,13 @@ import { api, erroresCampo, mensajeError } from '../../api/cliente'
 import Dialogo, { DialogoSeccion } from '../../componentes/Dialogo'
 import type { CorreccionIngreso, Ingreso, LineaCorreccionEnvio, Pagina, Referencia, VistaPreviaCorreccion } from '../../api/tipos'
 import DetalleCorreccion from '../../componentes/ingresos/DetalleCorreccion'
+import TarjetaDescuento from '../../componentes/ingresos/TarjetaDescuento'
+import { AYUDA_LINEAS_CON_DOCUMENTO, NOMBRE_CORTO, condicionDe, type CondicionDescuento, type CondicionElegible } from '../../componentes/ingresos/condicionDescuento'
+import CampoDescuento, { type ModoDescuento } from '../../componentes/CampoDescuento'
 import { formatearFechaHora } from '../../utilidades/fechas'
 import { formatoNumero, leerNumero, pesos } from '../../componentes/numeros'
 import { useAuth } from '../../auth/AuthProvider'
+import { useAviso } from '../../componentes/Avisos'
 import { UMBRAL_RAFAGA_MS, useScanner } from '../../hooks/useScanner'
 import BotonCancelar from '../../componentes/BotonCancelar'
 import DialogoReferencia from './DialogoReferencia'
@@ -49,6 +53,9 @@ function lineasIniciales(i: Ingreso): LineaCorr[] {
  * S-61: una remisión cubierta por una factura solo corrige número y fecha.
  * RF-20: un código que no es referencia del proveedor se ofrece crear (mismo diálogo del borrador)
  * y queda como línea nueva; uno desactivado se reactiva en Inventario (no se duplica).
+ * S-95 (S-86 en RF-28): "Condición del descuento" elige entre descuento del documento ($ o %, como en
+ * el borrador) o por producto; cambiar de condición avisa qué se quita y se puede volver atrás hasta
+ * confirmar. Un documento anterior a S-86 llega "Mixto (anterior)" con los descuentos en solo lectura.
  */
 export function PanelCorreccion({ ingreso, onCancelar, onCorregido }: {
   ingreso: Ingreso
@@ -67,6 +74,15 @@ export function PanelCorreccion({ ingreso, onCancelar, onCorregido }: {
     descuento: formatoNumero(ingreso.descuento_documento),
   })
   const [lineas, setLineas] = useState<LineaCorr[]>(() => lineasIniciales(ingreso))
+  // S-95: condición del descuento. Confirmado, el descuento del documento queda en pesos ($ por defecto).
+  const [condicion, setCondicion] = useState<CondicionDescuento>(() => condicionDe(
+    Number(ingreso.descuento_documento),
+    lineasIniciales(ingreso).map((l) => leerNumero(l.valores.descuento_porcentaje) ?? 0),
+  ))
+  const [modoDesc, setModoDesc] = useState<ModoDescuento>('$')
+  const [cambioPendiente, setCambioPendiente] = useState<{ nueva: CondicionElegible; texto: string } | null>(null)
+  /** Lo que se quitó al cambiar de condición, para devolverlo si el usuario vuelve atrás. */
+  const guardado = useRef<{ documento?: { modo: ModoDescuento; valor: string }; lineas?: Map<string, string> }>({})
   const lineasRef = useRef(lineas)
   lineasRef.current = lineas
   /** Resultado de una búsqueda sin coincidencia exacta: opciones del proveedor y el código escrito. */
@@ -82,9 +98,13 @@ export function PanelCorreccion({ ingreso, onCancelar, onCorregido }: {
   const barraRef = useRef<HTMLDivElement>(null)
   const costos = useRef(new Map<string, HTMLInputElement>())
   useAltoLector(panelRef, zonaLector, !soloEncabezado)
+  // S-96: el aviso de auditoría se va solo a los 5 s (pausa con mouse o foco); la frase queda fija en "Revisar cambios".
+  const { mostrar: mostrarAviso } = useAviso()
+  useEffect(() => { mostrarAviso('atencion', AVISO_AUDITORIA, undefined, 5000) }, [mostrarAviso])
 
   const credito = enc.forma_pago === 'credito'
-  const descuento = leerNumero(enc.descuento)
+  // En % el campo es un número simple (S-67: separador de miles solo en pesos).
+  const descuento = modoDesc === '%' ? (enc.descuento.trim() === '' ? 0 : Number(enc.descuento)) : leerNumero(enc.descuento)
   const conErrores = lineas.filter((l) => Object.values(erroresLinea(l)).some(Boolean))
   const vigentes = lineas.filter((l) => !l.quitada)
   const nuevas = lineas.filter((l) => l.id === null).length
@@ -95,13 +115,13 @@ export function PanelCorreccion({ ingreso, onCancelar, onCorregido }: {
     if (enc.numero_documento.trim() === '') return 'Falta el número del documento'
     if (credito && enc.vence_el === '') return 'Falta el vencimiento'
     if (!soloEncabezado && descuento !== null && Number.isNaN(descuento)) return 'Descuento del documento no válido'
-    if (vigentes.length === 0) return 'Debe quedar al menos una línea'
+    if (vigentes.length === 0) return 'Debe quedar al menos un ítem'
     if (conErrores.length === 1) {
       const errores = erroresLinea(conErrores[0])
       const soloCosto = CAMPOS.every((c) => c === 'costo_unitario' || !errores[c])
       return soloCosto ? `Falta el costo de ${conErrores[0].codigo}` : `Faltan datos en ${conErrores[0].codigo}`
     }
-    if (conErrores.length > 1) return `Faltan datos en ${conErrores.length} líneas`
+    if (conErrores.length > 1) return `Faltan datos en ${conErrores.length} ítems`
     return null
   })()
 
@@ -115,7 +135,11 @@ export function PanelCorreccion({ ingreso, onCancelar, onCorregido }: {
       descuento_porcentaje: leerNumero(l.valores.descuento_porcentaje) ?? 0,
       iva_porcentaje: leerNumero(l.valores.iva_porcentaje) ?? 0,
     }))
-    return { ...base, forma_pago: enc.forma_pago, vence_el: credito ? enc.vence_el : null, descuento_documento: descuento ?? 0, items }
+    // S-95: con "por producto" o "sin descuento" el del documento va en 0; en % se envía el %.
+    const documento = condicion === 'documento' || condicion === 'mixto'
+      ? (modoDesc === '%' ? { descuento_documento_porcentaje: descuento ?? 0 } : { descuento_documento: descuento ?? 0 })
+      : { descuento_documento: 0 }
+    return { ...base, forma_pago: enc.forma_pago, vence_el: credito ? enc.vence_el : null, ...documento, items }
   }
 
   const revisar = useMutation({
@@ -126,6 +150,52 @@ export function PanelCorreccion({ ingreso, onCancelar, onCorregido }: {
   reiniciarRevision.current = revisar.reset
 
   const cambiarEnc = (k: keyof typeof enc, v: string) => { revisar.reset(); setEnc((e) => ({ ...e, [k]: v })) }
+
+  // S-95: mismo cambio de unidad que "Editar condiciones" del borrador.
+  const cambiarModo = (nuevo: ModoDescuento) => {
+    if (nuevo === modoDesc) return
+    const n = nuevo === '%' ? leerNumero(enc.descuento) : (enc.descuento.trim() === '' ? null : Number(enc.descuento))
+    setModoDesc(nuevo)
+    cambiarEnc('descuento', n === null || Number.isNaN(n) ? '' : nuevo === '%' ? String(n) : formatoNumero(n))
+  }
+
+  /** S-95: aplica la condición: pone en 0 lo que se abandona (y lo guarda) y devuelve lo guardado de la que se elige. */
+  const aplicarCondicion = (nueva: CondicionElegible) => {
+    revisar.reset()
+    if (nueva === 'documento') {
+      const previo = guardado.current.documento
+      if (previo) { setModoDesc(previo.modo); setEnc((e) => ({ ...e, descuento: previo.valor })) }
+    } else {
+      if ((descuento ?? 0) > 0) guardado.current.documento = { modo: modoDesc, valor: enc.descuento }
+      setEnc((e) => ({ ...e, descuento: '0' }))
+    }
+    if (nueva === 'producto') {
+      const previas = guardado.current.lineas
+      if (previas) setLineas((ls) => ls.map((l) => (previas.has(l.clave) ? { ...l, valores: { ...l.valores, descuento_porcentaje: previas.get(l.clave)! } } : l)))
+    } else {
+      const conDescuento = new Map(lineas.filter((l) => (leerNumero(l.valores.descuento_porcentaje) ?? 0) > 0).map((l) => [l.clave, l.valores.descuento_porcentaje]))
+      if (conDescuento.size > 0) guardado.current.lineas = conDescuento
+      setLineas((ls) => ls.map((l) => (l.valores.descuento_porcentaje === '0' ? l : { ...l, valores: { ...l.valores, descuento_porcentaje: '0' } })))
+    }
+    setCondicion(nueva)
+    setCambioPendiente(null)
+  }
+
+  /** Avisa en una línea qué se quitará antes de aplicar; si no se quita nada, aplica de una vez. */
+  const pedirCondicion = (nueva: CondicionElegible) => {
+    if (nueva === condicion) return
+    const quita: string[] = []
+    if (nueva !== 'documento' && (descuento ?? 0) > 0) {
+      quita.push(`el descuento del documento (${modoDesc === '%' ? `${enc.descuento} %` : pesos(descuento ?? 0)})`)
+    }
+    const porcentajes = vigentes.map((l) => leerNumero(l.valores.descuento_porcentaje) ?? 0).filter((d) => d > 0)
+    if (nueva !== 'producto' && porcentajes.length > 0) {
+      const uno = porcentajes.every((d) => d === porcentajes[0]) ? ` (${formatoNumero(porcentajes[0])} %)` : ''
+      quita.push(porcentajes.length === 1 ? `el descuento de 1 ítem${uno}` : `los descuentos de ${porcentajes.length} ítems${uno}`)
+    }
+    if (quita.length === 0) { aplicarCondicion(nueva); return }
+    setCambioPendiente({ nueva, texto: `Cambiar a ${NOMBRE_CORTO[nueva]} quitará ${quita.join(' y ')}.` })
+  }
   // Estables: la fila memoizada solo se vuelve a pintar si cambia su propia línea.
   const cambiarValor = useCallback((clave: string, campo: Campo, valor: string) => {
     reiniciarRevision.current()
@@ -278,24 +348,35 @@ export function PanelCorreccion({ ingreso, onCancelar, onCorregido }: {
     setTimeout(() => { if (!hayDialogoRef.current) lector.current?.focus() }, 0)
   }
 
+  // S-95: resumen de solo lectura de un documento mixto («Documento: $67.500 · Líneas: 10 % en 5 líneas»).
+  const resumenMixto = (() => {
+    if (condicion !== 'mixto') return undefined
+    const ps = vigentes.map((l) => leerNumero(l.valores.descuento_porcentaje) ?? 0).filter((d) => d > 0)
+    const min = Math.min(...ps)
+    const max = Math.max(...ps)
+    const rango = min === max ? `${formatoNumero(min)} %` : `${formatoNumero(min)} a ${formatoNumero(max)} %`
+    return `Documento: ${pesos(descuento ?? 0)} · Ítems: ${rango} en ${ps.length} ${ps.length === 1 ? 'ítem' : 'ítems'}`
+  })()
+
+  // S-95: por qué "Desc. %" no se edita con la condición actual (title del encabezado de la columna).
+  const ayudaDescuento = condicion === 'documento' ? AYUDA_LINEAS_CON_DOCUMENTO
+    : condicion === 'ninguno' ? 'Elija «Por producto» para dar descuento por ítem'
+      : condicion === 'mixto' ? 'Elija una sola condición para modificar los descuentos' : undefined
+
   const resumen = [
-    `${vigentes.length} ${vigentes.length === 1 ? 'línea' : 'líneas'}`,
-    `${nuevas} ${nuevas === 1 ? 'nueva' : 'nuevas'}`,
-    `${quitadas} ${quitadas === 1 ? 'quitada' : 'quitadas'}`,
+    `${vigentes.length} ${vigentes.length === 1 ? 'ítem' : 'ítems'}`,
+    `${nuevas} ${nuevas === 1 ? 'nuevo' : 'nuevos'}`,
+    `${quitadas} ${quitadas === 1 ? 'quitado' : 'quitados'}`,
     ...(conErrores.length > 0 ? [`${conErrores.length} con errores`] : []),
   ].join(' · ')
 
   return (
     <div ref={panelRef} className="panel panel-correccion ingreso-con-barra">
-      <div className="fila-titulo">
-        <h2>Corregir {ingreso.tipo === 'factura' ? 'factura' : 'remisión'} {ingreso.numero_documento}</h2>
-      </div>
-      <div className="aviso atencion" role="note">La corrección queda auditada y el administrador puede verla.</div>
       {soloEncabezado && (
         <p className="ayuda">Esta remisión está cubierta por la factura {ingreso.factura?.numero_documento}: solo se corrigen el número y la fecha. Sus cantidades y costos se corrigen en la factura.</p>
       )}
 
-      <div className="formulario en-linea encabezado-correccion">
+      <div className="encabezado-correccion">
         <label>Número<input required maxLength={60} value={enc.numero_documento} onChange={(e) => cambiarEnc('numero_documento', e.target.value)} /></label>
         <label>Fecha<input type="date" required value={enc.fecha} onChange={(e) => cambiarEnc('fecha', e.target.value)} /></label>
         {!soloEncabezado && (
@@ -307,10 +388,31 @@ export function PanelCorreccion({ ingreso, onCancelar, onCorregido }: {
               </select>
             </label>
             {credito && <label>Vence el<input type="date" required min={enc.fecha} value={enc.vence_el} onChange={(e) => cambiarEnc('vence_el', e.target.value)} /></label>}
-            <label>Descuento del documento ($)<input inputMode="decimal" value={enc.descuento} onChange={(e) => cambiarEnc('descuento', e.target.value)} /></label>
           </>
         )}
       </div>
+
+      {!soloEncabezado && (
+        <TarjetaDescuento
+          id="correccion-descuento"
+          condicion={condicion}
+          onElegir={pedirCondicion}
+          cambio={cambioPendiente}
+          onCambiar={() => cambioPendiente && aplicarCondicion(cambioPendiente.nueva)}
+          onMantener={() => setCambioPendiente(null)}
+          resumenMixto={resumenMixto}
+          campoDocumento={(
+            <CampoDescuento
+              id="correccion-descuento-valor"
+              etiqueta="Valor del descuento"
+              modo={modoDesc}
+              valor={enc.descuento}
+              onModo={cambiarModo}
+              onValor={(v) => cambiarEnc('descuento', v)}
+            />
+          )}
+        />
+      )}
 
       {!soloEncabezado && (
         // Fijo bajo la barra superior: con muchas líneas se sigue escaneando sin subir.
@@ -318,8 +420,8 @@ export function PanelCorreccion({ ingreso, onCancelar, onCorregido }: {
           <input
             ref={lector}
             className="escaner"
-            placeholder="Agregar línea: escanee el código o escriba la referencia y pulse Enter"
-            aria-label="Agregar línea por código o búsqueda"
+            placeholder="Agregar ítem: escanee el código o escriba la referencia y pulse Enter"
+            aria-label="Agregar ítem por código o búsqueda"
             // RF-28: al abrir "Corregir", el foco va al lector.
             autoFocus
             onKeyDown={scanner.onKeyDown}
@@ -356,13 +458,14 @@ export function PanelCorreccion({ ingreso, onCancelar, onCorregido }: {
 
       <div ref={tablaRef} className="tabla-desplazable ingreso-tabla" onKeyDown={alTeclearEnTabla} onBlur={alSalirDeTabla}>
         <table className="tabla-lineas tabla-correccion">
-          <thead><tr><th>Referencia</th><th>Cant.</th><th>Costo</th><th>Desc. %</th><th>IVA %</th><th><span className="solo-lector">Acciones</span></th></tr></thead>
+          <thead><tr><th>Referencia</th><th>Cant.</th><th>Costo</th><th title={condicion === 'producto' ? undefined : ayudaDescuento}>Desc. %</th><th>IVA %</th><th><span className="solo-lector">Acciones</span></th></tr></thead>
           <tbody>
             {lineas.map((l) => (
               <FilaCorreccion
                 key={l.clave}
                 linea={l}
                 soloEncabezado={soloEncabezado}
+                descuentoEditable={condicion === 'producto'}
                 onCambiar={cambiarValor}
                 onQuitar={alternarQuitada}
                 registrarCosto={registrarCosto}
@@ -378,8 +481,17 @@ export function PanelCorreccion({ ingreso, onCancelar, onCorregido }: {
         <span className="ingreso-barra-resumen">{resumen}</span>
         <div className="ingreso-barra-acciones">
           {motivoBloqueo && <small className="ingreso-barra-motivo" role="status">{motivoBloqueo}</small>}
+          {/* S-95: con un cambio de condición sin confirmar no se revisa; el porqué va en el botón, no en la barra. */}
+          {cambioPendiente && <span id="revisar-bloqueo" className="solo-lector">Termine el cambio de condición</span>}
           <button type="button" className="secundario" onClick={onCancelar}>Cancelar</button>
-          <button type="button" className="primario" disabled={motivoBloqueo !== null || revisar.isPending} onClick={() => revisar.mutate()}>
+          <button
+            type="button"
+            className="primario"
+            disabled={motivoBloqueo !== null || cambioPendiente !== null || revisar.isPending}
+            title={cambioPendiente ? 'Termine el cambio de condición' : undefined}
+            aria-describedby={cambioPendiente ? 'revisar-bloqueo' : undefined}
+            onClick={() => revisar.mutate()}
+          >
             {revisar.isPending ? 'Revisando…' : 'Revisar cambios'}
           </button>
         </div>
@@ -406,6 +518,8 @@ export function PanelCorreccion({ ingreso, onCancelar, onCorregido }: {
   )
 }
 
+const AVISO_AUDITORIA = 'La corrección queda auditada y el administrador puede verla.'
+
 function erroresLinea(l: LineaCorr): Partial<Record<Campo, string | null>> {
   return l.quitada ? {} : Object.fromEntries(CAMPOS.map((c) => [c, REGLAS[c].validar(leerNumero(l.valores[c]))]))
 }
@@ -414,9 +528,11 @@ function erroresLinea(l: LineaCorr): Partial<Record<Campo, string | null>> {
  * Una línea de la corrección. Memoizada: escribir en una celda solo vuelve a pintar su fila (las
  * demás conservan el mismo objeto y las mismas funciones).
  */
-const FilaCorreccion = memo(function FilaCorreccion({ linea: l, soloEncabezado, onCambiar, onQuitar, registrarCosto }: {
+const FilaCorreccion = memo(function FilaCorreccion({ linea: l, soloEncabezado, descuentoEditable, onCambiar, onQuitar, registrarCosto }: {
   linea: LineaCorr
   soloEncabezado: boolean
+  /** S-95: "Desc. %" solo se edita con la condición "Descuento por producto". */
+  descuentoEditable: boolean
   onCambiar: (clave: string, campo: Campo, valor: string) => void
   onQuitar: (clave: string) => void
   registrarCosto: (clave: string, el: HTMLInputElement | null) => void
@@ -432,6 +548,9 @@ const FilaCorreccion = memo(function FilaCorreccion({ linea: l, soloEncabezado, 
         <td key={c} data-label={REGLAS[c].etiqueta}>
           {soloEncabezado || l.quitada ? (
             <span>{l.valores[c] || '—'}</span>
+          ) : c === 'descuento_porcentaje' && !descuentoEditable ? (
+            // S-95: solo lectura en texto (sin ayuda por fila; el por qué va en el encabezado).
+            <span className="celda-solo-lectura">{(leerNumero(l.valores[c]) ?? 0) > 0 ? `${l.valores[c]} %` : '—'}</span>
           ) : c === 'iva_porcentaje' ? (
             <select data-clave={l.clave} data-campo={c} aria-label={`${REGLAS[c].etiqueta} de ${l.codigo}`} value={l.valores[c]} onChange={(e) => onCambiar(l.clave, c, e.target.value)}>
               {[...new Set([...IVAS.map(String), l.valores[c]])].map((v) => <option key={v} value={v}>{v} %</option>)}
@@ -509,6 +628,7 @@ function DialogoConfirmarCorreccion({ ingresoId, vista, cuerpo, onCerrar, onCorr
       )}
     >
       <DialogoSeccion>
+      <p className="ayuda nota-auditoria">{AVISO_AUDITORIA}</p>
       <dl className="datos-fijos">
         <div><dt>Total anterior</dt><dd>{vista.total_anterior === null ? '—' : pesos(vista.total_anterior)}</dd></div>
         <div><dt>Total nuevo</dt><dd><strong>{pesos(vista.total_nuevo)}</strong></dd></div>
@@ -560,7 +680,7 @@ function DialogoConfirmarCorreccion({ ingresoId, vista, cuerpo, onCerrar, onCorr
 /** RF-28: historial de correcciones del ingreso (más reciente primero), con lo que cambió. */
 export function HistorialCorrecciones({ correcciones }: { correcciones: CorreccionIngreso[] }) {
   return (
-    <section className="panel">
+    <section className="panel historial-correcciones-panel">
       <h2>Correcciones</h2>
       <ul className="historial-correcciones">
         {correcciones.map((c) => (

@@ -6,8 +6,8 @@ export const CAMPOS: Campo[] = ['cantidad', 'costo_unitario', 'descuento_porcent
 /** IVA de una línea de compra (S-22): 0 = sin IVA. Si la línea trae otro valor, se agrega. */
 export const IVAS = [19, 5, 0]
 
-export const AYUDA_DESCUENTO_LINEA = 'El documento ya tiene descuento: quítelo para dar descuento por línea'
-export const AYUDA_DESCUENTO_DOCUMENTO = 'Quite los descuentos de línea para usar uno del documento'
+export const AYUDA_DESCUENTO_LINEA = 'El documento ya tiene descuento: quítelo para dar descuento por ítem'
+export const AYUDA_DESCUENTO_DOCUMENTO = 'Quite los descuentos de los ítems para usar uno del documento'
 
 /** Una fila de líneas en edición: todos sus campos a la vez (solo una fila a la vez). */
 export interface Fila {

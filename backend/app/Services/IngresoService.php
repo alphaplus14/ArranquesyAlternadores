@@ -728,13 +728,13 @@ class IngresoService
                 if ($id !== null) {
                     $clave = 'i'.$id;
                     if (! isset($lineas[$clave])) {
-                        throw new ReglaInventarioException("La línea #{$id} no es de este ingreso.", 422);
+                        throw new ReglaInventarioException("El ítem #{$id} no es de este ingreso.", 422);
                     }
                     if (isset($enviadas[$clave])) {
-                        throw new ReglaInventarioException("La línea #{$id} viene repetida.", 422);
+                        throw new ReglaInventarioException("El ítem #{$id} viene repetido.", 422);
                     }
                     if (isset($l['referencia_id']) && (int) $l['referencia_id'] !== $lineas[$clave]['referencia_id']) {
-                        throw new ReglaInventarioException('La referencia de una línea no se cambia: quite esa línea y agregue otra con la referencia correcta.', 422, ['linea_id' => (int) $id]);
+                        throw new ReglaInventarioException('La referencia de un ítem no se cambia: quite ese ítem y agregue otro con la referencia correcta.', 422, ['linea_id' => (int) $id]);
                     }
                     $enviadas[$clave] = true;
                     foreach (['cantidad', 'costo_unitario', 'descuento_porcentaje', 'iva_porcentaje'] as $campo) {
@@ -787,7 +787,7 @@ class IngresoService
 
         $activas = array_filter($lineas, fn ($l) => $l['cantidad'] > 0);
         if ($activas === []) {
-            throw new ReglaInventarioException('El ingreso no puede quedar sin líneas.', 422);
+            throw new ReglaInventarioException('El ingreso no puede quedar sin ítems.', 422);
         }
         $sinCosto = array_filter($activas, fn ($l) => bccomp($l['costo_unitario'], '0', 2) <= 0);
         if ($sinCosto !== []) {
@@ -798,6 +798,7 @@ class IngresoService
         $objetos = collect($lineas)->map(fn ($l, $clave) => (object) [...$l, 'id' => $clave])->values();
         $totales = TotalesIngreso::calcular($objetos, $descPesos, $descPct);
         $totales->exigirDescuentoValido();
+        $this->exigirUnaCondicionDescuento($ingreso, $antesLineas, $lineas, $totales->descuentoDocumento, $descPct);
         if ($enc['forma_pago'] === FormaPago::Credito->value) {
             if (bccomp($totales->total, '0', 2) === 0) {
                 throw new ReglaInventarioException('Un ingreso a crédito no puede quedar con total $0.', 422);
@@ -848,7 +849,7 @@ class IngresoService
                         'referencia_id' => $l['referencia_id'],
                         'codigo_referencia' => $l['codigo_referencia'],
                         'mensaje' => $l['cantidad'] === 0
-                            ? "No se puede quitar la línea de {$l['codigo_referencia']}: {$fuera} de sus unidades ya se vendieron o salieron del inventario."
+                            ? "No se puede quitar el ítem de {$l['codigo_referencia']}: {$fuera} de sus unidades ya se vendieron o salieron del inventario."
                             : "No se puede bajar {$l['codigo_referencia']} a {$l['cantidad']}: {$fuera} unidades ya se vendieron o salieron del inventario (mínimo {$minimo}).",
                         'vendidas' => $fuera,
                     ];
@@ -869,7 +870,8 @@ class IngresoService
         }
 
         $foto = fn (array $e, string $descuento, ?string $total, array $ls, bool $final) => [
-            'encabezado' => [...$e, 'descuento_documento' => $descuento, 'total' => $total],
+            // S-95: la condición queda implícita en los valores; se agrega legible para el registro.
+            'encabezado' => [...$e, 'descuento_documento' => $descuento, 'total' => $total, 'condicion_descuento' => self::condicionDescuento($descuento, $ls)],
             'lineas' => array_values(array_map(fn ($l, $clave) => [
                 'clave' => $clave,
                 'id' => $l['id'],
@@ -902,6 +904,52 @@ class IngresoService
             ], self::dosDecimales($ingreso->descuento_documento), $ingreso->total === null ? null : self::dosDecimales($ingreso->total), $antesLineas, false),
             'despues' => $foto($enc, $descuentoFinal, $totales->total, $lineas, true),
         ];
+    }
+
+    /**
+     * S-95 (S-86 en RF-28): el estado final de una corrección no mezcla descuento del documento y
+     * descuento por línea (un 0 no cuenta; una línea quitada, en cantidad 0, tampoco). Excepción: un
+     * documento anterior a S-86 que ya los mezclaba puede corregirse si NO cambia ningún descuento.
+     *
+     * @param  array<string, array<string, mixed>>  $antes  líneas como estaban
+     * @param  array<string, array<string, mixed>>  $despues  líneas finales
+     */
+    private function exigirUnaCondicionDescuento(Ingreso $ingreso, array $antes, array $despues, string $documentoFinal, ?string $porcentaje): void
+    {
+        $conDescuento = fn (array $ls) => collect($ls)->contains(fn ($l) => $l['cantidad'] > 0 && bccomp((string) $l['descuento_porcentaje'], '0', 2) > 0);
+        if (bccomp($documentoFinal, '0', 2) <= 0 || ! $conDescuento($despues)) {
+            return;
+        }
+
+        $documentoCambia = $porcentaje !== null || bccomp($documentoFinal, (string) $ingreso->descuento_documento, 2) !== 0;
+        $lineasCambian = collect($despues)->contains(fn ($l, $clave) => isset($antes[$clave])
+            ? bccomp((string) $l['descuento_porcentaje'], (string) $antes[$clave]['descuento_porcentaje'], 2) !== 0
+            : bccomp((string) $l['descuento_porcentaje'], '0', 2) > 0);
+        $eraMixto = bccomp((string) $ingreso->descuento_documento, '0', 2) > 0 && $conDescuento($antes);
+        if ($eraMixto && ! $documentoCambia && ! $lineasCambian) {
+            return;
+        }
+
+        if ($lineasCambian) {
+            $mensaje = 'El documento ya tiene descuento: quítelo para dar descuento por ítem.';
+            throw new ReglaInventarioException($mensaje, 422, ['campo' => 'descuento_porcentaje', 'errors' => ['descuento_porcentaje' => [$mensaje]]]);
+        }
+        $mensaje = 'Hay ítems con descuento: quítelos para usar un descuento del documento.';
+        throw new ReglaInventarioException($mensaje, 422, ['campo' => 'descuento_documento', 'errors' => ['descuento_documento' => [$mensaje]]]);
+    }
+
+    /** S-95: documento | producto | ninguno | mixto (anterior a S-86), según los valores. */
+    private static function condicionDescuento(string $documento, array $lineas): string
+    {
+        $documento = bccomp($documento, '0', 2) > 0;
+        $producto = collect($lineas)->contains(fn ($l) => $l['cantidad'] > 0 && bccomp((string) $l['descuento_porcentaje'], '0', 2) > 0);
+
+        return match (true) {
+            $documento && $producto => 'mixto',
+            $documento => 'documento',
+            $producto => 'producto',
+            default => 'ninguno',
+        };
     }
 
     /** @return array<string, mixed> */
@@ -970,7 +1018,7 @@ class IngresoService
     {
         $referencia = Referencia::query()->find($referenciaId, ['id', 'proveedor_id', 'codigo_referencia', 'iva_venta_porcentaje', 'activo']);
         if (! $referencia) {
-            throw new ReglaInventarioException('La referencia de la línea nueva no existe.', 422);
+            throw new ReglaInventarioException('La referencia del ítem nuevo no existe.', 422);
         }
         if (! $referencia->activo) {
             throw new ReglaInventarioException("La referencia {$referencia->codigo_referencia} está inactiva; reactívela para usarla.", 422, ['motivo' => 'referencia_inactiva']);
@@ -1079,7 +1127,7 @@ class IngresoService
     }
 
     /**
-     * S-86 (solo borrador; el confirmado y RF-28 no pasan por aqui): descuento por linea y descuento
+     * S-86 (borrador; la corrección de RF-28 lo aplica en exigirUnaCondicionDescuento, S-95): descuento por linea y descuento
      * del documento se excluyen. Un descuento 0 no cuenta. El ingreso ya viene bloqueado. Un borrador
      * viejo que ya mezcla ambos sigue calculando igual: la regla solo frena el siguiente descuento.
      *
@@ -1090,9 +1138,9 @@ class IngresoService
         $linea = $datos['descuento_porcentaje'] ?? 0;
         if (bccomp((string) $linea, '0', 4) > 0 && $this->tieneDescuentoDocumento($bloqueado)) {
             throw new ReglaInventarioException(
-                'El documento ya tiene descuento: quítelo para dar descuento por línea.',
+                'El documento ya tiene descuento: quítelo para dar descuento por ítem.',
                 422,
-                ['campo' => 'descuento_porcentaje', 'errors' => ['descuento_porcentaje' => ['El documento ya tiene descuento: quítelo para dar descuento por línea.']]],
+                ['campo' => 'descuento_porcentaje', 'errors' => ['descuento_porcentaje' => ['El documento ya tiene descuento: quítelo para dar descuento por ítem.']]],
             );
         }
     }
@@ -1109,9 +1157,9 @@ class IngresoService
 
         if ($nuevo && $bloqueado->items()->where('descuento_porcentaje', '>', 0)->exists()) {
             throw new ReglaInventarioException(
-                'Hay líneas con descuento: quítelos para usar un descuento del documento.',
+                'Hay ítems con descuento: quítelos para usar un descuento del documento.',
                 422,
-                ['campo' => 'descuento_documento', 'errors' => ['descuento_documento' => ['Hay líneas con descuento: quítelos para usar un descuento del documento.']]],
+                ['campo' => 'descuento_documento', 'errors' => ['descuento_documento' => ['Hay ítems con descuento: quítelos para usar un descuento del documento.']]],
             );
         }
     }

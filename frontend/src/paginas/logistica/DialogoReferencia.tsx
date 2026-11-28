@@ -100,7 +100,7 @@ export default function DialogoReferencia({ codigo, proveedor, onCreada, onCerra
             <dd><Candado />{proveedor.nombre}<span className="solo-lector">, fijado por el ingreso</span></dd>
           </div>
         </dl>
-        <p className="ayuda">El código no existe para este proveedor. Se crea para el proveedor de este ingreso, con el código escaneado, y al guardarla se agrega la línea.</p>
+        <p className="ayuda">El código no existe para este proveedor. Se crea para el proveedor de este ingreso, con el código escaneado, y al guardarla se agrega el ítem.</p>
         <ControlSegmentado
           id="tipo-codigo-leido"
           etiqueta="¿Qué es el código leído?"

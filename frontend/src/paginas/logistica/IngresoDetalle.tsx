@@ -8,6 +8,8 @@ import Dialogo, { DialogoSeccion } from '../../componentes/Dialogo'
 import type { CorreccionIngreso, FormaPago, Ingreso, IngresoItem } from '../../api/tipos'
 import { fechaCorta, sumarDias } from '../../componentes/fechas'
 import CampoDescuento, { type ModoDescuento } from '../../componentes/CampoDescuento'
+import TarjetaDescuento from '../../componentes/ingresos/TarjetaDescuento'
+import { NOMBRE_CONDICION, condicionDe } from '../../componentes/ingresos/condicionDescuento'
 import { formatoNumero, leerNumero, pesos } from '../../componentes/numeros'
 import CampoMoneda from '../../componentes/CampoMoneda'
 import { useScanner } from '../../hooks/useScanner'
@@ -117,7 +119,7 @@ export default function IngresoDetalle() {
     if (Object.values(erroresDe(f)).some(Boolean) || Object.keys(cambios).length === 0) return
     guardarLinea(f, cambios)
       .then(actualizar)
-      .catch((e) => avisos.mostrar('error', `No se guardó la línea ${f.codigo}: ${mensajeError(e)}`))
+      .catch((e) => avisos.mostrar('error', `No se guardó el ítem ${f.codigo}: ${mensajeError(e)}`))
   }
 
   const abrirFila = (it: LineaEditable, foco: Campo) => {
@@ -155,7 +157,7 @@ export default function IngresoDetalle() {
       const campos = erroresCampo(e)
       const mensaje = campos.descuento_porcentaje ?? mensajeError(e)
       if (actual?.itemId === f.itemId) ponerFila({ ...actual, foco, guardando: false, intentado: true, errorServidor: mensaje })
-      else avisos.mostrar('error', `No se guardó la línea ${f.codigo}: ${mensaje}`)
+      else avisos.mostrar('error', `No se guardó el ítem ${f.codigo}: ${mensaje}`)
     }
   }
 
@@ -303,7 +305,9 @@ export default function IngresoDetalle() {
               <span className="chip">
                 {i.descuento_documento_porcentaje !== null && Number(i.descuento_documento_porcentaje) > 0
                   ? `Descuento ${formatoNumero(i.descuento_documento_porcentaje)} % (${pesos(i.descuento_documento)})`
-                  : descuentoDoc > 0 ? `Descuento ${pesos(i.descuento_documento)}` : 'Sin descuento'}
+                  : descuentoDoc > 0 ? `Descuento ${pesos(i.descuento_documento)}`
+                    // S-95: misma condición que la corrección (por producto, mixto o sin descuento).
+                    : NOMBRE_CONDICION[condicionDe(0, i.items.map((it) => Number(it.descuento_porcentaje)))]}
               </span>
             </li>
           </ul>
@@ -331,26 +335,27 @@ export default function IngresoDetalle() {
             />
             <p className="ultima-lectura" aria-live="polite">{ultima ?? ''}</p>
             <details className="ayuda-lector">
-              <summary>Cómo se agrega una línea</summary>
-              <p className="ayuda">Se busca entre las referencias de {i.proveedor?.nombre}. Leer el mismo código otra vez suma 1. Haga clic en un valor o en el lápiz para editar la línea: Tab recorre, Enter guarda y Esc cancela.</p>
+              <summary>Cómo se agrega un ítem</summary>
+              <p className="ayuda">Se busca entre las referencias de {i.proveedor?.nombre}. Leer el mismo código otra vez suma 1. Haga clic en un valor o en el lápiz para editar el ítem: Tab recorre, Enter guarda y Esc cancela.</p>
             </details>
             {ambiguo && <EleccionAmbigua ambiguo={ambiguo} onElegir={(o) => { setAmbiguo(null); escanear.mutate({ codigo: ambiguo.codigo, referenciaId: o.id }) }} onCancelar={() => setAmbiguo(null)} />}
           </div>
         )}
         {borrador && i.totales && i.items.length === 0 && descuentoDoc > 0 && (
           <p className="aviso info" role="status">
-            El descuento de {pesos(i.totales.descuento_documento)} se guardó y se aplicará cuando agregue las líneas.
+            El descuento de {pesos(i.totales.descuento_documento)} se guardó y se aplicará cuando agregue los ítems.
           </p>
         )}
         {borrador && i.totales && i.items.length > 0 && pendiente > 0 && (
           <p className="aviso atencion" role="status">
-            El descuento ({pesos(i.totales.descuento_documento)}) es mayor que el subtotal de las líneas ({pesos(i.totales.subtotal_neto)}):
-            faltan {pesos(i.totales.descuento_pendiente)} por aplicar. Agregue líneas o corrija el descuento antes de confirmar.
+            El descuento ({pesos(i.totales.descuento_documento)}) es mayor que el subtotal de los ítems ({pesos(i.totales.subtotal_neto)}):
+            faltan {pesos(i.totales.descuento_pendiente)} por aplicar. Agregue ítems o corrija el descuento antes de confirmar.
           </p>
         )}
         <div className="tabla-desplazable ingreso-tabla">
-        <table ref={tablaRef} className="tabla-lineas">
-          <thead><tr><th>Referencia</th><th>Cant.</th><th>Costo</th><th>Desc. %</th><th>IVA %</th><th>Neto</th><th>IVA</th><th className="encabezado-normal">acciones</th></tr></thead>
+        {/* S-96: la columna de acciones solo existe en el borrador ("Quitar"); confirmado no hay acciones por fila. */}
+        <table ref={tablaRef} className={borrador ? 'tabla-lineas' : 'tabla-lineas confirmado'} aria-label={`Ítems de ${i.tipo === 'factura' ? 'la factura' : 'la remisión'} ${i.numero_documento}`}>
+          <thead><tr><th>Referencia</th><th>Cant.</th><th>Costo</th><th>Desc. %</th><th>IVA %</th><th>Neto</th><th>IVA</th>{borrador && <th>Acciones</th>}</tr></thead>
           <tbody>
             {i.items.map((it) => {
               if (borrador && fila?.itemId === it.id) {
@@ -378,7 +383,7 @@ export default function IngresoDetalle() {
                 />
               )
             })}
-            {i.items.length === 0 && <tr><td colSpan={8} className="vacio">Escanee el primer producto.</td></tr>}
+            {i.items.length === 0 && <tr><td colSpan={borrador ? 8 : 7} className="vacio">Escanee el primer producto.</td></tr>}
           </tbody>
         </table>
         </div>
@@ -394,7 +399,7 @@ export default function IngresoDetalle() {
           // Barra fija al pie del área visible: con muchas líneas el botón sigue a la vista.
           <div className="ingreso-barra">
             <span className="ingreso-barra-resumen">
-              {i.items.length} {i.items.length === 1 ? 'línea' : 'líneas'}
+              {i.items.length} {i.items.length === 1 ? 'ítem' : 'ítems'}
               {i.totales && <> · Total {pesos(i.totales.total_visible)}</>}
             </span>
             <div className="ingreso-barra-acciones">
@@ -478,14 +483,14 @@ const FilaLinea = memo(function FilaLinea({ it, borrador, descuentoBloqueado, co
     }
     if (campo === 'costo_unitario' && Number(it.costo_unitario) <= 0) {
       return (
-        <button type="button" className="celda-editable pendiente" title="Clic para editar" aria-label={`Falta el costo de ${codigo}. Editar la línea`} onClick={() => acciones.abrir(it, campo)}>
+        <button type="button" className="celda-editable pendiente" title="Clic para editar" aria-label={`Falta el costo de ${codigo}. Editar el ítem`} onClick={() => acciones.abrir(it, campo)}>
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" aria-hidden><path d="M12 7v6M12 17h.01" /><circle cx="12" cy="12" r="9" /></svg>
           Costo
         </button>
       )
     }
     return (
-      <button type="button" className="celda-editable" title="Clic para editar" aria-label={`${REGLAS[campo].etiqueta} de ${codigo}: ${texto}. Editar la línea`} onClick={() => acciones.abrir(it, campo)}>
+      <button type="button" className="celda-editable" title="Clic para editar" aria-label={`${REGLAS[campo].etiqueta} de ${codigo}: ${texto}. Editar el ítem`} onClick={() => acciones.abrir(it, campo)}>
         {texto}
       </button>
     )
@@ -507,8 +512,8 @@ const FilaLinea = memo(function FilaLinea({ it, borrador, descuentoBloqueado, co
       </td>
       <td data-label="Neto">{it.neto === null ? '—' : pesos(it.neto)}</td>
       <td data-label="IVA">{it.iva === null ? '—' : pesos(it.iva)}</td>
-      <td data-label="" className="acciones-linea">
-        {borrador && (confirmandoQuitar ? (
+      {borrador && <td data-label="" className="acciones-linea">
+        {confirmandoQuitar ? (
           <span className="confirmar-quitar" role="group" aria-label={`Quitar ${codigo}`} onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); acciones.cancelarQuitar() } }}>
             ¿Quitar?
             <button type="button" className="peligro" disabled={quitandoPendiente} onClick={() => acciones.quitar(it.id)}>Sí</button>
@@ -516,15 +521,15 @@ const FilaLinea = memo(function FilaLinea({ it, borrador, descuentoBloqueado, co
           </span>
         ) : (
           <>
-            <button type="button" className="icono-accion" title="Editar" aria-label={`Editar la línea ${codigo}`} onClick={() => acciones.abrir(it, 'cantidad')}>
+            <button type="button" className="icono-accion" title="Editar" aria-label={`Editar el ítem ${codigo}`} onClick={() => acciones.abrir(it, 'cantidad')}>
               <Icono nombre="editar" />
             </button>
-            <button type="button" className="icono-accion peligro" title="Quitar" aria-label={`Quitar la línea ${codigo}`} disabled={quitandoPendiente} onClick={() => acciones.pedirQuitar(it)}>
+            <button type="button" className="icono-accion peligro" title="Quitar" aria-label={`Quitar el ítem ${codigo}`} disabled={quitandoPendiente} onClick={() => acciones.pedirQuitar(it)}>
               <Icono nombre="quitar" />
             </button>
           </>
-        ))}
-      </td>
+        )}
+      </td>}
     </tr>
   )
 })
@@ -671,13 +676,13 @@ function CifrasIngreso({ ingreso: i, borrador }: { ingreso: Ingreso; borrador: b
   return (
     <div className="totales compacto" aria-label="Totales del documento">
       <div><span>Subtotal</span><strong>{pesos(t.subtotal_bruto)}</strong></div>
-      <div><span>Descuento de líneas</span><strong>{pesos(t.descuento_lineas)}</strong></div>
+      <div><span>Descuento de ítems</span><strong>{pesos(t.descuento_lineas)}</strong></div>
       <div><span>Descuento del documento</span><strong>{pesos(borrador ? t.descuento_aplicado : t.descuento_documento)}</strong></div>
       {borrador && pendiente > 0 && <div><span>Descuento por aplicar</span><strong>{pesos(t.descuento_pendiente)}</strong></div>}
       <div><span>Base gravada</span><strong>{pesos(t.base_gravada)}</strong></div>
       <div><span>Base sin IVA</span><strong>{pesos(t.base_sin_iva)}</strong></div>
       <div><span>IVA</span><strong>{pesos(t.iva)}</strong></div>
-      <div><span>Líneas sin IVA</span><strong>{t.lineas_sin_iva}</strong></div>
+      <div><span>Ítems sin IVA</span><strong>{t.lineas_sin_iva}</strong></div>
       <div className="totales-total"><span>Total</span><strong>{pesos(borrador ? t.total_visible : t.total)}</strong></div>
       {i.total && <div><span>Total guardado al confirmar</span><strong>{pesos(i.total)}</strong></div>}
     </div>
@@ -692,7 +697,7 @@ function CifrasIngreso({ ingreso: i, borrador }: { ingreso: Ingreso; borrador: b
  */
 function DialogoCondiciones({ ingreso, descuentoBloqueado, onGuardado, onCerrar }: {
   ingreso: Ingreso
-  /** Hay líneas con descuento: el del documento queda deshabilitado (S-22). */
+  /** Hay líneas con descuento: el campo del documento no aparece (S-86, S-95). */
   descuentoBloqueado: boolean
   onGuardado: (ingreso: Ingreso) => void
   onCerrar: () => void
@@ -761,20 +766,29 @@ function DialogoCondiciones({ ingreso, descuentoBloqueado, onGuardado, onCerrar 
           </label>
         )}
       </DialogoSeccion>
-      <DialogoSeccion titulo="Descuento del documento">
-        {/* El fieldset deshabilita el selector de unidad y el valor sin tocar CampoDescuento. */}
-        <fieldset className="campo-bloqueable" disabled={descuentoBloqueado}>
-          <CampoDescuento
-            id="descuento-condiciones"
-            modo={modo}
-            valor={descuento}
-            error={errores.descuento_documento ?? errores.descuento_documento_porcentaje}
-            ayuda={descuentoBloqueado ? AYUDA_DESCUENTO_DOCUMENTO : undefined}
-            onModo={cambiarModo}
-            onValor={setDescuento}
-          />
-        </fieldset>
-        <small className="ayuda">Se reparte entre todas las líneas antes del IVA. Si todavía no hay líneas, se guarda y se aplica cuando las agregue.</small>
+      <DialogoSeccion>
+        {/* S-95: la misma tarjeta de la corrección, en solo lectura de condición (la lógica S-86 del borrador no cambia). */}
+        <TarjetaDescuento
+          id="condiciones-descuento"
+          soloLectura
+          condicion={descuentoBloqueado ? 'producto' : (Number(modo === '%' ? descuento || 0 : leerNumero(descuento) ?? 0) > 0 ? 'documento' : 'ninguno')}
+          contenido={descuentoBloqueado ? (
+            <p className="ayuda">{AYUDA_DESCUENTO_DOCUMENTO}.</p>
+          ) : (
+            <>
+              <CampoDescuento
+                id="descuento-condiciones"
+                etiqueta="Valor del descuento"
+                modo={modo}
+                valor={descuento}
+                error={errores.descuento_documento ?? errores.descuento_documento_porcentaje}
+                onModo={cambiarModo}
+                onValor={setDescuento}
+              />
+              <small className="ayuda">Se reparte entre todos los ítems antes del IVA. Si todavía no hay ítems, se guarda y se aplica cuando los agregue.</small>
+            </>
+          )}
+        />
       </DialogoSeccion>
     </Dialogo>
   )

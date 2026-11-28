@@ -37,6 +37,8 @@ let secuencia = 0
  */
 export function AvisosProvider({ children }: { children: ReactNode }) {
   const [mensaje, setMensaje] = useState<Mensaje | null>(null)
+  // S-96: un aviso que se va solo se pausa mientras el mouse o el foco están encima.
+  const [pausado, setPausado] = useState(false)
 
   const mostrar = useCallback((tono: TonoAviso, texto: string, enlace?: EnlaceAviso, espera?: number) => {
     const id = ++secuencia
@@ -54,11 +56,11 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const espera = mensaje ? (mensaje.espera ?? SE_VA_SOLO[mensaje.tono]) : undefined
-    if (!mensaje || espera === undefined) return
+    if (!mensaje || espera === undefined || pausado) return
     const id = mensaje.id
     const t = window.setTimeout(() => limpiar(id), espera)
     return () => window.clearTimeout(t)
-  }, [mensaje, limpiar])
+  }, [mensaje, limpiar, pausado])
 
   const api = useMemo<Avisos>(() => ({ mostrar, limpiar, limpiarSi }), [mostrar, limpiar, limpiarSi])
 
@@ -66,7 +68,14 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     <Contexto.Provider value={api}>
       {children}
       {mensaje && createPortal(
-        <div className={`aviso-flotante ${mensaje.tono}`} role={mensaje.tono === 'error' ? 'alert' : 'status'}>
+        <div
+          className={`aviso-flotante ${mensaje.tono}`}
+          role={mensaje.tono === 'error' ? 'alert' : 'status'}
+          onMouseEnter={() => setPausado(true)}
+          onMouseLeave={() => setPausado(false)}
+          onFocus={() => setPausado(true)}
+          onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setPausado(false) }}
+        >
           <div className="aviso-flotante-texto">
             <p>{mensaje.texto}</p>
             {mensaje.enlace && <Link to={mensaje.enlace.to} onClick={() => limpiar(mensaje.id)}>{mensaje.enlace.texto}</Link>}

@@ -133,7 +133,7 @@ export default function FichaReferencia(props: FichaReferenciaProps) {
     >
         <DialogoSeccion>
           <h3>Identidad</h3>
-          {ingreso && <p className="ayuda">Este código no existe para este proveedor. Al guardarla se agrega la línea al ingreso.</p>}
+          {ingreso && <p className="ayuda">Este código no existe para este proveedor. Al guardarla se agrega el ítem al ingreso.</p>}
           <div className="campos-dos">
             <label>Código de referencia
               <input

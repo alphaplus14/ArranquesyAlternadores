@@ -1072,7 +1072,7 @@ function Historial({ puedeReintegrar }: { puedeReintegrar: boolean }) {
         <div className="tabla-viva">
         <table className={cargando ? 'tabla-apilable actualizando' : 'tabla-apilable'}>
           <caption className="solo-lector">Historial de movimientos de inventario</caption>
-          <thead><tr><th>Fecha</th><th>Tipo y motivo</th><th>Usuario</th><th>Unidades</th><th><span className="solo-lector">Acciones</span></th></tr></thead>
+          <thead><tr><th>Fecha</th><th>Tipo y motivo</th><th>Usuario</th><th>Unidades</th>{puedeReintegrar && <th><span className="solo-lector">Acciones</span></th>}</tr></thead>
           <tbody>
             {filas.map((a) => {
               const reintegrables = a.unidades.filter((u) => u.reintegrable)
@@ -1109,13 +1109,16 @@ function Historial({ puedeReintegrar }: { puedeReintegrar: boolean }) {
                     </ul>
                     )}
                   </td>
-                  <td className="celda-accion">
-                    {puedeReintegrar && reintegrables.length > 0 && (
-                      <button type="button" className="secundario boton-44" onClick={() => setReintegrando(a)}>
-                        Reintegrar{reintegrables.length < a.unidades.length ? ` (${reintegrables.length})` : ''}
-                      </button>
-                    )}
-                  </td>
+                  {/* S-96: sin acción para el rol (admin, solo consulta), la columna no se dibuja. */}
+                  {puedeReintegrar && (
+                    <td className="celda-accion">
+                      {reintegrables.length > 0 && (
+                        <button type="button" className="secundario boton-44" onClick={() => setReintegrando(a)}>
+                          Reintegrar{reintegrables.length < a.unidades.length ? ` (${reintegrables.length})` : ''}
+                        </button>
+                      )}
+                    </td>
+                  )}
                 </tr>
               )
             })}

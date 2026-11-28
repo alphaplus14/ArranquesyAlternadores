@@ -192,17 +192,17 @@ it('RF-28: cambiar costo, descuento, IVA, forma de pago y vencimiento recalcula 
     corCorregir($ingreso, [
         'forma_pago' => 'credito',
         'vence_el' => '2026-12-31',
-        'descuento_documento' => 1000,
+        // S-95: una sola condición de descuento (aquí, por producto).
         'items' => corItems($ingreso, [$item->id => ['costo_unitario' => 2000, 'descuento_porcentaje' => 10, 'iva_porcentaje' => 19]]),
     ])->assertCreated()
-        // 10 × 2.000 = 20.000; −10 % = 18.000; −1.000 = 17.000; IVA 19 % = 3.230 → 20.230
-        ->assertJsonPath('ingreso.total', '20230.00')
+        // 10 × 2.000 = 20.000; −10 % = 18.000; IVA 19 % = 3.420 → 21.420
+        ->assertJsonPath('ingreso.total', '21420.00')
         ->assertJsonPath('ingreso.forma_pago', 'credito')
         ->assertJsonPath('ingreso.vence_el', '2026-12-31')
         ->assertJsonPath('correccion.unidades_creadas', 0);
 
     actuarComo(Rol::Admin);
-    expect($this->getJson("/api/proveedores/{$ref->proveedor_id}/saldo")->assertOk()->json('saldo'))->toBe('20230.00');
+    expect($this->getJson("/api/proveedores/{$ref->proveedor_id}/saldo")->assertOk()->json('saldo'))->toBe('21420.00');
     corCuadra($ref);
 
     // A crédito sin vencimiento: rechazado.

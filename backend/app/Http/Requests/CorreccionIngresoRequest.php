@@ -57,8 +57,8 @@ class CorreccionIngresoRequest extends FormRequest
             'motivo.required' => 'Escriba el motivo de la corrección.',
             'motivo.min' => 'El motivo debe tener al menos 5 caracteres.',
             'motivo.max' => 'El motivo admite máximo 500 caracteres.',
-            'items.*.cantidad.min' => 'La cantidad debe ser al menos 1. Para quitar una línea, sáquela de la lista.',
-            'items.*.referencia_id.required_without' => 'Elija la referencia de la línea nueva.',
+            'items.*.cantidad.min' => 'La cantidad debe ser al menos 1. Para quitar un ítem, sáquelo de la lista.',
+            'items.*.referencia_id.required_without' => 'Elija la referencia del ítem nuevo.',
         ];
     }
 

@@ -21,7 +21,7 @@ export function erroresCampo(error: unknown): Record<string, string> {
 
 const NOMBRE_MODELO: Record<string, string> = {
   Ingreso: 'el ingreso',
-  IngresoItem: 'la línea del ingreso',
+  IngresoItem: 'el ítem del ingreso',
   Referencia: 'la referencia',
   Unidad: 'la unidad',
   Venta: 'la venta',

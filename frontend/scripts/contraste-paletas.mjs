@@ -33,6 +33,8 @@ for (const [clave, p] of Object.entries(paletas)) {
     ['acento sobre su tono suave (chips, pestañas)', p.acento, p.suave],
     ['enlace en hover sobre blanco', p.hover, BLANCO],
     ['amarillo de la marca sobre el acento (avatar)', RESALTE, p.acento],
+    // S-96: botón primario deshabilitado (texto en el acento sobre su tono suave).
+    ['texto del botón primario deshabilitado', p.acento, p.suave],
   ]
   for (const [uso, frente, fondo] of pares) {
     const c = contraste(frente, fondo)
@@ -40,6 +42,17 @@ for (const [clave, p] of Object.entries(paletas)) {
     if (!ok) fallas++
     console.log(`${ok ? 'ok   ' : 'FALLA'} ${clave.padEnd(8)} ${c.toFixed(2).padStart(6)}:1  ${uso}`)
   }
+}
+
+// S-96: botón de peligro deshabilitado (colores fijos de index.css: #B00000 sobre --error-fondo).
+for (const [uso, frente, fondo] of [
+  ['texto del botón de peligro', '#FFFFFF', '#D80808'],
+  ['texto del botón de peligro deshabilitado', '#B00000', '#FDE8E7'],
+]) {
+  const c = contraste(frente, fondo)
+  const ok = c >= MINIMO
+  if (!ok) fallas++
+  console.log(`${ok ? 'ok   ' : 'FALLA'} fijo     ${c.toFixed(2).padStart(6)}:1  ${uso}`)
 }
 
 if (fallas > 0) {

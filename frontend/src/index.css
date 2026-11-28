@@ -319,6 +319,22 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .secundario:hover:not(:disabled) { background: var(--suave-fondo); }
 .peligro { background: var(--peligro); border-color: var(--peligro); color: #fff; }
 .peligro:hover:not(:disabled) { background: var(--peligro-hover); border-color: var(--peligro-hover); }
+/*
+ * S-96: botones principales legibles en todos los estados. Deshabilitado: fondo claro del acento,
+ * texto en el acento y borde visible (contraste ≥ 4,5:1, lo comprueba test:contraste), sin bajar la
+ * opacidad del texto. Un enlace con forma de botón (`a.boton.primario`, p. ej. "Imprimir etiquetas")
+ * no toma el color de `a:hover` ni de `a:visited`, y no se parte ni se corta.
+ */
+button.primario:disabled, .primario[aria-disabled='true'] {
+  opacity: 1; background: var(--acento-suave); border-color: color-mix(in srgb, var(--primario) 45%, #fff); color: var(--primario);
+}
+button.peligro:disabled, .peligro[aria-disabled='true'] {
+  opacity: 1; background: var(--error-fondo); border-color: color-mix(in srgb, var(--peligro) 45%, #fff); color: #B00000;
+}
+a.boton.primario, a.boton.primario:visited, a.boton.primario:hover { color: var(--acento-texto-sobre-acento); text-decoration: none; }
+a.boton.primario:hover { background: var(--primario-hover); border-color: var(--primario-hover); }
+a.boton { min-height: 44px; white-space: nowrap; box-sizing: border-box; }
+.primario:active:not(:disabled), .peligro:active:not(:disabled) { transform: translateY(1px); }
 .enlace { border: none; background: none; padding: 0; color: var(--primario); text-decoration: underline; cursor: pointer; font: inherit; }
 .enlace:hover { color: var(--primario-hover); }
 
@@ -547,30 +563,39 @@ tr.reversado td:has(.icono-accion) { text-decoration: none; }
 
 /* Registro de una compra: el lector y los totales quedan fijos; solo la tabla se desplaza. */
 .detalle-compra {
-  height: calc(100dvh - 4rem - 40px);
+  height: calc(100dvh - 4rem - 2 * var(--relleno-cuerpo, 20px));
   min-height: 0;
   overflow: hidden;
 }
+/* S-96: la tarjeta mide su contenido (sin hueco bajo la tabla) y se encoge hasta el alto libre. */
 .detalle-compra > .panel {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
-.detalle-compra > .panel-correccion { overflow: auto; }
+.detalle-compra > .panel-correccion { overflow: hidden; }
 /* Un panel oculto (el de solo lectura mientras se corrige, RF-28) no se muestra: el display:flex de
    arriba le ganaba al atributo hidden. */
 .detalle-compra > .panel[hidden] { display: none; }
-/* RF-28: en corrección no hay alto fijo ni scroll anidado: un solo scroll, el de la página, para que
-   el lector, la cabecera de la tabla y la barra (sticky) se peguen a la ventana. El borrador y el
-   documento confirmado en solo lectura siguen con el alto fijo de arriba. */
-.detalle-compra.corrigiendo { height: auto; min-height: 0; overflow: visible; }
-.detalle-compra.corrigiendo > .panel-correccion { overflow: visible; flex: none; }
+/* S-96 (RF-28): la corrección también va a alto fijo con un solo scroll, el de la tabla de ítems: el
+   encabezado, la tarjeta del descuento y el lector toman su alto; la tabla crece (mín. 12 rem) y la
+   barra va en el flujo, debajo, sin tapar filas. En móvil o ventana baja la página vuelve a desplazarse. */
+.detalle-compra.corrigiendo > .panel-correccion { flex: 1 1 auto; min-height: 0; }
+.panel-correccion > .ingreso-tabla { flex: 1 1 auto; min-height: 12rem; overflow: auto; }
+.panel-correccion > .ingreso-barra { position: static; box-shadow: none; margin-top: 0; }
+@media (max-width: 768px), (max-height: 600px) {
+  .detalle-compra.corrigiendo { height: auto; overflow: visible; }
+  .detalle-compra.corrigiendo > .panel-correccion { overflow: visible; }
+  .panel-correccion > .ingreso-tabla { min-height: 0; }
+}
+/* El historial de correcciones bajo el documento: alto propio y su propio scroll. */
+.detalle-compra > .panel.historial-correcciones-panel { flex: 0 1 auto; max-height: 35%; overflow: auto; display: block; }
 /* Todo lo que queda sobre la tabla conserva su alto; solo la tabla absorbe el espacio y se desplaza. */
 .detalle-compra > .panel > * { flex: none; }
 .detalle-compra .tabla-desplazable {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-height: 0;
   overflow: auto;
 }
@@ -585,6 +610,11 @@ tr.reversado td:has(.icono-accion) { text-decoration: none; }
 .detalle-compra .tabla-lineas:not(.tabla-correccion) th:nth-child(6) { width: 11%; }
 .detalle-compra .tabla-lineas:not(.tabla-correccion) th:nth-child(7) { width: 11%; }
 .detalle-compra .tabla-lineas:not(.tabla-correccion) th:nth-child(8) { width: 16%; }
+/* S-96: confirmado no tiene columna de acciones; el ancho va a Referencia, Costo, Neto e IVA. */
+.detalle-compra .tabla-lineas.confirmado th:nth-child(1) { width: 31%; }
+.detalle-compra .tabla-lineas.confirmado th:nth-child(3) { width: 14%; }
+.detalle-compra .tabla-lineas.confirmado th:nth-child(6) { width: 15%; }
+.detalle-compra .tabla-lineas.confirmado th:nth-child(7) { width: 15%; }
 .detalle-compra .tabla-lineas thead th { position: sticky; top: 0; z-index: 1; background: var(--panel); box-shadow: inset 0 -1px 0 var(--borde); }
 .detalle-compra .acciones { margin-top: 12px; flex: none; }
 .detalle-compra .ingreso-barra { flex: none; }
@@ -1214,7 +1244,6 @@ button.celda-editable:hover, button.celda-editable:focus-visible { border-color:
 /* Costo pendiente: marco y texto de atención, icono y la palabra "Costo" (no solo color). */
 button.celda-editable.pendiente { min-width: 5.5rem; justify-content: center; border-color: var(--aviso); color: var(--aviso); font-weight: 600; background: #fff; }
 button.celda-editable.pendiente:hover, button.celda-editable.pendiente:focus-visible { border-color: var(--aviso); }
-.tabla-lineas thead th.encabezado-normal { text-transform: none; letter-spacing: 0; }
 .tabla-lineas td.acciones-linea { white-space: nowrap; text-align: right; }
 .acciones-linea, .confirmar-quitar { display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; }
 .tabla-lineas td.acciones-linea { display: table-cell; }
@@ -2059,7 +2088,6 @@ button.empleado-pagar-todo { flex: none; min-height: 44px; white-space: nowrap; 
 
 /* Botón principal deshabilitado en el pie de una modal: sigue viéndose azul claro, pero con texto
    legible (antes la opacidad 0.5 dejaba texto blanco casi invisible sobre azul medio). */
-.modal-pie button.primario:disabled { opacity: 1; background: color-mix(in srgb, var(--primario) 28%, #fff); border-color: transparent; color: var(--primario); }
 
 /* RF-11: auditoría legible. Creación o eliminación con chip; la foto del registro, resumida en una
    línea y con "Ver detalle" (Etiqueta: valor, uno por línea). Hereda el rojo/verde de Antes/Después. */
@@ -2119,7 +2147,8 @@ button.preferencias-switch[aria-checked="true"] span { transform: translateX(18p
   background: var(--panel); padding: 8px 0 4px;
 }
 /* Solo en la corrección (RF-28) la página es la que se desplaza: ahí el lector se pega a la barra superior. */
-.panel-correccion .ingreso-lector { position: sticky; top: 4rem; z-index: 4; }
+/* S-96: el lector va fijo sobre la tabla por el flujo (sin sticky anidado). */
+.panel-correccion .ingreso-lector { position: static; }
 .ingreso-lector .escaner { margin-bottom: 4px; height: 3rem; font-size: 1.05rem; }
 .ultima-lectura {
   min-height: 1.25rem; margin: 0; font-size: 0.85rem; font-weight: 600;
@@ -2133,12 +2162,9 @@ button.preferencias-switch[aria-checked="true"] span { transform: translateX(18p
 .desglose-compra .totales { margin-top: 8px; }
 .tabla-etiquetas tbody tr { content-visibility: auto; contain-intrinsic-size: auto 2.5rem; }
 .ingreso-lector .aviso { margin: 4px 0; }
-@media (min-width: 721px) {
-  .panel-correccion .tabla-desplazable.ingreso-tabla { overflow: visible; }
-  .panel-correccion .ingreso-tabla thead th {
-    position: sticky; top: calc(4rem + var(--ingreso-lector-alto)); z-index: 3;
-    background: var(--panel); box-shadow: inset 0 -1px 0 var(--borde);
-  }
+.panel-correccion .ingreso-tabla thead th {
+  position: sticky; top: 0; z-index: 3;
+  background: var(--panel); box-shadow: inset 0 -1px 0 var(--borde);
 }
 .ingreso-barra {
   position: sticky; bottom: 0; z-index: 5;
@@ -2264,3 +2290,59 @@ body:has(.ingreso-barra) .aviso-flotante { bottom: 88px; }
 /* S-91 (ajuste): sin la columna Pago, el ancho sobrante va a Documento y Proveedor (nombre y asesor). */
 .tabla-compras .col-documento { width: 22%; }
 .tabla-compras .col-proveedor { width: 30%; }
+
+/*
+ * S-95: corrección de un ingreso (RF-28). Encabezado en rejilla de 4 columnas iguales (2 en 768 px,
+ * 1 en móvil), campos de 44 px. Tarjeta "Descuento": título + chip, control compacto de una línea
+ * (máx. ~520 px, opciones iguales que no parten su texto), contenido de la condición con alto mínimo
+ * (sin saltos) y la confirmación de un cambio en línea, con borde de atención.
+ */
+.encabezado-correccion { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 14px; align-items: end; }
+.encabezado-correccion > label { margin: 0; }
+.encabezado-correccion input, .encabezado-correccion select { min-height: 44px; height: 44px; box-sizing: border-box; margin: 0; width: 100%; }
+
+/* S-96: una sola fila (~96 px en 1366 px): título y chip, control (máx. 520 px) y contenido. */
+.tarjeta-descuento {
+  display: grid; grid-template-columns: auto minmax(0, 520px) minmax(0, 1fr); align-items: center; gap: 8px 20px;
+  border: 1px solid var(--borde); border-radius: var(--radio); padding: 10px 16px; background: var(--panel);
+}
+.tarjeta-descuento > .confirmar-condicion { grid-column: 1 / -1; }
+.tarjeta-descuento.lectura { grid-template-columns: minmax(0, 1fr); }
+.tarjeta-descuento .control-condicion > .etiqueta-campo {
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+}
+.tarjeta-descuento-cabeza { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.tarjeta-descuento-cabeza h3 { margin: 0; font-size: 1rem; }
+.tarjeta-descuento-control { display: flex; flex-direction: column; gap: 4px; }
+.tarjeta-descuento-control > .ayuda { margin: 0; }
+.control-condicion { margin: 0; }
+.control-condicion .segmentado { max-width: 520px; box-sizing: border-box; }
+.control-condicion button.segmento { flex: 1 1 0; min-height: 44px; white-space: nowrap; }
+button.segmento.pendiente { border: 1px dashed var(--aviso); color: var(--texto); background: #fff; }
+.tarjeta-descuento-contenido { min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+.tarjeta-descuento-contenido .campo-con-unidad input, .tarjeta-descuento-contenido .campo-con-unidad select { min-height: 44px; }
+.tarjeta-descuento-contenido > label { margin: 0; max-width: 420px; }
+.tarjeta-descuento-contenido > .ayuda, .tarjeta-descuento-resumen { margin: 0; }
+.tarjeta-descuento-resumen { font-weight: 600; }
+.confirmar-condicion {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap;
+  border: 1px solid var(--aviso); border-radius: 10px; padding: 8px 12px; background: var(--aviso-fondo); color: var(--texto);
+}
+.confirmar-condicion-botones { display: inline-flex; gap: 8px; flex-wrap: wrap; }
+.confirmar-condicion-botones button { min-height: 44px; }
+.condicion-descuento-lectura { margin: 0 0 6px; }
+/* "Desc. %" de solo lectura: el valor en texto, a la derecha y atenuado ("—" si no aplica). */
+.celda-solo-lectura { display: block; text-align: right; color: var(--suave); padding: 2px 4px; }
+@media (max-width: 960px) {
+  .tarjeta-descuento { grid-template-columns: minmax(0, 1fr); }
+  .encabezado-correccion { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .control-condicion .segmentado { max-width: none; }
+  .confirmar-condicion { flex-direction: column; align-items: stretch; }
+  .confirmar-condicion-botones button { flex: 1 1 0; }
+}
+@media (max-width: 540px) {
+  .encabezado-correccion { grid-template-columns: minmax(0, 1fr); }
+  .control-condicion .segmentado { flex-wrap: wrap; }
+  .control-condicion button.segmento { flex: 1 1 auto; }
+}
+

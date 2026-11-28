@@ -1291,6 +1291,8 @@ export interface FotoCorreccion {
     vence_el: string | null
     descuento_documento: string
     total: string | null
+    /** S-95: documento | producto | ninguno | mixto (correcciones anteriores no lo traen). */
+    condicion_descuento?: 'ninguno' | 'documento' | 'producto' | 'mixto'
   }
   lineas: LineaCorreccionFoto[]
 }

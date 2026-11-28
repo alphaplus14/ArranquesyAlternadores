@@ -11,8 +11,8 @@ use App\Models\Referencia;
  * calcula igual que siempre (TotalesIngreso).
  */
 
-const MSG_S86_LINEA = 'El documento ya tiene descuento: quítelo para dar descuento por línea.';
-const MSG_S86_DOC = 'Hay líneas con descuento: quítelos para usar un descuento del documento.';
+const MSG_S86_LINEA = 'El documento ya tiene descuento: quítelo para dar descuento por ítem.';
+const MSG_S86_DOC = 'Hay ítems con descuento: quítelos para usar un descuento del documento.';
 
 beforeEach(function () {
     sembrarDemo();

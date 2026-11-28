@@ -135,9 +135,9 @@ final class TotalesIngreso
     {
         if ($this->descuentoExcedeSubtotal()) {
             throw new ReglaInventarioException(
-                "El descuento del documento ({$this->descuentoDocumento}) supera el subtotal neto de las líneas ({$this->subtotalNeto}).",
+                "El descuento del documento ({$this->descuentoDocumento}) supera el subtotal neto de los ítems ({$this->subtotalNeto}).",
                 422,
-                ['errors' => ['descuento_documento' => ['El descuento del documento no puede superar el subtotal neto de las líneas.']]],
+                ['errors' => ['descuento_documento' => ['El descuento del documento no puede superar el subtotal neto de los ítems.']]],
             );
         }
     }
