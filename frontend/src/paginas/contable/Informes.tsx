@@ -2,8 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../api/cliente'
 import { infoPagina, type FilaCompra, type FilaRemisionPendiente, type FilaVentaCredito, type Opcion, type Pagina, type PaginaInforme } from '../../api/tipos'
-import BarraFiltros, {CampoFiltro, TextoResultados, VacioFiltros } from '../../componentes/BarraFiltros'
-import { rangoAtajo } from '../../utilidades/atajosPeriodo'
+import BarraFiltros, { CampoFiltro, TextoResultados, VacioFiltros } from '../../componentes/BarraFiltros'
 import ControlSegmentado from '../../componentes/ControlSegmentado'
 import Paginacion from '../../componentes/Paginacion'
 import SelectorProveedor from '../../componentes/SelectorProveedor'
@@ -11,7 +10,11 @@ import { fechaCorta } from '../../componentes/fechas'
 import { pesos } from '../../componentes/numeros'
 import { useDebounce } from '../../hooks/useDebounce'
 import { useFiltrosUrl } from '../../hooks/useFiltrosUrl'
+import { rangoAtajo } from '../../utilidades/atajosPeriodo'
 import '../../componentes/cartera.css'
+
+/** Filtros propios de cada informe en su valor inicial (el informe y el período no se incluyen). */
+const FILTROS_VACIOS = { proveedor: '', cliente: '', cliente_nombre: '', forma_pago: '', tipo: '', estado: 'vigentes', antiguedad: '', q: '' }
 
 type Informe = 'compras' | 'ventas-credito' | 'remisiones-pendientes'
 
@@ -30,8 +33,7 @@ const RUTA: Record<Informe, string> = {
 export default function Informes() {
   const mes = rangoAtajo('este_mes')
   const { filtros: f, fijar, pagina, irA, activos } = useFiltrosUrl({
-    informe: 'compras', desde: mes.desde, hasta: mes.hasta, proveedor: '', cliente: '', cliente_nombre: '',
-    forma_pago: '', tipo: '', estado: 'vigentes', antiguedad: '', q: '',
+    informe: 'compras', desde: mes.desde, hasta: mes.hasta, ...FILTROS_VACIOS,
   })
   const informe = f.informe as Informe
   const params: Record<string, string | undefined> = informe === 'compras'
@@ -50,7 +52,7 @@ export default function Informes() {
   // El informe no cuenta como filtro activo.
   const filtrosActivos = activos - (informe === 'compras' ? 0 : 1)
   // Conserva el informe elegido (un solo cambio de la URL).
-  const limpiarFiltros = () => fijar({ desde: mes.desde, hasta: mes.hasta, proveedor: '', cliente: '', cliente_nombre: '', forma_pago: '', tipo: '', estado: 'vigentes', antiguedad: '', q: '' })
+  const limpiarFiltros = () => fijar({ desde: mes.desde, hasta: mes.hasta, ...FILTROS_VACIOS })
   const periodo = informe !== 'remisiones-pendientes'
     ? { desde: f.desde, hasta: f.hasta, onCambio: (desde: string, hasta: string) => fijar({ desde, hasta }) }
     : undefined
@@ -66,7 +68,7 @@ export default function Informes() {
           id="informe"
           etiqueta="Informe"
           valor={informe}
-          onCambio={(v) => fijar({ informe: v, proveedor: '', cliente: '', cliente_nombre: '', forma_pago: '', tipo: '', estado: 'vigentes', antiguedad: '', q: '' })}
+          onCambio={(v) => fijar({ informe: v, ...FILTROS_VACIOS })}
           opciones={[
             { valor: 'compras', texto: 'Compras' },
             { valor: 'ventas-credito', texto: 'Ventas a crédito' },
