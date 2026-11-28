@@ -1,4 +1,4 @@
-import { useId, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Navigate, useSearchParams } from 'react-router-dom'
 import { AxiosError } from 'axios'
@@ -457,14 +457,16 @@ function TextoApertura({ apertura: a, cerrado }: { apertura: AperturaCaja; cerra
       <span>Apertura <strong>{pesos(a.valor)}</strong></span>
       {!cerrado && a.origen === 'arrastre' && a.desde_cierre && <span className="caja-apertura-origen">· del cierre del {formatearFecha(a.desde_cierre).slice(0, 5)}</span>}
       {!cerrado && manual && (
-        <details className="caja-apertura-detalle">
-          <summary>· cambiada a mano</summary>
-          <div className="caja-apertura-popover" role="note">
-            {a.motivo && <p>Motivo: {a.motivo}</p>}
-            {a.cierre_anterior_valor !== null && <p>El cierre anterior dejó {pesos(a.cierre_anterior_valor)}.</p>}
-            {a.fijado_por && <p>{a.fijado_por.name}{a.fijado_at ? `, ${formatearFechaHora(a.fijado_at)}` : ''}</p>}
-          </div>
-        </details>
+        // S-100: una línea; el texto completo (y lo que dejó el cierre anterior) en el title.
+        <small
+          className="caja-apertura-cambio"
+          title={[
+            `Cambiada por ${a.fijado_por?.name ?? '—'}${a.fijado_at ? `, ${formatearFechaHora(a.fijado_at)}` : ''}: ${a.motivo ?? 'sin motivo'}`,
+            a.cierre_anterior_valor !== null ? `El cierre anterior dejó ${pesos(a.cierre_anterior_valor)}.` : '',
+          ].filter(Boolean).join(' ')}
+        >
+          Cambiada por {a.fijado_por?.name ?? '—'}: {a.motivo ?? 'sin motivo'}
+        </small>
       )}
     </span>
   )
@@ -472,10 +474,12 @@ function TextoApertura({ apertura: a, cerrado }: { apertura: AperturaCaja; cerra
 
 /**
  * S-84: "Cambiar apertura" (o "Abrir caja" el primer día). El valor se precarga con la apertura
- * actual; "Usar la del cierre anterior" pone lo que dejó el último cierre. El motivo es obligatorio
- * si el valor difiere de eso (lo decide y valida el servidor; aquí solo se anticipa).
+ * actual; "Usar la del cierre anterior" pone lo que dejó el último cierre.
+ * S-100: el motivo (3 a 200) es obligatorio si el valor difiere de eso o si se modifica un cambio
+ * manual ya guardado (también para volver al arrastre); el primer día sin cierres es opcional. Lo
+ * decide y valida el servidor; aquí solo se anticipa.
  */
-function DialogoApertura({ fecha, apertura, base = '0', onCerrar, onGuardada }: {
+export function DialogoApertura({ fecha, apertura, base = '0', onCerrar, onGuardada }: {
   fecha: string
   apertura: AperturaCaja | null
   /** S-98: la base fija no se incluye en la apertura. */
@@ -490,8 +494,15 @@ function DialogoApertura({ fecha, apertura, base = '0', onCerrar, onGuardada }: 
   const n = leerNumero(valor)
   const valido = n !== null && !Number.isNaN(n) && n >= 0 && Math.round(n * 100) === n * 100
   const difiere = arrastre !== null && valido && Math.abs((n ?? 0) - Number(arrastre)) >= 0.005
-  const motivoFalta = difiere && motivo.trim().length < 3
   const primerDia = !apertura
+  // S-100: un cambio manual vigente que se modifica (cualquier valor distinto del vigente).
+  const manualVigente = apertura?.origen === 'manual'
+  const cambiaManual = manualVigente && valido && Math.abs((n ?? 0) - Number(apertura?.valor ?? 0)) >= 0.005
+  const motivoObligatorio = arrastre !== null && (difiere || cambiaManual)
+  const motivoFalta = motivoObligatorio && motivo.trim().length < 3
+  // Igual al arrastre sin cambio previo: no hay nada que guardar.
+  const nadaQueCambiar = arrastre !== null && valido && !difiere && !manualVigente
+  const campoMotivo = useRef<HTMLInputElement>(null)
 
   const guardar = useMutation({
     mutationFn: async () => (await api.put<{ apertura: AperturaCaja | null }>(`/caja/dias/${fecha}/apertura`, { valor: n, motivo: motivo.trim() || null })).data,
@@ -503,6 +514,12 @@ function DialogoApertura({ fecha, apertura, base = '0', onCerrar, onGuardada }: 
     if (datos?.campo && datos.message) errores[datos.campo] = datos.message
   }
   const general = guardar.isError && Object.keys(errores).length === 0 ? mensajeError(guardar.error) : null
+  const enviar = () => {
+    // S-100: obligatorio y vacío → el foco va al motivo.
+    if (motivoFalta) { campoMotivo.current?.focus(); return }
+    if (valido && !nadaQueCambiar && !guardar.isPending) guardar.mutate()
+  }
+  const razon = !valido ? null : nadaQueCambiar ? null : motivoFalta ? 'Falta el motivo' : null
 
   return (
     <Dialogo
@@ -511,11 +528,12 @@ function DialogoApertura({ fecha, apertura, base = '0', onCerrar, onGuardada }: 
       modificado={valor !== inicial || motivo.trim() !== (apertura?.origen === 'manual' ? apertura.motivo ?? '' : '')}
       pendiente={guardar.isPending}
       onCerrar={onCerrar}
-      onEnviar={() => { if (valido && !motivoFalta && !guardar.isPending) guardar.mutate() }}
+      onEnviar={enviar}
       pie={(
         <>
+          {razon && <small className="ayuda apertura-razon" role="status">{razon}</small>}
           <BotonCancelar />
-          <button type="submit" className="primario" disabled={!valido || motivoFalta || guardar.isPending}>{guardar.isPending ? 'Guardando…' : 'Guardar apertura'}</button>
+          <button type="submit" className="primario" disabled={!valido || motivoFalta || nadaQueCambiar || guardar.isPending}>{guardar.isPending ? 'Guardando…' : 'Guardar apertura'}</button>
         </>
       )}
     >
@@ -543,10 +561,15 @@ function DialogoApertura({ fecha, apertura, base = '0', onCerrar, onGuardada }: 
           </button>
         )}
         <label htmlFor="apertura-motivo">
-          <span className="etiqueta-campo">Motivo{difiere && <span className="obligatorio" aria-hidden="true">*</span>}</span>
+          <span className="etiqueta-campo">
+            Motivo{motivoObligatorio && <span className="obligatorio" aria-hidden="true">*</span>}
+            {motivoObligatorio && <span className="contador-motivo" aria-hidden="true">{motivo.trim().length}/200</span>}
+          </span>
         </label>
         <input
+          ref={campoMotivo}
           id="apertura-motivo"
+          required={motivoObligatorio}
           maxLength={200}
           value={motivo}
           aria-invalid={(motivoFalta && motivo !== '') || !!errores.motivo}
@@ -554,10 +577,9 @@ function DialogoApertura({ fecha, apertura, base = '0', onCerrar, onGuardada }: 
           onChange={(e) => { setMotivo(e.target.value); guardar.reset() }}
         />
         <small id="apertura-motivo-ayuda" className={errores.motivo ? 'ayuda error' : 'ayuda'}>
-          {errores.motivo ?? (difiere
-            ? `Obligatorio: difiere de lo que dejó el cierre anterior (${pesos(arrastre ?? 0)}). Por ejemplo: se retiró dinero de la caja.`
-            : primerDia ? 'Opcional el primer día.' : 'Por ejemplo: se retiró dinero de la caja.')}
+          {errores.motivo ?? (motivoObligatorio ? 'Explique por qué cambia la apertura (mín. 3 caracteres).' : 'Opcional.')}
         </small>
+        {nadaQueCambiar && <p className="ayuda" role="status">Es la misma apertura del cierre anterior; no hay nada que cambiar.</p>}
         {(general || errores.fecha) && <div className="aviso error" role="alert">{general ?? errores.fecha}</div>}
       </DialogoSeccion>
     </Dialogo>

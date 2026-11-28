@@ -210,16 +210,23 @@ class CajaService
             $valor = self::dinero($valor);
             $manual = AperturaCaja::query()->where('fecha', $fecha)->lockForUpdate()->first();
             $igualAlArrastre = $arrastre !== null && bccomp($valor, $arrastre, 2) === 0;
+            // Un cambio manual de verdad (una fila anterior a S-84 igual al arrastre y sin motivo no lo es).
+            $esCambioManual = $manual !== null && ! self::igualAlArrastre($manual, $arrastre);
 
             // Igual a la del cierre anterior y sin cambio manual: la apertura ya es esa; nada que guardar.
-            if ($igualAlArrastre && ! $manual) {
+            if ($igualAlArrastre && ! $esCambioManual) {
                 return;
             }
-            if ($arrastre !== null && ! $igualAlArrastre && mb_strlen($motivo) < 3) {
-                throw new ReglaInventarioException('Escriba el motivo del cambio (difiere de lo que dejó el cierre anterior).', 422, ['campo' => 'motivo']);
+            // S-100: el motivo es obligatorio si (a) el valor difiere del arrastre o (b) se modifica un
+            // cambio manual (cualquier valor distinto del vigente, también volver al arrastre). El primer
+            // día sin cierres (sin arrastre) sigue opcional.
+            $modificaManual = $esCambioManual && bccomp($valor, self::dinero($manual->valor), 2) !== 0;
+            if ($arrastre !== null && (! $igualAlArrastre || $modificaManual) && mb_strlen($motivo) < 3) {
+                $mensaje = 'Escriba el motivo del cambio de apertura (mínimo 3 caracteres).';
+                throw new ReglaInventarioException($mensaje, 422, ['campo' => 'motivo', 'errors' => ['motivo' => [$mensaje]]]);
             }
             if (mb_strlen($motivo) > 200) {
-                throw new ReglaInventarioException('El motivo admite máximo 200 caracteres.', 422, ['campo' => 'motivo']);
+                throw new ReglaInventarioException('El motivo admite máximo 200 caracteres.', 422, ['campo' => 'motivo', 'errors' => ['motivo' => ['El motivo admite máximo 200 caracteres.']]]);
             }
 
             $manual ??= new AperturaCaja(['fecha' => $fecha]);

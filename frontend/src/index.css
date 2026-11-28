@@ -2399,3 +2399,8 @@ tr.reversado td.sin-tachar .chip, tr.reversado td.sin-tachar small { text-decora
   .recaudo-tabla td.recaudo-total-relleno { display: none; }
 }
 
+/* S-100: apertura cambiada a mano (una línea en el encabezado) y contador del motivo. */
+.caja-apertura-cambio { display: block; max-width: 100%; color: var(--suave); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.contador-motivo { margin-left: 8px; color: var(--suave); font-weight: 500; font-size: 0.8rem; }
+.apertura-razon { margin-right: auto; color: var(--aviso); font-weight: 600; }
+
