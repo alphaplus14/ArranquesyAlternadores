@@ -76,7 +76,11 @@ class EmpleadoController extends Controller
     {
         $m = $this->empleados->registrarPrestamo($empleado, $request->validated(), $request->user());
 
-        return (new MovimientoEmpleadoResource($m->load('cuenta:id,nombre', 'usuario:id,name')))->response()->setStatusCode(201);
+        // S-98: el préstamo sale siempre de Efectivo; solo informa si usaría la base de caja (respuesta plana).
+        return response()->json([
+            ...(new MovimientoEmpleadoResource($m->load('cuenta:id,nombre', 'usuario:id,name')))->resolve($request),
+            'aviso_base' => app(CajaService::class)->usaBase($m->fecha->toDateString()),
+        ], 201);
     }
 
     public function abono(MovimientoEmpleadoRequest $request, Empleado $empleado): JsonResponse

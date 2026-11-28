@@ -2358,3 +2358,9 @@ button.segmento.pendiente { border: 1px dashed var(--aviso); color: var(--texto)
 .vista-recuperada { margin: 0; }
 .vista-recuperada button.segmento { min-height: 44px; white-space: nowrap; }
 
+/* S-98: base de caja en el panel del cierre: tono neutro, separada del cuadre. */
+.caja-desglose .caja-base dt, .caja-desglose .caja-base dd, .cierre-guardado .caja-base dt, .cierre-guardado .caja-base dd { color: var(--suave); font-weight: 500; }
+.caja-desglose .caja-cajon { border-top: 1px dashed var(--borde); padding-top: 4px; }
+.caja-desglose .caja-cajon dt, .caja-desglose .caja-cajon dd { font-weight: 700; }
+.tabla-mes td.suave { color: var(--suave); }
+

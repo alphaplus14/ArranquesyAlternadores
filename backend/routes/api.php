@@ -123,6 +123,8 @@ Route::middleware('auth:sanctum')->group(function () {
         // RF-25 (S-51): meta de venta diaria.
         Route::get('/configuracion/meta-venta', [ConfiguracionController::class, 'metaVenta']);
         Route::put('/configuracion/meta-venta', [ConfiguracionController::class, 'fijarMetaVenta']);
+        // S-98: base fija de caja (la lectura está también para el mostrador, en el grupo de caja).
+        Route::put('/configuracion/base-caja', [ConfiguracionController::class, 'fijarBaseCaja']);
 
         // RF-24 (S-48): cuentas de pago; solo el admin las crea, edita y desactiva (sin DELETE).
         Route::post('/cuentas-pago', [CuentaPagoController::class, 'store']);
@@ -274,6 +276,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // Registrar movimientos, anularlos y cerrar el día: solo mostrador. El admin consulta, reabre un
     // cierre (su única escritura en caja), ve el cuadre mensual y gestiona las categorías.
     Route::middleware('rol:mostrador')->group(function () {
+        // S-98: base fija de caja, para la pantalla de caja (mostrador y admin).
+        Route::get('/configuracion/base-caja', [ConfiguracionController::class, 'baseCaja']);
 
         Route::middleware('medir:800')->prefix('caja')->group(function () {
             Route::get('/movimientos', [MovimientoCajaController::class, 'index'])->name('caja.movimientos');

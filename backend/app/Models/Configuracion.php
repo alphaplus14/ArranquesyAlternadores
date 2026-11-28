@@ -22,6 +22,9 @@ class Configuracion extends Model
     /** RF-25 (S-51): meta de venta diaria en pesos (config caja.meta_venta_diaria si no hay valor). */
     public const META_VENTA_DIARIA = 'meta_venta_diaria';
 
+    /** S-98: base fija de caja (no cuenta para el cuadre; queda en el cajón). */
+    public const BASE_CAJA = 'base_caja';
+
     protected $table = 'configuraciones';
 
     protected $fillable = ['clave', 'valor'];

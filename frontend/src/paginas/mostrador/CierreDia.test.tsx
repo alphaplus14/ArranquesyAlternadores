@@ -88,4 +88,24 @@ describe('S-94: cierre de caja (FormularioCierre)', () => {
     expect(dialogo.parentElement?.parentElement).toBe(document.body)
     expect(document.querySelector('form.caja-form-cierre')?.contains(dialogo)).toBe(false)
   })
+
+  it('S-98: con base, la ayuda resta la base; si falta la base exige la observación antes de confirmar', async () => {
+    const usuario = userEvent.setup()
+    post.mockImplementation(() => Promise.resolve({ data: { id: 1 } }))
+    render(conConsultas(<FormularioCierre fecha="2026-11-26" esperado="650000" base="135000" bloqueado={false} onCerrado={vi.fn()} />))
+    const campo = screen.getByLabelText(/Efectivo contado \(todo el cajón/)
+    expect(campo.getAttribute('placeholder')).toBe('Ej: 785.000')
+
+    await usuario.type(campo, '785000')
+    expect(screen.getByText(/Base \$\s135\.000 → efectivo para el cuadre \$\s650\.000\. Cuadra/)).toBeTruthy()
+
+    await usuario.clear(campo)
+    await usuario.type(campo, '100000')
+    expect(screen.getByRole('alert').textContent).toContain('Falta la base')
+    const cerrar = screen.getByRole('button', { name: 'Cerrar día' }) as HTMLButtonElement
+    expect(cerrar.disabled).toBe(true)
+    await usuario.type(screen.getByLabelText(/Observación/), 'Se llevaron la base')
+    expect(cerrar.disabled).toBe(false)
+  })
 })
+

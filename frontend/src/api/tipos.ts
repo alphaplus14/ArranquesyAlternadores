@@ -1127,6 +1127,10 @@ export interface ResumenCaja {
   apertura_editable: boolean
   /** Apertura + efectivo neto del día; null sin apertura efectiva (y sin ella no se cierra). */
   efectivo_esperado: string | null
+  /** S-98: base fija de caja (la guardada si el día está cerrado; la vigente si no). No suma al esperado. */
+  base_caja: string
+  /** S-98: lo que debe haber en el cajón = esperado + base (null sin apertura). */
+  efectivo_en_cajon_esperado: string | null
   meta_venta_diaria: string
   faltante_meta: string
   /**
@@ -1173,8 +1177,14 @@ export interface CierreCaja {
   fecha: string
   /** S-49: null en los cierres anteriores a la apertura diaria. */
   apertura: string | null
+  /** S-98: todo el cajón, base incluida. */
   efectivo_contado: string
+  /** S-98: base con que se cerró (0 en los cierres anteriores). */
+  base: string
+  /** S-98: contado − base. */
+  efectivo_para_cuadre: string
   efectivo_esperado: string
+  /** S-98: (contado − base) − esperado. */
   diferencia: string
   /** Columnas del modelo anterior (saldo encadenado). En los cierres nuevos repiten apertura y esperado. */
   saldo_anterior: string
@@ -1215,6 +1225,9 @@ export interface FilaMesCaja {
   efectivo_neto_dia: string
   efectivo_esperado: string | null
   efectivo_contado: string | null
+  /** S-98: base aparte (la del cierre; la vigente si el día no está cerrado). */
+  base: string
+  efectivo_para_cuadre: string | null
   diferencia: string | null
   /** Informativo: suma del efectivo neto desde el primer día del mes (empieza en 0). */
   neto_acumulado_mes: string

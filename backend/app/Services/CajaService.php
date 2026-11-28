@@ -35,7 +35,8 @@ use Illuminate\Support\Facades\DB;
  * - efectivo_esperado = apertura del día + efectivo_neto_dia. La apertura es el efectivo físico que ya
  *   estaba en la caja al empezar; lo que llega durante el día desde la Caja General es ingreso
  *   externo (RF-26), así no se cuenta dos veces. No hay saldo acumulado encadenado entre días.
- * - diferencia (arqueo) = efectivo_contado − efectivo_esperado; faltante_meta = meta − total.
+ * - diferencia (arqueo) = (efectivo_contado − base) − efectivo_esperado (S-98: la base fija queda en el
+ *   cajón y no cuenta); faltante_meta = meta − total.
  */
 class CajaService
 {
@@ -61,13 +62,44 @@ class CajaService
         return self::dinero($valor);
     }
 
+    /** S-98: base fija de caja vigente (la de Configuración o la de config/caja.php). */
+    public function baseCaja(): string
+    {
+        $valor = Configuracion::where('clave', Configuracion::BASE_CAJA)->value('valor');
+
+        return self::dinero($valor ?? config('caja.base'));
+    }
+
+    /** S-98: solo admin (ruta). Auditable (RF-11) guarda el valor anterior. No reescribe cierres. */
+    public function fijarBaseCaja(int $valor): string
+    {
+        Configuracion::firstOrCreate(
+            ['clave' => Configuracion::BASE_CAJA],
+            ['valor' => (string) config('caja.base')],
+        )->update(['valor' => (string) $valor]);
+
+        return self::dinero($valor);
+    }
+
+    /**
+     * S-98: el movimiento que se acaba de registrar deja el efectivo esperado del día por debajo de 0:
+     * usaría la base de caja. Solo informa; no bloquea.
+     */
+    public function usaBase(string $fecha): bool
+    {
+        $esperado = $this->resumenDia($fecha)['efectivo_esperado'];
+
+        return $esperado !== null && bccomp($esperado, '0', 2) < 0;
+    }
+
     /* ──────────────── Apertura automática (S-84; antes diaria, S-49) ──────────────── */
 
     /**
      * S-84: apertura efectiva de un día, calculada en vivo (no se escriben filas automáticas):
      *  a. con cierre vigente: la que se guardó en ese cierre (origen `cierre`);
      *  b. si no, el cambio manual registrado para ese día (origen `manual`, con su motivo);
-     *  c. si no, el efectivo contado del último cierre vigente anterior (origen `arrastre`);
+     *  c. si no, el efectivo contado del último cierre vigente anterior, sin su base (S-98:
+ *     max(contado − base, 0); un cierre anterior a S-98 tiene base 0) (origen `arrastre`);
      *  d. si no hay nada (primer día sin cierres): null; el día no se cierra hasta registrarla.
      * El arrastre se recalcula solo: si el admin reabre y vuelve a cerrar el día anterior con otro
      * contado, cambia la apertura de un día aún sin cerrar; un día cerrado conserva la guardada.
@@ -77,7 +109,7 @@ class CajaService
     public function aperturaDelDia(string $fecha): ?array
     {
         $anterior = $this->ultimoCierreVigente($fecha);
-        $arrastre = $anterior ? self::dinero($anterior->efectivo_contado) : null;
+        $arrastre = $anterior?->arrastre(); // S-98: sin la base
         $cierre = $this->cierreVigente($fecha);
         $manual = AperturaCaja::query()->where('fecha', $fecha)->with('usuario:id,name')->first();
         // Una apertura registrada antes de S-84 (sin motivo) igual a la del cierre anterior no es un
@@ -174,7 +206,7 @@ class CajaService
             }
 
             $anterior = $this->ultimoCierreVigente($fecha);
-            $arrastre = $anterior ? self::dinero($anterior->efectivo_contado) : null;
+            $arrastre = $anterior?->arrastre(); // S-98: sin la base
             $valor = self::dinero($valor);
             $manual = AperturaCaja::query()->where('fecha', $fecha)->lockForUpdate()->first();
             $igualAlArrastre = $arrastre !== null && bccomp($valor, $arrastre, 2) === 0;
@@ -269,6 +301,9 @@ class CajaService
         // préstamos a empleados no son movimientos de caja y no entran.
         $delDia = $agregados[$fecha] ?? $this->vacio();
         $conteos = $delDia['conteos'];
+        $cierre = $this->cierreVigente($fecha);
+        $base = $cierre ? self::dinero($cierre->base) : $this->baseCaja();
+        $esperado = $apertura ? bcadd($apertura['valor'], $r['efectivo_neto_dia'], 2) : null;
         $cantidad = fn (array $grupos) => array_sum(array_map(fn (GrupoCaja $g) => $conteos[$g->value], $grupos));
 
         return $r + [
@@ -297,8 +332,12 @@ class CajaService
                 ],
             ],
             'apertura' => $apertura,
-            'apertura_editable' => $fecha <= RangoFechas::hoy() && $this->cierreVigente($fecha) === null,
-            'efectivo_esperado' => $apertura ? bcadd($apertura['valor'], $r['efectivo_neto_dia'], 2) : null,
+            'apertura_editable' => $fecha <= RangoFechas::hoy() && $cierre === null,
+            'efectivo_esperado' => $esperado,
+            // S-98: la base (la guardada si el día está cerrado; la vigente si no) va aparte: no suma
+            // al esperado ni a los ingresos. En el cajón debe haber esperado + base.
+            'base_caja' => $base,
+            'efectivo_en_cajon_esperado' => $esperado === null ? null : bcadd($esperado, $base, 2),
         ];
     }
 
@@ -337,7 +376,8 @@ class CajaService
             // S-84: el arrastre de cada día sale del último cierre vigente anterior; se lleva en memoria
             // con los cierres del mes y el último anterior al mes (una consulta por el índice de fecha).
             $previo = $this->ultimoCierreVigente($desde);
-            $arrastre = $previo ? self::dinero($previo->efectivo_contado) : null;
+            $arrastre = $previo?->arrastre(); // S-98: sin la base
+            $baseVigente = $this->baseCaja();
 
             for ($d = $primero->copy(); $d->toDateString() <= $hasta; $d->addDay()) {
                 $dia = $d->toDateString();
@@ -353,7 +393,7 @@ class CajaService
                     $esperado = self::dinero($cierre->efectivo_esperado);
                     $cambio = isset($filasApertura[$dia]) && ! self::igualAlArrastre($filasApertura[$dia], $arrastre);
                     $origen = $apertura === null ? null : ($cambio ? 'manual' : 'arrastre');
-                    $arrastre = self::dinero($cierre->efectivo_contado);
+                    $arrastre = $cierre->arrastre();
                 } else {
                     $apertura = $aperturas[$dia] ?? $arrastre;
                     $cambio = isset($filasApertura[$dia]) && ! self::igualAlArrastre($filasApertura[$dia], $arrastre);
@@ -391,6 +431,9 @@ class CajaService
                     'efectivo_neto_dia' => $r['efectivo_neto_dia'],
                     'efectivo_esperado' => $esperado,
                     'efectivo_contado' => $cierre ? self::dinero($cierre->efectivo_contado) : null,
+                    // S-98: la base aparte (la del cierre; la vigente si el día no está cerrado); no suma al esperado ni a los ingresos.
+                    'base' => $cierre ? self::dinero($cierre->base) : $baseVigente,
+                    'efectivo_para_cuadre' => $cierre ? $cierre->paraCuadre() : null,
                     'diferencia' => $cierre ? self::dinero($cierre->diferencia) : null,
                     'neto_acumulado_mes' => $acumulado,
                     'meta' => $meta,

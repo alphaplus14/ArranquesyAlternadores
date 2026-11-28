@@ -41,6 +41,25 @@ class ConfiguracionController extends Controller
         return response()->json(['valor' => $this->caja->fijarMetaVentaDiaria((int) $datos['valor'])]);
     }
 
+    /** S-98: base fija de caja en pesos (la lee la pantalla de caja; solo el admin la cambia). */
+    public function baseCaja(): JsonResponse
+    {
+        return response()->json(['valor' => $this->caja->baseCaja()]);
+    }
+
+    public function fijarBaseCaja(Request $request): JsonResponse
+    {
+        $datos = $request->validate([
+            'valor' => ['required', 'integer', 'min:0', 'max:999999999999'],
+        ], [
+            'valor.required' => 'Escriba la base de caja.',
+            'valor.integer' => 'La base va en pesos enteros.',
+            'valor.min' => 'La base no puede ser negativa.',
+        ]);
+
+        return response()->json(['valor' => $this->caja->fijarBaseCaja((int) $datos['valor'])]);
+    }
+
     public function diasSinMovimiento(): JsonResponse
     {
         return response()->json(['valor' => $this->panel->diasSinMovimiento()]);

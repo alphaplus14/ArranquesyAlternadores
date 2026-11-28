@@ -69,13 +69,21 @@ class CierreCajaService
             $contado = CajaService::dinero((string) $efectivoContado);
             $esperado = bcadd($apertura['valor'], $r['efectivo_neto_dia'], 2);
             $observacion = trim((string) $observacion);
+            // S-98: el mostrador cuenta todo el cajón (base incluida); la base no cuenta para el cuadre.
+            $base = $this->caja->baseCaja();
+            $paraCuadre = bcsub($contado, $base, 2);
+            // Supuesto: faltar la base solo avisa (no bloquea), pero exige explicarlo.
+            if (bccomp($contado, $base, 2) < 0 && $observacion === '') {
+                throw new ReglaInventarioException('Falta la base de caja: escriba la observación.', 422, ['campo' => 'observacion', 'errors' => ['observacion' => ['Falta la base de caja: escriba la observación.']]]);
+            }
 
             return CierreCaja::create([
                 'fecha' => $fecha,
                 'apertura' => $apertura['valor'],
+                'base' => $base,
                 'efectivo_contado' => $contado,
                 'efectivo_esperado' => $esperado,
-                'diferencia' => bcsub($contado, $esperado, 2),
+                'diferencia' => bcsub($paraCuadre, $esperado, 2),
                 // Columnas del modelo anterior (saldo encadenado), que se conservan para no romper
                 // la lectura de los cierres viejos: en los nuevos repiten apertura y esperado.
                 'saldo_anterior' => $apertura['valor'],

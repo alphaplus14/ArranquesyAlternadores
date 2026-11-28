@@ -64,6 +64,7 @@ export default function Configuracion() {
       </section>
       <DiasSinMovimiento />
       <MetaVentaDiaria />
+      <BaseCaja />
     </div>
   )
 }
@@ -180,3 +181,50 @@ function MetaVentaDiaria() {
     </section>
   )
 }
+
+/** S-98: base fija de caja (pesos enteros). Queda en el cajón y no cuenta para el cuadre. */
+function BaseCaja() {
+  const qc = useQueryClient()
+  const actual = useQuery({
+    queryKey: ['configuracion', 'base-caja'],
+    queryFn: async () => (await api.get<{ valor: string }>('/configuracion/base-caja')).data.valor,
+  })
+  const [valor, setValor] = useState('')
+  const [guardado, setGuardado] = useState(false)
+  useEffect(() => {
+    if (actual.data !== undefined) setValor(String(Math.round(Number(actual.data))))
+  }, [actual.data])
+
+  const n = leerNumero(valor)
+  const error = valor.trim() === '' ? 'Escriba la base.' : n === null || Number.isNaN(n) || !Number.isInteger(n) || n < 0 ? 'Use pesos enteros, 0 o mayor.' : null
+  const sinCambios = actual.data !== undefined && n !== null && Number(actual.data) === n
+  const guardar = useMutation({
+    mutationFn: async () => (await api.put<{ valor: string }>('/configuracion/base-caja', { valor: n })).data.valor,
+    onSuccess: (v) => {
+      qc.setQueryData(['configuracion', 'base-caja'], v)
+      qc.invalidateQueries({ queryKey: ['caja'] })
+      setGuardado(true)
+    },
+  })
+
+  return (
+    <section className="tarjeta-pagina" id="base-caja">
+      <h2>Base de caja</h2>
+      <form className="formulario campo-configuracion" onSubmit={(e) => { e.preventDefault(); setGuardado(false); guardar.mutate() }}>
+        <label htmlFor="base-caja-valor">Base fija (pesos)</label>
+        <input id="base-caja-valor" inputMode="numeric" value={valor} aria-invalid={error !== null} aria-describedby="base-caja-ayuda" onChange={(e) => { setValor(e.target.value); setGuardado(false) }} />
+        <p id="base-caja-ayuda" className={error ? 'ayuda error' : 'ayuda'}>
+          {error ?? `${pesos(n ?? 0)}. Siempre queda en el cajón y no cuenta para el cuadre: al cerrar se cuenta todo y el sistema la resta. Un cambio no reescribe los cierres anteriores.`}
+        </p>
+        {actual.isError && <div className="aviso error">{mensajeError(actual.error)}</div>}
+        {guardar.isError && <div className="aviso error">{mensajeError(guardar.error)}</div>}
+        {guardado && <div className="aviso ok" role="status">Guardado.</div>}
+        <div className="acciones acciones-izquierda">
+          <button className="primario boton-44" disabled={actual.isLoading || guardar.isPending || sinCambios || error !== null}>Guardar</button>
+          <Link to="/admin/auditoria?tabla=configuraciones">Ver cambios anteriores</Link>
+        </div>
+      </form>
+    </section>
+  )
+}
+
