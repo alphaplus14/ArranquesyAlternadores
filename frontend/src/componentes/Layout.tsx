@@ -31,8 +31,8 @@ export default function Layout() {
   const ubicacion = useLocation()
   const [abierto, setAbierto] = useState(true)
   const [editandoCuenta, setEditandoCuenta] = useState(false)
-  // Admin: grupos del menú desplegados a mano. Solo en memoria del componente (no se guarda en el navegador).
-  const [gruposAbiertos, setGruposAbiertos] = useState<Record<string, boolean>>({})
+  // Grupos del menú que la persona plegó o desplegó a mano (true = desplegado). Solo en memoria del componente.
+  const [gruposManual, setGruposManual] = useState<Record<string, boolean>>({})
   const [editandoPreferencias, setEditandoPreferencias] = useState(false)
   const menuPlegado = useMenuPlegado()
 
@@ -122,9 +122,9 @@ export default function Layout() {
       : null,
   ].filter((g): g is { etiqueta: string; items: ItemMenu[] } => g !== null)
 
-  // S-70: grupos plegables según la preferencia del usuario (admin: sí por defecto, como antes;
-  // logística y contable: no). El mostrador no tiene preferencias.
-  const plegable = menuPlegado
+  // Grupos plegables: siempre para el admin (todos nacen desplegados); logística y contable los
+  // tienen plegados solo si lo piden en sus preferencias (S-70). El mostrador no tiene preferencias.
+  const plegable = usuario?.rol === 'admin' || menuPlegado
   const bajo = (ruta: string) => ubicacion.pathname === ruta || ubicacion.pathname.startsWith(`${ruta}/`)
   const porPrefijo = (item: ItemMenu) => (item.tambien ?? []).some(bajo)
   const esRutaActiva = (item: ItemMenu) => (item.fin ? ubicacion.pathname === item.to : bajo(item.to)) || porPrefijo(item)
@@ -153,10 +153,10 @@ export default function Layout() {
         <nav className="menu" aria-label="Módulos">
           <div className="menu-interior">
             {grupos.map((grupo) => {
-              // Admin: cada grupo se pliega con un clic en su título; el de la ruta activa siempre queda
-              // abierto. Así su menú (el más largo) no necesita scroll. Los demás roles no cambian.
+              // Cada grupo se pliega y despliega con un clic en su título. Por defecto están desplegados;
+              // con la preferencia "menú plegado" nacen plegados, salvo el de la pantalla actual.
               const activo = grupo.items.some(esRutaActiva)
-              const desplegado = !plegable || activo || !!gruposAbiertos[grupo.etiqueta]
+              const desplegado = !plegable || (gruposManual[grupo.etiqueta] ?? (!menuPlegado || activo))
               const idLista = `menu-grupo-${grupo.etiqueta.toLowerCase().normalize('NFD').replace(/[^a-z]/g, '')}`
               return (
               <div key={grupo.etiqueta}>
@@ -167,7 +167,7 @@ export default function Layout() {
                     aria-expanded={desplegado}
                     aria-controls={idLista}
                     title={activo ? 'Contiene la pantalla actual' : undefined}
-                    onClick={() => { if (!activo) setGruposAbiertos((g) => ({ ...g, [grupo.etiqueta]: !g[grupo.etiqueta] })) }}
+                    onClick={() => setGruposManual((g) => ({ ...g, [grupo.etiqueta]: !desplegado }))}
                   >
                     <span>{grupo.etiqueta}</span>
                     <Icono nombre="chevron" />

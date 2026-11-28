@@ -41,8 +41,8 @@ export function admitePreferencias(rol: Rol | null | undefined): boolean {
 }
 
 /** Valores por defecto del rol (los de hoy). filas_por_pagina no tiene: cada listado conserva el suyo. */
-export function porDefecto(rol: Rol | null): Required<Omit<Preferencias, 'filas_por_pagina'>> {
-  return { tamano_letra: 'normal', densidad: 'comoda', acento: 'azul', menu_plegado: rol === 'admin' }
+export function porDefecto(): Required<Omit<Preferencias, 'filas_por_pagina'>> {
+  return { tamano_letra: 'normal', densidad: 'comoda', acento: 'azul', menu_plegado: false }
 }
 
 /* ───────────── Variables CSS ───────────── */
@@ -111,7 +111,7 @@ export function preferenciasGuardadas(): Preferencias {
 
 /** Valor efectivo de cada clave: lo guardado o el defecto del rol. */
 export function efectivas(base: Preferencias = guardadas): Required<Omit<Preferencias, 'filas_por_pagina'>> & Pick<Preferencias, 'filas_por_pagina'> {
-  return { ...porDefecto(rolActual), ...base }
+  return { ...porDefecto(), ...base }
 }
 
 /** Vista previa en vivo: solo variables CSS (sin re-render, sin tocar lo guardado). */
@@ -143,7 +143,7 @@ export function useFilasPorPagina(defecto: number, tope = 100): number {
   return Math.min(preferida ?? defecto, tope)
 }
 
-/** Menú lateral con grupos plegados por defecto (admin: sí; logística y contable: no). */
+/** Menú lateral con grupos plegados por defecto (nadie por defecto; el admin igual puede plegarlos a mano). */
 export function useMenuPlegado(): boolean {
-  return useSyncExternalStore(suscribir, () => (admitePreferencias(rolActual) ? (guardadas.menu_plegado ?? rolActual === 'admin') : false))
+  return useSyncExternalStore(suscribir, () => (admitePreferencias(rolActual) ? (guardadas.menu_plegado ?? false) : false))
 }

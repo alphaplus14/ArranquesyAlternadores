@@ -4,11 +4,11 @@ import { useQueryClient } from '@tanstack/react-query'
 import { api } from '../../api/cliente'
 import type { ListaCartera, ResumenCartera } from '../../api/tipos'
 import { useListaPaginada } from '../../hooks/useListaPaginada'
-import { useDebounce } from '../../hooks/useDebounce'
+import { useFiltrosUrl } from '../../hooks/useFiltrosUrl'
+import BarraFiltros, { CampoFiltro } from '../../componentes/BarraFiltros'
 import Medida from '../../componentes/Medida'
 import Resumen from '../../componentes/Resumen'
 import Paginacion from '../../componentes/Paginacion'
-import Icono from '../../componentes/Icono'
 import BarraAntiguedad from '../../componentes/cartera/BarraAntiguedad'
 import DialogoAbono from '../../componentes/cartera/DialogoAbono'
 import { pesos } from '../../componentes/numeros'
@@ -24,14 +24,16 @@ const CERO = { al_dia: '0.00', d1_30: '0.00', d31_60: '0.00', d61_90: '0.00', ma
  */
 export default function Cartera() {
   const qc = useQueryClient()
-  const [q, setQ] = useState('')
-  const [soloConSaldo, setSoloConSaldo] = useState(true)
-  const [soloVencidos, setSoloVencidos] = useState(false)
-  const [corte, setCorte] = useState('')
+  // S-89: filtros en la URL (se conservan al entrar a un cliente y volver).
+  const { filtros: f, fijar, activos, limpiar } = useFiltrosUrl({ q: '', saldo: '1', vencidos: '0', corte: '' })
+  const q = f.q
+  const soloConSaldo = f.saldo === '1'
+  const soloVencidos = f.vencidos === '1'
+  const corte = f.corte
   const [abonando, setAbonando] = useState<ResumenCartera | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
   const disparador = useRef<HTMLButtonElement | null>(null)
-  const termino = useDebounce(q.trim())
+  const termino = q.trim() // el buscador de BarraFiltros ya espera 300 ms
 
   const filtros = { termino, soloConSaldo, soloVencidos, corte }
   const { filas, resultado, info, irA, cargando } = useListaPaginada<ResumenCartera>({
@@ -80,17 +82,17 @@ export default function Cartera() {
       </Resumen>
 
       <section className="tarjeta-pagina">
-        <div className="formulario en-linea filtros-cartera">
-          <label className="busca">
-            <Icono nombre="buscar" />
-            <input placeholder="Cliente, documento, venta o factura" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Buscar por cliente, documento, número de venta o factura de Contapyme" />
-          </label>
-          <label className="check"><input type="checkbox" checked={soloConSaldo} onChange={(e) => setSoloConSaldo(e.target.checked)} /> Solo con saldo</label>
-          <label className="check"><input type="checkbox" checked={soloVencidos} onChange={(e) => setSoloVencidos(e.target.checked)} /> Solo vencidos</label>
-          <label className="campo-corte">Corte
-            <input type="date" value={corte} max={hoyEnBogota()} onChange={(e) => setCorte(e.target.value)} />
-          </label>
-        </div>
+        <BarraFiltros
+          busqueda={{ valor: q, onCambio: (v) => fijar({ q: v }), placeholder: 'Cliente, documento, venta o factura', etiqueta: 'Buscar por cliente, documento, número de venta o factura de Contapyme' }}
+          activos={activos}
+          onLimpiar={limpiar}
+        >
+          <CampoFiltro etiqueta="Corte al día">
+            <input type="date" value={corte} max={hoyEnBogota()} onChange={(e) => fijar({ corte: e.target.value })} />
+          </CampoFiltro>
+          <label className="check"><input type="checkbox" checked={soloConSaldo} onChange={(e) => fijar({ saldo: e.target.checked ? '1' : '0' })} /> Solo con saldo</label>
+          <label className="check"><input type="checkbox" checked={soloVencidos} onChange={(e) => fijar({ vencidos: e.target.checked ? '1' : '0' })} /> Solo vencidos</label>
+        </BarraFiltros>
 
         <BarraAntiguedad valores={t?.antiguedad ?? CERO} />
         {aviso && <div className="aviso ok" role="status">{aviso}</div>}
