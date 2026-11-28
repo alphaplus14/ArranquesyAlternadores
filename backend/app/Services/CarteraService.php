@@ -56,10 +56,15 @@ class CarteraService
     {
         $corte = $filtros['corte'] ?? null ?: RangoFechas::hoy();
         $coincidencias = $this->ventasQueCoinciden($corte, $filtros['busqueda'] ?? null);
+        // RF-13..RF-18: "ventas del período" = ventas a crédito cerradas con fecha en [desde, hasta]. Solo
+        // acota qué clientes salen y cuánto vendieron en el rango; el saldo sigue siendo el neto vigente.
+        $rango = ($filtros['desde'] ?? null) || ($filtros['hasta'] ?? null)
+            ? ['desde' => $filtros['desde'] ?? null, 'hasta' => $filtros['hasta'] ?? null] : null;
 
         // Una sola consulta: una fila AGREGADA por cliente (no las ventas). Los filtros, los totales,
         // el orden y la página se resuelven sobre esas filas, sin repetir el cálculo FIFO.
-        $filas = DB::query()->fromSub($this->porCliente($corte, $filtros['busqueda'] ?? null, null, $coincidencias->keys()->all()), 'c')
+        $filas = DB::query()->fromSub($this->porCliente($corte, $filtros['busqueda'] ?? null, null, $coincidencias->keys()->all(), $rango), 'c')
+            ->when($rango, fn ($q) => $q->where('c.n_periodo', '>', 0))
             ->when($filtros['solo_con_saldo'] ?? false, fn ($q) => $q->where('c.saldo', '>', 0))
             ->when($filtros['solo_vencidos'] ?? false, fn ($q) => $q->where('c.vencido', '>', 0))
             ->get()
@@ -75,7 +80,7 @@ class CarteraService
             'clientes_con_saldo' => $filas->filter(fn ($c) => (float) $c->saldo > 0)->count(),
             'clientes_vencidos' => $filas->filter(fn ($c) => (float) $c->vencido > 0)->count(),
             'antiguedad' => array_combine(self::RANGOS, array_map(fn ($r) => self::pesos($suma($r)), self::RANGOS)),
-        ];
+        ] + ($rango ? ['ventas_periodo_total' => self::pesos($suma('ventas_periodo'))] : []);
 
         $pagina = $pagina > 0 ? $pagina : LengthAwarePaginator::resolveCurrentPage();
         $paginador = new LengthAwarePaginator(
@@ -88,7 +93,7 @@ class CarteraService
             ['path' => LengthAwarePaginator::resolveCurrentPath()],
         );
 
-        return ['pagina' => $paginador, 'totales' => $totales, 'corte' => $corte];
+        return ['pagina' => $paginador, 'totales' => $totales, 'corte' => $corte, 'desde' => $rango['desde'] ?? null, 'hasta' => $rango['hasta'] ?? null];
     }
 
     /** Saldo, vencido, próximo vencimiento y antigüedad de un cliente. */
@@ -462,15 +467,33 @@ class CarteraService
      * Con búsqueda, filtra por prefijo de nombre o documento (índices; sin comodín inicial) o por
      * los clientes dueños de una venta que coincide por n.º o factura ($idsPorVenta).
      */
-    protected function porCliente(string $corte, ?string $busqueda = null, ?int $clienteId = null, array $idsPorVenta = []): Builder
+    protected function porCliente(string $corte, ?string $busqueda = null, ?int $clienteId = null, array $idsPorVenta = [], ?array $rango = null): Builder
     {
         $busqueda = trim((string) $busqueda);
         $prefijo = addcslashes($busqueda, '%_\\').'%';
         $porVenta = $this->asignacion($corte, $clienteId);
 
+        // Ventas del período (cerrada_at en [desde, hasta], días locales); sin rango, la condición es siempre falsa.
+        $enRango = '0 = 1';
+        $bindings = [];
+        if ($rango) {
+            $partes = [];
+            if ($rango['desde'] ?? null) {
+                $partes[] = 'f.cerrada_at >= ?';
+                $bindings[] = RangoFechas::inicio($rango['desde'])->format('Y-m-d H:i:s');
+            }
+            if ($rango['hasta'] ?? null) {
+                $partes[] = 'f.cerrada_at < ?';
+                $bindings[] = RangoFechas::finExclusivo($rango['hasta'])->format('Y-m-d H:i:s');
+            }
+            $enRango = implode(' AND ', $partes).' AND f.neto > 0';
+        }
+
         $agregado = DB::query()->fromSub($porVenta, 'f')
             ->groupBy('f.cliente_id')
-            ->selectRaw('f.cliente_id,
+            ->selectRaw("f.cliente_id,
+                SUM(CASE WHEN {$enRango} THEN f.neto ELSE 0 END) AS ventas_periodo,
+                SUM(CASE WHEN {$enRango} THEN 1 ELSE 0 END) AS n_periodo,
                 SUM(f.neto) AS ventas,
                 SUM(CASE WHEN f.dias > 0 THEN f.pendiente ELSE 0 END) AS vencido,
                 MIN(CASE WHEN f.pendiente > 0 AND f.dias <= 0 THEN f.vence_el END) AS proximo_vencimiento,
@@ -479,7 +502,7 @@ class CarteraService
                 SUM(CASE WHEN f.dias BETWEEN 1 AND 30 THEN f.pendiente ELSE 0 END) AS d1_30,
                 SUM(CASE WHEN f.dias BETWEEN 31 AND 60 THEN f.pendiente ELSE 0 END) AS d31_60,
                 SUM(CASE WHEN f.dias BETWEEN 61 AND 90 THEN f.pendiente ELSE 0 END) AS d61_90,
-                SUM(CASE WHEN f.dias > 90 THEN f.pendiente ELSE 0 END) AS mas_90');
+                SUM(CASE WHEN f.dias > 90 THEN f.pendiente ELSE 0 END) AS mas_90", [...$bindings, ...$bindings]);
 
         $abonos = $this->abonadoPorCliente($corte, $clienteId);
 
@@ -497,6 +520,7 @@ class CarteraService
             ->selectRaw('cl.id, cl.nombre, cl.documento, cl.telefono, cl.plazo_dias, cl.activo,
                 COALESCE(ag.ventas, 0) AS ventas,
                 COALESCE(ab.abonado, 0) AS abonado,
+                COALESCE(ag.ventas_periodo, 0) AS ventas_periodo, COALESCE(ag.n_periodo, 0) AS n_periodo,
                 COALESCE(ag.ventas, 0) - COALESCE(ab.abonado, 0) AS saldo,
                 COALESCE(ag.vencido, 0) AS vencido,
                 ag.proximo_vencimiento, ag.vencida_desde,
@@ -634,6 +658,7 @@ class CarteraService
                 'activo' => (bool) $f->activo,
             ] : null,
             'ventas' => self::pesos($f->ventas ?? 0),
+            'ventas_periodo' => self::pesos($f->ventas_periodo ?? 0),
             'abonado' => self::pesos($f->abonado ?? 0),
             'saldo' => self::pesos($saldo),
             'saldo_a_favor' => $saldo < 0,
