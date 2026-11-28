@@ -4,7 +4,7 @@
 
 **Hecho:** el backend (commit 0a046fe) exige motivo de 3 a 200 caracteres en cualquier `PUT /api/caja/dias/{fecha}/apertura`, aunque el valor sea igual al automático o sea el primer día. Se quitaron la excepción «sin motivo si es igual», el motivo opcional del primer día y el motivo automático. Docs actualizadas.
 
-**Pendiente:** revisar que el frontend de la apertura pida siempre el motivo (no verificado aquí).
+**Hecho también:** el frontend de la apertura pide siempre el motivo (`CierreDia.tsx`, `DialogoApertura.test.tsx`). Merge con `origin/cesar` hecho (S-94 a S-101 de César; mis S-94/S-95 ahora S-102/S-103; S-100 superado por S-84).
 
 **Decisiones:** sigue siendo S-84; sin numeración nueva. Filas viejas pueden mostrarse como `arrastre`.
 
