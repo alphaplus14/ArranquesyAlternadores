@@ -111,7 +111,7 @@ export function preferenciasGuardadas(): Preferencias {
 
 /** Valor efectivo de cada clave: lo guardado o el defecto del rol. */
 export function efectivas(base: Preferencias = guardadas): Required<Omit<Preferencias, 'filas_por_pagina'>> & Pick<Preferencias, 'filas_por_pagina'> {
-  return { ...porDefecto(rolActual), ...base }
+  return { ...porDefecto(), ...base }
 }
 
 /** Vista previa en vivo: solo variables CSS (sin re-render, sin tocar lo guardado). */

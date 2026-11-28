@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { mensajeError } from '../api/cliente'
-import { useAuth } from '../auth/AuthProvider'
 import BotonCancelar from '../componentes/BotonCancelar'
 import ControlSegmentado from '../componentes/ControlSegmentado'
 import Dialogo, { DialogoSeccion } from '../componentes/Dialogo'
@@ -25,7 +24,6 @@ const TAMANOS: { valor: TamanoLetra; nombre: string; escala: number }[] = [
  * PATCH con solo lo que cambió; "Restablecer" borra lo guardado y vuelve a los valores del rol.
  */
 export default function DialogoPreferencias({ onCerrar }: { onCerrar: () => void }) {
-  const { usuario } = useAuth()
   const [inicial] = useState<Borrador>(() => efectivas())
   const [b, setB] = useState<Borrador>(inicial)
   const [error, setError] = useState<string | null>(null)
