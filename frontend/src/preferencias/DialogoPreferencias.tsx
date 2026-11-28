@@ -42,7 +42,7 @@ export default function DialogoPreferencias({ onCerrar }: { onCerrar: () => void
 
   /** Solo lo que cambió. Volver al valor por defecto del rol borra la clave (null). */
   const cambios = () => {
-    const defecto = porDefecto(usuario?.rol ?? null) as Preferencias
+    const defecto = porDefecto() as Preferencias
     const r: Partial<Record<ClavePreferencia, Preferencias[ClavePreferencia] | null>> = {}
     for (const k of CLAVES) {
       if (b[k] === inicial[k]) continue
