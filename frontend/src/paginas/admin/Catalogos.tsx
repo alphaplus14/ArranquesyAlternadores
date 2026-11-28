@@ -1,5 +1,6 @@
 import { useMemo, useState, type KeyboardEvent } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { AvisoPagina } from '../../componentes/AvisoPagina'
 import { api, mensajeError } from '../../api/cliente'
 import { useAvisoTexto } from '../../componentes/Avisos'
 import type { Categoria, Opcion, Pagina, Proveedor } from '../../api/tipos'
@@ -113,7 +114,7 @@ function ListaProveedores({ filas, cargando }: { filas: Proveedor[]; cargando: b
           <input placeholder="Nombre, NIT o asesor" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} aria-label="Buscar proveedor" title="Busca por nombre, NIT o asesor" />
         </label>
       </div>
-      {aviso && <div className="aviso ok catalogo-aviso" role="status">{aviso}</div>}
+      {aviso && <AvisoPagina tono="ok" className="catalogo-aviso">{aviso}</AvisoPagina>}
       <div className="tabla-marcos-scroll">
         <table className="tabla-marcos tabla-proveedores">
           <thead>

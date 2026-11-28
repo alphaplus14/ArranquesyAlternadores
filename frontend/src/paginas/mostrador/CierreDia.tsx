@@ -1,5 +1,6 @@
 import { useId, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { AvisoPagina } from '../../componentes/AvisoPagina'
 import { Navigate, useSearchParams } from 'react-router-dom'
 import { AxiosError } from 'axios'
 import { api, erroresCampo, mensajeError } from '../../api/cliente'
@@ -533,7 +534,7 @@ function DialogoApertura({ fecha, apertura, onCerrar, onGuardada }: {
             ? `Obligatorio: difiere de lo que dejó el cierre anterior (${pesos(arrastre ?? 0)}). Por ejemplo: se retiró dinero de la caja.`
             : primerDia ? 'Opcional el primer día.' : 'Por ejemplo: se retiró dinero de la caja.')}
         </small>
-        {(general || errores.fecha) && <div className="aviso error" role="alert">{general ?? errores.fecha}</div>}
+        {(general || errores.fecha) && <AvisoPagina tono="error">{general ?? errores.fecha}</AvisoPagina>}
       </DialogoSeccion>
     </Dialogo>
   )
@@ -776,7 +777,7 @@ function FormularioCierre({ fecha, esperado, bloqueado, onCerrado }: { fecha: st
       ) : (
         <button type="button" className="enlace caja-agregar-observacion" onClick={() => setConObservacion(true)}>+ Agregar observación</button>
       )}
-      {cerrar.isError && !confirmando && <div className="aviso error" role="alert">{mensajeError(cerrar.error)}</div>}
+      {cerrar.isError && !confirmando && <AvisoPagina tono="error">{mensajeError(cerrar.error)}</AvisoPagina>}
       <button type="submit" className="primario boton-44 caja-boton-cerrar" disabled={!valido || bloqueado || cerrar.isPending}>Cerrar día</button>
       {confirmando && (
         <Confirmar
@@ -876,7 +877,7 @@ function DialogoRecaudo({ fecha, onCerrar, onGuardado }: { fecha: string; onCerr
           <textarea maxLength={500} rows={2} value={observacion} aria-invalid={!!errores.observacion} onChange={(e) => setObservacion(e.target.value)} />
           {errores.observacion && <small className="ayuda error">{errores.observacion}</small>}
         </label>
-        {general && <div className="aviso error" role="alert">{general}</div>}
+        {general && <AvisoPagina tono="error">{general}</AvisoPagina>}
       </DialogoSeccion>
     </Dialogo>
   )
@@ -963,7 +964,7 @@ function DialogoMovimiento({ fecha, onCerrar, onGuardado }: { fecha: string; onC
           <span className="etiqueta-campo">Referencia (opcional)</span>
           <input maxLength={60} placeholder="Ej: FVE-1234" value={referencia} onChange={(e) => setReferencia(e.target.value)} />
         </label>
-        {general && <div className="aviso error" role="alert">{general}</div>}
+        {general && <AvisoPagina tono="error">{general}</AvisoPagina>}
       </DialogoSeccion>
     </Dialogo>
   )
@@ -1133,7 +1134,7 @@ function DialogoEmpleados({ onCerrar, onGuardado }: { onCerrar: () => void; onGu
           <input maxLength={255} autoComplete="off" value={nota} aria-invalid={!!errores.nota} onChange={(e) => setNota(e.target.value)} />
           {errores.nota && <small className="ayuda error">{errores.nota}</small>}
         </label>
-        {(general || errores.forma) && <div className="aviso error" role="alert">{general ?? errores.forma}</div>}
+        {(general || errores.forma) && <AvisoPagina tono="error">{general ?? errores.forma}</AvisoPagina>}
       </DialogoSeccion>
     </Dialogo>
   )

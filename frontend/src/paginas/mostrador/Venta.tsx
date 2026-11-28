@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { AvisoPagina } from '../../componentes/AvisoPagina'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { RUTA_CARTERA, rutaInicio } from '../../rutas'
 import { AxiosError } from 'axios'
@@ -1273,7 +1274,7 @@ function DialogoCredito({ onRegistrada, onCerrar }: {
             {errores.numero_documento && <small className="ayuda error">{errores.numero_documento}</small>}
           </label>
         </div>
-        {registrar.isError && Object.keys(errores).length === 0 && <div className="aviso error" role="alert">{mensajeError(registrar.error)}</div>}
+        {registrar.isError && Object.keys(errores).length === 0 && <AvisoPagina tono="error">{mensajeError(registrar.error)}</AvisoPagina>}
       </DialogoSeccion>
     </Dialogo>
   )

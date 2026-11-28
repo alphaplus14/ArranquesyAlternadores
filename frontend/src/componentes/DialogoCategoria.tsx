@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { AvisoPagina } from './AvisoPagina'
 import { AxiosError } from 'axios'
 import { api, erroresCampo, mensajeError } from '../api/cliente'
 import type { Categoria } from '../api/tipos'
@@ -71,7 +72,7 @@ export default function DialogoCategoria({ onCreada, onUsar, onCerrar }: {
           <button type="button" className="enlace" onClick={() => onUsar(existente.id)}>Usar esa categoría</button>
         </div>
       )}
-      {general && <div className="aviso error" role="alert">{general}</div>}
+      {general && <AvisoPagina tono="error">{general}</AvisoPagina>}
     </DialogoApilado>
   )
 }

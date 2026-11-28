@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useRef, useState, type FocusEvent, type KeyboardEvent } from 'react'
 import { useMutation } from '@tanstack/react-query'
+import { AvisoPagina } from '../../componentes/AvisoPagina'
 import { api, erroresCampo, mensajeError } from '../../api/cliente'
 import Dialogo, { DialogoSeccion } from '../../componentes/Dialogo'
 import type { CorreccionIngreso, Ingreso, LineaCorreccionEnvio, Pagina, Referencia, VistaPreviaCorreccion } from '../../api/tipos'
@@ -372,7 +373,7 @@ export function PanelCorreccion({ ingreso, onCancelar, onCorregido }: {
         </table>
       </div>
 
-      {revisar.isError && <div className="aviso error" role="alert">{mensajeError(revisar.error)}</div>}
+      {revisar.isError && <AvisoPagina tono="error">{mensajeError(revisar.error)}</AvisoPagina>}
       {/* Barra fija al pie del área visible: resumen y botones siempre a la vista. */}
       <div ref={barraRef} className="ingreso-barra">
         <span className="ingreso-barra-resumen">{resumen}</span>
@@ -551,7 +552,7 @@ function DialogoConfirmarCorreccion({ ingresoId, vista, cuerpo, onCerrar, onCorr
           {errores.motivo && <small className="ayuda error">{errores.motivo}</small>}
         </label>
       )}
-      {corregir.isError && !errores.motivo && <div className="aviso error" role="alert">{mensajeError(corregir.error)}</div>}
+      {corregir.isError && !errores.motivo && <AvisoPagina tono="error">{mensajeError(corregir.error)}</AvisoPagina>}
       </DialogoSeccion>
     </Dialogo>
   )

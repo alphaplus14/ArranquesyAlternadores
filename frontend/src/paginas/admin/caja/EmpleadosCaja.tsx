@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { AvisoPagina } from '../../../componentes/AvisoPagina'
 import { api, erroresCampo, mensajeError } from '../../../api/cliente'
 import type { EmpleadoResumen, EstadoCuentaEmpleado, FilaEstadoEmpleado, ResumenEmpleados } from '../../../api/tipos'
 import { useAvisoTexto } from '../../../componentes/Avisos'
@@ -146,7 +147,7 @@ function DialogoNuevoEmpleado({ onCerrar, onCreado }: { onCerrar: () => void; on
             <input type="date" required max={hoy()} value={fecha} onChange={(e) => setFecha(e.target.value)} />
           </label>
         ) : null}
-        {crear.isError && Object.keys(errores).length === 0 && <div className="aviso error" role="alert">{mensajeError(crear.error)}</div>}
+        {crear.isError && Object.keys(errores).length === 0 && <AvisoPagina tono="error">{mensajeError(crear.error)}</AvisoPagina>}
       </DialogoSeccion>
     </Dialogo>
   )
@@ -253,7 +254,7 @@ function DialogoAnularMovimiento({ fila, onCerrar, onAnulado }: { fila: FilaEsta
         <textarea required autoFocus minLength={3} maxLength={500} rows={3} value={motivo} aria-invalid={!!errores.motivo} onChange={(e) => { setMotivo(e.target.value); anular.reset() }} />
         {errores.motivo && <small className="ayuda error">{errores.motivo}</small>}
       </label>
-      {anular.isError && !errores.motivo && <div className="aviso error" role="alert">{mensajeError(anular.error)}</div>}
+      {anular.isError && !errores.motivo && <AvisoPagina tono="error">{mensajeError(anular.error)}</AvisoPagina>}
     </DialogoApilado>
   )
 }

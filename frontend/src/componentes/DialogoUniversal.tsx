@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { AvisoPagina } from './AvisoPagina'
 import { api, erroresCampo, mensajeError } from '../api/cliente'
 import type { UniversalInventario } from '../api/tipos'
 import { useCategorias } from '../hooks/useCatalogos'
@@ -125,7 +126,7 @@ export default function DialogoUniversal({ universal, esAdmin, onGuardado, onEli
         ) : (
           <p className="ayuda">El stock mínimo del universal lo fija el administrador.</p>
         )}
-        {general && <div className="aviso error" role="alert">{general}</div>}
+        {general && <AvisoPagina tono="error">{general}</AvisoPagina>}
         {eliminar.isError && <div className="aviso error" role="alert">{mensajeError(eliminar.error)}</div>}
       </DialogoSeccion>
     </Dialogo>

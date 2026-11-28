@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { AvisoPagina } from './AvisoPagina'
 import { AxiosError } from 'axios'
 import { api, erroresCampo, mensajeError } from '../api/cliente'
 import type { Proveedor } from '../api/tipos'
@@ -131,7 +132,7 @@ export default function DialogoProveedor({ proveedor, texto = '', onGuardado, on
           {onUsar && <button type="button" className="enlace" onClick={() => onUsar(existente.id)}>{textoUsar}</button>}
         </div>
       )}
-      {general && <div className="aviso error" role="alert">{general}</div>}
+      {general && <AvisoPagina tono="error">{general}</AvisoPagina>}
     </DialogoApilado>
   )
 }

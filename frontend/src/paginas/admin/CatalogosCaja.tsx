@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { AvisoPagina } from '../../componentes/AvisoPagina'
 import { api, mensajeError } from '../../api/cliente'
 import { GRUPOS_CAJA, NOMBRE_GRUPO_CAJA, NOMBRE_TIPO_CUENTA, type CategoriaCaja, type GrupoCaja, type TipoCuentaPago } from '../../api/tipos'
 import { useAvisoTexto } from '../../componentes/Avisos'
@@ -78,7 +79,7 @@ function Cuentas() {
         <button type="submit" className="primario" disabled={nombre.trim().length < 2 || faltaDueno || crear.isPending}>Agregar</button>
       </form>
       {tipo === 'billetera' && <p className="ayuda">El nombre distingue la cuenta (Nequi Dayana, Daviplata Dayana). El dueño agrupa los saldos.</p>}
-      {crear.isError && <div className="aviso error" role="alert">{mensajeError(crear.error)}</div>}
+      {crear.isError && <AvisoPagina tono="error">{mensajeError(crear.error)}</AvisoPagina>}
       <table className="tabla-caja">
         <thead><tr><th>Cuenta</th><th>Tipo</th><th>Dueño</th><th>Estado</th><th><span className="solo-lector">Acciones</span></th></tr></thead>
         <tbody>
@@ -139,7 +140,7 @@ function Categorias() {
         </label>
         <button type="submit" className="primario" disabled={nombre.trim().length < 2 || crear.isPending}>Agregar</button>
       </form>
-      {crear.isError && <div className="aviso error" role="alert">{mensajeError(crear.error)}</div>}
+      {crear.isError && <AvisoPagina tono="error">{mensajeError(crear.error)}</AvisoPagina>}
       {GRUPOS_CAJA.map((g) => {
         const filas = (categorias.data ?? []).filter((c) => c.grupo === g)
         return (

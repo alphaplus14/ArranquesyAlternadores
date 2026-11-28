@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import { AvisoPagina } from '../componentes/AvisoPagina'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeError } from '../api/cliente'
 import { NOMBRE_CALIDAD, type Calidad, type ItemInventario, type MetodoCaptura, type Pagina, type Referencia, type UniversalInventario } from '../api/tipos'
@@ -841,7 +842,7 @@ function FormularioReferencia({ id, inicial, onListo, onCerrar }: { id: number |
             </p>
           </>
         )}
-        {guardar.isError && <div className="aviso error">{mensajeError(guardar.error)}</div>}
+        {guardar.isError && <AvisoPagina tono="error">{mensajeError(guardar.error)}</AvisoPagina>}
       </DialogoSeccion>
     </Dialogo>
   )

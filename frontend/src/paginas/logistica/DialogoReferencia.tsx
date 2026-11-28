@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
+import { AvisoPagina } from '../../componentes/AvisoPagina'
 import { api, mensajeError } from '../../api/cliente'
 import Dialogo, { DialogoSeccion } from '../../componentes/Dialogo'
 import type { Opcion, Referencia } from '../../api/tipos'
@@ -165,7 +166,7 @@ export default function DialogoReferencia({ codigo, proveedor, onCreada, onCerra
           <CampoMoneda required aria-invalid={errorPrecio !== null} {...campo('precio_venta')} />
         </label>
         <p className={errorPrecio ? 'ayuda error' : 'ayuda'}>{errorPrecio ?? 'Con IVA incluido. Mayor que 0. Si no lo conoce, consúltelo con el administrador antes de crearla.'}</p>
-        {crear.isError && <div className="aviso error">{mensajeError(crear.error)}</div>}
+        {crear.isError && <AvisoPagina tono="error">{mensajeError(crear.error)}</AvisoPagina>}
       </DialogoSeccion>
     </Dialogo>
   )

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { AvisoPagina } from '../../componentes/AvisoPagina'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeError } from '../../api/cliente'
 import CampoStockMinimo from '../../componentes/CampoStockMinimo'
@@ -53,9 +54,9 @@ export default function Configuracion() {
             valor={valor}
             onCambio={(v) => { setValor(v); setGuardado(false) }}
           />
-          {general.isError && <div className="aviso error">{mensajeError(general.error)}</div>}
-          {guardar.isError && <div className="aviso error">{mensajeError(guardar.error)}</div>}
-          {guardado && <div className="aviso ok" role="status">Guardado. El informe Bajo mínimo ya usa el nuevo valor.</div>}
+          {general.isError && <AvisoPagina tono="error">{mensajeError(general.error)}</AvisoPagina>}
+          {guardar.isError && <AvisoPagina tono="error">{mensajeError(guardar.error)}</AvisoPagina>}
+          {guardado && <AvisoPagina tono="ok">{"Guardado. El informe Bajo mínimo ya usa el nuevo valor."}</AvisoPagina>}
           <div className="acciones acciones-izquierda">
             <button className="primario boton-44" disabled={general.isLoading || guardar.isPending || sinCambios || errorStockMinimo(valor) !== null}>Guardar</button>
             <Link to="/admin/auditoria?tabla=configuraciones">Ver cambios anteriores</Link>
@@ -124,8 +125,8 @@ function DiasSinMovimiento() {
           {error ?? `Una referencia con existencia que no se vende en estos días se considera estancada. Entre ${DIAS_MIN} y ${DIAS_MAX}; 120 por defecto.`}
         </p>
         {actual.isError && <div className="aviso error">{mensajeError(actual.error)}</div>}
-        {guardar.isError && <div className="aviso error">{mensajeError(guardar.error)}</div>}
-        {guardado && <div className="aviso ok" role="status">Guardado. El stock estancado del panel ya usa el nuevo valor.</div>}
+        {guardar.isError && <AvisoPagina tono="error">{mensajeError(guardar.error)}</AvisoPagina>}
+        {guardado && <AvisoPagina tono="ok">{"Guardado. El stock estancado del panel ya usa el nuevo valor."}</AvisoPagina>}
         <div className="acciones acciones-izquierda">
           <button className="primario boton-44" disabled={actual.isLoading || guardar.isPending || sinCambios || error !== null}>Guardar</button>
           <Link to="/admin/auditoria?tabla=configuraciones">Ver cambios anteriores</Link>
@@ -170,8 +171,8 @@ function MetaVentaDiaria() {
           {error ?? `${pesos(n ?? 0)}. La caja compara contra ella el total del día (ventas de contado y a crédito y otros ingresos; sin recaudo de cartera).`}
         </p>
         {actual.isError && <div className="aviso error">{mensajeError(actual.error)}</div>}
-        {guardar.isError && <div className="aviso error">{mensajeError(guardar.error)}</div>}
-        {guardado && <div className="aviso ok" role="status">Guardado.</div>}
+        {guardar.isError && <AvisoPagina tono="error">{mensajeError(guardar.error)}</AvisoPagina>}
+        {guardado && <AvisoPagina tono="ok">{"Guardado."}</AvisoPagina>}
         <div className="acciones acciones-izquierda">
           <button className="primario boton-44" disabled={actual.isLoading || guardar.isPending || sinCambios || error !== null}>Guardar</button>
           <Link to="/admin/auditoria?tabla=configuraciones">Ver cambios anteriores</Link>
