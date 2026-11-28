@@ -8,6 +8,7 @@ const paletas = JSON.parse(readFileSync(new URL('../src/preferencias/paletas.jso
 const BLANCO = '#FFFFFF'
 const FONDO = '#F4F6FB' // --fondo
 const SUAVE_FONDO = '#EEF2FA' // --suave-fondo (hover de botones secundarios)
+const TEXTO = '#0E1A33' // --texto
 const RESALTE = '#F8C800' // --resalte: iniciales del avatar y opción elegida, sobre el acento
 const MINIMO = 4.5
 
@@ -48,6 +49,9 @@ for (const [clave, p] of Object.entries(paletas)) {
 for (const [uso, frente, fondo] of [
   ['texto del botón de peligro', '#FFFFFF', '#D80808'],
   ['texto del botón de peligro deshabilitado', '#B00000', '#FDE8E7'],
+  // S-99: chips de estado de Recaudos (Vigente: --ok sobre --ok-fondo; Anulado: --texto sobre --suave-fondo).
+  ['chip Vigente', '#147A4A', '#E5F6EC'],
+  ['chip Anulado', TEXTO, SUAVE_FONDO],
 ]) {
   const c = contraste(frente, fondo)
   const ok = c >= MINIMO

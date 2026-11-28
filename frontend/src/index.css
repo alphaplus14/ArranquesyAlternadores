@@ -2006,13 +2006,10 @@ th.boton-fila-columna.boton-fila-doble, td.boton-fila-columna.boton-fila-doble {
 /* S-76: recaudo de documentos (botón junto a "Agregar movimiento" y consulta del contable). */
 .recaudo-acciones { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
 .caja-total-recaudos td.col-numero { color: var(--ok); }
-.recaudo-observacion { overflow-wrap: anywhere; }
 .recaudo-medidas { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin: 4px 0 12px; }
 .recaudo-medidas .medida { grid-column: auto; }
 .recaudo-buscar { flex: 1 1 240px; }
 .recaudo-buscar input { width: 100%; box-sizing: border-box; }
-.recaudo-tabla td.recaudo-observacion { max-width: 280px; }
-.recaudo-tabla small.bloque { white-space: nowrap; }
 .caja-total-gastos td.col-numero { color: color-mix(in srgb, var(--peligro) 70%, var(--texto)); }
 .caja-total-ingresos td.col-numero { color: var(--ok); }
 /* RF-27: préstamos y abonos de empleados en la caja del día del mostrador. */
@@ -2363,4 +2360,42 @@ button.segmento.pendiente { border: 1px dashed var(--aviso); color: var(--texto)
 .caja-desglose .caja-cajon { border-top: 1px dashed var(--borde); padding-top: 4px; }
 .caja-desglose .caja-cajon dt, .caja-desglose .caja-cajon dd { font-weight: 700; }
 .tabla-mes td.suave { color: var(--suave); }
+
+/*
+ * S-99: tabla de Recaudos sin scroll horizontal: ancho fijo de la tarjeta, anchos por columna, la
+ * observación a 2 líneas y el motivo de la anulación a 1 (completos en el title y en «Ver motivo»).
+ * En las anuladas solo van tachados fecha, tipo, número, valor y cuenta. Total fijo al pie del scroll.
+ * A 768 px o menos cada recaudo es una tarjeta.
+ */
+.recaudo-tabla { table-layout: fixed; width: 100%; }
+.recaudo-tabla col.r-fecha { width: 9%; }
+.recaudo-tabla col.r-tipo { width: 9%; }
+.recaudo-tabla col.r-numero { width: 9%; }
+.recaudo-tabla col.r-valor { width: 11%; }
+.recaudo-tabla col.r-cuenta { width: 12%; }
+.recaudo-tabla col.r-observacion { width: 20%; }
+.recaudo-tabla col.r-usuario { width: 14%; }
+.recaudo-tabla col.r-estado { width: 16%; }
+.recaudo-tabla td, .recaudo-tabla th { overflow-wrap: anywhere; }
+.recaudo-recorte { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+.recaudo-estado-fila { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.recaudo-motivo { display: block; margin-top: 2px; color: var(--suave); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chip.vigente { background: var(--ok-fondo); color: var(--ok); font-weight: 600; }
+.chip.anulado { background: var(--suave-fondo); color: var(--texto); font-weight: 600; }
+tr.reversado td.sin-tachar { text-decoration: none; }
+tr.reversado td.sin-tachar .chip, tr.reversado td.sin-tachar small { text-decoration: none; }
+.recaudo-tabla tr.recaudo-total td { position: sticky; bottom: 0; z-index: 1; background: var(--suave-fondo); }
+.recaudo-motivo-completo { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 0 8px; }
+@media (max-width: 768px) {
+  .recaudo-tabla colgroup, .recaudo-tabla thead { display: none; }
+  .recaudo-tabla, .recaudo-tabla tbody, .recaudo-tabla tr, .recaudo-tabla td { display: block; width: 100%; box-sizing: border-box; }
+  .recaudo-tabla tr { border: 1px solid var(--borde); border-radius: 10px; padding: 8px 12px; margin-bottom: 10px; }
+  .recaudo-tabla td { border: 0; padding: 4px 0; }
+  .recaudo-tabla td[data-etiqueta] { display: flex; justify-content: space-between; gap: 12px; text-align: right; }
+  .recaudo-tabla td[data-etiqueta]::before { content: attr(data-etiqueta); flex: none; color: var(--suave); font-size: 0.8rem; text-align: left; text-decoration: none; }
+  .recaudo-tabla td[data-etiqueta] > * { min-width: 0; }
+  .recaudo-tabla td.recaudo-estado { flex-direction: column; align-items: flex-end; }
+  .recaudo-tabla tr.recaudo-total td { position: static; }
+  .recaudo-tabla td.recaudo-total-relleno { display: none; }
+}
 
