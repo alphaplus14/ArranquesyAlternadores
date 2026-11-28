@@ -176,6 +176,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/proveedores/{proveedor}/pagos', [ConsultaContableController::class, 'pagosProveedor']);
             Route::get('/clientes/{cliente}/abonos', [ConsultaContableController::class, 'abonosCliente']);
             Route::get('/clientes/{cliente}/saldo', [ConsultaContableController::class, 'saldoCliente']);
+            Route::get('/reportes/cartera-recuperada', [ConsultaContableController::class, 'carteraRecuperada']); // S-97
         });
     });
 

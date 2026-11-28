@@ -2346,3 +2346,15 @@ button.segmento.pendiente { border: 1px dashed var(--aviso); color: var(--texto)
   .control-condicion button.segmento { flex: 1 1 auto; }
 }
 
+/* S-97: "Cartera recuperada": tarjetas y franja por cuenta (texto y barra simple), vista compacta. */
+.resumen-recuperado { display: flex; flex-direction: column; gap: 8px; }
+.resumen-recuperado .medidas { margin: 0; }
+.recuperado-por-cuenta { list-style: none; margin: 0; padding: 8px 12px; display: flex; flex-wrap: wrap; gap: 6px 22px; background: var(--panel); border-radius: var(--radio); }
+.recuperado-por-cuenta li { display: inline-flex; align-items: center; gap: 8px; font-size: 0.85rem; }
+.recuperado-cuenta-nombre { color: var(--suave); font-weight: 600; }
+.recuperado-cuenta-barra { width: 80px; height: 6px; border-radius: 999px; background: var(--suave-fondo); overflow: hidden; display: inline-block; }
+.recuperado-cuenta-barra > span { display: block; height: 100%; background: var(--acento); }
+.recuperado-por-cuenta small { color: var(--suave); }
+.vista-recuperada { margin: 0; }
+.vista-recuperada button.segmento { min-height: 44px; white-space: nowrap; }
+

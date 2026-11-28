@@ -726,6 +726,42 @@ export interface SaldoProveedor extends ResumenSaldo {
   pagos_recientes: MovimientoDinero[]
 }
 
+/** S-97: un abono de la cartera recuperada (vista detalle). */
+export interface FilaAbonoRecuperado {
+  id: number
+  fecha: string
+  cliente: { id: number; nombre: string; documento: string | null } | null
+  valor: string
+  cuenta: { id: number; nombre: string; tipo: TipoCuentaPago } | null
+  referencia: string | null
+  nota: string | null
+  /** null = «General» (abono sin documento, anterior a S-79). */
+  documento: { venta_id: number; tipo: 'factura' | 'remision' | null; numero: string | null } | null
+  aplicado_a: string
+  usuario: { id: number; name: string } | null
+  anulado: boolean
+  anulacion: { motivo: string; created_at: string; usuario: { id: number; name: string } | null } | null
+}
+
+/** S-97: un cliente de la cartera recuperada (vista por cliente). */
+export interface FilaClienteRecuperado {
+  cliente: { id: number; nombre: string; documento: string | null }
+  abonos: number
+  recuperado: string
+  ultimo_abono: string
+  saldo_actual: string
+}
+
+/** S-97: totales de todo lo filtrado (no dependen de la vista ni de la página). */
+export interface TotalesRecuperados {
+  total_recuperado: string
+  cantidad_abonos: number
+  clientes: number
+  total_anulado: string
+  cantidad_anulados: number
+  por_cuenta: Array<{ cuenta_id: number | null; cuenta: string; tipo: TipoCuentaPago; total: string; cantidad: number }>
+}
+
 /** RF-18: informe paginado en el servidor; los totales cubren todas las filas, no solo la página. */
 export interface PaginaInforme<T, Totales = Record<string, string>> extends Pagina<T> {
   totales: Totales
