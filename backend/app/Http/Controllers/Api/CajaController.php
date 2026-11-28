@@ -60,10 +60,7 @@ class CajaController extends Controller
             ->orderByDesc('id')
             ->get();
         $vigente = $cierres->first(fn (CierreCaja $c) => $c->reapertura === null);
-        $resumen = $this->caja->resumenDia($fecha);
-        if (request()->user()?->rol === Rol::Mostrador) { // S-88: sin dueños ni saldos de billeteras
-            $resumen = $this->caja->sinDuenosNiSaldos($resumen);
-        }
+        $resumen = $this->caja->resumenDia($fecha, request()->user()?->rol);
 
         return response()->json([
             'fecha' => $fecha,

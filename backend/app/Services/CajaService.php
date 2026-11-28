@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\GrupoCaja;
+use App\Enums\Rol;
 use App\Enums\TipoCuentaPago;
 use App\Exceptions\ReglaInventarioException;
 use App\Models\AperturaCaja;
@@ -252,7 +253,16 @@ class CajaService
      *
      * @return array<string, mixed>
      */
-    public function resumenDia(string $fecha): array
+    public function resumenDia(string $fecha, ?Rol $para = null): array
+    {
+        $resumen = $this->calcularResumenDia($fecha);
+
+        // S-88: el mostrador no recibe dueños ni saldos de billeteras.
+        return $para === Rol::Mostrador ? $this->sinDuenosNiSaldos($resumen) : $resumen;
+    }
+
+    /** @return array<string, mixed> */
+    private function calcularResumenDia(string $fecha): array
     {
         $cuentas = $this->cuentas();
         $agregados = $this->agregados($fecha, $fecha, $cuentas);

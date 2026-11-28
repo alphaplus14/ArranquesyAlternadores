@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Enums\Rol;
 use App\Enums\TipoCuentaPago;
 use App\Http\Controllers\Controller;
 use App\Models\CuentaPago;
@@ -22,18 +21,8 @@ class CuentaPagoController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $todas = $request->boolean('incluir_inactivas') && $request->user()->rol === Rol::Admin;
-        // S-88: el mostrador elige cuenta pero no ve de quién es cada billetera.
-        $conDueno = $request->user()->rol !== Rol::Mostrador;
-
         return response()->json([
-            'data' => CuentaPago::query()
-                ->when($conDueno, fn ($q) => $q->with('propietario:id,nombre'))
-                ->when(! $todas, fn ($q) => $q->where('activa', true))
-                ->orderByRaw("FIELD(tipo, 'efectivo', 'banco', 'datafono', 'billetera')")
-                ->orderBy('nombre')
-                ->get(['id', 'nombre', 'tipo', 'activa', 'propietario_id'])
-                ->map(fn (CuentaPago $c) => $c->aCatalogo($conDueno)),
+            'data' => $this->cuentas->catalogo($request->user()->rol, $request->boolean('incluir_inactivas')),
         ]);
     }
 

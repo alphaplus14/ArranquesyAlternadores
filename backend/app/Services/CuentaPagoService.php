@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\Rol;
 use App\Enums\TipoCuentaPago;
 use App\Exceptions\ReglaInventarioException;
 use App\Models\CuentaPago;
@@ -13,6 +14,26 @@ use Illuminate\Support\Facades\DB;
  */
 class CuentaPagoService
 {
+    /**
+     * Catálogo de cuentas. S-88: el mostrador elige cuenta pero no recibe de quién es cada billetera;
+     * solo el admin puede pedir las inactivas.
+     *
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    public function catalogo(Rol $rol, bool $incluirInactivas)
+    {
+        $todas = $incluirInactivas && $rol === Rol::Admin;
+        $conDueno = $rol !== Rol::Mostrador;
+
+        return CuentaPago::query()
+            ->when($conDueno, fn ($q) => $q->with('propietario:id,nombre'))
+            ->when(! $todas, fn ($q) => $q->where('activa', true))
+            ->orderByRaw("FIELD(tipo, 'efectivo', 'banco', 'datafono', 'billetera')")
+            ->orderBy('nombre')
+            ->get(['id', 'nombre', 'tipo', 'activa', 'propietario_id'])
+            ->map(fn (CuentaPago $c) => $c->aCatalogo($conDueno));
+    }
+
     public function crear(array $datos): CuentaPago
     {
         return CuentaPago::create($this->aplicarDueno($datos, null))->load('propietario:id,nombre');

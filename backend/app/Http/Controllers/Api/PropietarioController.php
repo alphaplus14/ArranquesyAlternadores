@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Enums\Rol;
 use App\Http\Controllers\Controller;
 use App\Models\Propietario;
 use App\Services\PropietarioService;
@@ -20,17 +19,8 @@ class PropietarioController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        // S-88: el mostrador no ve los dueños (lista vacía; el select de cuentas no los necesita).
-        if ($request->user()->rol === Rol::Mostrador) {
-            return response()->json(['data' => []]);
-        }
-        $todas = $request->boolean('incluir_inactivas') && $request->user()->rol === Rol::Admin;
-
         return response()->json([
-            'data' => Propietario::query()
-                ->when(! $todas, fn ($q) => $q->where('activo', true))
-                ->orderBy('nombre')
-                ->get(['id', 'nombre', 'activo']),
+            'data' => $this->propietarios->listar($request->user()->rol, $request->boolean('incluir_inactivas')),
         ]);
     }
 
