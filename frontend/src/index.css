@@ -2049,13 +2049,24 @@ button.empleado-pagar-todo { flex: none; min-height: 44px; white-space: nowrap; 
   font-size: 0.85rem; color: var(--texto); line-height: 1.4;
 }
 .caja-desglose { margin: 0; }
-.caja-ver-detalle { align-self: flex-start; margin: 4px 0; }
+/* S-101: «Ver detalle» y «Agregar observación» son botones secundarios (no enlaces de texto). */
+.caja-ver-detalle { align-self: stretch; width: 100%; box-sizing: border-box; display: flex; align-items: center; justify-content: center; gap: 8px; margin: 4px 0; }
+.caja-ver-detalle svg { flex: none; transition: transform 150ms ease-out; }
+.caja-ver-detalle[aria-expanded='true'] svg { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { .caja-ver-detalle svg { transition: none; } }
+.caja-ver-cuentas { align-self: flex-start; margin: 8px 0 0; }
 .caja-desglose-detalle { margin: 0 0 8px; font-size: 0.9rem; }
 .caja-panel-cierre .cierre-guardado { margin-top: 8px; }
 .caja-form-cierre { display: flex; flex-direction: column; gap: 4px; padding-top: 10px; border-top: 2px solid var(--borde); }
 .caja-form-cierre input { width: 100%; box-sizing: border-box; min-height: 40px; }
-.caja-agregar-observacion { align-self: flex-start; margin: 2px 0; }
+.caja-agregar-observacion { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; margin: 2px 0; }
+.caja-agregar-observacion svg, .caja-quitar-observacion svg { flex: none; }
 .caja-observacion { display: flex; flex-direction: column; gap: 2px; }
+.caja-observacion > label { display: block; }
+/* El campo y «Quitar» en una fila; «Quitar» no se encoge. */
+.caja-observacion-fila { display: flex; gap: 8px; align-items: stretch; }
+.caja-observacion-fila input { flex: 1; min-width: 0; min-height: 44px; }
+.caja-quitar-observacion { flex: none; display: inline-flex; align-items: center; gap: 6px; }
 .caja-boton-cerrar { width: 100%; margin-top: 6px; }
 @media (min-width: 1100px) {
   .caja-vista-pantalla { height: calc(100vh - 4rem - 40px); min-height: 540px; }

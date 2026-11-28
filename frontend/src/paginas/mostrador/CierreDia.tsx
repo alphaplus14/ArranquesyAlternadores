@@ -12,6 +12,7 @@ import Dialogo, { DialogoSeccion } from '../../componentes/Dialogo'
 import ControlSegmentado from '../../componentes/ControlSegmentado'
 import { DialogoAnular } from '../../componentes/Cartera'
 import Medida from '../../componentes/Medida'
+import Icono from '../../componentes/Icono'
 import CampoMoneda from '../../componentes/CampoMoneda'
 import { formatoNumero, leerNumero, pesos } from '../../componentes/numeros'
 import { useCategoriasCaja, useCuentasPago } from '../../hooks/useCatalogos'
@@ -386,7 +387,7 @@ function ResumenPorCuenta({ resumen: r }: { resumen: ResumenCaja }) {
         </table>
       )}
       {conValor.length < r.cuentas.length && (
-        <button type="button" className="enlace" onClick={() => setTodas((t) => !t)}>{todas ? 'Ver solo las cuentas con movimiento' : 'Ver todas las cuentas'}</button>
+        <button type="button" className="secundario boton-44 caja-ver-cuentas" onClick={() => setTodas((t) => !t)}>{todas ? 'Ver solo las cuentas con movimiento' : 'Ver todas las cuentas'}</button>
       )}
       <TablaBilleteras grupos={r.billeteras ?? []} etiquetaNeto="Movimiento del día" />
     </div>
@@ -414,7 +415,8 @@ function InfoCaja({ etiqueta, children }: { etiqueta: string; children: ReactNod
 }
 
 /** Tres líneas visibles (neto, apertura, esperado) y el detalle del efectivo plegado. */
-function DesgloseEfectivo({ resumen: r }: { resumen: ResumenCaja }) {
+/** S-101: «Ver detalle» es un botón secundario con flecha que gira; el desglose se abre debajo. */
+export function DesgloseEfectivo({ resumen: r }: { resumen: ResumenCaja }) {
   const [detalle, setDetalle] = useState(false)
   return (
     <>
@@ -426,7 +428,8 @@ function DesgloseEfectivo({ resumen: r }: { resumen: ResumenCaja }) {
         <div className="caja-base"><dt>+ Base de caja (no cuenta en el cuadre)</dt><dd>{pesos(r.base_caja)}</dd></div>
         <div className="caja-cajon"><dt>En el cajón debe haber</dt><dd>{r.efectivo_en_cajon_esperado !== null ? pesos(r.efectivo_en_cajon_esperado) : '—'}</dd></div>
       </dl>
-      <button type="button" className="enlace caja-ver-detalle" aria-expanded={detalle} aria-controls="caja-detalle-efectivo" onClick={() => setDetalle((v) => !v)}>
+      <button type="button" className="secundario boton-44 caja-ver-detalle" aria-expanded={detalle} aria-controls="caja-detalle-efectivo" onClick={() => setDetalle((v) => !v)}>
+        <Icono nombre="chevron" />
         {detalle ? 'Ocultar detalle' : 'Ver detalle'}
       </button>
       {detalle && (
@@ -719,7 +722,7 @@ function FilaMovimientoCaja({ m, conAccion, onAnular }: { m: MovimientoCaja; con
       </td>
       <td>{m.cuenta.nombre}</td>
       <td className="col-numero">{esIngreso(m) ? '+' : '−'}{pesos(m.valor)}</td>
-      {conAccion && <td>{onAnular && !m.anulacion && <button type="button" className="enlace" onClick={() => onAnular(m)}>Anular</button>}</td>}
+      {conAccion && <td>{onAnular && !m.anulacion && <BotonFila variante="anular" compacto descripcion={`Anular ${m.concepto}`} onClick={() => onAnular(m)} />}</td>}
     </tr>
   )
 }
@@ -736,7 +739,7 @@ function FilaRecaudo({ r, conAccion, onAnular }: { r: RecaudoDocumento; conAccio
       </td>
       <td>{r.cuenta.nombre}</td>
       <td className="col-numero">+{pesos(r.valor)}</td>
-      {conAccion && <td>{onAnular && !r.anulacion && <button type="button" className="enlace" onClick={() => onAnular(r)}>Anular</button>}</td>}
+      {conAccion && <td>{onAnular && !r.anulacion && <BotonFila variante="anular" compacto descripcion={`Anular el recaudo ${r.documento}`} onClick={() => onAnular(r)} />}</td>}
     </tr>
   )
 }
@@ -806,6 +809,15 @@ export function FormularioCierre({ fecha, esperado, base = '0', bloqueado, onCer
   // Supuesto S-98: faltar la base solo avisa, pero la observación se vuelve obligatoria.
   const faltaBase = valido && nBase > 0 && n < nBase
   const faltaObservacion = faltaBase && observacion.trim() === ''
+  // S-101: la observación se ve si se abrió, si es obligatoria o si ya tiene texto (subir el contado no la esconde).
+  const verObservacion = conObservacion || faltaBase || observacion !== ''
+  const botonObservacion = useRef<HTMLButtonElement>(null)
+  /** Quita la observación (vacía y cierra) y devuelve el foco a «Agregar observación». No aplica si es obligatoria. */
+  const quitarObservacion = () => {
+    setObservacion('')
+    setConObservacion(false)
+    setTimeout(() => botonObservacion.current?.focus(), 0)
+  }
 
   const cerrar = useMutation({
     mutationFn: async () => (await api.post('/caja/cierres', { fecha, efectivo_contado: n, observacion: observacion.trim() || null })).data,
@@ -835,13 +847,38 @@ export function FormularioCierre({ fecha, esperado, base = '0', bloqueado, onCer
             : `Base ${pesos(base)} → efectivo para el cuadre ${pesos(paraCuadre ?? 0)}. ${diferencia === 0 ? 'Cuadra con el efectivo esperado.' : `${diferencia > 0 ? 'Sobran' : 'Faltan'} ${pesos(Math.abs(diferencia))}.`}`}
       </small>
       {faltaBase && <div className="aviso error" role="alert">Falta la base: el cajón debe tener al menos {pesos(base)}. Escriba la observación.</div>}
-      {conObservacion || faltaBase ? (
-        <label className="caja-observacion">
-          <span className="etiqueta-campo">Observación {faltaBase ? <span className="obligatorio" aria-hidden="true">*</span> : '(opcional)'}</span>
-          <input autoFocus={conObservacion} required={faltaBase} aria-invalid={faltaObservacion} maxLength={255} value={observacion} onChange={(e) => setObservacion(e.target.value)} />
-        </label>
+      {verObservacion ? (
+        <div className="caja-observacion">
+          <label htmlFor="caja-observacion" className="etiqueta-campo">Observación {faltaBase ? <span className="obligatorio" aria-hidden="true">*</span> : '(opcional)'}</label>
+          <div className="caja-observacion-fila">
+            <input
+              id="caja-observacion"
+              autoFocus={conObservacion}
+              required={faltaBase}
+              aria-invalid={faltaObservacion}
+              aria-describedby={faltaBase ? 'caja-observacion-obligatoria' : undefined}
+              maxLength={255}
+              value={observacion}
+              onChange={(e) => setObservacion(e.target.value)}
+              onKeyDown={(e) => {
+                // S-101: Escape quita la observación (con o sin texto), salvo si es obligatoria.
+                if (e.key === 'Escape' && !faltaBase) { e.preventDefault(); e.stopPropagation(); quitarObservacion() }
+              }}
+            />
+            {!faltaBase && (
+              <button type="button" className="secundario boton-44 caja-quitar-observacion" aria-label="Quitar la observación" title="Quitar la observación" onClick={quitarObservacion}>
+                <Icono nombre="quitar" />
+                <span>Quitar</span>
+              </button>
+            )}
+          </div>
+          {faltaBase && <small id="caja-observacion-obligatoria" className="ayuda">Obligatoria: falta la base de caja</small>}
+        </div>
       ) : (
-        <button type="button" className="enlace caja-agregar-observacion" onClick={() => setConObservacion(true)}>+ Agregar observación</button>
+        <button ref={botonObservacion} type="button" className="secundario boton-44 caja-agregar-observacion" onClick={() => setConObservacion(true)}>
+          <Icono nombre="mas" />
+          Agregar observación
+        </button>
       )}
       {cerrar.isError && !confirmando && <div className="aviso error" role="alert">{mensajeError(cerrar.error)}</div>}
       <button type="submit" className="primario boton-44 caja-boton-cerrar" disabled={!valido || bloqueado || faltaObservacion || cerrar.isPending}>Cerrar día</button>
