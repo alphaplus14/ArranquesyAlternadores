@@ -123,3 +123,7 @@ select.costos-select {
 @media (max-width: 768px), (pointer: coarse) {
   button.costos-detalle-boton { --lado: 44px; }
 }
+
+/* RF-02: el desglose del universal queda fijo arriba, bajo la barra, mientras se recorre el historial. */
+.costos-cabecera-fija { position: sticky; top: calc(4rem + 8px); z-index: 5; box-shadow: var(--sombra-barra); }
+.costos-cabecera-fija .costos-desglose { max-height: 30vh; overflow-y: auto; }

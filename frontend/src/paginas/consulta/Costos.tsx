@@ -323,7 +323,7 @@ function Cabecera({ producto, onReferencia, onUniversal }: { producto: ProductoC
   }
   if (!u) return null
   return (
-    <section className="tarjeta-pagina costos-cabecera">
+    <section className="tarjeta-pagina costos-cabecera costos-cabecera-fija">
       <div className="costos-cabecera-titulo">
         <h2>Universal {u.codigo}</h2>
         <span className="chip">Existencia total {u.existencia_total}</span>
