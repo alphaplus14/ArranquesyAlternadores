@@ -1,4 +1,4 @@
-import { useId, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AvisoPagina } from '../../componentes/AvisoPagina'
 import { Navigate, useSearchParams } from 'react-router-dom'
@@ -13,6 +13,7 @@ import Dialogo, { DialogoSeccion } from '../../componentes/Dialogo'
 import ControlSegmentado from '../../componentes/ControlSegmentado'
 import { DialogoAnular } from '../../componentes/Cartera'
 import Medida from '../../componentes/Medida'
+import Icono from '../../componentes/Icono'
 import CampoMoneda from '../../componentes/CampoMoneda'
 import { formatoNumero, leerNumero, pesos } from '../../componentes/numeros'
 import { useCategoriasCaja, useCuentasPago } from '../../hooks/useCatalogos'
@@ -208,8 +209,9 @@ export function VistaDia({ soloConsulta, titulo, pantalla = false }: { soloConsu
                     key={fecha}
                     fecha={fecha}
                     esperado={r.efectivo_esperado ?? '0'}
+                    base={r.base_caja}
                     bloqueado={d.ventas_abiertas.length > 0 || !r.apertura}
-                    onCerrado={() => { refrescar(); avisos.mostrar('ok', `Caja del ${formatearFecha(fecha)} cerrada.`) }}
+                    onCerrado={() => { refrescar(); avisos.mostrar('ok', `Caja del ${formatearFecha(fecha)} cerrada.`, undefined, 5000) }}
                   />
                 )}
               </section>
@@ -219,11 +221,30 @@ export function VistaDia({ soloConsulta, titulo, pantalla = false }: { soloConsu
       )}
 
       {cambiandoApertura && r && (
-        <DialogoApertura fecha={fecha} apertura={r.apertura} onCerrar={() => setCambiandoApertura(false)} onGuardada={alGuardarApertura} />
+        <DialogoApertura fecha={fecha} apertura={r.apertura} base={r.base_caja} onCerrar={() => setCambiandoApertura(false)} onGuardada={alGuardarApertura} />
       )}
-      {agregando && <DialogoMovimiento fecha={fecha} onCerrar={() => setAgregando(false)} onGuardado={() => { setAgregando(false); refrescar() }} />}
+      {agregando && (
+        <DialogoMovimiento
+          fecha={fecha}
+          esperado={r?.efectivo_esperado ?? null}
+          base={r?.base_caja ?? '0'}
+          onCerrar={() => setAgregando(false)}
+          onGuardado={(avisoBase) => { setAgregando(false); refrescar(); if (avisoBase) avisos.mostrar('atencion', `El movimiento usó la base de caja (${pesos(r?.base_caja ?? '0')}).`) }}
+        />
+      )}
       {recaudando && <DialogoRecaudo fecha={fecha} onCerrar={() => setRecaudando(false)} onGuardado={() => { setRecaudando(false); refrescar() }} />}
-      {conEmpleados && <DialogoEmpleados onCerrar={() => setConEmpleados(false)} onGuardado={(aviso) => { setConEmpleados(false); refrescar(); qc.invalidateQueries({ queryKey: ['empleados'] }); avisos.mostrar('ok', aviso, undefined, 5000) }} />}
+      {conEmpleados && (
+        <DialogoEmpleados
+          esperado={fecha === d?.hoy ? (r?.efectivo_esperado ?? null) : null}
+          base={r?.base_caja ?? '0'}
+          onCerrar={() => setConEmpleados(false)}
+          onGuardado={(aviso, avisoBase) => {
+            setConEmpleados(false); refrescar(); qc.invalidateQueries({ queryKey: ['empleados'] })
+            if (avisoBase) avisos.mostrar('atencion', `${aviso} Usó la base de caja.`)
+            else avisos.mostrar('ok', aviso, undefined, 5000)
+          }}
+        />
+      )}
       {anulandoRecaudo && (
         <DialogoAnular
           titulo="Anular recaudo"
@@ -370,7 +391,7 @@ function ResumenPorCuenta({ resumen: r }: { resumen: ResumenCaja }) {
         </table>
       )}
       {conValor.length < r.cuentas.length && (
-        <button type="button" className="enlace" onClick={() => setTodas((t) => !t)}>{todas ? 'Ver solo las cuentas con movimiento' : 'Ver todas las cuentas'}</button>
+        <button type="button" className="secundario boton-44 caja-ver-cuentas" onClick={() => setTodas((t) => !t)}>{todas ? 'Ver solo las cuentas con movimiento' : 'Ver todas las cuentas'}</button>
       )}
       {verDueno && <TablaBilleteras grupos={r.billeteras ?? []} etiquetaNeto="Movimiento del día" />}
     </div>
@@ -398,16 +419,21 @@ function InfoCaja({ etiqueta, children }: { etiqueta: string; children: ReactNod
 }
 
 /** Tres líneas visibles (neto, apertura, esperado) y el detalle del efectivo plegado. */
-function DesgloseEfectivo({ resumen: r }: { resumen: ResumenCaja }) {
+/** S-101: «Ver detalle» es un botón secundario con flecha que gira; el desglose se abre debajo. */
+export function DesgloseEfectivo({ resumen: r }: { resumen: ResumenCaja }) {
   const [detalle, setDetalle] = useState(false)
   return (
     <>
       <dl className="desglose-efectivo caja-desglose">
         <div className="subtotal"><dt>Efectivo neto del día</dt><dd>{pesos(r.efectivo.neto)}</dd></div>
         <div><dt>+ Apertura de la caja</dt><dd>{r.apertura ? pesos(r.apertura.valor) : 'Sin registrar'}</dd></div>
-        <div className="total"><dt>Efectivo esperado</dt><dd>{r.efectivo_esperado !== null ? pesos(r.efectivo_esperado) : '—'}</dd></div>
+        <div className="total"><dt>Efectivo esperado (cuadre)</dt><dd>{r.efectivo_esperado !== null ? pesos(r.efectivo_esperado) : '—'}</dd></div>
+        {/* S-98: la base va aparte, en tono neutro: no cuenta en el cuadre pero queda en el cajón. */}
+        <div className="caja-base"><dt>+ Base de caja (no cuenta en el cuadre)</dt><dd>{pesos(r.base_caja)}</dd></div>
+        <div className="caja-cajon"><dt>En el cajón debe haber</dt><dd>{r.efectivo_en_cajon_esperado !== null ? pesos(r.efectivo_en_cajon_esperado) : '—'}</dd></div>
       </dl>
-      <button type="button" className="enlace caja-ver-detalle" aria-expanded={detalle} aria-controls="caja-detalle-efectivo" onClick={() => setDetalle((v) => !v)}>
+      <button type="button" className="secundario boton-44 caja-ver-detalle" aria-expanded={detalle} aria-controls="caja-detalle-efectivo" onClick={() => setDetalle((v) => !v)}>
+        <Icono nombre="chevron" />
         {detalle ? 'Ocultar detalle' : 'Ver detalle'}
       </button>
       {detalle && (
@@ -438,14 +464,16 @@ function TextoApertura({ apertura: a, cerrado }: { apertura: AperturaCaja; cerra
       <span>Apertura <strong>{pesos(a.valor)}</strong></span>
       {!cerrado && a.origen === 'arrastre' && a.desde_cierre && <span className="caja-apertura-origen">· del cierre del {formatearFecha(a.desde_cierre).slice(0, 5)}</span>}
       {!cerrado && manual && (
-        <details className="caja-apertura-detalle">
-          <summary>· cambiada a mano</summary>
-          <div className="caja-apertura-popover" role="note">
-            {a.motivo && <p>Motivo: {a.motivo}</p>}
-            {a.cierre_anterior_valor !== null && <p>El cierre anterior dejó {pesos(a.cierre_anterior_valor)}.</p>}
-            {a.fijado_por && <p>{a.fijado_por.name}{a.fijado_at ? `, ${formatearFechaHora(a.fijado_at)}` : ''}</p>}
-          </div>
-        </details>
+        // S-100: una línea; el texto completo (y lo que dejó el cierre anterior) en el title.
+        <small
+          className="caja-apertura-cambio"
+          title={[
+            `Cambiada por ${a.fijado_por?.name ?? '—'}${a.fijado_at ? `, ${formatearFechaHora(a.fijado_at)}` : ''}: ${a.motivo ?? 'sin motivo'}`,
+            a.cierre_anterior_valor !== null ? `El cierre anterior dejó ${pesos(a.cierre_anterior_valor)}.` : '',
+          ].filter(Boolean).join(' ')}
+        >
+          Cambiada por {a.fijado_por?.name ?? '—'}: {a.motivo ?? 'sin motivo'}
+        </small>
       )}
     </span>
   )
@@ -456,9 +484,11 @@ function TextoApertura({ apertura: a, cerrado }: { apertura: AperturaCaja; cerra
  * actual; "Usar la del cierre anterior" pone lo que dejó el último cierre. El motivo es siempre
  * obligatorio, de 3 a 200 caracteres (lo valida el servidor; aquí solo se anticipa).
  */
-function DialogoApertura({ fecha, apertura, onCerrar, onGuardada }: {
+export function DialogoApertura({ fecha, apertura, base = '0', onCerrar, onGuardada }: {
   fecha: string
   apertura: AperturaCaja | null
+  /** S-98: la base fija no se incluye en la apertura. */
+  base?: string
   onCerrar: () => void
   onGuardada: (a: AperturaCaja | null) => void
 }) {
@@ -470,6 +500,7 @@ function DialogoApertura({ fecha, apertura, onCerrar, onGuardada }: {
   const valido = n !== null && !Number.isNaN(n) && n >= 0 && Math.round(n * 100) === n * 100
   const motivoFalta = motivo.trim().length < 3
   const primerDia = !apertura
+  const campoMotivo = useRef<HTMLInputElement>(null)
 
   const guardar = useMutation({
     mutationFn: async () => (await api.put<{ apertura: AperturaCaja | null }>(`/caja/dias/${fecha}/apertura`, { valor: n, motivo: motivo.trim() })).data,
@@ -481,6 +512,13 @@ function DialogoApertura({ fecha, apertura, onCerrar, onGuardada }: {
     if (datos?.campo && datos.message) errores[datos.campo] = datos.message
   }
   const general = guardar.isError && Object.keys(errores).length === 0 ? mensajeError(guardar.error) : null
+  const enviar = () => {
+    if (!valido) return
+    // S-84: el motivo es siempre obligatorio; vacío o corto → el foco va al motivo.
+    if (motivoFalta) { campoMotivo.current?.focus(); return }
+    if (!guardar.isPending) guardar.mutate()
+  }
+  const razon = valido && motivoFalta ? 'Falta el motivo' : null
 
   return (
     <Dialogo
@@ -489,9 +527,10 @@ function DialogoApertura({ fecha, apertura, onCerrar, onGuardada }: {
       modificado={valor !== inicial || motivo.trim() !== (apertura?.origen === 'manual' ? apertura.motivo ?? '' : '')}
       pendiente={guardar.isPending}
       onCerrar={onCerrar}
-      onEnviar={() => { if (valido && !motivoFalta && !guardar.isPending) guardar.mutate() }}
+      onEnviar={enviar}
       pie={(
         <>
+          {razon && <small className="ayuda apertura-razon" role="status">{razon}</small>}
           <BotonCancelar />
           <button type="submit" className="primario" disabled={!valido || motivoFalta || guardar.isPending}>{guardar.isPending ? 'Guardando…' : 'Guardar apertura'}</button>
         </>
@@ -499,7 +538,7 @@ function DialogoApertura({ fecha, apertura, onCerrar, onGuardada }: {
     >
       <DialogoSeccion>
         <label htmlFor="apertura-valor">
-          <span className="etiqueta-campo">Efectivo con que abre la caja<span className="obligatorio" aria-hidden="true">*</span></span>
+          <span className="etiqueta-campo">Efectivo de apertura (sin la base)<span className="obligatorio" aria-hidden="true">*</span></span>
         </label>
         <CampoMoneda
           id="apertura-valor"
@@ -513,7 +552,7 @@ function DialogoApertura({ fecha, apertura, onCerrar, onGuardada }: {
         <small id="apertura-ayuda" className={(valor.trim() !== '' && !valido) || errores.valor ? 'ayuda error' : 'ayuda'}>
           {errores.valor ?? (valor.trim() !== '' && !valido
             ? 'Escriba un valor en pesos, 0 o mayor, con máximo 2 decimales.'
-            : 'Solo el efectivo que ya está en la caja al empezar (puede ser 0). Lo que llegue durante el día desde la Caja General se registra como ingreso externo.')}
+            : `La base de ${pesos(base)} no se incluye. Solo el efectivo para el cuadre que ya está en la caja al empezar (puede ser 0). Lo que llegue durante el día desde la Caja General se registra como ingreso externo.`)}
         </small>
         {arrastre !== null && (
           <button type="button" className="secundario boton-44 apertura-usar-cierre" onClick={() => { setValor(formatoNumero(arrastre)); guardar.reset() }}>
@@ -524,7 +563,9 @@ function DialogoApertura({ fecha, apertura, onCerrar, onGuardada }: {
           <span className="etiqueta-campo">Motivo<span className="obligatorio" aria-hidden="true">*</span></span>
         </label>
         <input
+          ref={campoMotivo}
           id="apertura-motivo"
+          required
           maxLength={200}
           value={motivo}
           aria-invalid={(motivoFalta && motivo !== '') || !!errores.motivo}
@@ -673,7 +714,7 @@ function FilaMovimientoCaja({ m, conAccion, onAnular }: { m: MovimientoCaja; con
       </td>
       <td>{m.cuenta.nombre}</td>
       <td className="col-numero">{esIngreso(m) ? '+' : '−'}{pesos(m.valor)}</td>
-      {conAccion && <td>{onAnular && !m.anulacion && <button type="button" className="enlace" onClick={() => onAnular(m)}>Anular</button>}</td>}
+      {conAccion && <td>{onAnular && !m.anulacion && <BotonFila variante="anular" compacto descripcion={`Anular ${m.concepto}`} onClick={() => onAnular(m)} />}</td>}
     </tr>
   )
 }
@@ -690,7 +731,7 @@ function FilaRecaudo({ r, conAccion, onAnular }: { r: RecaudoDocumento; conAccio
       </td>
       <td>{r.cuenta.nombre}</td>
       <td className="col-numero">+{pesos(r.valor)}</td>
-      {conAccion && <td>{onAnular && !r.anulacion && <button type="button" className="enlace" onClick={() => onAnular(r)}>Anular</button>}</td>}
+      {conAccion && <td>{onAnular && !r.anulacion && <BotonFila variante="anular" compacto descripcion={`Anular el recaudo ${r.documento}`} onClick={() => onAnular(r)} />}</td>}
     </tr>
   )
 }
@@ -726,7 +767,14 @@ function CierreGuardado({ cierre }: { cierre: CierreCaja }) {
   return (
     <dl className="desglose-efectivo cierre-guardado">
       {cierre.apertura !== null && <div><dt>Apertura</dt><dd>{pesos(cierre.apertura)}</dd></div>}
-      <div><dt>Efectivo contado</dt><dd>{pesos(cierre.efectivo_contado)}</dd></div>
+      <div><dt>Efectivo contado (todo el cajón)</dt><dd>{pesos(cierre.efectivo_contado)}</dd></div>
+      {/* S-98: en los cierres anteriores la base es 0 y se ven igual que antes. */}
+      {Number(cierre.base) > 0 && (
+        <>
+          <div className="caja-base"><dt>− Base de caja</dt><dd>{pesos(cierre.base)}</dd></div>
+          <div><dt>Efectivo para el cuadre</dt><dd>{pesos(cierre.efectivo_para_cuadre)}</dd></div>
+        </>
+      )}
       <div><dt>Efectivo esperado</dt><dd>{pesos(cierre.efectivo_esperado)}</dd></div>
       <div className={dif === 0 ? 'total' : 'total diferencia'}><dt>Diferencia</dt><dd>{dif > 0 ? '+' : ''}{pesos(cierre.diferencia)}</dd></div>
       {cierre.observacion && <div><dt>Observación</dt><dd>{cierre.observacion}</dd></div>}
@@ -738,26 +786,48 @@ function CierreGuardado({ cierre }: { cierre: CierreCaja }) {
  * Efectivo contado con diferencia en vivo, observación opcional (plegada tras "+ Agregar
  * observación") y "Cerrar día" con confirmación. Va al pie de la tarjeta: siempre visible.
  */
-function FormularioCierre({ fecha, esperado, bloqueado, onCerrado }: { fecha: string; esperado: string; bloqueado: boolean; onCerrado: () => void }) {
+export function FormularioCierre({ fecha, esperado, base = '0', bloqueado, onCerrado }: { fecha: string; esperado: string; base?: string; bloqueado: boolean; onCerrado: () => void }) {
   const [contado, setContado] = useState('')
   const [observacion, setObservacion] = useState('')
   const [conObservacion, setConObservacion] = useState(false)
   const [confirmando, setConfirmando] = useState(false)
   const n = leerNumero(contado)
   const valido = n !== null && !Number.isNaN(n) && n >= 0
-  const diferencia = valido ? Math.round((n - Number(esperado)) * 100) / 100 : null
+  // S-98: se cuenta todo el cajón; la base no cuenta para el cuadre.
+  const nBase = Number(base)
+  const enCajon = Number(esperado) + nBase
+  const paraCuadre = valido ? Math.round((n - nBase) * 100) / 100 : null
+  const diferencia = paraCuadre !== null ? Math.round((paraCuadre - Number(esperado)) * 100) / 100 : null
+  // Supuesto S-98: faltar la base solo avisa, pero la observación se vuelve obligatoria.
+  const faltaBase = valido && nBase > 0 && n < nBase
+  const faltaObservacion = faltaBase && observacion.trim() === ''
+  // S-101: la observación se ve si se abrió, si es obligatoria o si ya tiene texto (subir el contado no la esconde).
+  const verObservacion = conObservacion || faltaBase || observacion !== ''
+  const botonObservacion = useRef<HTMLButtonElement>(null)
+  /** Quita la observación (vacía y cierra) y devuelve el foco a «Agregar observación». No aplica si es obligatoria. */
+  const quitarObservacion = () => {
+    setObservacion('')
+    setConObservacion(false)
+    setTimeout(() => botonObservacion.current?.focus(), 0)
+  }
 
   const cerrar = useMutation({
     mutationFn: async () => (await api.post('/caja/cierres', { fecha, efectivo_contado: n, observacion: observacion.trim() || null })).data,
-    onSuccess: () => { setConfirmando(false); onCerrado() },
+    onSuccess: () => {
+      setConfirmando(false)
+      onCerrado()
+    },
   })
 
+  // S-94: la confirmación va FUERA del <form> (hermana, no hija) y el submit solo cuenta si viene de
+  // este mismo formulario; antes, el submit del diálogo subía hasta aquí y lo reabría.
   return (
-    <form className="caja-form-cierre" onSubmit={(e) => { e.preventDefault(); if (valido && !bloqueado) setConfirmando(true) }}>
-      <label htmlFor="caja-contado" className="etiqueta-campo">Efectivo contado<span className="obligatorio" aria-hidden="true">*</span></label>
+    <>
+    <form className="caja-form-cierre" onSubmit={(e) => { e.preventDefault(); if (e.target !== e.currentTarget) return; if (valido && !bloqueado && !faltaObservacion && !cerrar.isPending) setConfirmando(true) }}>
+      <label htmlFor="caja-contado" className="etiqueta-campo">Efectivo contado (todo el cajón, base incluida)<span className="obligatorio" aria-hidden="true">*</span></label>
       <CampoMoneda
         id="caja-contado"
-        placeholder="Ej: 1.250.000"
+        placeholder={`Ej: ${formatoNumero(enCajon)}`}
         value={contado}
         aria-invalid={contado.trim() !== '' && !valido}
         aria-describedby="cierre-diferencia"
@@ -765,32 +835,58 @@ function FormularioCierre({ fecha, esperado, bloqueado, onCerrado }: { fecha: st
       />
       <small id="cierre-diferencia" className={diferencia !== null && diferencia !== 0 ? 'ayuda error' : 'ayuda'} role="status">
         {contado.trim() !== '' && !valido ? 'Escriba un valor en pesos, 0 o mayor.'
-          : diferencia === null ? `Esperado ${pesos(esperado)}`
-            : diferencia === 0 ? 'Cuadra con el efectivo esperado.'
-              : `${diferencia > 0 ? 'Sobran' : 'Faltan'} ${pesos(Math.abs(diferencia))}.`}
+          : diferencia === null ? `Esperado ${pesos(esperado)} · en el cajón ${pesos(enCajon)}`
+            : `Base ${pesos(base)} → efectivo para el cuadre ${pesos(paraCuadre ?? 0)}. ${diferencia === 0 ? 'Cuadra con el efectivo esperado.' : `${diferencia > 0 ? 'Sobran' : 'Faltan'} ${pesos(Math.abs(diferencia))}.`}`}
       </small>
-      {conObservacion ? (
-        <label className="caja-observacion">
-          <span className="etiqueta-campo">Observación (opcional)</span>
-          <input autoFocus maxLength={255} value={observacion} onChange={(e) => setObservacion(e.target.value)} />
-        </label>
+      {faltaBase && <div className="aviso error" role="alert">Falta la base: el cajón debe tener al menos {pesos(base)}. Escriba la observación.</div>}
+      {verObservacion ? (
+        <div className="caja-observacion">
+          <label htmlFor="caja-observacion" className="etiqueta-campo">Observación {faltaBase ? <span className="obligatorio" aria-hidden="true">*</span> : '(opcional)'}</label>
+          <div className="caja-observacion-fila">
+            <input
+              id="caja-observacion"
+              autoFocus={conObservacion}
+              required={faltaBase}
+              aria-invalid={faltaObservacion}
+              aria-describedby={faltaBase ? 'caja-observacion-obligatoria' : undefined}
+              maxLength={255}
+              value={observacion}
+              onChange={(e) => setObservacion(e.target.value)}
+              onKeyDown={(e) => {
+                // S-101: Escape quita la observación (con o sin texto), salvo si es obligatoria.
+                if (e.key === 'Escape' && !faltaBase) { e.preventDefault(); e.stopPropagation(); quitarObservacion() }
+              }}
+            />
+            {!faltaBase && (
+              <button type="button" className="secundario boton-44 caja-quitar-observacion" aria-label="Quitar la observación" title="Quitar la observación" onClick={quitarObservacion}>
+                <Icono nombre="quitar" />
+                <span>Quitar</span>
+              </button>
+            )}
+          </div>
+          {faltaBase && <small id="caja-observacion-obligatoria" className="ayuda">Obligatoria: falta la base de caja</small>}
+        </div>
       ) : (
-        <button type="button" className="enlace caja-agregar-observacion" onClick={() => setConObservacion(true)}>+ Agregar observación</button>
+        <button ref={botonObservacion} type="button" className="secundario boton-44 caja-agregar-observacion" onClick={() => setConObservacion(true)}>
+          <Icono nombre="mas" />
+          Agregar observación
+        </button>
       )}
       {cerrar.isError && !confirmando && <AvisoPagina tono="error">{mensajeError(cerrar.error)}</AvisoPagina>}
-      <button type="submit" className="primario boton-44 caja-boton-cerrar" disabled={!valido || bloqueado || cerrar.isPending}>Cerrar día</button>
+      <button type="submit" className="primario boton-44 caja-boton-cerrar" disabled={!valido || bloqueado || faltaObservacion || cerrar.isPending}>Cerrar día</button>
+    </form>
       {confirmando && (
         <Confirmar
           titulo={`Cerrar la caja del ${formatearFecha(fecha)}`}
-          texto={`Efectivo contado ${pesos(n ?? 0)}; esperado ${pesos(esperado)}; diferencia ${pesos(diferencia ?? 0)}. Después de cerrar, el día queda en solo lectura (solo el administrador lo reabre).`}
+          texto={`Efectivo contado ${pesos(n ?? 0)}; base ${pesos(base)}; para el cuadre ${pesos(paraCuadre ?? 0)}; esperado ${pesos(esperado)}; diferencia ${pesos(diferencia ?? 0)}. La base queda en el cajón. Después de cerrar, el día queda en solo lectura (solo el administrador lo reabre).`}
           accion="Cerrar día"
           pendiente={cerrar.isPending}
           error={cerrar.isError ? mensajeError(cerrar.error) : null}
-          onConfirmar={() => cerrar.mutate()}
-          onCancelar={() => setConfirmando(false)}
+          onConfirmar={() => { if (!cerrar.isPending) cerrar.mutate() }}
+          onCancelar={() => { setConfirmando(false); cerrar.reset() }}
         />
       )}
-    </form>
+    </>
   )
 }
 
@@ -883,7 +979,14 @@ function DialogoRecaudo({ fecha, onCerrar, onGuardado }: { fecha: string; onCerr
   )
 }
 
-function DialogoMovimiento({ fecha, onCerrar, onGuardado }: { fecha: string; onCerrar: () => void; onGuardado: () => void }) {
+function DialogoMovimiento({ fecha, esperado, base, onCerrar, onGuardado }: {
+  fecha: string
+  /** S-98: efectivo esperado del día, para avisar si el gasto usaría la base. */
+  esperado: string | null
+  base: string
+  onCerrar: () => void
+  onGuardado: (avisoBase: boolean) => void
+}) {
   const [grupo, setGrupo] = useState<GrupoCaja>('vario')
   const [categoria, setCategoria] = useState<number | ''>('')
   const [concepto, setConcepto] = useState('')
@@ -899,12 +1002,16 @@ function DialogoMovimiento({ fecha, onCerrar, onGuardado }: { fecha: string; onC
   const n = leerNumero(valor)
   const valorMalo = valor.trim() !== '' && (n === null || Number.isNaN(n) || n <= 0)
   const listo = categoria !== '' && concepto.trim().length >= 2 && n !== null && !Number.isNaN(n) && n > 0 && cuentaElegida !== ''
+  // S-98: un egreso en efectivo que deje el esperado por debajo de 0 usaría la base (solo avisa).
+  const enEfectivo = (cuentas.data ?? []).find((c) => c.id === cuentaElegida)?.tipo === 'efectivo'
+  const esSalida = grupo === 'vario' || grupo === 'fijo' || grupo === 'financiero'
+  const usaBase = esperado !== null && enEfectivo && esSalida && n !== null && !Number.isNaN(n) && n > 0 && Number(esperado) - n < 0
 
   const guardar = useMutation({
-    mutationFn: async () => (await api.post('/caja/movimientos', {
+    mutationFn: async () => (await api.post<{ aviso_base?: boolean }>('/caja/movimientos', {
       fecha, categoria_caja_id: categoria, concepto: concepto.trim(), valor: n, cuenta_pago_id: cuentaElegida, referencia: referencia.trim() || null,
     })).data,
-    onSuccess: onGuardado,
+    onSuccess: (r) => onGuardado(r.aviso_base === true),
   })
   const errores = guardar.isError ? erroresCampo(guardar.error) : {}
   const general = guardar.isError && Object.keys(errores).length === 0 ? mensajeError(guardar.error) : null
@@ -964,6 +1071,7 @@ function DialogoMovimiento({ fecha, onCerrar, onGuardado }: { fecha: string; onC
           <span className="etiqueta-campo">Referencia (opcional)</span>
           <input maxLength={60} placeholder="Ej: FVE-1234" value={referencia} onChange={(e) => setReferencia(e.target.value)} />
         </label>
+        {usaBase && <div className="aviso atencion" role="status">Este movimiento usaría la base de caja ({pesos(base)}).</div>}
         {general && <AvisoPagina tono="error">{general}</AvisoPagina>}
       </DialogoSeccion>
     </Dialogo>
@@ -983,7 +1091,13 @@ const textoEmpleado = (e: EmpleadoOpcion) =>
  * todo") y sale por una cuenta de pago o por descuento de nómina (forma `nomina`: sin cuenta, no mueve
  * la caja). Lo de "Quedaría en" es informativo: el servidor valida el saldo con el empleado bloqueado.
  */
-function DialogoEmpleados({ onCerrar, onGuardado }: { onCerrar: () => void; onGuardado: (aviso: string) => void }) {
+function DialogoEmpleados({ esperado = null, base = '0', onCerrar, onGuardado }: {
+  /** S-98: efectivo esperado de hoy (null si la caja abierta no es la de hoy). */
+  esperado?: string | null
+  base?: string
+  onCerrar: () => void
+  onGuardado: (aviso: string, avisoBase: boolean) => void
+}) {
   const [tipo, setTipo] = useState<TipoEmpleado>('prestamo')
   const [empleadoId, setEmpleadoId] = useState<number | ''>('')
   const [valor, setValor] = useState('')
@@ -1011,13 +1125,16 @@ function DialogoEmpleados({ onCerrar, onGuardado }: { onCerrar: () => void; onGu
   const quedaria = elegido && valorValido ? (tipo === 'prestamo' ? saldo + n : saldo - n) : null
   const listo = !!elegido && valorValido && !supera && (tipo === 'prestamo' || cuentaElegida !== '')
 
+  // S-98: el préstamo sale de Efectivo; si deja el esperado de hoy por debajo de 0, usaría la base (solo avisa).
+  const usaBase = tipo === 'prestamo' && esperado !== null && valorValido && Number(esperado) - (n ?? 0) < 0
+
   const guardar = useMutation({
-    mutationFn: async () => (await api.post(`/empleados/${empleadoId}/${tipo === 'prestamo' ? 'prestamos' : 'abonos'}`, {
+    mutationFn: async () => (await api.post<{ aviso_base?: boolean }>(`/empleados/${empleadoId}/${tipo === 'prestamo' ? 'prestamos' : 'abonos'}`, {
       valor: n,
       nota: nota.trim() || null,
       ...(tipo === 'abono' ? (nomina ? { forma: 'nomina' } : { forma: 'caja', cuenta_pago_id: cuentaElegida }) : {}),
     })).data,
-    onSuccess: () => {
+    onSuccess: (r) => {
       const nombre = elegido?.nombre ?? ''
       const monto = pesos(n ?? 0)
       const resto = quedaria ?? 0
@@ -1025,6 +1142,7 @@ function DialogoEmpleados({ onCerrar, onGuardado }: { onCerrar: () => void; onGu
         tipo === 'prestamo' ? `Préstamo de ${monto} registrado a ${nombre}. Debe ${pesos(resto)}.`
           : nomina ? `Descuento de nómina de ${monto} registrado a ${nombre}.`
             : `Abono de ${monto} registrado a ${nombre}. ${resto > 0 ? `Debe ${pesos(resto)}.` : 'Deuda cancelada.'}`,
+        r.aviso_base === true,
       )
     },
   })
@@ -1134,6 +1252,7 @@ function DialogoEmpleados({ onCerrar, onGuardado }: { onCerrar: () => void; onGu
           <input maxLength={255} autoComplete="off" value={nota} aria-invalid={!!errores.nota} onChange={(e) => setNota(e.target.value)} />
           {errores.nota && <small className="ayuda error">{errores.nota}</small>}
         </label>
+        {usaBase && <div className="aviso atencion" role="status">Este movimiento usaría la base de caja ({pesos(base)}).</div>}
         {(general || errores.forma) && <AvisoPagina tono="error">{general ?? errores.forma}</AvisoPagina>}
       </DialogoSeccion>
     </Dialogo>

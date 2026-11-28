@@ -1,6 +1,7 @@
 import type { FotoCorreccion, LineaCorreccionFoto } from '../../api/tipos'
 import { fechaCorta } from '../fechas'
 import { formatoNumero, pesos } from '../numeros'
+import { NOMBRE_CONDICION } from './condicionDescuento'
 
 const NOMBRE_FORMA = { contado: 'Contado', credito: 'Crédito' } as const
 
@@ -19,6 +20,9 @@ export default function DetalleCorreccion({ antes, despues }: { antes: FotoCorre
   if (a.fecha !== d.fecha) encabezado.push(['Fecha', fechaCorta(a.fecha), fechaCorta(d.fecha)])
   if (a.forma_pago !== d.forma_pago) encabezado.push(['Forma de pago', NOMBRE_FORMA[a.forma_pago], NOMBRE_FORMA[d.forma_pago]])
   if (a.vence_el !== d.vence_el) encabezado.push(['Vencimiento', a.vence_el ? fechaCorta(a.vence_el) : '—', d.vence_el ? fechaCorta(d.vence_el) : '—'])
+  if (a.condicion_descuento && d.condicion_descuento && a.condicion_descuento !== d.condicion_descuento) {
+    encabezado.push(['Condición del descuento', NOMBRE_CONDICION[a.condicion_descuento], NOMBRE_CONDICION[d.condicion_descuento]])
+  }
   if (Number(a.descuento_documento) !== Number(d.descuento_documento)) encabezado.push(['Descuento del documento', pesos(a.descuento_documento), pesos(d.descuento_documento)])
   if (Number(a.total ?? 0) !== Number(d.total ?? 0)) encabezado.push(['Total', a.total === null ? '—' : pesos(a.total), d.total === null ? '—' : pesos(d.total)])
 
@@ -30,7 +34,7 @@ export default function DetalleCorreccion({ antes, despues }: { antes: FotoCorre
 
   const texto = (l: LineaCorreccionFoto | null) => l
     ? `${l.cantidad} × ${pesos(l.costo_unitario)}${Number(l.descuento_porcentaje) ? ` −${formatoNumero(l.descuento_porcentaje)} %` : ''} · IVA ${formatoNumero(l.iva_porcentaje)} %`
-    : 'Línea nueva'
+    : 'Ítem nuevo'
 
   return (
     <div className="detalle-correccion">
@@ -44,7 +48,7 @@ export default function DetalleCorreccion({ antes, despues }: { antes: FotoCorre
           {lineas.map(({ antes: x, despues: y, k }) => (
             <li key={k}>
               <strong>{y.codigo_referencia ?? `#${y.referencia_id}`}</strong>{' '}
-              {y.cantidad === 0 ? <span>{texto(x)} → <strong>línea quitada</strong></span> : <span>{texto(x)} → <strong>{texto(y)}</strong></span>}
+              {y.cantidad === 0 ? <span>{texto(x)} → <strong>ítem quitado</strong></span> : <span>{texto(x)} → <strong>{texto(y)}</strong></span>}
             </li>
           ))}
         </ul>

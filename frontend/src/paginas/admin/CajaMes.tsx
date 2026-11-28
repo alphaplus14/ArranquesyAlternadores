@@ -71,7 +71,7 @@ export default function CajaMes({ onVerDia }: { onVerDia: (fecha: string) => voi
                 <th className="col-numero">Efectivo</th><th className="col-numero">Banco</th><th className="col-numero">Datáfono</th><th className="col-numero">Billetera</th>
                 <th className="col-numero">Crédito</th><th className="col-numero">Otros ingresos</th><th className="col-numero">Total</th>
                 <th className="col-numero">Egresos</th><th className="col-numero" title="Informativo: suma del efectivo neto del día desde el primer día del mes">Neto acumulado del mes</th><th className="col-numero">Meta</th>
-                <th className="col-numero">Faltante</th><th className="col-numero" title="Efectivo contado − (apertura + efectivo neto del día)">Diferencia</th><th>Observación</th>
+                <th className="col-numero">Faltante</th><th className="col-numero" title="Base fija de caja: queda en el cajón y no cuenta en el cuadre">Base</th><th className="col-numero" title="(Efectivo contado − base) − (apertura + efectivo neto del día)">Diferencia</th><th>Observación</th>
                 <th className="boton-fila-columna">Acciones</th>
               </tr>
             </thead>
@@ -95,6 +95,7 @@ export default function CajaMes({ onVerDia }: { onVerDia: (fecha: string) => voi
                   <td className="col-numero">{pesos(m.totales.neto_acumulado_mes)}</td>
                   <td className="col-numero">{pesos(m.totales.meta)}</td>
                   <td className="col-numero">{pesos(m.totales.faltante_meta)}</td>
+                  <td />
                   <td className="col-numero">{signo(m.totales.diferencia)}</td>
                   <td />
                   <td className="boton-fila-columna" />
@@ -141,6 +142,7 @@ function FilaDia({ d, onVerDia }: { d: FilaMesCaja; onVerDia: (fecha: string) =>
       <td className="col-numero">{pesos(d.neto_acumulado_mes)}</td>
       <td className="col-numero">{pesos(d.meta)}</td>
       <td className={Number(d.faltante_meta) > 0 ? 'col-numero antes' : 'col-numero despues'}>{pesos(d.faltante_meta)}</td>
+      <td className="col-numero suave">{pesos(d.base)}</td>
       <td className={d.diferencia !== null && Number(d.diferencia) !== 0 ? 'col-numero antes' : 'col-numero'}>{signo(d.diferencia)}</td>
       <td>{d.observacion ?? ''}</td>
       <td className="boton-fila-columna">

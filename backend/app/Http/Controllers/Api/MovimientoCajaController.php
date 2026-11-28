@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\MovimientoCajaResource;
 use App\Models\CategoriaCaja;
 use App\Models\MovimientoCaja;
+use App\Services\CajaService;
 use App\Services\MovimientoCajaService;
 use App\Support\RangoFechas;
 use Illuminate\Http\JsonResponse;
@@ -19,7 +20,7 @@ use Illuminate\Validation\Rule;
  */
 class MovimientoCajaController extends Controller
 {
-    public function __construct(private readonly MovimientoCajaService $movimientos) {}
+    public function __construct(private readonly MovimientoCajaService $movimientos, private readonly CajaService $caja) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -54,8 +55,12 @@ class MovimientoCajaController extends Controller
 
         $movimiento = $this->movimientos->registrar($datos, $request->user());
 
-        return (new MovimientoCajaResource($movimiento->load('categoria:id,nombre', 'cuenta:id,nombre,tipo', 'usuario:id,name', 'anulacion')))
-            ->response()->setStatusCode(201);
+        // S-98: solo informa si el efectivo esperado del día quedó por debajo de 0 (usaría la base). Respuesta
+        // plana (additional() la envolvería en `data`).
+        return response()->json([
+            ...(new MovimientoCajaResource($movimiento->load('categoria:id,nombre', 'cuenta:id,nombre,tipo', 'usuario:id,name', 'anulacion')))->resolve($request),
+            'aviso_base' => $this->caja->usaBase($movimiento->fecha->toDateString()),
+        ], 201);
     }
 
     public function anular(Request $request, MovimientoCaja $movimiento): JsonResponse

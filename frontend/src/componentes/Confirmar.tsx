@@ -1,8 +1,10 @@
-import { useAvisoTexto } from './Avisos'
-import Dialogo from './Dialogo'
+import Dialogo, { DialogoSeccion } from './Dialogo'
 import BotonCancelar from './BotonCancelar'
 
-/** Pregunta antes de guardar un cambio. Escape o Cancelar vuelven atrás sin aplicar nada. */
+/**
+ * Pregunta antes de guardar un cambio. Escape o Cancelar vuelven atrás sin aplicar nada.
+ * S-94: si la acción falla, el error se ve dentro del diálogo, que sigue abierto para reintentar o cancelar.
+ */
 export default function Confirmar({
   titulo,
   texto,
@@ -23,8 +25,6 @@ export default function Confirmar({
   onConfirmar: () => void
   onCancelar: () => void
 }) {
-  useAvisoTexto(error ?? null)
-
   return (
     <Dialogo
       titulo={titulo}
@@ -37,12 +37,18 @@ export default function Confirmar({
       onEnviar={onConfirmar}
       pie={(
         <>
-          <BotonCancelar autoFocus />
+          <BotonCancelar autoFocus={!error} />
           <button type="submit" className={peligro ? 'peligro' : 'primario'} disabled={pendiente}>
             {pendiente ? 'Guardando…' : accion}
           </button>
         </>
       )}
-    />
+    >
+      {error && (
+        <DialogoSeccion>
+          <p className="aviso error" role="alert">{error}</p>
+        </DialogoSeccion>
+      )}
+    </Dialogo>
   )
 }

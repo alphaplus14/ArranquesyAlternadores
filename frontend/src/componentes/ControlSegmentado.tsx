@@ -10,8 +10,9 @@ export interface OpcionSegmento<T extends string> { valor: T; texto: ReactNode; 
  * elegida se distingue también por la marca ✓ y el borde, no solo por el color.
  * Enter envía el formulario que lo contiene, si su botón de envío está habilitado.
  * S-92: `ancho="completo"` ocupa todo el ancho con opciones iguales (pestañas largas de una tarjeta).
+ * S-95: `pendiente` marca la opción pulsada que espera confirmación; `describedBy` describe el grupo.
  */
-export default function ControlSegmentado<T extends string>({ id, etiqueta, opciones, valor, onCambio, clase, ancho }: {
+export default function ControlSegmentado<T extends string>({ id, etiqueta, opciones, valor, onCambio, clase, ancho, pendiente, describedBy }: {
   id: string
   etiqueta: string
   opciones: OpcionSegmento<T>[]
@@ -21,6 +22,10 @@ export default function ControlSegmentado<T extends string>({ id, etiqueta, opci
   clase?: string
   /** S-92: 'completo' = todo el ancho del contenedor, opciones del mismo ancho y textos que se parten sin cortarse. */
   ancho?: 'completo'
+  /** S-95: opción elegida que espera confirmación (borde discontinuo). */
+  pendiente?: T
+  /** S-95: id del texto que describe el grupo (p. ej. un estado sin opción elegida). */
+  describedBy?: string
 }) {
   const botones = useRef<Array<HTMLButtonElement | null>>([])
 
@@ -50,7 +55,7 @@ export default function ControlSegmentado<T extends string>({ id, etiqueta, opci
   return (
     <div className={['campo-segmentado', ancho === 'completo' && 'completo', clase].filter(Boolean).join(' ')}>
       <span id={`${id}-etiqueta`} className="etiqueta-campo">{etiqueta}</span>
-      <div role="radiogroup" aria-labelledby={`${id}-etiqueta`} className="segmentado">
+      <div role="radiogroup" aria-labelledby={`${id}-etiqueta`} aria-describedby={describedBy} className="segmentado">
         {opciones.map((o, i) => {
           const elegida = o.valor === valor
           // Sin opción elegida (p. ej. una preferencia sin guardar), la primera recibe el Tab.
@@ -64,7 +69,7 @@ export default function ControlSegmentado<T extends string>({ id, etiqueta, opci
               aria-checked={elegida}
               tabIndex={conFoco ? 0 : -1}
               aria-label={o.nombre}
-              className={elegida ? 'segmento elegido' : 'segmento'}
+              className={['segmento', elegida && 'elegido', pendiente === o.valor && 'pendiente'].filter(Boolean).join(' ')}
               onClick={() => onCambio(o.valor)}
               onKeyDown={(e) => alPulsar(e, i)}
             >

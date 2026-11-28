@@ -319,6 +319,22 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .secundario:hover:not(:disabled) { background: var(--suave-fondo); }
 .peligro { background: var(--peligro); border-color: var(--peligro); color: #fff; }
 .peligro:hover:not(:disabled) { background: var(--peligro-hover); border-color: var(--peligro-hover); }
+/*
+ * S-96: botones principales legibles en todos los estados. Deshabilitado: fondo claro del acento,
+ * texto en el acento y borde visible (contraste ≥ 4,5:1, lo comprueba test:contraste), sin bajar la
+ * opacidad del texto. Un enlace con forma de botón (`a.boton.primario`, p. ej. "Imprimir etiquetas")
+ * no toma el color de `a:hover` ni de `a:visited`, y no se parte ni se corta.
+ */
+button.primario:disabled, .primario[aria-disabled='true'] {
+  opacity: 1; background: var(--acento-suave); border-color: color-mix(in srgb, var(--primario) 45%, #fff); color: var(--primario);
+}
+button.peligro:disabled, .peligro[aria-disabled='true'] {
+  opacity: 1; background: var(--error-fondo); border-color: color-mix(in srgb, var(--peligro) 45%, #fff); color: #B00000;
+}
+a.boton.primario, a.boton.primario:visited, a.boton.primario:hover { color: var(--acento-texto-sobre-acento); text-decoration: none; }
+a.boton.primario:hover { background: var(--primario-hover); border-color: var(--primario-hover); }
+a.boton { min-height: 44px; white-space: nowrap; box-sizing: border-box; }
+.primario:active:not(:disabled), .peligro:active:not(:disabled) { transform: translateY(1px); }
 .enlace { border: none; background: none; padding: 0; color: var(--primario); text-decoration: underline; cursor: pointer; font: inherit; }
 .enlace:hover { color: var(--primario-hover); }
 
@@ -566,30 +582,39 @@ tr.reversado td:has(.icono-accion) { text-decoration: none; }
 
 /* Registro de una compra: el lector y los totales quedan fijos; solo la tabla se desplaza. */
 .detalle-compra {
-  height: calc(100dvh - 4rem - 40px);
+  height: calc(100dvh - 4rem - 2 * var(--relleno-cuerpo, 20px));
   min-height: 0;
   overflow: hidden;
 }
+/* S-96: la tarjeta mide su contenido (sin hueco bajo la tabla) y se encoge hasta el alto libre. */
 .detalle-compra > .panel {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
-.detalle-compra > .panel-correccion { overflow: auto; }
+.detalle-compra > .panel-correccion { overflow: hidden; }
 /* Un panel oculto (el de solo lectura mientras se corrige, RF-28) no se muestra: el display:flex de
    arriba le ganaba al atributo hidden. */
 .detalle-compra > .panel[hidden] { display: none; }
-/* RF-28: en corrección no hay alto fijo ni scroll anidado: un solo scroll, el de la página, para que
-   el lector, la cabecera de la tabla y la barra (sticky) se peguen a la ventana. El borrador y el
-   documento confirmado en solo lectura siguen con el alto fijo de arriba. */
-.detalle-compra.corrigiendo { height: auto; min-height: 0; overflow: visible; }
-.detalle-compra.corrigiendo > .panel-correccion { overflow: visible; flex: none; }
+/* S-96 (RF-28): la corrección también va a alto fijo con un solo scroll, el de la tabla de ítems: el
+   encabezado, la tarjeta del descuento y el lector toman su alto; la tabla crece (mín. 12 rem) y la
+   barra va en el flujo, debajo, sin tapar filas. En móvil o ventana baja la página vuelve a desplazarse. */
+.detalle-compra.corrigiendo > .panel-correccion { flex: 1 1 auto; min-height: 0; }
+.panel-correccion > .ingreso-tabla { flex: 1 1 auto; min-height: 12rem; overflow: auto; }
+.panel-correccion > .ingreso-barra { position: static; box-shadow: none; margin-top: 0; }
+@media (max-width: 768px), (max-height: 600px) {
+  .detalle-compra.corrigiendo { height: auto; overflow: visible; }
+  .detalle-compra.corrigiendo > .panel-correccion { overflow: visible; }
+  .panel-correccion > .ingreso-tabla { min-height: 0; }
+}
+/* El historial de correcciones bajo el documento: alto propio y su propio scroll. */
+.detalle-compra > .panel.historial-correcciones-panel { flex: 0 1 auto; max-height: 35%; overflow: auto; display: block; }
 /* Todo lo que queda sobre la tabla conserva su alto; solo la tabla absorbe el espacio y se desplaza. */
 .detalle-compra > .panel > * { flex: none; }
 .detalle-compra .tabla-desplazable {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-height: 0;
   overflow: auto;
 }
@@ -604,6 +629,11 @@ tr.reversado td:has(.icono-accion) { text-decoration: none; }
 .detalle-compra .tabla-lineas:not(.tabla-correccion) th:nth-child(6) { width: 11%; }
 .detalle-compra .tabla-lineas:not(.tabla-correccion) th:nth-child(7) { width: 11%; }
 .detalle-compra .tabla-lineas:not(.tabla-correccion) th:nth-child(8) { width: 16%; }
+/* S-96: confirmado no tiene columna de acciones; el ancho va a Referencia, Costo, Neto e IVA. */
+.detalle-compra .tabla-lineas.confirmado th:nth-child(1) { width: 31%; }
+.detalle-compra .tabla-lineas.confirmado th:nth-child(3) { width: 14%; }
+.detalle-compra .tabla-lineas.confirmado th:nth-child(6) { width: 15%; }
+.detalle-compra .tabla-lineas.confirmado th:nth-child(7) { width: 15%; }
 .detalle-compra .tabla-lineas thead th { position: sticky; top: 0; z-index: 1; background: var(--panel); box-shadow: inset 0 -1px 0 var(--borde); }
 .detalle-compra .acciones { margin-top: 12px; flex: none; }
 .detalle-compra .ingreso-barra { flex: none; }
@@ -1233,7 +1263,6 @@ button.celda-editable:hover, button.celda-editable:focus-visible { border-color:
 /* Costo pendiente: marco y texto de atención, icono y la palabra "Costo" (no solo color). */
 button.celda-editable.pendiente { min-width: 5.5rem; justify-content: center; border-color: var(--aviso); color: var(--aviso); font-weight: 600; background: #fff; }
 button.celda-editable.pendiente:hover, button.celda-editable.pendiente:focus-visible { border-color: var(--aviso); }
-.tabla-lineas thead th.encabezado-normal { text-transform: none; letter-spacing: 0; }
 .tabla-lineas td.acciones-linea { white-space: nowrap; text-align: right; }
 .acciones-linea, .confirmar-quitar { display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; }
 .tabla-lineas td.acciones-linea { display: table-cell; }
@@ -2008,13 +2037,10 @@ th.boton-fila-columna.boton-fila-doble, td.boton-fila-columna.boton-fila-doble {
 /* S-76: recaudo de documentos (botón junto a "Agregar movimiento" y consulta del contable). */
 .recaudo-acciones { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
 .caja-total-recaudos td.col-numero { color: var(--ok); }
-.recaudo-observacion { overflow-wrap: anywhere; }
 .recaudo-medidas { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin: 4px 0 12px; }
 .recaudo-medidas .medida { grid-column: auto; }
 .recaudo-buscar { flex: 1 1 240px; }
 .recaudo-buscar input { width: 100%; box-sizing: border-box; }
-.recaudo-tabla td.recaudo-observacion { max-width: 280px; }
-.recaudo-tabla small.bloque { white-space: nowrap; }
 .caja-total-gastos td.col-numero { color: color-mix(in srgb, var(--peligro) 70%, var(--texto)); }
 .caja-total-ingresos td.col-numero { color: var(--ok); }
 /* RF-27: préstamos y abonos de empleados en la caja del día del mostrador. */
@@ -2054,13 +2080,24 @@ button.empleado-pagar-todo { flex: none; min-height: 44px; white-space: nowrap; 
   font-size: 0.85rem; color: var(--texto); line-height: 1.4;
 }
 .caja-desglose { margin: 0; }
-.caja-ver-detalle { align-self: flex-start; margin: 4px 0; }
+/* S-101: «Ver detalle» y «Agregar observación» son botones secundarios (no enlaces de texto). */
+.caja-ver-detalle { align-self: stretch; width: 100%; box-sizing: border-box; display: flex; align-items: center; justify-content: center; gap: 8px; margin: 4px 0; }
+.caja-ver-detalle svg { flex: none; transition: transform 150ms ease-out; }
+.caja-ver-detalle[aria-expanded='true'] svg { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { .caja-ver-detalle svg { transition: none; } }
+.caja-ver-cuentas { align-self: flex-start; margin: 8px 0 0; }
 .caja-desglose-detalle { margin: 0 0 8px; font-size: 0.9rem; }
 .caja-panel-cierre .cierre-guardado { margin-top: 8px; }
 .caja-form-cierre { display: flex; flex-direction: column; gap: 4px; padding-top: 10px; border-top: 2px solid var(--borde); }
 .caja-form-cierre input { width: 100%; box-sizing: border-box; min-height: 40px; }
-.caja-agregar-observacion { align-self: flex-start; margin: 2px 0; }
+.caja-agregar-observacion { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; margin: 2px 0; }
+.caja-agregar-observacion svg, .caja-quitar-observacion svg { flex: none; }
 .caja-observacion { display: flex; flex-direction: column; gap: 2px; }
+.caja-observacion > label { display: block; }
+/* El campo y «Quitar» en una fila; «Quitar» no se encoge. */
+.caja-observacion-fila { display: flex; gap: 8px; align-items: stretch; }
+.caja-observacion-fila input { flex: 1; min-width: 0; min-height: 44px; }
+.caja-quitar-observacion { flex: none; display: inline-flex; align-items: center; gap: 6px; }
 .caja-boton-cerrar { width: 100%; margin-top: 6px; }
 @media (min-width: 1100px) {
   .caja-vista-pantalla { height: calc(100vh - 4rem - 40px); min-height: 540px; }
@@ -2090,7 +2127,6 @@ button.empleado-pagar-todo { flex: none; min-height: 44px; white-space: nowrap; 
 
 /* Botón principal deshabilitado en el pie de una modal: sigue viéndose azul claro, pero con texto
    legible (antes la opacidad 0.5 dejaba texto blanco casi invisible sobre azul medio). */
-.modal-pie button.primario:disabled { opacity: 1; background: color-mix(in srgb, var(--primario) 28%, #fff); border-color: transparent; color: var(--primario); }
 
 /* RF-11: auditoría legible. Creación o eliminación con chip; la foto del registro, resumida en una
    línea y con "Ver detalle" (Etiqueta: valor, uno por línea). Hereda el rojo/verde de Antes/Después. */
@@ -2150,7 +2186,8 @@ button.preferencias-switch[aria-checked="true"] span { transform: translateX(18p
   background: var(--panel); padding: 8px 0 4px;
 }
 /* Solo en la corrección (RF-28) la página es la que se desplaza: ahí el lector se pega a la barra superior. */
-.panel-correccion .ingreso-lector { position: sticky; top: 4rem; z-index: 4; }
+/* S-96: el lector va fijo sobre la tabla por el flujo (sin sticky anidado). */
+.panel-correccion .ingreso-lector { position: static; }
 .ingreso-lector .escaner { margin-bottom: 4px; height: 3rem; font-size: 1.05rem; }
 .ultima-lectura {
   min-height: 1.25rem; margin: 0; font-size: 0.85rem; font-weight: 600;
@@ -2164,12 +2201,9 @@ button.preferencias-switch[aria-checked="true"] span { transform: translateX(18p
 .desglose-compra .totales { margin-top: 8px; }
 .tabla-etiquetas tbody tr { content-visibility: auto; contain-intrinsic-size: auto 2.5rem; }
 .ingreso-lector .aviso { margin: 4px 0; }
-@media (min-width: 721px) {
-  .panel-correccion .tabla-desplazable.ingreso-tabla { overflow: visible; }
-  .panel-correccion .ingreso-tabla thead th {
-    position: sticky; top: calc(4rem + var(--ingreso-lector-alto)); z-index: 3;
-    background: var(--panel); box-shadow: inset 0 -1px 0 var(--borde);
-  }
+.panel-correccion .ingreso-tabla thead th {
+  position: sticky; top: 0; z-index: 3;
+  background: var(--panel); box-shadow: inset 0 -1px 0 var(--borde);
 }
 .ingreso-barra {
   position: sticky; bottom: 0; z-index: 5;
@@ -2297,3 +2331,120 @@ body:has(.ingreso-barra) .aviso-flotante { bottom: 88px; }
 .tabla-compras .col-proveedor { width: 30%; }
 /* La fecha va junto al número y nunca se parte ni se corta (aaaa-mm-dd). */
 .tabla-compras .col-fecha { white-space: nowrap; width: 7.5rem; }
+
+/*
+ * S-95: corrección de un ingreso (RF-28). Encabezado en rejilla de 4 columnas iguales (2 en 768 px,
+ * 1 en móvil), campos de 44 px. Tarjeta "Descuento": título + chip, control compacto de una línea
+ * (máx. ~520 px, opciones iguales que no parten su texto), contenido de la condición con alto mínimo
+ * (sin saltos) y la confirmación de un cambio en línea, con borde de atención.
+ */
+.encabezado-correccion { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 14px; align-items: end; }
+.encabezado-correccion > label { margin: 0; }
+.encabezado-correccion input, .encabezado-correccion select { min-height: 44px; height: 44px; box-sizing: border-box; margin: 0; width: 100%; }
+
+/* S-96: una sola fila (~96 px en 1366 px): título y chip, control (máx. 520 px) y contenido. */
+.tarjeta-descuento {
+  display: grid; grid-template-columns: auto minmax(0, 520px) minmax(0, 1fr); align-items: center; gap: 8px 20px;
+  border: 1px solid var(--borde); border-radius: var(--radio); padding: 10px 16px; background: var(--panel);
+}
+.tarjeta-descuento > .confirmar-condicion { grid-column: 1 / -1; }
+.tarjeta-descuento.lectura { grid-template-columns: minmax(0, 1fr); }
+.tarjeta-descuento .control-condicion > .etiqueta-campo {
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+}
+.tarjeta-descuento-cabeza { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.tarjeta-descuento-cabeza h3 { margin: 0; font-size: 1rem; }
+.tarjeta-descuento-control { display: flex; flex-direction: column; gap: 4px; }
+.tarjeta-descuento-control > .ayuda { margin: 0; }
+.control-condicion { margin: 0; }
+.control-condicion .segmentado { max-width: 520px; box-sizing: border-box; }
+.control-condicion button.segmento { flex: 1 1 0; min-height: 44px; white-space: nowrap; }
+button.segmento.pendiente { border: 1px dashed var(--aviso); color: var(--texto); background: #fff; }
+.tarjeta-descuento-contenido { min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+.tarjeta-descuento-contenido .campo-con-unidad input, .tarjeta-descuento-contenido .campo-con-unidad select { min-height: 44px; }
+.tarjeta-descuento-contenido > label { margin: 0; max-width: 420px; }
+.tarjeta-descuento-contenido > .ayuda, .tarjeta-descuento-resumen { margin: 0; }
+.tarjeta-descuento-resumen { font-weight: 600; }
+.confirmar-condicion {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap;
+  border: 1px solid var(--aviso); border-radius: 10px; padding: 8px 12px; background: var(--aviso-fondo); color: var(--texto);
+}
+.confirmar-condicion-botones { display: inline-flex; gap: 8px; flex-wrap: wrap; }
+.confirmar-condicion-botones button { min-height: 44px; }
+.condicion-descuento-lectura { margin: 0 0 6px; }
+/* "Desc. %" de solo lectura: el valor en texto, a la derecha y atenuado ("—" si no aplica). */
+.celda-solo-lectura { display: block; text-align: right; color: var(--suave); padding: 2px 4px; }
+@media (max-width: 960px) {
+  .tarjeta-descuento { grid-template-columns: minmax(0, 1fr); }
+  .encabezado-correccion { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .control-condicion .segmentado { max-width: none; }
+  .confirmar-condicion { flex-direction: column; align-items: stretch; }
+  .confirmar-condicion-botones button { flex: 1 1 0; }
+}
+@media (max-width: 540px) {
+  .encabezado-correccion { grid-template-columns: minmax(0, 1fr); }
+  .control-condicion .segmentado { flex-wrap: wrap; }
+  .control-condicion button.segmento { flex: 1 1 auto; }
+}
+
+/* S-97: "Cartera recuperada": tarjetas y franja por cuenta (texto y barra simple), vista compacta. */
+.resumen-recuperado { display: flex; flex-direction: column; gap: 8px; }
+.resumen-recuperado .medidas { margin: 0; }
+.recuperado-por-cuenta { list-style: none; margin: 0; padding: 8px 12px; display: flex; flex-wrap: wrap; gap: 6px 22px; background: var(--panel); border-radius: var(--radio); }
+.recuperado-por-cuenta li { display: inline-flex; align-items: center; gap: 8px; font-size: 0.85rem; }
+.recuperado-cuenta-nombre { color: var(--suave); font-weight: 600; }
+.recuperado-cuenta-barra { width: 80px; height: 6px; border-radius: 999px; background: var(--suave-fondo); overflow: hidden; display: inline-block; }
+.recuperado-cuenta-barra > span { display: block; height: 100%; background: var(--acento); }
+.recuperado-por-cuenta small { color: var(--suave); }
+.vista-recuperada { margin: 0; }
+.vista-recuperada button.segmento { min-height: 44px; white-space: nowrap; }
+
+/* S-98: base de caja en el panel del cierre: tono neutro, separada del cuadre. */
+.caja-desglose .caja-base dt, .caja-desglose .caja-base dd, .cierre-guardado .caja-base dt, .cierre-guardado .caja-base dd { color: var(--suave); font-weight: 500; }
+.caja-desglose .caja-cajon { border-top: 1px dashed var(--borde); padding-top: 4px; }
+.caja-desglose .caja-cajon dt, .caja-desglose .caja-cajon dd { font-weight: 700; }
+.tabla-mes td.suave { color: var(--suave); }
+
+/*
+ * S-99: tabla de Recaudos sin scroll horizontal: ancho fijo de la tarjeta, anchos por columna, la
+ * observación a 2 líneas y el motivo de la anulación a 1 (completos en el title y en «Ver motivo»).
+ * En las anuladas solo van tachados fecha, tipo, número, valor y cuenta. Total fijo al pie del scroll.
+ * A 768 px o menos cada recaudo es una tarjeta.
+ */
+.recaudo-tabla { table-layout: fixed; width: 100%; }
+.recaudo-tabla col.r-fecha { width: 9%; }
+.recaudo-tabla col.r-tipo { width: 9%; }
+.recaudo-tabla col.r-numero { width: 9%; }
+.recaudo-tabla col.r-valor { width: 11%; }
+.recaudo-tabla col.r-cuenta { width: 12%; }
+.recaudo-tabla col.r-observacion { width: 20%; }
+.recaudo-tabla col.r-usuario { width: 14%; }
+.recaudo-tabla col.r-estado { width: 16%; }
+.recaudo-tabla td, .recaudo-tabla th { overflow-wrap: anywhere; }
+.recaudo-recorte { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+.recaudo-estado-fila { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.recaudo-motivo { display: block; margin-top: 2px; color: var(--suave); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chip.vigente { background: var(--ok-fondo); color: var(--ok); font-weight: 600; }
+.chip.anulado { background: var(--suave-fondo); color: var(--texto); font-weight: 600; }
+tr.reversado td.sin-tachar { text-decoration: none; }
+tr.reversado td.sin-tachar .chip, tr.reversado td.sin-tachar small { text-decoration: none; }
+.recaudo-tabla tr.recaudo-total td { position: sticky; bottom: 0; z-index: 1; background: var(--suave-fondo); }
+.recaudo-motivo-completo { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 0 8px; }
+@media (max-width: 768px) {
+  .recaudo-tabla colgroup, .recaudo-tabla thead { display: none; }
+  .recaudo-tabla, .recaudo-tabla tbody, .recaudo-tabla tr, .recaudo-tabla td { display: block; width: 100%; box-sizing: border-box; }
+  .recaudo-tabla tr { border: 1px solid var(--borde); border-radius: 10px; padding: 8px 12px; margin-bottom: 10px; }
+  .recaudo-tabla td { border: 0; padding: 4px 0; }
+  .recaudo-tabla td[data-etiqueta] { display: flex; justify-content: space-between; gap: 12px; text-align: right; }
+  .recaudo-tabla td[data-etiqueta]::before { content: attr(data-etiqueta); flex: none; color: var(--suave); font-size: 0.8rem; text-align: left; text-decoration: none; }
+  .recaudo-tabla td[data-etiqueta] > * { min-width: 0; }
+  .recaudo-tabla td.recaudo-estado { flex-direction: column; align-items: flex-end; }
+  .recaudo-tabla tr.recaudo-total td { position: static; }
+  .recaudo-tabla td.recaudo-total-relleno { display: none; }
+}
+
+/* S-100 (presentación): apertura cambiada a mano (una línea en el encabezado) y contador del motivo. */
+.caja-apertura-cambio { display: block; max-width: 100%; color: var(--suave); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.contador-motivo { margin-left: 8px; color: var(--suave); font-weight: 500; font-size: 0.8rem; }
+.apertura-razon { margin-right: auto; color: var(--aviso); font-weight: 600; }
+

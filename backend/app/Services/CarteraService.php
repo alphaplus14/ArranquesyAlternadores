@@ -463,6 +463,26 @@ class CarteraService
     }
 
     /**
+     * S-97: saldo a la fecha de corte de varios clientes, en UNA consulta (la misma agregación de la
+     * cartera de clientes, filtrada a esos ids).
+     *
+     * @param  list<int>  $clienteIds
+     * @return array<int, string> id del cliente => saldo
+     */
+    public function saldosClientes(array $clienteIds, string $corte): array
+    {
+        if ($clienteIds === []) {
+            return [];
+        }
+
+        return DB::query()->fromSub($this->porCliente($corte), 'c')
+            ->whereIn('c.id', $clienteIds)
+            ->pluck('c.saldo', 'c.id')
+            ->map(fn ($saldo) => self::pesos($saldo))
+            ->all();
+    }
+
+    /**
      * Una fila por cliente: ventas, abonado, saldo, vencido, próximo vencimiento y rangos.
      * Con búsqueda, filtra por prefijo de nombre o documento (índices; sin comodín inicial) o por
      * los clientes dueños de una venta que coincide por n.º o factura ($idsPorVenta).

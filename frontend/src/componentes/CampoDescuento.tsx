@@ -6,8 +6,10 @@ export type ModoDescuento = '$' | '%'
  * S-22: descuento del documento en pesos o en porcentaje (opcional, 0 por defecto). El backend
  * recibe uno u otro, nunca los dos, y valida que no supere el subtotal neto.
  */
-export default function CampoDescuento({ id, modo, valor, error, ayuda, onModo, onValor }: {
+export default function CampoDescuento({ id, modo, valor, error, ayuda, etiqueta, onModo, onValor }: {
   id: string
+  /** S-95: la tarjeta "Descuento" lo llama «Valor del descuento». */
+  etiqueta?: string
   modo: ModoDescuento
   valor: string
   error?: string
@@ -16,7 +18,7 @@ export default function CampoDescuento({ id, modo, valor, error, ayuda, onModo, 
   onValor: (valor: string) => void
 }) {
   return (
-    <label>Descuento del documento <small className="suave">(opcional)</small>
+    <label>{etiqueta ?? <>Descuento del documento <small className="suave">(opcional)</small></>}
       <span className="campo-con-unidad">
         <select aria-label="Unidad del descuento" value={modo} onChange={(e) => onModo(e.target.value as ModoDescuento)}>
           <option value="$">$</option>
@@ -39,7 +41,7 @@ export default function CampoDescuento({ id, modo, valor, error, ayuda, onModo, 
         )}
       </span>
       <small id={`${id}-ayuda`} className={error ? 'ayuda error' : 'ayuda'}>
-        {error ?? ayuda ?? (modo === '%' ? 'Porcentaje sobre el subtotal neto de las líneas.' : 'En pesos. Se reparte entre las líneas antes del IVA.')}
+        {error ?? ayuda ?? (modo === '%' ? 'Porcentaje sobre el subtotal neto de los ítems.' : 'En pesos. Se reparte entre los ítems antes del IVA.')}
       </small>
     </label>
   )

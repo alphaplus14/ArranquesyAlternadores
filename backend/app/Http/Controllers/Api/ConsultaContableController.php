@@ -17,6 +17,28 @@ class ConsultaContableController extends Controller
 {
     public function __construct(private readonly ConsultaContableService $consultas) {}
 
+    /** S-97: cartera recuperada (abonos de clientes del período), en detalle o por cliente. */
+    public function carteraRecuperada(Request $request): JsonResponse
+    {
+        $datos = $request->validate([
+            'vista' => ['sometimes', 'in:detalle,por_cliente'],
+            'desde' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
+            'hasta' => ['sometimes', 'nullable', 'date_format:Y-m-d', 'after_or_equal:desde'],
+            'cliente_id' => ['sometimes', 'nullable', 'integer', 'exists:clientes,id'],
+            'cuenta_pago_id' => ['sometimes', 'nullable', 'integer', 'exists:cuentas_pago,id'],
+            'estado' => ['sometimes', 'in:vigentes,anulados,todos'],
+            'tipo_aplicacion' => ['sometimes', 'in:todos,a_factura,general'],
+            'q' => ['sometimes', 'nullable', 'string', 'max:80'],
+            'orden' => ['sometimes', 'in:fecha_desc,valor_desc,nombre'],
+            'por_pagina' => ['sometimes', 'integer', 'min:1', 'max:100'],
+        ]);
+        // Por defecto, el mes en curso.
+        $datos['desde'] ??= now()->startOfMonth()->toDateString();
+        $datos['hasta'] ??= now()->toDateString();
+
+        return response()->json($this->consultas->carteraRecuperada($datos, (int) ($datos['por_pagina'] ?? 50)));
+    }
+
     /** Historial de pagos de un proveedor (vigentes por defecto; anulados o todos). */
     public function pagosProveedor(Request $request, Proveedor $proveedor): JsonResponse
     {

@@ -16,7 +16,10 @@ class CierreCajaResource extends JsonResource
             'fecha' => $this->fecha->toDateString(),
             // S-49: null en los cierres anteriores a la apertura diaria.
             'apertura' => $this->apertura,
+            // S-98: contado = todo el cajón; base aparte (0 en los cierres anteriores); para el cuadre = contado − base.
             'efectivo_contado' => $this->efectivo_contado,
+            'base' => $this->base,
+            'efectivo_para_cuadre' => $this->paraCuadre(),
             'efectivo_esperado' => $this->efectivo_esperado,
             'diferencia' => $this->diferencia,
             'saldo_anterior' => $this->saldo_anterior,

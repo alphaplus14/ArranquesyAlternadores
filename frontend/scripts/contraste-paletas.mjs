@@ -8,6 +8,7 @@ const paletas = JSON.parse(readFileSync(new URL('../src/preferencias/paletas.jso
 const BLANCO = '#FFFFFF'
 const FONDO = '#F4F6FB' // --fondo
 const SUAVE_FONDO = '#EEF2FA' // --suave-fondo (hover de botones secundarios)
+const TEXTO = '#0E1A33' // --texto
 const RESALTE = '#F8C800' // --resalte: iniciales del avatar y opción elegida, sobre el acento
 const MINIMO = 4.5
 
@@ -33,6 +34,8 @@ for (const [clave, p] of Object.entries(paletas)) {
     ['acento sobre su tono suave (chips, pestañas)', p.acento, p.suave],
     ['enlace en hover sobre blanco', p.hover, BLANCO],
     ['amarillo de la marca sobre el acento (avatar)', RESALTE, p.acento],
+    // S-96: botón primario deshabilitado (texto en el acento sobre su tono suave).
+    ['texto del botón primario deshabilitado', p.acento, p.suave],
   ]
   for (const [uso, frente, fondo] of pares) {
     const c = contraste(frente, fondo)
@@ -40,6 +43,20 @@ for (const [clave, p] of Object.entries(paletas)) {
     if (!ok) fallas++
     console.log(`${ok ? 'ok   ' : 'FALLA'} ${clave.padEnd(8)} ${c.toFixed(2).padStart(6)}:1  ${uso}`)
   }
+}
+
+// S-96: botón de peligro deshabilitado (colores fijos de index.css: #B00000 sobre --error-fondo).
+for (const [uso, frente, fondo] of [
+  ['texto del botón de peligro', '#FFFFFF', '#D80808'],
+  ['texto del botón de peligro deshabilitado', '#B00000', '#FDE8E7'],
+  // S-99: chips de estado de Recaudos (Vigente: --ok sobre --ok-fondo; Anulado: --texto sobre --suave-fondo).
+  ['chip Vigente', '#147A4A', '#E5F6EC'],
+  ['chip Anulado', TEXTO, SUAVE_FONDO],
+]) {
+  const c = contraste(frente, fondo)
+  const ok = c >= MINIMO
+  if (!ok) fallas++
+  console.log(`${ok ? 'ok   ' : 'FALLA'} fijo     ${c.toFixed(2).padStart(6)}:1  ${uso}`)
 }
 
 if (fallas > 0) {

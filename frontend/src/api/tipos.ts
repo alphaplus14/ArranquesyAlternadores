@@ -732,6 +732,42 @@ export interface SaldoProveedor extends ResumenSaldo {
   pagos_recientes: MovimientoDinero[]
 }
 
+/** S-97: un abono de la cartera recuperada (vista detalle). */
+export interface FilaAbonoRecuperado {
+  id: number
+  fecha: string
+  cliente: { id: number; nombre: string; documento: string | null } | null
+  valor: string
+  cuenta: { id: number; nombre: string; tipo: TipoCuentaPago } | null
+  referencia: string | null
+  nota: string | null
+  /** null = «General» (abono sin documento, anterior a S-79). */
+  documento: { venta_id: number; tipo: 'factura' | 'remision' | null; numero: string | null } | null
+  aplicado_a: string
+  usuario: { id: number; name: string } | null
+  anulado: boolean
+  anulacion: { motivo: string; created_at: string; usuario: { id: number; name: string } | null } | null
+}
+
+/** S-97: un cliente de la cartera recuperada (vista por cliente). */
+export interface FilaClienteRecuperado {
+  cliente: { id: number; nombre: string; documento: string | null }
+  abonos: number
+  recuperado: string
+  ultimo_abono: string
+  saldo_actual: string
+}
+
+/** S-97: totales de todo lo filtrado (no dependen de la vista ni de la página). */
+export interface TotalesRecuperados {
+  total_recuperado: string
+  cantidad_abonos: number
+  clientes: number
+  total_anulado: string
+  cantidad_anulados: number
+  por_cuenta: Array<{ cuenta_id: number | null; cuenta: string; tipo: TipoCuentaPago; total: string; cantidad: number }>
+}
+
 /** RF-18: informe paginado en el servidor; los totales cubren todas las filas, no solo la página. */
 export interface PaginaInforme<T, Totales = Record<string, string>> extends Pagina<T> {
   totales: Totales
@@ -1097,6 +1133,10 @@ export interface ResumenCaja {
   apertura_editable: boolean
   /** Apertura + efectivo neto del día; null sin apertura efectiva (y sin ella no se cierra). */
   efectivo_esperado: string | null
+  /** S-98: base fija de caja (la guardada si el día está cerrado; la vigente si no). No suma al esperado. */
+  base_caja: string
+  /** S-98: lo que debe haber en el cajón = esperado + base (null sin apertura). */
+  efectivo_en_cajon_esperado: string | null
   meta_venta_diaria: string
   faltante_meta: string
   /**
@@ -1143,8 +1183,14 @@ export interface CierreCaja {
   fecha: string
   /** S-49: null en los cierres anteriores a la apertura diaria. */
   apertura: string | null
+  /** S-98: todo el cajón, base incluida. */
   efectivo_contado: string
+  /** S-98: base con que se cerró (0 en los cierres anteriores). */
+  base: string
+  /** S-98: contado − base. */
+  efectivo_para_cuadre: string
   efectivo_esperado: string
+  /** S-98: (contado − base) − esperado. */
   diferencia: string
   /** Columnas del modelo anterior (saldo encadenado). En los cierres nuevos repiten apertura y esperado. */
   saldo_anterior: string
@@ -1185,6 +1231,9 @@ export interface FilaMesCaja {
   efectivo_neto_dia: string
   efectivo_esperado: string | null
   efectivo_contado: string | null
+  /** S-98: base aparte (la del cierre; la vigente si el día no está cerrado). */
+  base: string
+  efectivo_para_cuadre: string | null
   diferencia: string | null
   /** Informativo: suma del efectivo neto desde el primer día del mes (empieza en 0). */
   neto_acumulado_mes: string
@@ -1297,6 +1346,8 @@ export interface FotoCorreccion {
     vence_el: string | null
     descuento_documento: string
     total: string | null
+    /** S-95: documento | producto | ninguno | mixto (correcciones anteriores no lo traen). */
+    condicion_descuento?: 'ninguno' | 'documento' | 'producto' | 'mixto'
   }
   lineas: LineaCorreccionFoto[]
 }

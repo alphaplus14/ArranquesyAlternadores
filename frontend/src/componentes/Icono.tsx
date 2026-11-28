@@ -37,6 +37,7 @@ export type IconoNombre =
   | 'devolucion'
   | 'historial'
   | 'producto'
+  | 'mas'
 
 /** Trazos propios. No hay fuente de iconos ni librería de UI. */
 export default function Icono({ nombre }: { nombre: IconoNombre }) {
@@ -79,6 +80,7 @@ const trazos: Record<IconoNombre, ReactNode> = {
   achicar: <path d="M14 10l7-7M20 10h-6V4M4 20l7-7M10 14H4v6" />,
   abrir: <path d="M9 6l6 6-6 6" />, // S-78: abrir el registro
   quitar: <path d="M6 6l12 12M18 6L6 18" />,
+  mas: <path d="M12 5v14M5 12h14" />, // S-101: agregar
   salida: <g><path d="M9 6H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h4" /><path d="M13 8l4 4-4 4M8 12h9" /></g>,
   entrada: <g><path d="M15 6h4a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-4" /><path d="M11 8l-4 4 4 4M16 12H7" /></g>,
   devolucion: <g><path d="M9 14L4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 1 1 0 11H12" /></g>,
