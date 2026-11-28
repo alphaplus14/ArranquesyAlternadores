@@ -61,7 +61,7 @@ export default function Agotados() {
   const faltanteTotal = bajo.filas.reduce((s, f) => s + f.faltante, 0)
 
   return (
-    <div className="pila">
+    <div className="pila pagina-agotados">
       <div className="pagina-encabezado">
         <h1>{vista === 'agotados' ? (proveedor ? `Agotados de ${proveedor.nombre}` : 'Agotados') : 'Bajo mínimo'}</h1>
         <p>

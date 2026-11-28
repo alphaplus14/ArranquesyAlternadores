@@ -1479,6 +1479,15 @@ tr.fila-con-error td { background: var(--error-fondo); }
 .tabla-bajo-minimo td, .tabla-bajo-minimo th { vertical-align: top; }
 /* S-47: agotada cuyo universal aún tiene existencia en otras referencias (regla 2). */
 .tabla-agotados td { vertical-align: top; }
+/* Agotados y mínimos: resumen más bajo (cuatro cifras en una fila, sin icono) para dar el alto a la tabla. */
+.pagina-agotados .resumen { margin-bottom: 8px; }
+.pagina-agotados .resumen.abierto .medidas { padding: 8px 12px; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.pagina-agotados .medida { grid-column: auto; min-height: 0; padding: 6px 12px; }
+.pagina-agotados .medida-etiqueta { margin-bottom: 0; font-size: 0.82rem; }
+.pagina-agotados .medida-numero { font-size: 1.15rem; }
+.pagina-agotados .medida-icono { display: none; }
+.pagina-agotados .resumen.abierto + .tarjeta-pagina .tabla-scroll,
+.pagina-agotados .resumen.abierto + .tarjeta-pagina .tabla-viva { max-height: calc(100dvh - 21rem); }
 .agotado-codigo { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .aviso-universal { color: var(--aviso); font-weight: 600; overflow-wrap: anywhere; cursor: help; }
 @media (max-width: 639px) {
