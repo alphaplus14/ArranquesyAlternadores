@@ -21,7 +21,7 @@ const NOMBRE_TIPO: Record<TipoMovimientoInventario, string> = {
   reverso: 'Reverso',
   baja: 'Salida',
   reintegro: 'Reintegro',
-  alta: 'Alta',
+  alta: 'Entrada por ajuste', // S-39: unidades nuevas de un inventario físico (sobrante, sin factura), no una compra
 }
 const TIPOS = Object.keys(NOMBRE_TIPO) as TipoMovimientoInventario[]
 const NOMBRE_METODO: Record<MetodoCaptura, string> = { escaneado: 'Escaneado', digitado: 'Digitado' }
@@ -30,7 +30,7 @@ interface Busqueda { referencias: Referencia[] | { data: Referencia[] } }
 interface UniversalOpcion { id: number; codigo: string; descripcion: string | null }
 
 /**
- * S-87: todos los movimientos de un producto (compras, ventas, reversos, salidas, reintegros y altas),
+ * S-87: todos los movimientos de un producto (compras, ventas, reversos, salidas, reintegros y entradas por ajuste),
  * con filtros que viven en la URL. Solo consulta, solo en pantalla. Admin y logística.
  */
 export default function MovimientosPorProducto() {

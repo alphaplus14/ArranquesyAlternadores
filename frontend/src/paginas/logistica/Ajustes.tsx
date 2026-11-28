@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import './historial.css'
 import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
@@ -1050,7 +1051,7 @@ function Historial({ puedeReintegrar }: { puedeReintegrar: boolean }) {
           <select value={tipo} onChange={(e) => { setTipo(e.target.value as '' | TipoAjuste); setMotivo('') }}>
             <option value="">Todos</option>
             <option value="baja">Salidas</option>
-            <option value="alta">Entradas</option>
+            <option value="alta">Entradas por ajuste</option>
             <option value="reintegro">Reintegros</option>
           </select>
         </label>
@@ -1063,6 +1064,7 @@ function Historial({ puedeReintegrar }: { puedeReintegrar: boolean }) {
         <FiltroPeriodo id="historial-periodo" valor={periodo} onCambio={cambiarPeriodo} />
       </div>
       {aviso && <div className={`aviso ${aviso.tipo}`} role="status">{aviso.texto}</div>}
+      {!errorFechas && filas.length > 0 && <p className="historial-resumen">Mostrando {filas.length} {filas.length === 1 ? 'ajuste' : 'ajustes'} de esta página</p>}
 
       {errorFechas ? (
         <p className="vacio">Corrija el rango de fechas para ver el historial.</p>
@@ -1070,19 +1072,21 @@ function Historial({ puedeReintegrar }: { puedeReintegrar: boolean }) {
         <p className="vacio">{cargando ? 'Cargando…' : 'No hay ajustes con esos filtros.'}</p>
       ) : (
         <div className="tabla-viva">
-        <table className={cargando ? 'tabla-apilable actualizando' : 'tabla-apilable'}>
+        <table className={`historial-ajustes ${cargando ? 'tabla-apilable actualizando' : 'tabla-apilable'}`}>
           <caption className="solo-lector">Historial de movimientos de inventario</caption>
           <thead><tr><th>Fecha</th><th>Tipo y motivo</th><th>Usuario</th><th>Unidades</th><th><span className="solo-lector">Acciones</span></th></tr></thead>
           <tbody>
             {filas.map((a) => {
               const reintegrables = a.unidades.filter((u) => u.reintegrable)
               return (
-                <tr key={a.id}>
-                  <td data-etiqueta="Fecha">{formatearFechaHora(a.created_at)}<div className="ayuda">#{a.id}</div></td>
+                <tr key={a.id} className={a.tipo === 'baja' ? 'fila-salida' : a.tipo === 'alta' ? 'fila-entrada' : 'fila-reintegro'}>
+                  <td data-etiqueta="Fecha"><span className="fecha-ajuste">{formatearFechaHora(a.created_at)}</span><div className="ayuda">#{a.id}</div></td>
                   <td data-etiqueta="Tipo y motivo">
-                    <span className={`chip ${a.tipo === 'baja' ? 'salida' : a.tipo === 'alta' ? 'entrada' : 'reintegro'}`}>{a.tipo === 'baja' ? 'Salida' : a.tipo === 'alta' ? 'Entrada' : 'Reintegro'}</span>{' '}
-                    {NOMBRE_MOTIVO[a.motivo]}
-                    {a.nota && <div className="ayuda nota-ajuste">{a.nota}</div>}
+                    <div className="motivo-ajuste">
+                      <span className={`chip ${a.tipo === 'baja' ? 'salida' : a.tipo === 'alta' ? 'entrada' : 'reintegro'}`}>{a.tipo === 'baja' ? 'Salida' : a.tipo === 'alta' ? 'Entrada por ajuste' : 'Reintegro'}</span>
+                      <span>{NOMBRE_MOTIVO[a.motivo]}</span>
+                      {a.nota && <div className="ayuda nota-ajuste">{a.nota}</div>}
+                    </div>
                   </td>
                   <td data-etiqueta="Usuario">{a.usuario.name}</td>
                   <td data-etiqueta={`Unidades (${a.cantidad})`}>
@@ -1096,6 +1100,8 @@ function Historial({ puedeReintegrar }: { puedeReintegrar: boolean }) {
                         </details>
                       </div>
                     ) : (
+                    <details className="unidades-desplegable" open={a.unidades.length <= 3}>
+                    <summary><span className="cantidad-ajuste">× {a.cantidad}</span> {a.cantidad === 1 ? 'unidad' : 'unidades'}</summary>
                     <ul className="unidades-ajuste">
                       {a.unidades.map((u) => (
                         <li key={u.id}>
@@ -1107,6 +1113,7 @@ function Historial({ puedeReintegrar }: { puedeReintegrar: boolean }) {
                         </li>
                       ))}
                     </ul>
+                    </details>
                     )}
                   </td>
                   <td className="celda-accion">
