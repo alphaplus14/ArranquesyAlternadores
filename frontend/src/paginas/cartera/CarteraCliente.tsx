@@ -77,8 +77,8 @@ export default function CarteraCliente() {
   // para que recargar o compartir el enlace conserve la vista.
   const [params, setParams] = useSearchParams()
   // Filtros de la lista de Cartera de la que se vino (q, saldo, vencidos, corte, desde, hasta).
-  const estado = useLocation().state as { lista?: string } | null
-  const listaOrigen = typeof estado?.lista === 'string' ? estado.lista : ''
+  const origen = useLocation().state as { lista?: string } | null
+  const listaOrigen = typeof origen?.lista === 'string' ? origen.lista : ''
   const [q, setQ] = useState(() => params.get('q') ?? '')
   const termino = useDebounce(q.trim())
   const crudoEstado = params.get('estado')
