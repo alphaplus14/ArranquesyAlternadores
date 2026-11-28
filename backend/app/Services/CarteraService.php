@@ -56,7 +56,7 @@ class CarteraService
     {
         $corte = $filtros['corte'] ?? null ?: RangoFechas::hoy();
         $coincidencias = $this->ventasQueCoinciden($corte, $filtros['busqueda'] ?? null);
-        // RF-13..RF-18: "ventas del período" = ventas a crédito cerradas con fecha en [desde, hasta]. Solo
+        // RF-15/RF-18: "ventas del período" = ventas a crédito cerradas con fecha en [desde, hasta]. Solo
         // acota qué clientes salen y cuánto vendieron en el rango; el saldo sigue siendo el neto vigente.
         $rango = ($filtros['desde'] ?? null) || ($filtros['hasta'] ?? null)
             ? ['desde' => $filtros['desde'] ?? null, 'hasta' => $filtros['hasta'] ?? null] : null;
@@ -489,11 +489,14 @@ class CarteraService
             $enRango = implode(' AND ', $partes).' AND f.neto > 0';
         }
 
-        $agregado = DB::query()->fromSub($porVenta, 'f')
+        // La condición del período se evalúa una sola vez por venta (columna `en_periodo`).
+        $conPeriodo = DB::query()->fromSub($porVenta, 'f')->selectRaw("f.*, ({$enRango}) AS en_periodo", $bindings);
+
+        $agregado = DB::query()->fromSub($conPeriodo, 'f')
             ->groupBy('f.cliente_id')
             ->selectRaw("f.cliente_id,
-                SUM(CASE WHEN {$enRango} THEN f.neto ELSE 0 END) AS ventas_periodo,
-                SUM(CASE WHEN {$enRango} THEN 1 ELSE 0 END) AS n_periodo,
+                SUM(CASE WHEN f.en_periodo THEN f.neto ELSE 0 END) AS ventas_periodo,
+                SUM(CASE WHEN f.en_periodo THEN 1 ELSE 0 END) AS n_periodo,
                 SUM(f.neto) AS ventas,
                 SUM(CASE WHEN f.dias > 0 THEN f.pendiente ELSE 0 END) AS vencido,
                 MIN(CASE WHEN f.pendiente > 0 AND f.dias <= 0 THEN f.vence_el END) AS proximo_vencimiento,
@@ -502,7 +505,7 @@ class CarteraService
                 SUM(CASE WHEN f.dias BETWEEN 1 AND 30 THEN f.pendiente ELSE 0 END) AS d1_30,
                 SUM(CASE WHEN f.dias BETWEEN 31 AND 60 THEN f.pendiente ELSE 0 END) AS d31_60,
                 SUM(CASE WHEN f.dias BETWEEN 61 AND 90 THEN f.pendiente ELSE 0 END) AS d61_90,
-                SUM(CASE WHEN f.dias > 90 THEN f.pendiente ELSE 0 END) AS mas_90", [...$bindings, ...$bindings]);
+                SUM(CASE WHEN f.dias > 90 THEN f.pendiente ELSE 0 END) AS mas_90");
 
         $abonos = $this->abonadoPorCliente($corte, $clienteId);
 
