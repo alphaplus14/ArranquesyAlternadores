@@ -60,6 +60,8 @@ export function mensajeError(error: unknown): string {
     if (!error.response && error.request && error.code !== AxiosError.ERR_CANCELED) {
       return 'No hay conexión con el servidor. Avise al administrador del sistema.'
     }
+    // S-94: sesión vencida (419: token CSRF; 401: sin sesión): nunca un texto técnico ni vacío.
+    if (error.response?.status === 419 || error.response?.status === 401) return 'Su sesión venció; entre de nuevo.'
     const datos = error.response?.data as { message?: string; errors?: Record<string, string[]> } | undefined
     const primero = datos?.errors && Object.values(datos.errors)[0]?.[0]
     return mensajeParaPantalla(primero ?? datos?.message ?? error.message, error.response?.status)

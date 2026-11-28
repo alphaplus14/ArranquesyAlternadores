@@ -1,4 +1,5 @@
 import { useId, useRef, type KeyboardEvent, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { useBloquearScroll } from '../hooks/useBloquearScroll'
 import { ATRIBUTO_DIALOGO, ContextoCierreDialogo, useClicEnFondo, useEscape, useSalidaDialogo, useTope } from './dialogoCierre'
 import DialogoSalir from './DialogoSalir'
@@ -55,6 +56,9 @@ const CAJA: Record<VarianteDialogo, string> = {
  * Un solo camino para cerrar: la X, Esc, el clic en el fondo y los "Cancelar" (`BotonCancelar` o
  * `useCerrarDialogo`) pasan por `solicitarCierre`, que pregunta si hay cambios sin guardar. Con un
  * envío en curso (`pendiente`) nada cierra. Al cerrar, el foco vuelve a quien abrió la modal.
+ * S-94: se dibuja en un portal (`document.body`), así nunca queda dentro de un `<form>` de la
+ * pantalla. Los eventos de un portal siguen subiendo por el árbol de React: el submit del diálogo se
+ * detiene aquí para que no dispare también el `onSubmit` del formulario que lo abrió.
  */
 export default function Dialogo({
   titulo,
@@ -123,15 +127,16 @@ export default function Dialogo({
     onKeyDown: (e: KeyboardEvent<HTMLElement>) => { if (esTope) atraparTab(e) },
   }
 
-  return (
+  return createPortal(
     <ContextoCierreDialogo.Provider value={contexto}>
       <div className={FONDO[variante]} onMouseDown={fondo.onMouseDown} onClick={fondo.onClick}>
         {onEnviar
-          ? <form ref={(el) => { cajaRef.current = el }} {...props} onSubmit={(e) => { e.preventDefault(); onEnviar() }}>{caja}</form>
+          ? <form ref={(el) => { cajaRef.current = el }} {...props} onSubmit={(e) => { e.preventDefault(); e.stopPropagation(); onEnviar() }}>{caja}</form>
           : <div ref={(el) => { cajaRef.current = el }} {...props}>{caja}</div>}
       </div>
       {preguntando && <DialogoSalir onSeguir={seguirEditando} onSalir={contexto.cerrarSinPreguntar} />}
-    </ContextoCierreDialogo.Provider>
+    </ContextoCierreDialogo.Provider>,
+    document.body,
   )
 }
 

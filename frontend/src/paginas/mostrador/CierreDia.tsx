@@ -208,7 +208,7 @@ export function VistaDia({ soloConsulta, titulo, pantalla = false }: { soloConsu
                     fecha={fecha}
                     esperado={r.efectivo_esperado ?? '0'}
                     bloqueado={d.ventas_abiertas.length > 0 || !r.apertura}
-                    onCerrado={() => { refrescar(); avisos.mostrar('ok', `Caja del ${formatearFecha(fecha)} cerrada.`) }}
+                    onCerrado={() => { refrescar(); avisos.mostrar('ok', `Caja del ${formatearFecha(fecha)} cerrada.`, undefined, 5000) }}
                   />
                 )}
               </section>
@@ -737,7 +737,7 @@ function CierreGuardado({ cierre }: { cierre: CierreCaja }) {
  * Efectivo contado con diferencia en vivo, observación opcional (plegada tras "+ Agregar
  * observación") y "Cerrar día" con confirmación. Va al pie de la tarjeta: siempre visible.
  */
-function FormularioCierre({ fecha, esperado, bloqueado, onCerrado }: { fecha: string; esperado: string; bloqueado: boolean; onCerrado: () => void }) {
+export function FormularioCierre({ fecha, esperado, bloqueado, onCerrado }: { fecha: string; esperado: string; bloqueado: boolean; onCerrado: () => void }) {
   const [contado, setContado] = useState('')
   const [observacion, setObservacion] = useState('')
   const [conObservacion, setConObservacion] = useState(false)
@@ -748,11 +748,17 @@ function FormularioCierre({ fecha, esperado, bloqueado, onCerrado }: { fecha: st
 
   const cerrar = useMutation({
     mutationFn: async () => (await api.post('/caja/cierres', { fecha, efectivo_contado: n, observacion: observacion.trim() || null })).data,
-    onSuccess: () => { setConfirmando(false); onCerrado() },
+    onSuccess: () => {
+      setConfirmando(false)
+      onCerrado()
+    },
   })
 
+  // S-94: la confirmación va FUERA del <form> (hermana, no hija) y el submit solo cuenta si viene de
+  // este mismo formulario; antes, el submit del diálogo subía hasta aquí y lo reabría.
   return (
-    <form className="caja-form-cierre" onSubmit={(e) => { e.preventDefault(); if (valido && !bloqueado) setConfirmando(true) }}>
+    <>
+    <form className="caja-form-cierre" onSubmit={(e) => { e.preventDefault(); if (e.target !== e.currentTarget) return; if (valido && !bloqueado && !cerrar.isPending) setConfirmando(true) }}>
       <label htmlFor="caja-contado" className="etiqueta-campo">Efectivo contado<span className="obligatorio" aria-hidden="true">*</span></label>
       <CampoMoneda
         id="caja-contado"
@@ -778,6 +784,7 @@ function FormularioCierre({ fecha, esperado, bloqueado, onCerrado }: { fecha: st
       )}
       {cerrar.isError && !confirmando && <div className="aviso error" role="alert">{mensajeError(cerrar.error)}</div>}
       <button type="submit" className="primario boton-44 caja-boton-cerrar" disabled={!valido || bloqueado || cerrar.isPending}>Cerrar día</button>
+    </form>
       {confirmando && (
         <Confirmar
           titulo={`Cerrar la caja del ${formatearFecha(fecha)}`}
@@ -785,11 +792,11 @@ function FormularioCierre({ fecha, esperado, bloqueado, onCerrado }: { fecha: st
           accion="Cerrar día"
           pendiente={cerrar.isPending}
           error={cerrar.isError ? mensajeError(cerrar.error) : null}
-          onConfirmar={() => cerrar.mutate()}
-          onCancelar={() => setConfirmando(false)}
+          onConfirmar={() => { if (!cerrar.isPending) cerrar.mutate() }}
+          onCancelar={() => { setConfirmando(false); cerrar.reset() }}
         />
       )}
-    </form>
+    </>
   )
 }
 
